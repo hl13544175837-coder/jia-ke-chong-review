@@ -381,7 +381,7 @@ docker run -d \
 docker run -d \
   --name zhipin-frontend \
   --network zhipin-net \
-  -p 8080:80 \
+  -p 8080:8080 \
   registry-sit.uce.cn/system-zhipin-mvp/zhipin-frontend:1.0.0
 ```
 

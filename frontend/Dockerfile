@@ -17,13 +17,7 @@ RUN sed -i 's/^user/#user/' /etc/nginx/nginx.conf && \
     sed -i 's!/var/run/nginx.pid!/tmp/nginx.pid!' /etc/nginx/nginx.conf && \
     sed -i 's/^worker_processes.*/worker_processes 2;/' /etc/nginx/nginx.conf
 COPY --chown=nginx:nginx --from=build-stage /app/dist /usr/share/nginx/html
-RUN printf 'server { listen 8080; root /usr/share/nginx/html; index index.html; client_body_temp_path /tmp/client_temp; proxy_temp_path /tmp/proxy_temp; fastcgi_temp_path /tmp/fastcgi_temp; uwsgi_temp_path /tmp/uwsgi_temp; scgi_temp_path /tmp/scgi_temp; location / { try_files $uri $uri/ /index.html; } }\n' > /etc/nginx/conf.d/default.conf
+COPY --chown=nginx:nginx frontend/nginx.conf /etc/nginx/conf.d/default.conf
 USER nginx
 EXPOSE 8080
-
-
-# COPY --from=build-stage /app/dist /usr/share/nginx/html
-# COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
-
-# EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
