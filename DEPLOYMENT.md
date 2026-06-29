@@ -333,6 +333,60 @@ systemctl enable zhipin
 systemctl start zhipin
 ```
 
+### 方案 D：Docker 容器化部署
+
+系统提供了前端 `zhipin-frontend` 和后端 `zhipin-server` 的 Dockerfile，并可以通过项目根目录下的 `Makefile` 进行统一编译与推送。
+
+#### 1. 编译镜像
+在具有 Docker 环境的机器上运行：
+```bash
+# 编译所有镜像（前端 + 后端）
+make build PKG_TAG=RC PKG_VERSION=1.0.0
+
+# 仅编译前端镜像
+make buildfrontend PKG_VERSION=1.0.0
+
+# 仅编译后端镜像
+make buildserver PKG_VERSION=1.0.0
+```
+
+#### 2. 推送镜像到仓库
+```bash
+make push PKG_TAG=RC PKG_VERSION=1.0.0
+```
+
+#### 3. 运行容器（推荐使用 Docker 自定义网络）
+
+```bash
+# 1. 创建自定义网络
+docker network create zhipin-net
+
+# 2. 运行后端服务
+docker run -d \
+  --name zhipin-server \
+  --network zhipin-net \
+  -p 5000:5000 \
+  -v /var/lib/zhipin/uploads:/app/backend/uploads \
+  -e JWT_SECRET=your-strong-random-secret-here \
+  -e DATABASE_URL=postgresql://user:pass@host:5432/zhipin \
+  -e LLM_PROVIDER=deepseek \
+  -e LLM_API_URL=https://api.deepseek.com/v1/chat/completions \
+  -e OPENAI_API_KEY=sk-your-deepseek-key-here \
+  -e AI_RECRUITMENT_COMPLIANCE_ACK=true \
+  -e CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.内网域名/privacy \
+  -e AI_HUMAN_REVIEW_REQUIRED=true \
+  registry-sit.uce.cn/system-zhipin-mvp/zhipin-server:1.0.0
+
+# 3. 运行前端服务（前端 Nginx 默认会把 /api 请求代理到容器名为 zhipin-server 的 5000 端口）
+docker run -d \
+  --name zhipin-frontend \
+  --network zhipin-net \
+  -p 8080:80 \
+  registry-sit.uce.cn/system-zhipin-mvp/zhipin-frontend:1.0.0
+```
+
+访问 `http://your-server:8080` 即可使用完整系统。
+
 ---
 
 ## 7. 公网穿透（cloudflared）
