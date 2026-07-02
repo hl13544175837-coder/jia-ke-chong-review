@@ -19,6 +19,34 @@ PORT=5001 python run.py
 
 ---
 
+## 公司 MySQL 测试库试用
+
+当前试用环境的完整交接说明见 [`docs/当前试用环境交接说明.md`](docs/当前试用环境交接说明.md)。新开 Codex 对话时，先读这份文档可以快速恢复上下文。
+
+当前公司测试库使用 MySQL 8.0.32，项目通过 SQLAlchemy 的 `mysql+pymysql://` 驱动连接。给同事临时试用时，`backend/.env` 至少需要包含：
+
+```env
+FLASK_DEBUG=false
+DATABASE_URL=mysql+pymysql://<user>:<password>@<host>:3306/<database>?charset=utf8mb4
+CORS_ORIGINS=http://localhost:5000,http://127.0.0.1:5000,http://<本机局域网IP>:5000
+ALLOW_PUBLIC_REGISTRATION=false
+SECURITY_HEADERS_ENABLED=true
+RATE_LIMIT_ENABLED=true
+BACKUP_DIR=/var/backups/zhipin
+AI_RECRUITMENT_COMPLIANCE_ACK=true
+CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.内网域名/privacy
+AI_HUMAN_REVIEW_REQUIRED=true
+```
+
+首次接入空库时，启动后端会自动创建业务表。需要演示数据时执行：
+
+```bash
+cd backend
+python seed_dev.py
+```
+
+---
+
 ## MVP 内部试用账号
 
 密码统一：`Zhipin2026`

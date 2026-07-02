@@ -109,9 +109,9 @@
 | 层 | 技术 |
 |----|------|
 | 前端 | React 18.3 · Vite 8 · TypeScript 5.9 · Tailwind 3.4 · GSAP 3.15 · recharts 3.8 · React Router 6 |
-| 后端 | Flask 3.1 · SQLAlchemy 2.0 · SQLite/PostgreSQL · PyJWT |
+| 后端 | Flask 3.1 · SQLAlchemy 2.0 · SQLite/MySQL/PostgreSQL · PyJWT |
 | AI | LangGraph 1.2 · DeepSeek v4 (OpenAI 兼容) · pdfplumber · python-docx |
-| 数据 | SQLite（开发）/ PostgreSQL（生产） |
+| 数据 | SQLite（开发）/ MySQL（公司试点）/ PostgreSQL（兼容） |
 
 ## 🚀 快速开始
 

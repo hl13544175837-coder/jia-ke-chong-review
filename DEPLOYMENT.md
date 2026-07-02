@@ -2,7 +2,7 @@
 
 > **版本**：2026-06-22
 > **适用环境**：Windows 10/11、Linux（Ubuntu 20.04+）、macOS 13+  
-> **架构**：Flask 单进程 + SQLite（开发）/ PostgreSQL（生产）+ Vite React SPA
+> **架构**：Flask 单进程 + SQLite（开发）/ MySQL（公司试点）/ PostgreSQL（兼容）+ Vite React SPA
 
 ---
 
@@ -40,7 +40,7 @@
     └── /api/agent         LangGraph AI 助手 (SSE 流式)
     │
     ├── base_agent/        LLM 客户端 / 简历解析 / 匹配算法
-    └── hireinsight.db     SQLite 数据库 (生产换 PostgreSQL)
+    └── hireinsight.db     SQLite 数据库 (试点/生产换 MySQL 或 PostgreSQL)
 ```
 
 **角色权限**：
@@ -216,7 +216,7 @@ cp backend/lightweight-pilot.env.example backend/.env
 FLASK_DEBUG=false
 JWT_SECRET=your-strong-random-secret-here
 JWT_EXPIRY_HOURS=8
-DATABASE_URL=postgresql://user:pass@host:5432/zhipin
+DATABASE_URL=mysql+pymysql://user:pass@host:3306/zhipin?charset=utf8mb4
 CORS_ORIGINS=https://zhipin.内网域名
 AI_RECRUITMENT_COMPLIANCE_ACK=true
 CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.内网域名/privacy
@@ -229,6 +229,8 @@ RATE_LIMIT_RESUME_UPLOAD=8
 BACKUP_DIR=/var/backups/zhipin
 ALLOW_PUBLIC_REGISTRATION=false
 ```
+
+公司 MySQL 试用环境建议使用 InnoDB、`utf8mb4` 字符集、专用库和专用账号。当前代码也兼容 PostgreSQL，连接串可写为 `postgresql://user:pass@host:5432/zhipin`，会自动转为 `postgresql+psycopg://`。
 
 3. 启动前自检（只读检查，不打印密钥）：
 ```bash
@@ -272,7 +274,7 @@ python scripts/backup_pilot_data.py --dry-run
 python scripts/backup_pilot_data.py
 ```
 
-恢复演练建议恢复到临时库或临时上传目录，不直接覆盖生产环境。脚本支持 PostgreSQL `pg_restore` 与 SQLite 文件恢复，并会校验 `uploads.tar.gz` 路径穿越：
+恢复演练建议恢复到临时库或临时上传目录，不直接覆盖生产环境。脚本支持 PostgreSQL `pg_restore` 与 SQLite 文件恢复；MySQL 备份由 `mysqldump` 产出 SQL 文件，恢复时由 DBA 或部署同事导入临时 MySQL 库；脚本会校验 `uploads.tar.gz` 路径穿越：
 
 ```bash
 cd backend

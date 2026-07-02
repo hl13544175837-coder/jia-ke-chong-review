@@ -99,7 +99,7 @@ flowchart LR
 |---|---|
 | 前端 | React, TypeScript, Vite, Tailwind CSS, lucide-react, GSAP |
 | 后端 | Flask, Flask-SQLAlchemy, Flask-CORS, PyJWT, bcrypt |
-| 数据库 | SQLite 开发/演示；文档预留 PostgreSQL 生产替换 |
+| 数据库 | SQLite 开发/演示；试点/生产可替换为 MySQL 或 PostgreSQL |
 | AI | `base_agent/llm_client.py`，OpenAI 兼容 Chat Completions，当前配置 DeepSeek |
 | 智能体 | LangGraph ReAct 循环，SSE 流式输出 |
 | 部署 | Flask 单端口托管 `frontend/dist`；也支持 gunicorn |
@@ -745,7 +745,7 @@ AI_HUMAN_REVIEW_REQUIRED=true
 |---|---|---|
 | 性能 | 中小规模内部工具可用；AI 请求同步等待 | 上传/AI 改为异步任务，前端轮询或 SSE |
 | 可用性 | 单进程/单机运行 | 生产使用 gunicorn + supervisor/systemd |
-| 数据可靠性 | SQLite 本地文件 | 生产换 PostgreSQL，增加备份 |
+| 数据可靠性 | SQLite 本地文件 | 试点/生产换 MySQL 或 PostgreSQL，增加备份 |
 | 安全 | JWT + RBAC + 密钥隐藏；弱 demo 密码 | 生产更换 JWT_SECRET、禁用弱密码、加 HTTPS |
 | 可观测性 | access log + 带 request_id / 来源 / 结果的 events 表 | 增加错误监控、慢请求监控 |
 | 扩展性 | 模块清晰，但部分业务同步耦合 | AI 与批处理拆异步队列 |
@@ -842,7 +842,7 @@ AI_HUMAN_REVIEW_REQUIRED=true
 |---|---|---|
 | seed 脚本与本地 DB 数量不一致 | 新人本地库可能是历史快照，数量多于 seed 脚本 | seed 脚本与 RUNNING 已对齐为 7 用户/10 候选人/4 岗位；本地 DB 快照仅作参考，不代表 seed 产物 |
 | 当前上传/AI 解析同步执行 | 批量简历或 LLM 慢时请求等待久 | 引入任务队列与进度接口 |
-| SQLite 用作演示库 | 并发和备份能力有限 | 生产使用 PostgreSQL |
+| SQLite 用作演示库 | 并发和备份能力有限 | 试点/生产使用 MySQL 或 PostgreSQL |
 | JWT_SECRET 默认值弱 | 生产安全风险 | 生产必须配置强随机密钥 |
 | demo 密码弱 | 公网演示风险 | 公网演示后关闭服务或强制改密 |
 | AI 面试会自动改流程状态 | 误判会影响主流程 | 保留人工确认或加规则开关 |

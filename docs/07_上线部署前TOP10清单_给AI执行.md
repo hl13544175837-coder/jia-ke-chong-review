@@ -9,7 +9,7 @@
 
 ## 给 AI 的执行总则（务必先读）
 
-1. **红线不可破**（见 06 清单 §0 / ADR-0001）：架构保持模块化单体；部署形态为 1 个 Flask 后端 + 1 个前端 SPA（Flask 同源托管 `frontend/dist`）；技术栈锁定（Flask 3.1 / SQLAlchemy 2.0 / PyJWT / React18+Vite8+TS / LangGraph+DeepSeek）；不改 API 契约与业务逻辑去迁就部署；只允许 SQLite→PostgreSQL 引擎切换，不做高风险 schema 迁移。
+1. **红线不可破**（见 06 清单 §0 / ADR-0001）：架构保持模块化单体；部署形态为 1 个 Flask 后端 + 1 个前端 SPA（Flask 同源托管 `frontend/dist`）；技术栈锁定（Flask 3.1 / SQLAlchemy 2.0 / PyJWT / React18+Vite8+TS / LangGraph+DeepSeek）；不改 API 契约与业务逻辑去迁就部署；只允许 SQLite→MySQL/PostgreSQL 引擎切换，不做高风险 schema 迁移。
 2. **不提交密钥**：任何真实密钥、API Key 只写进服务器 `backend/.env`，绝不进 git。确认 `.env` 在 `.gitignore` 内。
 3. **改动可逆优先**：配置类改动先改 `.env`，不改 `config.py` 读取逻辑。涉及代码处只做已被 06 清单认可的安全加固。
 4. **每项必须验收**：完成一项后运行该项「验收命令」，把实际输出贴回，再进入下一项。
@@ -44,9 +44,9 @@
 - **验收**：启动后访问不存在路由返回标准 401/404 JSON，不出现 Werkzeug 调试页。
 - **依赖**：设 false 会激活生产安全校验，须确保第 1、4 项已达标，否则启动报 RuntimeError（预期行为）。
 
-### 3. 切换 PostgreSQL + 定时备份〔部署 · 对应 C3 · 🧑 HUMAN 协同 IT〕
-- **为什么**：SQLite 是单文件、并发弱、随容器重置易丢失，无法搬到服务器；真实简历试点必须用 PostgreSQL 并配每日备份。
-- **AI 动作**：可先 `cp backend/lightweight-pilot.env.example backend/.env`，再把占位值替换为 IT 提供的 PostgreSQL、域名、LLM Key 和强密钥；`DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>`；配 `BACKUP_DIR=/var/backups/zhipin` 并交付一个每日 `pg_dump` 的 cron/systemd-timer 示例。
+### 3. 切换 MySQL/PostgreSQL + 定时备份〔部署 · 对应 C3 · 🧑 HUMAN 协同 IT〕
+- **为什么**：SQLite 是单文件、并发弱、随容器重置易丢失，无法搬到服务器；真实简历试点必须用 MySQL 或 PostgreSQL 并配每日备份。
+- **AI 动作**：可先 `cp backend/lightweight-pilot.env.example backend/.env`，再把占位值替换为 IT 提供的 MySQL/PostgreSQL、域名、LLM Key 和强密钥；MySQL 使用 `DATABASE_URL=mysql+pymysql://<user>:<pass>@<host>:3306/<db>?charset=utf8mb4`，PostgreSQL 使用 `DATABASE_URL=postgresql://<user>:<pass>@<host>:5432/<db>`；配 `BACKUP_DIR=/var/backups/zhipin` 并交付一个每日 `mysqldump`/`pg_dump` 的 cron/systemd-timer 示例。
 - **验收**：`python3 -c "from backend.app import create_app; create_app()"` 正常建表；`/api/jobs` 读写正常；备份目录出现当日 dump；恢复到临时库 `zhipin_restore_check` 后能查到用户、候选人、岗位和审计事件，`uploads.tar.gz` 能解压看到简历文件。
 - **红线**：仅引擎切换，不改 schema 结构（R4）。
 
