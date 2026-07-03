@@ -50,8 +50,6 @@ import type {
   PipelineCounts,
   PipelineMoveRequest,
   PipelineMoveResponse,
-  PipelineTransferRequest,
-  PipelineTransferResponse,
   RegisterRequest,
   RegisterResponse,
   RecruitmentDemand,
@@ -67,6 +65,22 @@ import type {
   TalentMapPerson,
   TalentMapPersonInput,
   TalentMapSummary,
+  BossStatus,
+  BossJob,
+  BossRecommendParams,
+  BossInboxParams,
+  BossAccount,
+  BossBatchImportParams,
+  BossBatchImportResult,
+  BossAiScreenParams,
+  BossAiScreenResult,
+  ConversationListResponse,
+  ConversationDetail,
+  CreateConversationResponse,
+  UpdateConversationResponse,
+  AgentCallLogItem,
+  CallLogListResponse,
+  CallLogQuery,
 } from '../types';
 
 const API_BASE = '/api';
@@ -87,10 +101,12 @@ export function clearToken(): void {
 // Error surfaced to callers; carries HTTP status and any backend message.
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -155,50 +171,45 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     if (res.status === 401 && unauthorizedHandler) {
       unauthorizedHandler();
     }
+    // 错误体形态有两种：
+    //   1) 多数蓝图：{ error: "字符串消息" }
+    //   2) boss 蓝图：{ ok:false, error: { code, message } }（嵌套对象）
+    // 对嵌套对象需取 error.message，否则 String(对象) 会得到 "[object Object]"，
+    // 既丢失真实提示，也让上层基于 message 文本的错误分类失效。
+    const rawError =
+      data && typeof data === 'object' && 'error' in data
+        ? (data as Record<string, unknown>).error
+        : null;
+    const nestedErrorMessage =
+      rawError && typeof rawError === 'object' && 'message' in rawError
+        ? String((rawError as Record<string, unknown>).message)
+        : null;
+    // boss 蓝图错误体为 { ok:false, error:{ code, message } }，提取 code 供上层
+    // 按 code（如 needs_stoken）分支处理，而不止依赖 message 文本。
+    const nestedErrorCode =
+      rawError && typeof rawError === 'object' && 'code' in rawError
+        ? String((rawError as Record<string, unknown>).code)
+        : undefined;
     const message =
-      (data && typeof data === 'object' && 'error' in data
-        ? String((data as Record<string, unknown>).error)
-        : null) ||
+      nestedErrorMessage ||
+      (typeof rawError === 'string' ? rawError : null) ||
       (data && typeof data === 'object' && 'message' in data
         ? String((data as Record<string, unknown>).message)
         : null) ||
       `Request failed with status ${res.status}`;
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, nestedErrorCode);
   }
 
   return data as T;
 }
 
-async function requestBlob(path: string, opts: RequestOptions = {}): Promise<Blob> {
-  const { method = 'GET' } = opts;
-  const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}${path}`, { method, headers });
-  } catch (err) {
-    throw new ApiError(0, `Network error: ${(err as Error).message}`);
-  }
-
+// Boss 端点返回 {ok, data, error?} 信封；解包 data，错误抛 ApiError。
+async function bossRequest<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const res = await request<{ ok: boolean; data: T; error?: { code: string; message: string } }>(path, opts);
   if (!res.ok) {
-    const text = await res.text();
-    let message = `Request failed with status ${res.status}`;
-    if (text) {
-      try {
-        const data = JSON.parse(text) as Record<string, unknown>;
-        message = String(data.error || data.message || message);
-      } catch {
-        message = text;
-      }
-    }
-    throw new ApiError(res.status, message);
+    throw new ApiError(0, res.error?.message ?? 'BOSS 接口错误', res.error?.code);
   }
-
-  return res.blob();
+  return res.data;
 }
 
 export const api = {
@@ -234,9 +245,6 @@ export const api = {
   },
   getCandidate(candidateId: number): Promise<CandidateDetail> {
     return request(`/resume/${candidateId}`);
-  },
-  exportCandidate(candidateId: number): Promise<Blob> {
-    return requestBlob(`/candidates/${candidateId}/export`);
   },
   retryCandidateParse(candidateId: number): Promise<RetryParseResponse> {
     return request(`/resume/${candidateId}/retry-parse`, { method: 'POST' });
@@ -425,9 +433,6 @@ export const api = {
   movePipeline(payload: PipelineMoveRequest): Promise<PipelineMoveResponse> {
     return request('/pipeline/move', { method: 'POST', body: payload });
   },
-  transferPipeline(payload: PipelineTransferRequest): Promise<PipelineTransferResponse> {
-    return request('/pipeline/transfer', { method: 'POST', body: payload });
-  },
   getPipeline(jobId: number): Promise<PipelineCounts> {
     return request(`/pipeline/${jobId}`);
   },
@@ -491,6 +496,50 @@ export const api = {
   getAdminAiArchitecture(): Promise<AdminAiArchitecture> {
     return request('/admin/ai-architecture');
   },
+
+  // ---- AI 助手会话管理 ----
+  listConversations(params: {
+    archived?: boolean;
+    page?: number;
+    per_page?: number;
+  } = {}): Promise<ConversationListResponse> {
+    const search = new URLSearchParams();
+    if (params.archived !== undefined) search.set('archived', String(params.archived));
+    if (params.page !== undefined) search.set('page', String(params.page));
+    if (params.per_page !== undefined) search.set('per_page', String(params.per_page));
+    const query = search.toString();
+    return request(`/agent/conversations${query ? `?${query}` : ''}`);
+  },
+  createConversation(title?: string): Promise<CreateConversationResponse> {
+    return request('/agent/conversations', { method: 'POST', body: title ? { title } : {} });
+  },
+  getConversation(id: number): Promise<ConversationDetail> {
+    return request(`/agent/conversations/${id}`);
+  },
+  updateConversation(
+    id: number,
+    payload: { title?: string; archived?: boolean },
+  ): Promise<UpdateConversationResponse> {
+    return request(`/agent/conversations/${id}`, { method: 'PATCH', body: payload });
+  },
+  deleteConversation(id: number): Promise<{ id: number; archived: boolean }> {
+    return request(`/agent/conversations/${id}`, { method: 'DELETE' });
+  },
+
+  // ---- AI 调用日志（审计）----
+  listCallLogs(params: CallLogQuery = {}): Promise<CallLogListResponse> {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        search.set(key, String(value));
+      }
+    });
+    const query = search.toString();
+    return request(`/agent/call-logs${query ? `?${query}` : ''}`);
+  },
+  getCallLog(id: number): Promise<AgentCallLogItem> {
+    return request(`/agent/call-logs/${id}`);
+  },
   getAuditLogs(params: AuditLogQuery = {}): Promise<AuditLogResponse> {
     const search = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
@@ -532,5 +581,98 @@ export const api = {
       method: 'PATCH',
       body: { owner_hr_id: ownerHrId, reason },
     });
+  },
+
+  // ---- BOSS 直聘集成（boss-cli 招聘端）----
+  // 后端统一返回 {ok, data}；bossRequest 解包 data。错误以 ApiError 抛出。
+  bossStatus(): Promise<BossStatus> {
+    return bossRequest('/boss/status');
+  },
+  bossJobs(): Promise<BossJob[]> {
+    return bossRequest('/boss/jobs');
+  },
+  bossRecommendCandidates(params: BossRecommendParams): Promise<unknown> {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') qs.set(k, String(v));
+    });
+    return bossRequest(`/boss/candidates/recommend?${qs}`);
+  },
+  bossInbox(params: BossInboxParams): Promise<unknown> {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') qs.set(k, String(v));
+    });
+    return bossRequest(`/boss/candidates/inbox?${qs}`);
+  },
+  bossResume(
+    encryptGeekId: string,
+    params?: { job?: string; security_id?: string },
+  ): Promise<unknown> {
+    const qs = new URLSearchParams();
+    if (params) Object.entries(params).forEach(([k, v]) => {
+      if (v) qs.set(k, String(v));
+    });
+    return bossRequest(`/boss/candidates/${encodeURIComponent(encryptGeekId)}/resume?${qs}`);
+  },
+
+  // ---- 招聘闭环：批量导入 / AI 初筛 ----
+  // 批量下载并导入收件箱候选人简历到候选人库（限量+间隔+去重）。
+  bossBatchImport(params: BossBatchImportParams): Promise<BossBatchImportResult> {
+    return bossRequest('/boss/candidates/batch-import', { method: 'POST', body: params });
+  },
+  // 对已导入候选人做 AI 简历初筛（LLM 评估 + 写 Interview + 推进 ai_screen）。
+  bossAiScreen(params: BossAiScreenParams): Promise<BossAiScreenResult> {
+    return bossRequest('/boss/candidates/ai-screen', { method: 'POST', body: params });
+  },
+  // 简历下载走专用 URL（返回 text/markdown），由调用方用 window.open 触发；
+  // ?token= 让后端做查询参数鉴权（无法带 Authorization 头）。
+  bossResumeDownloadUrl(encryptGeekId: string, params?: { job?: string; security_id?: string }): string {
+    const qs = new URLSearchParams();
+    if (params) Object.entries(params).forEach(([k, v]) => {
+      if (v) qs.set(k, String(v));
+    });
+    const token = getToken();
+    if (token) qs.set('token', token);
+    return `${API_BASE}/boss/candidates/${encodeURIComponent(encryptGeekId)}/resume/download?${qs}`;
+  },
+
+  // ---- BOSS 账号管理 ----
+  // 从浏览器粘贴 Cookie 导入（招聘端 Web API 需要浏览器 cookie，QR 扫码无效）。
+  bossImportBrowserCookie(cookies: string, label = ''): Promise<BossAccount> {
+    return bossRequest('/boss/login/browser-cookie', { method: 'POST', body: { cookies, label } });
+  },
+  // 浏览器扩展下载走专用 URL（返回 ZIP），window.open 触发。
+  bossExtensionDownloadUrl(): string {
+    const qs = new URLSearchParams();
+    const token = getToken();
+    if (token) qs.set('token', token);
+    return `${API_BASE}/boss/extension/download?${qs}`;
+  },
+  bossAccounts(): Promise<BossAccount[]> {
+    return bossRequest('/boss/accounts');
+  },
+  bossActivateAccount(accountId: number): Promise<void> {
+    return bossRequest(`/boss/accounts/${accountId}/activate`, { method: 'POST' });
+  },
+  bossDeleteAccount(accountId: number): Promise<void> {
+    return bossRequest(`/boss/accounts/${accountId}`, { method: 'DELETE' });
+  },
+  bossVerifyAccount(accountId: number): Promise<{ authenticated: boolean; status: unknown }> {
+    return bossRequest(`/boss/accounts/${accountId}/verify`, { method: 'POST' });
+  },
+
+  // ---- BOSS CLI 高级功能 ----
+  // 候选人标签列表
+  bossLabels(): Promise<unknown> {
+    return bossRequest('/boss/labels');
+  },
+  // 聊天记录
+  bossChat(friendId: string): Promise<unknown> {
+    return bossRequest(`/boss/chat/${encodeURIComponent(friendId)}`);
+  },
+  // 导出候选人列表
+  bossExport(): Promise<unknown> {
+    return bossRequest('/boss/export');
   },
 };

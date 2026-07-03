@@ -36,6 +36,8 @@ BACKUP_DIR=/var/backups/zhipin
 AI_RECRUITMENT_COMPLIANCE_ACK=true
 CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.内网域名/privacy
 AI_HUMAN_REVIEW_REQUIRED=true
+FIELD_ENCRYPTION_KEY=<固定Fernet密钥>
+BOSS_CLI_AUTO_INSTALL=true
 ```
 
 首次接入空库时，启动后端会自动创建业务表。需要演示数据时执行：
@@ -44,6 +46,19 @@ AI_HUMAN_REVIEW_REQUIRED=true
 cd backend
 python seed_dev.py
 ```
+
+### BOSS 直聘后端接口
+
+`/boss` 页面依赖后端 `/api/boss/*` 接口。测试环境部署后，未登录访问
+`/api/boss/accounts` 应返回 401；登录后未绑定 BOSS 账号时，
+`/api/boss/status` 应返回 409 `no_active_account`，不应返回 404。
+
+BOSS 账号通过浏览器 Cookie 导入，Cookie 会写入 `boss_accounts` 表并用
+`FIELD_ENCRYPTION_KEY` 加密。测试/生产环境必须使用固定 Fernet 密钥，避免后端
+重启后已导入账号无法解密。涉及拉取收件箱、推荐候选人、下载简历等能力时，
+后端还需要可用的 `boss` CLI；容器内已安装 git，可在
+`BOSS_CLI_AUTO_INSTALL=true` 时首次调用自动安装，或由运维预装后用
+`BOSS_CLI_BIN` 指定路径。
 
 ---
 

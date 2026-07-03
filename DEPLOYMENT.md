@@ -37,7 +37,8 @@
     ├── /api/interview     AI 面试题生成 + 评估
     ├── /api/pipeline      候选人管道
     ├── /api/bi            数据看板 (漏斗 + 专员效能 + 权限化岗位 BI)
-    └── /api/agent         LangGraph AI 助手 (SSE 流式)
+    ├── /api/agent         LangGraph AI 助手 (SSE 流式)
+    └── /api/boss          BOSS 直聘账号导入、收件箱、推荐候选人和简历下载
     │
     ├── base_agent/        LLM 客户端 / 简历解析 / 匹配算法
     └── hireinsight.db     SQLite 数据库 (试点/生产换 MySQL 或 PostgreSQL)
@@ -62,6 +63,11 @@
 | Node.js | 18+ | 推荐 20 LTS |
 | npm | 9+ | 随 Node.js 附带 |
 | Git | 任意 | 可选 |
+
+> BOSS 直聘模块还需要运行期可用的 `boss` CLI。容器已包含 git，若设置
+> `BOSS_CLI_AUTO_INSTALL=true`，首次调用会尝试从 GitHub 源码安装；内网无法访问
+> GitHub 时，请由运维预装 CLI 并设置 `BOSS_CLI_BIN`。BOSS Cookie 会用
+> `FIELD_ENCRYPTION_KEY` 加密落库，测试/生产环境必须配置固定 Fernet 密钥。
 
 ---
 
@@ -101,6 +107,9 @@ LLM_API_KEY=sk-your-deepseek-key-here       # 兼容旧模块，建议同值
 
 # JWT 密钥（生产环境请修改）
 JWT_SECRET=change-me-in-production
+
+# BOSS Cookie 字段级加密密钥（测试/生产必填，固定不变）
+FIELD_ENCRYPTION_KEY=your-fixed-fernet-key
 ```
 
 ### 3.4 启动后端

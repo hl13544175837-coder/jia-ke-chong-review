@@ -4,7 +4,7 @@ import { cn } from '../../lib/cn';
 
 const TABS = [
   { to: '/demands', label: '用人需求', icon: ClipboardList },
-  { to: '/jobs', label: '招聘岗位', icon: Briefcase },
+  { to: '/jobs', label: '岗位画像', icon: Briefcase },
   { to: '/talent-map', label: '人才地图', icon: Map },
 ] as const;
 
@@ -18,7 +18,7 @@ export function RecruitmentManagementTabs() {
   return (
     <div
       aria-label="招聘管理"
-      className="flex flex-wrap gap-2 border-b border-hairline pb-3"
+      className="flex flex-wrap gap-2 border-b border-hairline bg-white px-3 py-2"
     >
       {TABS.map((tab) => {
         const active = isActivePath(pathname, tab.to);
@@ -30,7 +30,7 @@ export function RecruitmentManagementTabs() {
             className={cn(
               'inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
               active
-                ? 'bg-surface-card text-ink shadow-apple-xs'
+                ? 'bg-[var(--enterprise-brand-soft)] text-[var(--enterprise-brand)]'
                 : 'text-muted hover:bg-surface-soft hover:text-ink',
             )}
           >

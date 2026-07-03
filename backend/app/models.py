@@ -360,3 +360,19 @@ class InterviewFeedback(db.Model):
     evaluation_json = db.Column(db.JSON)
     note = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utc_now)
+
+
+class BossAccount(db.Model):
+    """绑定的 BOSS 直聘账号（多账号，按智聘用户隔离）。"""
+    __tablename__ = "boss_accounts"
+    id = db.Column(db.Integer, primary_key=True)
+    owner_hr_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    label = db.Column(db.String(100))
+    cookies_encrypted = db.Column(db.Text, nullable=False)
+    cookie_count = db.Column(db.Integer, default=0)
+    has_stoken = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=False)
+    last_verified_at = db.Column(db.DateTime)
+    last_verified_ok = db.Column(db.Boolean)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)

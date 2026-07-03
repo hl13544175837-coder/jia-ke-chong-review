@@ -11,18 +11,20 @@ import { RESUME_SOURCE_CHANNEL_OPTIONS } from '../../../lib/sourceChannels';
 import {
   Badge,
   Button,
-  Card,
-  CardBody,
-  CardHeader,
-  CardTitle,
-  EmptyState,
   ErrorState,
   Input,
-  PageHeader,
   Pagination,
   Select,
   Spinner,
 } from '../../../components/ui';
+import {
+  EnterpriseEmptyState,
+  EnterpriseHero,
+  EnterpriseMetric,
+  EnterprisePage,
+  EnterpriseSearchPanel,
+  EnterpriseTableCard,
+} from '../../../components/enterprise';
 import { Reveal, AnimatedNumber } from '../../../components/motion';
 import type { CandidateListItem, CandidateTag, MatchResultItem, ParseStatus } from '../types';
 
@@ -330,7 +332,7 @@ function CandidateRow({
             onClick={() => onAddToJob(candidate.id)}
           >
             <UserPlus className="h-4 w-4" />
-            加入该需求流程
+            加入所选岗位流程
           </Button>
         </div>
       </td>
@@ -478,7 +480,7 @@ export function CandidatesPage() {
   async function handleAddToJob(candidateId: number) {
     const jobId = Number(targetJobId);
     if (!targetJobId || Number.isNaN(jobId)) {
-      setActionError('请先选择要加入的招聘需求');
+      setActionError('请先选择要加入的岗位');
       setActionMessage(null);
       return;
     }
@@ -489,15 +491,15 @@ export function CandidatesPage() {
     try {
       const result = await api.batchAddToPipeline(jobId, [candidateId]);
       if (result.added > 0) {
-        setActionMessage('已加入该需求流程，当前阶段为待筛选');
+        setActionMessage('已加入岗位流程，当前阶段为待筛选');
         reload();
       } else if (result.skipped_existing > 0) {
-        setActionMessage('这位候选人已经在该需求流程中');
+        setActionMessage('这位候选人已经在该岗位流程中');
       } else {
-        setActionMessage('未加入该需求流程，请刷新后重试');
+        setActionMessage('未加入岗位流程，请刷新后重试');
       }
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : '加入招聘需求失败');
+      setActionError(err instanceof Error ? err.message : '加入岗位失败');
     } finally {
       setAddingCandidateId(null);
     }
@@ -523,8 +525,8 @@ export function CandidatesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
+    <EnterprisePage>
+      <EnterpriseHero
         title="简历库"
         description={
           <>
@@ -536,6 +538,17 @@ export function CandidatesPage() {
                 {' '}· 当前页核心技能 <AnimatedNumber value={uniqueTagCount} /> 类
               </>
             )}
+          </>
+        }
+        metrics={
+          <>
+            <EnterpriseMetric label="简历总量" value={<AnimatedNumber value={totalCandidates} />} tone="success" />
+            <EnterpriseMetric label="高匹配候选人" value={<AnimatedNumber value={highScoreCount} />} />
+            <EnterpriseMetric
+              label={selectedJob ? '当前页匹配结果' : '可筛选技能'}
+              value={<AnimatedNumber value={selectedJob ? matchByCandidateId.size : uniqueTagCount} />}
+            />
+            <EnterpriseMetric label="当前显示" value={filteredCandidates.length} />
           </>
         }
         actions={
@@ -556,36 +569,9 @@ export function CandidatesPage() {
         }
       />
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <Card>
-          <CardBody className="py-4">
-            <p className="text-xs text-muted-soft">简历总量</p>
-            <p className="mt-1 text-2xl font-semibold text-ink">
-              <AnimatedNumber value={totalCandidates} />
-            </p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="py-4">
-            <p className="text-xs text-muted-soft">高匹配候选人</p>
-            <p className="mt-1 text-2xl font-semibold text-ink">
-              <AnimatedNumber value={highScoreCount} />
-            </p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="py-4">
-            <p className="text-xs text-muted-soft">{selectedJob ? '当前页匹配结果' : '可筛选技能'}</p>
-            <p className="mt-1 text-2xl font-semibold text-ink">
-              <AnimatedNumber value={selectedJob ? matchByCandidateId.size : uniqueTagCount} />
-            </p>
-          </CardBody>
-        </Card>
-      </div>
-
       {candidates.length === 0 && !hasActiveFilters ? (
-        <Card variant="elevated">
-          <EmptyState
+        <EnterpriseTableCard>
+          <EnterpriseEmptyState
             icon={Users}
             title="暂无简历"
             description={
@@ -598,12 +584,11 @@ export function CandidatesPage() {
               </>
             }
           />
-        </Card>
+        </EnterpriseTableCard>
       ) : (
         <>
-          <Card>
-            <CardBody>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <EnterpriseSearchPanel>
+              <div className="enterprise-search-grid">
                 <Input
                   label="搜索简历"
                   value={query}
@@ -658,15 +643,15 @@ export function CandidatesPage() {
                   <option value="processing">解析中</option>
                 </Select>
                 <Select
-                  label="入需求流程状态"
+                  label="入流程状态"
                   value={pipelineStatusFilter}
                   onChange={(event) =>
                     setPipelineStatusFilter(event.target.value as 'all' | 'in_pipeline' | 'not_in_pipeline')
                   }
                 >
                   <option value="all">全部状态</option>
-                    <option value="not_in_pipeline">未进入需求流程</option>
-                    <option value="in_pipeline">已进入需求流程</option>
+                  <option value="not_in_pipeline">未进入流程</option>
+                  <option value="in_pipeline">已进入流程</option>
                 </Select>
                 <Select
                   label="最低技能分"
@@ -688,7 +673,7 @@ export function CandidatesPage() {
               <div className="mt-4 border-t border-hairline-soft pt-4">
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.6fr)]">
                   <Select
-                    label="目标岗位 / 加入招聘需求"
+                    label="目标岗位"
                     value={targetJobId}
                     onChange={(event) => {
                       setTargetJobId(event.target.value);
@@ -712,9 +697,9 @@ export function CandidatesPage() {
                       ) : targetJobId && matchPreviewAsync.loading ? (
                         <span>正在计算当前页候选人与该岗位的命中、欠缺和建议。</span>
                       ) : targetJobId && matchPreviewAsync.error ? (
-                        <span className="text-danger-600">岗位匹配预览失败，仍可查看核心技能并加入该需求流程。</span>
+                        <span className="text-danger-600">岗位匹配预览失败，仍可查看核心技能并加入流程。</span>
                       ) : targetJobId ? (
-                        <span>列表已切换为岗位匹配摘要；点击“加入该需求流程”才会推进候选人。</span>
+                        <span>列表已切换为岗位匹配摘要；点击“加入所选岗位流程”才会推进候选人。</span>
                       ) : (
                         <span>先扫简历库；选择岗位后，再看每位候选人的命中、欠缺和推进建议。</span>
                       )}
@@ -724,31 +709,36 @@ export function CandidatesPage() {
                 {actionMessage && <p className="mt-2 text-xs text-success-700">{actionMessage}</p>}
                 {actionError && <p className="mt-2 text-xs text-danger-600">{actionError}</p>}
               </div>
-            </CardBody>
-          </Card>
+          </EnterpriseSearchPanel>
 
-          <Card variant="elevated">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-3">
-                <CardTitle>候选人列表</CardTitle>
-                <span className="text-xs text-muted-soft">
-                  当前显示 {filteredCandidates.length} / {totalCandidates} 份
-                </span>
-              </div>
-            </CardHeader>
+          <EnterpriseTableCard
+            title="候选人列表"
+            summary={
+              <span>
+                当前显示 {filteredCandidates.length} / {totalCandidates} 份
+              </span>
+            }
+            footer={
+              data && data.pages > 1 ? (
+                <Pagination
+                  page={data.page}
+                  totalPages={data.pages}
+                  onChange={setPage}
+                  summary={`第 ${data.page} / ${data.pages} 页，共 ${data.total} 条`}
+                />
+              ) : null
+            }
+          >
             {filteredCandidates.length === 0 ? (
-              <CardBody>
-                <EmptyState
+                <EnterpriseEmptyState
                   icon={Users}
                   title="没有符合条件的简历"
-                  description="调整搜索词、城市、来源、解析状态、入需求流程状态或技能条件后再查看"
+                  description="调整搜索词、城市、来源、解析状态、入流程状态或技能条件后再查看"
                 />
-              </CardBody>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="enterprise-table">
 	                  <thead>
-	                    <tr className="border-b border-hairline bg-surface-soft text-left text-xs font-medium uppercase tracking-wide text-muted">
+	                    <tr>
 	                      <th className="px-5 py-3">候选人</th>
 	                      <th className="px-5 py-3">简历摘要</th>
 	                      <th className="px-5 py-3">{targetJobId ? '岗位匹配摘要' : '核心技能'}</th>
@@ -773,21 +763,10 @@ export function CandidatesPage() {
 	                    ))}
                   </Reveal>
                 </table>
-              </div>
             )}
-            {data && data.pages > 1 && (
-              <div className="border-t border-hairline px-5 py-3">
-                <Pagination
-                  page={data.page}
-                  totalPages={data.pages}
-                  onChange={setPage}
-                  summary={`第 ${data.page} / ${data.pages} 页，共 ${data.total} 条`}
-                />
-              </div>
-            )}
-          </Card>
+          </EnterpriseTableCard>
         </>
       )}
-    </div>
+    </EnterprisePage>
   );
 }
