@@ -38,7 +38,7 @@
 | 7 | [../DEPLOYMENT.md](../DEPLOYMENT.md) | 生产/服务器部署、环境变量、备份恢复、单端口部署 | 部署、上线、环境变量变更 |
 | 8 | [08 Libra / SIT 发布路线](./08_Libra_SIT发布路线.md) | CFPD 仓库、Libra pipeline、SIT 自动部署、测试站资产验收路线 | 发布到 test/SIT、排查 test-zhipin 未变化 |
 | 9 | [06 试点上线检查清单](./06_试点上线检查清单.md) | 真实用户试点前的安全、数据、账号、备份、产品验收门槛 | 判断能否小范围试点 |
-| 10 | [07 上线部署前 TOP10 清单](./07_上线部署前TOP10清单_给AI执行.md) | 部署前 AI 可执行硬门槛 | 服务器部署执行前逐项核对 |
+| 10 | [07 上线部署前关键清单](./07_上线部署前关键清单_给AI执行.md) | 部署前 AI 可执行硬门槛（含原 TOP10 与 8.1/8.2 扩展项） | 服务器部署执行前逐项核对 |
 | 11 | [adr/0001-modular-monolith-by-sidebar-feature](./adr/0001-modular-monolith-by-sidebar-feature.md) | 模块化单体架构决策，不拆微服务/微前端 | 涉及架构边界、模块拆分时读 |
 
 ---
@@ -48,7 +48,7 @@
 ### 架构口径
 
 - 当前主线：`frontend/` React + Vite + TypeScript，`backend/` Flask + SQLAlchemy + JWT/RBAC，`base_agent/` 复用 AI 能力。
-- 部署口径：开发期前后端分离联调；生产/试点收口为 Flask 单端口托管 `frontend/dist` + `/api/*`。
+- 部署口径：开发期前后端分离联调；手工生产/试点收口为 Flask 单端口托管 `frontend/dist` + `/api/*`。Libra/SIT 可能按 `zhipin-frontend` / `zhipin-server` 两个模块打包镜像，这是公司 CI/CD 模块形态，不等于手工试点要改成双服务拓扑。
 - 不要把项目带向微服务、微前端、第二套前端框架、第二套权限体系或绕开现有 `/api` 边界的并行运行面。
 
 ### 当前实现 vs 后续规划
@@ -63,6 +63,12 @@
 - 前端组织管理后台 / SaaS 式多租户运营能力
 - 企业级不可变审计、导出审批、水印、字段级权限
 - OA 自动承接需求、外部日历、webhook、外部通知真实发送
+
+BOSS 直聘集成目前按实验辅助能力理解：代码中已有 `/api/boss/*` 和 `/boss` 页面，但不属于 HR 试点主流程必测项；如要开放，必须额外确认 Cookie 加密密钥、boss CLI 来源、外部账号使用边界和导入审计。
+
+### 环境快照口径
+
+[`历史试用环境快照_需现场复核.md`](./历史试用环境快照_需现场复核.md) 只记录某一次本机接入公司 MySQL 测试库的状态，不是当前环境证明。判断“现在是否已接 MySQL”“现在能不能给同事访问”时，必须现场检查 `backend/.env`、`git remote -v`、`python3 backend/scripts/check_pilot_readiness.py` 和实际服务地址。
 
 ### 多组织 / 多租户口径
 

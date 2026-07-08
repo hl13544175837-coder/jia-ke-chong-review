@@ -38,7 +38,7 @@
     ├── /api/pipeline      候选人管道
     ├── /api/bi            数据看板 (漏斗 + 专员效能 + 权限化岗位 BI)
     ├── /api/agent         LangGraph AI 助手 (SSE 流式)
-    └── /api/boss          BOSS 直聘账号导入、收件箱、推荐候选人和简历下载
+    └── /api/boss          BOSS 直聘实验辅助能力：账号导入、收件箱、推荐候选人和简历下载
     │
     ├── base_agent/        LLM 客户端 / 简历解析 / 匹配算法
     └── hireinsight.db     SQLite 数据库 (试点/生产换 MySQL 或 PostgreSQL)
@@ -64,7 +64,7 @@
 | npm | 9+ | 随 Node.js 附带 |
 | Git | 任意 | 可选 |
 
-> BOSS 直聘模块还需要运行期可用的 `boss` CLI。容器已包含 git，若设置
+> BOSS 直聘模块是实验辅助能力，不属于 HR 试点主流程必测项。若开放该模块，还需要运行期可用的 `boss` CLI。容器已包含 git，若设置
 > `BOSS_CLI_AUTO_INSTALL=true`，首次调用会尝试从 GitHub 源码安装；内网无法访问
 > GitHub 时，请由运维预装 CLI 并设置 `BOSS_CLI_BIN`。BOSS Cookie 会用
 > `FIELD_ENCRYPTION_KEY` 加密落库，测试/生产环境必须配置固定 Fernet 密钥。
@@ -94,7 +94,7 @@ python -m pip install -r requirements.txt
 cp backend/.env.example backend/.env
 ```
 
-编辑 `backend/.env`，至少填写：
+编辑 `backend/.env`。本地开发只跑 HR 主流程时，至少填写 LLM 和 JWT 配置：
 ```env
 # LLM 配置（必填，否则 AI 功能不可用）
 LLM_PROVIDER=deepseek
@@ -107,10 +107,19 @@ LLM_API_KEY=sk-your-deepseek-key-here       # 兼容旧模块，建议同值
 
 # JWT 密钥（生产环境请修改）
 JWT_SECRET=change-me-in-production
-
-# BOSS Cookie 字段级加密密钥（测试/生产必填，固定不变）
-FIELD_ENCRYPTION_KEY=your-fixed-fernet-key
 ```
+
+本地只验证 HR 主流程时，可以暂不配置 BOSS Cookie 密钥。只要要测试 BOSS，或进入测试/生产环境，就必须先生成固定 Fernet 密钥，并写入 `backend/.env`：
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+```env
+FIELD_ENCRYPTION_KEY=PASTE_GENERATED_FERNET_KEY_HERE
+```
+
+不要把 `PASTE_GENERATED_FERNET_KEY_HERE` 或尖括号占位值原样复制到可用环境。
 
 ### 3.4 启动后端
 
@@ -143,14 +152,14 @@ npm run dev
 
 ## 4. 演示数据初始化
 
-运行一次后会创建全套演示数据（候选人 / 岗位 / 流程 / 面试报告），可多次运行（每次清空重建）：
+仅本地开发/演示数据库可以运行下面命令。运行一次后会创建全套演示数据（候选人 / 岗位 / 流程 / 面试报告），可多次运行（每次清空重建）：
 
 ```bash
 cd backend
 python seed_dev.py
 ```
 
-**无需 LLM API Key**，所有 AI 生成字段已预填。
+**无需 LLM API Key**，所有 AI 生成字段已预填。真实 HR 试点库、公司测试库和生产库不要执行 `seed_dev.py`。
 
 正式试点前不要把演示数据带到真实环境。清理时先预览：
 
@@ -238,7 +247,9 @@ cd /tmp/zhipin-cfpd-<fix-name>
 git push git@git.ymdd.tech:cfpd/zhipin-mvp.git HEAD:test
 ```
 
-Libra 页面操作时，先选择 `test` 分支并点击“开始构建”。构建成功后，必须核对页面中的“提交内容”或 `CommitID` 等于刚推到 CFPD `test` 的提交，再点击该行“发布到SIT”。不要发布旧行，尤其不要只看“构建成功”绿色对勾。
+当前推荐的 Libra 页面操作路线是：进入执行 pipeline 页，选择 `test` 分支，点击“开始构建”，并勾选“构建完成自动部署到 SIT 环境”。构建成功后必须核对 pipeline 的 `sha` / `CommitID` 等于刚推到 CFPD `test` 的提交，再做测试站资产验收。
+
+历史上也可能通过构建成功行的“发布到SIT”按钮完成发布。如果使用这条备选路线，必须先确认该行“提交内容”或 `CommitID` 等于 CFPD `test` 最新提交；不要发布旧行，尤其不要只看“构建成功”绿色对勾。
 
 CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 和 Makefile 会兜底使用 `RC` 和当前时间戳，避免生成 `zhipin-frontend:` / `zhipin-server:` 这类空镜像标签导致构建失败；Libra 包记录也会使用同一个 `RC_<时间戳>` 版本号。
 
@@ -249,7 +260,7 @@ CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 
 zhipin-frontend该模块在当前环境无主机
 ```
 
-这说明 Libra 的 SIT 环境未给 `zhipin-server` / `zhipin-frontend` 绑定主机或应用实例，是发布平台配置问题，不是代码构建失败。需要在 Libra 的“应用维护 / k8s应用管理”里补齐模块与 SIT 主机/实例绑定，或联系运维处理。遇到该弹窗时仍需单独验证测试站是否已被构建流程同步静态包：
+这说明普通发布通道没有可用主机/实例绑定，不代表代码构建失败。优先改走执行 pipeline 页的 `test` 分支自动部署路线；如公司后续仍要求使用普通发布按钮，再让运维确认 Libra 的“应用维护 / k8s应用管理”里是否补齐模块与 SIT 主机/实例绑定。遇到该弹窗时仍需单独验证测试站是否已被构建流程同步静态包：
 
 ```bash
 curl -sS -L -D /tmp/test-zhipin.headers https://test-zhipin.yimidida.com/ -o /tmp/test-zhipin.html
@@ -270,7 +281,13 @@ npm run build    # 生成 frontend/dist/
 ```bash
 cp backend/lightweight-pilot.env.example backend/.env
 ```
-然后把 `change-me`、域名、数据库地址、LLM Key 和备份目录替换成真实值：
+先生成固定 Fernet 密钥：
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+然后把 `change-me`、域名、数据库地址、LLM Key、备份目录和 Fernet 密钥替换成真实值：
 ```env
 FLASK_DEBUG=false
 JWT_SECRET=your-strong-random-secret-here
@@ -287,6 +304,9 @@ RATE_LIMIT_AGENT_CHAT=20
 RATE_LIMIT_RESUME_UPLOAD=8
 BACKUP_DIR=/var/backups/zhipin
 ALLOW_PUBLIC_REGISTRATION=false
+FIELD_ENCRYPTION_KEY=PASTE_GENERATED_FERNET_KEY_HERE
+BOSS_CLI_AUTO_INSTALL=false
+BOSS_CLI_BIN=/usr/local/bin/boss
 ```
 
 公司 MySQL 试用环境建议使用 InnoDB、`utf8mb4` 字符集、专用库和专用账号。当前代码也兼容 PostgreSQL，连接串可写为 `postgresql://user:pass@host:5432/zhipin`，会自动转为 `postgresql+psycopg://`。
@@ -394,9 +414,11 @@ systemctl enable zhipin
 systemctl start zhipin
 ```
 
-### 方案 D：Docker 容器化部署
+### Libra/CI 镜像构建参考（非手工试点首选）
 
-系统提供了前端 `zhipin-frontend` 和后端 `zhipin-server` 的 Dockerfile，并可以通过项目根目录下的 `Makefile` 进行统一编译与推送。
+公司 Libra/SIT 流水线会按 `zhipin-frontend` 和 `zhipin-server` 两个模块构建镜像。这是 CI/CD 打包与公司发布平台的模块形态，不改变本项目手工试点/生产推荐路线：前端先 `npm run build`，再由 Flask 同源托管 `frontend/dist`，对外暴露一个应用入口。
+
+除非公司发布平台明确要求排查镜像构建、标签或模块包记录，否则手工试点部署不要按下面示例改成前后端双容器拓扑；优先使用上面的方案 A/B/C。
 
 #### 1. 编译镜像
 在具有 Docker 环境的机器上运行：
@@ -416,7 +438,7 @@ make buildserver PKG_VERSION=1.0.0
 make push PKG_TAG=RC PKG_VERSION=1.0.0
 ```
 
-#### 3. 运行容器（推荐使用 Docker 自定义网络）
+#### 3. 双容器本地排查示例（仅用于复现 Libra 模块镜像）
 
 ```bash
 # 1. 创建自定义网络
@@ -447,7 +469,7 @@ docker run -d \
   registry-sit.uce.cn/system-zhipin-mvp/zhipin-frontend:1.0.0
 ```
 
-访问 `http://your-server:8080` 即可使用完整系统。
+该示例只用于排查 Libra/CI 模块镜像能否各自启动和互通，不作为 HR 试点对外访问方式。正式手工试点仍以 `http://your-server:5000` 或 HTTPS 反代后的单入口访问为准。
 
 ---
 
@@ -505,6 +527,7 @@ MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录候选人
 | 候选人管道 | `/pipeline` | 阶段管理（待筛选→AI初筛→业务待反馈→面试中→Offer→已入职/淘汰），支持误推进后的“修正阶段”并保留历史流水 |
 | AI 面试 | `/interviews` | 生成定制题目，录入作答，AI 评估报告 |
 | 数据看板 | `/bi` | 团队当前阶段分布 + 专员效能 + 渠道质量 + 数据质量提醒（经理/管理员）+ 责任口径解释；当前流程人数不含已入职/已淘汰，招聘专员不能查看别人岗位 BI，面试官不开放 BI |
+| BOSS 直聘实验辅助 | `/boss` | 招聘端账号 Cookie 导入、收件箱/推荐候选人查看、简历下载和批量导入；不属于 HR 试点主流程必测项，开放前必须确认 `FIELD_ENCRYPTION_KEY`、boss CLI 来源和 Cookie 使用边界 |
 
 ---
 
@@ -531,7 +554,7 @@ A：
 
 ### Q：数据库如何重置？
 
-A：删除 `backend/hireinsight.db`，重启后端（自动重建），再运行 `python seed_dev.py`。
+A：仅本地开发/演示库可以删除 `backend/hireinsight.db`，重启后端（自动重建），再运行 `python seed_dev.py`。真实 HR 试点库、公司测试库和生产库禁止用 `seed_dev.py` 重置；需要清演示数据时，先备份，再按 `cleanup_demo_data.py --dry-run` / `--confirm` 执行。
 
 ### Q：端口冲突怎么办？
 
@@ -545,18 +568,44 @@ A：必须在 **PowerShell** 中运行 npm 命令，不要在 Git Bash 中运行
 
 ## 快速验证清单
 
+### 本地开发/演示验证
+
 ```bash
 # 1. 后端启动验证
-cd backend && python -c "from app import create_app; app=create_app(); print('后端 OK')"
+cd backend
+python -c "from app import create_app; app=create_app(); print('后端 OK')"
 
-# 2. 种子数据
-cd backend && python seed_dev.py
+# 2. 本地演示数据（只适用于本地演示库）
+python seed_dev.py
 
 # 3. 前端构建验证（PowerShell）
-cd frontend; npm run typecheck; npm run build
+cd ../frontend
+npm run typecheck
+npm run build
 
 # 4. 接口验证
 curl http://localhost:5001/api/jobs   # → 401 (未登录，正常)
+```
+
+### 试点/生产验证
+
+试点/生产验证不运行 `seed_dev.py`。先确认 `.env`、数据库、密钥、CORS、备份目录和合规开关都通过自检，再做构建和只读接口冒烟：
+
+```bash
+# 1. 启动前自检（只读检查，不打印密钥）
+python3 backend/scripts/check_pilot_readiness.py
+
+# 2. 后端应用创建验证
+cd backend
+python -c "from app import create_app; app=create_app(); print('后端 OK')"
+
+# 3. 前端构建验证
+cd ../frontend
+npm run typecheck
+npm run build
+
+# 4. 未登录接口验证
+curl -i http://localhost:5000/api/jobs   # → 401/403 未登录，正常
 ```
 
 ---

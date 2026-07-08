@@ -55,6 +55,19 @@ def _is_positive_int(value: str | None) -> bool:
         return False
 
 
+def _is_valid_fernet_key(value: str | None) -> bool:
+    key = (value or "").strip()
+    if not key or "change-me" in key or "your-fixed-fernet-key" in key:
+        return False
+    try:
+        from cryptography.fernet import Fernet
+
+        Fernet(key.encode("ascii"))
+    except Exception:
+        return False
+    return True
+
+
 def _database_kind(database_url: str) -> str:
     if database_url.startswith(("postgresql://", "postgresql+psycopg://")):
         return "postgresql"
@@ -122,6 +135,7 @@ def run_checks(values: dict[str, str], project_root: Path, env_file: Path) -> li
         CheckResult("AI_RECRUITMENT_COMPLIANCE_ACK", _is_true(values.get("AI_RECRUITMENT_COMPLIANCE_ACK")), "真实候选人数据进入 AI 前必须显式确认合规边界"),
         CheckResult("CANDIDATE_PRIVACY_NOTICE_URL", bool(values.get("CANDIDATE_PRIVACY_NOTICE_URL", "").strip()), "必须配置候选人隐私告知/授权说明地址"),
         CheckResult("AI_HUMAN_REVIEW_REQUIRED", _is_true(values.get("AI_HUMAN_REVIEW_REQUIRED")), "AI 结论必须保留人工复核"),
+        CheckResult("FIELD_ENCRYPTION_KEY", _is_valid_fernet_key(values.get("FIELD_ENCRYPTION_KEY")), "测试/生产必须配置固定合法 Fernet key，避免 BOSS Cookie 无法加密或重启后无法解密；该检查不打印密钥"),
         CheckResult(".env gitignore", _env_is_ignored(project_root, env_file), "真实 .env 必须被 .gitignore 忽略"),
     ]
     return checks

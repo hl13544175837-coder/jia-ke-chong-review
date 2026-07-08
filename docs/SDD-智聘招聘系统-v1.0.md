@@ -353,6 +353,32 @@ rejected
 | `POST` | `/agent/chat` | recruiter/manager/admin | SSE 流式 AI 对话 |
 | `POST` | `/agent/execute` | recruiter/manager/admin + 工具 RBAC | 执行 AI 助手提议的写操作 |
 
+### 7.8 BOSS 直聘实验辅助接口
+
+BOSS 直聘集成已在代码中注册为 `/api/boss/*` 蓝图，用于内部验证从招聘端账号拉取收件箱/推荐候选人、下载简历并导入候选人库。它是实验辅助能力，不属于当前 HR 试点主流程的必测项；主流程仍以手工上传简历、招聘需求、候选人匹配、流程推进、面试反馈和 BI 为准。
+
+| 方法 | 路径 | 权限 | 作用 |
+|---|---|---|---|
+| `GET` | `/boss/status` | recruiter/manager/admin | 检查当前激活 BOSS 账号登录态；无激活账号返回 409 `no_active_account` |
+| `GET` | `/boss/accounts` | recruiter/manager/admin | 当前用户绑定的 BOSS 账号列表，不返回 Cookie 明文 |
+| `POST` | `/boss/login/browser-cookie` | recruiter/manager/admin | 导入浏览器 Cookie，使用 `FIELD_ENCRYPTION_KEY` Fernet 加密后写入 `boss_accounts.cookies_encrypted` |
+| `POST` | `/boss/accounts/<account_id>/activate` | recruiter/manager/admin，且账号属于本人 | 切换当前激活 BOSS 账号 |
+| `DELETE` | `/boss/accounts/<account_id>` | recruiter/manager/admin，且账号属于本人 | 删除绑定账号 |
+| `GET` | `/boss/jobs` | recruiter/manager/admin + 激活 BOSS 账号 | 读取 BOSS 招聘端职位 |
+| `GET` | `/boss/candidates/recommend` | recruiter/manager/admin + 激活 BOSS 账号 | 读取 BOSS 推荐候选人 |
+| `GET` | `/boss/candidates/inbox` | recruiter/manager/admin + 激活 BOSS 账号 | 读取 BOSS 沟通/收件箱候选人 |
+| `GET` | `/boss/candidates/<encrypt_geek_id>/resume` | recruiter/manager/admin + 激活 BOSS 账号 | 读取候选人 Markdown 简历 |
+| `POST` | `/boss/candidates/batch-import` | recruiter/manager/admin + 激活 BOSS 账号 | 批量下载简历并导入候选人库，可选加入系统岗位流程 |
+| `POST` | `/boss/candidates/ai-screen` | recruiter/manager/admin | 对已导入候选人做 AI 简历初筛并推进到 `ai_screen` |
+
+关键边界：
+
+- BOSS Cookie 是外部平台会话凭证，只能按当前智聘用户隔离保存和使用，不进入前端响应。
+- BOSS 不属于 HR 试点主流程必测项，但 `/api/boss/*` 路由已注册；测试/生产配置必须提供固定合法的 `FIELD_ENCRYPTION_KEY`，否则 Cookie 导入会失败，开发临时 key 重启后也无法解密旧账号。
+- 该模块依赖运行期可用的 `boss` CLI。自动安装会访问 GitHub，内网或生产环境应优先由运维预装并配置 `BOSS_CLI_BIN`。
+- 常见失败状态：未登录智聘返回 401；角色不允许返回 403；无激活 BOSS 账号返回 409 `no_active_account`；CLI 缺失返回 503 `boss_cli_not_installed`；Cookie 失效/缺字段返回 409。
+- BOSS 批量导入和 AI 初筛会写候选人、上传批次、简历文件、流程和事件，开放前应按候选人导入、AI 和审计同等级别验证。
+
 ## 8. 核心业务流程
 
 ### 8.1 登录流程

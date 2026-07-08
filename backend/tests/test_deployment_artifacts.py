@@ -6,6 +6,8 @@ import sys
 import tarfile
 from pathlib import Path
 
+from cryptography.fernet import Fernet
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -122,6 +124,7 @@ def test_pilot_readiness_check_passes_with_production_env(tmp_path):
             "AI_RECRUITMENT_COMPLIANCE_ACK=true",
             "CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.example.com/privacy",
             "AI_HUMAN_REVIEW_REQUIRED=true",
+            "FIELD_ENCRYPTION_KEY=" + Fernet.generate_key().decode(),
         ])
     )
     (tmp_path / ".gitignore").write_text("backend/.env\n*.env\n")

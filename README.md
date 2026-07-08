@@ -19,7 +19,7 @@
 
 如果你是下一任接手开发的人，先看 [docs/README.md](docs/README.md) 判断“先读哪份、信哪份”。本页只负责项目总览和快速开始；当前实现细节以 [docs/SDD-智聘招聘系统-v1.0.md](docs/SDD-智聘招聘系统-v1.0.md) 为准，本地运行以 [RUNNING.md](RUNNING.md) 为准，生产/试点部署以 [DEPLOYMENT.md](DEPLOYMENT.md) 和上线检查清单为准。
 
-本 README 里的功能介绍用于了解系统能力，不等于生产上线完成证明。涉及真实 HR 试点、服务器部署、数据清理、LLM 合规或备份恢复时，必须再看 [docs/06_试点上线检查清单.md](docs/06_试点上线检查清单.md) 和 [docs/07_上线部署前TOP10清单_给AI执行.md](docs/07_上线部署前TOP10清单_给AI执行.md)，并由负责人确认后执行。
+本 README 里的功能介绍用于了解系统能力，不等于生产上线完成证明。涉及真实 HR 试点、服务器部署、数据清理、LLM 合规或备份恢复时，必须再看 [docs/06_试点上线检查清单.md](docs/06_试点上线检查清单.md) 和 [docs/07_上线部署前关键清单](docs/07_上线部署前关键清单_给AI执行.md)，并由负责人确认后执行。
 
 ## 📖 项目简介
 
@@ -173,8 +173,8 @@ npm run dev                   # http://localhost:5173，代理到 :5001
 ```
 .
 ├── backend/          Flask 后端（app-factory + 蓝图）
-│   ├── app/api/      13 个 API 蓝图（auth/resume/jobs/demands/match/pipeline/interview/bi/agent/talent_maps/notifications/admin/candidates）
-│   ├── app/services/ 业务服务（agent / match / resume / interview）
+│   ├── app/api/      API 蓝图（auth/resume/jobs/demands/match/pipeline/interview/bi/agent/boss/talent_maps/notifications/admin/candidates）
+│   ├── app/services/ 业务服务（agent / match / resume / interview / boss）
 │   └── run.py        启动入口
 ├── frontend/         Vite + React 前端
 │   └── src/

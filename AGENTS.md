@@ -96,9 +96,11 @@ git@git.ymdd.tech:cfpd/zhipin-mvp.git
 git ls-remote git@git.ymdd.tech:cfpd/zhipin-mvp.git refs/heads/test
 ```
 
-如果目标修复先在 ARC、GitHub 或其他分支上完成，应从 `cfpd/test` 新建临时工作区，最小化移植本次改动，再推到 CFPD `test`；禁止把无关历史整条强推到 CFPD。Libra 构建成功后，必须用页面中的“提交内容”或 `CommitID` 对齐 CFPD `test` 最新提交，不能只凭绿色对勾判断发布正确。
+如果目标修复先在 ARC、GitHub 或其他分支上完成，应从 `cfpd/test` 新建临时工作区，最小化移植本次改动，再推到 CFPD `test`；禁止把无关历史整条强推到 CFPD。
 
-如果 Libra “发布到SIT”提示 `zhipin-server` 或 `zhipin-frontend` 在当前环境无主机，这是发布平台主机/应用实例绑定缺失，应说明为运维配置问题，并继续用 `curl https://test-zhipin.yimidida.com/` 与静态资产内容验证测试站是否已被构建流程同步。
+当前推荐的 Libra/SIT 路线是进入执行 pipeline 页，选择 `test` 分支，并勾选“构建完成自动部署到 SIT 环境”。历史上也可能通过构建成功行的“发布到SIT”按钮完成发布，但只有在页面中的“提交内容”或 `CommitID` 已对齐 CFPD `test` 最新提交时才可继续；最终都必须用测试站 HTML 静态资产哈希或关键 chunk 内容验证，不能只凭绿色对勾判断发布正确。
+
+如果普通“发布到SIT”按钮提示 `zhipin-server` 或 `zhipin-frontend` 在当前环境无主机，不要当成代码构建失败；优先改走执行 pipeline 自动部署路线，或让运维确认 Libra 主机/实例绑定，同时继续用 `curl https://test-zhipin.yimidida.com/` 与静态资产内容验证测试站是否已同步。
 
 ## 试点 / 上线判断规则
 

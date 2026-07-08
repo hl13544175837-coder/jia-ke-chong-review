@@ -19,11 +19,11 @@ PORT=5001 python run.py
 
 ---
 
-## 公司 MySQL 测试库试用
+## 公司 MySQL 测试库试用（需现场复核）
 
-当前试用环境的完整交接说明见 [`docs/当前试用环境交接说明.md`](docs/当前试用环境交接说明.md)。新开 Codex 对话时，先读这份文档可以快速恢复上下文。
+历史试用环境快照见 [`docs/历史试用环境快照_需现场复核.md`](docs/历史试用环境快照_需现场复核.md)。这份文档只记录某一次本机接入公司 MySQL 的状态，不是当前环境证明。新开 Codex 对话时，可以先读它恢复背景，但必须再检查 `backend/.env`、`git remote -v` 和 `python3 backend/scripts/check_pilot_readiness.py`。
 
-当前公司测试库使用 MySQL 8.0.32，项目通过 SQLAlchemy 的 `mysql+pymysql://` 驱动连接。给同事临时试用时，`backend/.env` 至少需要包含：
+历史上公司测试库使用 MySQL 8.0.32，项目通过 SQLAlchemy 的 `mysql+pymysql://` 驱动连接。若现场确认本轮仍要接公司 MySQL 并给同事临时试用，`backend/.env` 至少需要包含：
 
 ```env
 FLASK_DEBUG=false
@@ -36,18 +36,28 @@ BACKUP_DIR=/var/backups/zhipin
 AI_RECRUITMENT_COMPLIANCE_ACK=true
 CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.内网域名/privacy
 AI_HUMAN_REVIEW_REQUIRED=true
-FIELD_ENCRYPTION_KEY=<固定Fernet密钥>
+FIELD_ENCRYPTION_KEY=PASTE_GENERATED_FERNET_KEY_HERE
 BOSS_CLI_AUTO_INSTALL=true
 ```
 
-首次接入空库时，启动后端会自动创建业务表。需要演示数据时执行：
+`FIELD_ENCRYPTION_KEY` 不能复制占位值。启用 BOSS 或进入测试/生产前，先生成固定 Fernet 密钥：
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+首次接入空库时，启动后端会自动创建业务表。只有本地演示库需要演示数据时才执行：
 
 ```bash
 cd backend
 python seed_dev.py
 ```
 
-### BOSS 直聘后端接口
+真实 HR 试点库不要运行 `seed_dev.py`。
+
+### BOSS 直聘后端接口（实验辅助能力）
+
+BOSS 直聘集成用于内部验证从招聘端账号拉取收件箱/推荐候选人、下载简历并导入系统的辅助流程。它不是当前 HR 试点主流程的必测项；主流程仍以手工上传简历、招聘需求、候选人匹配、流程推进、面试反馈和 BI 为准。
 
 `/boss` 页面依赖后端 `/api/boss/*` 接口。测试环境部署后，未登录访问
 `/api/boss/accounts` 应返回 401；登录后未绑定 BOSS 账号时，
@@ -59,6 +69,8 @@ BOSS 账号通过浏览器 Cookie 导入，Cookie 会写入 `boss_accounts` 表�
 后端还需要可用的 `boss` CLI；容器内已安装 git，可在
 `BOSS_CLI_AUTO_INSTALL=true` 时首次调用自动安装，或由运维预装后用
 `BOSS_CLI_BIN` 指定路径。
+
+如果本轮只是给 HR 做主流程试点，可以不开放 `/boss` 页面；若要开放，必须先确认 BOSS Cookie 使用边界、`FIELD_ENCRYPTION_KEY`、boss CLI 安装来源和账号权限。
 
 ---
 
@@ -136,7 +148,9 @@ BI 看板右上角只保留周期筛选，不再放「怎么看数据」说明�
 
 ---
 
-## 重置试用数据
+## 重置本地演示/试用数据
+
+下面命令只适用于本地演示库或明确可重建的试用库，会清空并重建演示数据。真实 HR 试点库不要用它重置。
 
 ```bash
 cd backend
