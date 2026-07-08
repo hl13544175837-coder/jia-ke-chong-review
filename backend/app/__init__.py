@@ -48,6 +48,7 @@ def create_app(config=None):
         _ensure_workflow_enhancement_columns()
         _normalize_legacy_feedback_reason_tags()
         _ensure_org_and_privacy_columns()
+        _ensure_upload_batch_columns()
         _ensure_user_security_columns()
 
     _register_frontend(app)
@@ -436,6 +437,41 @@ def _ensure_org_and_privacy_columns():
 
     if changed:
         db.session.commit()
+
+
+def _ensure_upload_batch_columns():
+    """Backfill columns added to upload_batches after early pilot databases."""
+    from sqlalchemy import inspect, text
+    from .models import UploadBatch
+
+    inspector = inspect(db.engine)
+    if "upload_batches" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("upload_batches")}
+    changed = False
+    for column in UploadBatch.__table__.columns:
+        if column.name in columns or column.primary_key:
+            continue
+        db.session.execute(text(_add_column_sql("upload_batches", column)))
+        changed = True
+
+    if changed:
+        db.session.commit()
+
+
+def _add_column_sql(table_name, column):
+    column_type = column.type.compile(dialect=db.engine.dialect)
+    parts = [f"ALTER TABLE {table_name} ADD COLUMN {column.name} {column_type}"]
+    if not column.nullable:
+        default = getattr(column.default, "arg", None)
+        if isinstance(default, str):
+            escaped = default.replace("'", "''")
+            parts.append(f"DEFAULT '{escaped}'")
+        elif default is not None and not callable(default):
+            parts.append(f"DEFAULT {default}")
+        parts.append("NOT NULL")
+    return " ".join(parts)
 
 
 def _ensure_user_security_columns():

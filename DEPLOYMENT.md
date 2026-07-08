@@ -166,6 +166,10 @@ python backend/scripts/cleanup_demo_data.py --confirm
 
 脚本会先备份，再删除 `@mvp.local` demo 账号及其关联业务数据，并清空 `backend/uploads/`、`uploads/` 文件；表结构会保留。
 
+### 数据库兼容补列
+
+应用启动时会对历史试点库做轻量兼容补列。`upload_batches` 表会按当前模型补齐缺失列（如组织、来源链接、内推人、目标岗位、备注、创建时间等），避免简历上传在创建上传批次时因旧表结构不完整返回 500。该补列是幂等操作，列已存在时不会重复修改。
+
 ---
 
 ## 5. LLM API 配置
