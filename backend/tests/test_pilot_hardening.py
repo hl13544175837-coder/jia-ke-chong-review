@@ -4,7 +4,7 @@ from contextlib import contextmanager
 import pytest
 
 from app import create_app, _enforce_production_security, db
-from app.config import Config, TestingConfig, _normalize_database_url
+from app.config import Config, TestingConfig, _normalize_database_url, _upload_folder
 
 
 class _ProdLike(Config):
@@ -109,6 +109,11 @@ def test_mysql_url_uses_pymysql_driver():
     assert _normalize_database_url("mysql://user:pass@db:3306/zhipin") == (
         "mysql+pymysql://user:pass@db:3306/zhipin"
     )
+
+
+def test_upload_folder_defaults_to_container_writable_tmp(monkeypatch):
+    monkeypatch.delenv("UPLOAD_FOLDER", raising=False)
+    assert _upload_folder() == "/tmp/zhipin_uploads"
 
 
 def test_dev_mode_skips_enforcement():

@@ -413,7 +413,7 @@ def upload():
         return jsonify({"error": "No files provided"}), 400
 
     from flask import current_app
-    folder = current_app.config.get("UPLOAD_FOLDER", "/tmp/hi_uploads")
+    folder = current_app.config.get("UPLOAD_FOLDER") or "/tmp/zhipin_uploads"
     Path(folder).mkdir(parents=True, exist_ok=True)
 
     from ..models import UploadBatch, Job

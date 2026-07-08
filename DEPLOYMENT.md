@@ -424,6 +424,7 @@ docker run -d \
   --network zhipin-net \
   -p 5000:5000 \
   -v /var/lib/zhipin/uploads:/app/backend/uploads \
+  -e UPLOAD_FOLDER=/app/backend/uploads \
   -e JWT_SECRET=your-strong-random-secret-here \
   -e DATABASE_URL=postgresql://user:pass@host:5432/zhipin \
   -e LLM_PROVIDER=deepseek \
@@ -508,6 +509,10 @@ MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录候选人
 ### Q：简历上传失败，提示 EOF marker not found？
 
 A：已修复（2026-06-14）。确保运行的是最新代码。`.docx` 和 PDF 均已支持，旧版 `.doc` 格式请另存为 `.docx` 后上传。
+
+### Q：简历上传失败，接口返回 500？
+
+A：先检查后端日志。如果出现 `Permission denied: '/app/backend/uploads'`，说明容器内上传目录不可写。当前后端默认使用 `/tmp/zhipin_uploads`，生产如需持久化简历文件，必须显式配置 `UPLOAD_FOLDER` 到可写挂载目录，并保证运行用户有写权限。
 
 ### Q：AI 功能不可用，提示 LLM 调用失败？
 

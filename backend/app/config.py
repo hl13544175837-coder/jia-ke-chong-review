@@ -20,6 +20,10 @@ def _normalize_database_url(url: str) -> str:
     return url
 
 
+def _upload_folder() -> str:
+    return os.environ.get("UPLOAD_FOLDER", "/tmp/zhipin_uploads")
+
+
 class Config:
     # LLM
     LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai")
@@ -62,8 +66,8 @@ class Config:
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # 文件上传
-    UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", str(Path(__file__).resolve().parent.parent / "uploads"))
+    # 文件上传：容器默认使用 /tmp，避免非 root 运行时无法写入代码目录；持久化时显式配置 UPLOAD_FOLDER。
+    UPLOAD_FOLDER = _upload_folder()
     MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 100MB
 
     # Celery：开发用 eager（同进程，无需 Redis）
