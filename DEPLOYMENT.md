@@ -208,6 +208,48 @@ OPENAI_API_KEY=sk-your-openai-key
 
 ## 6. 生产部署
 
+### 公司 Libra / SIT 发布防错说明
+
+公司测试站 `https://test-zhipin.yimidida.com/` 不是读取本地默认 `origin` 仓库。Libra 发布平台当前读取的代码源是：
+
+```bash
+git@git.ymdd.tech:cfpd/zhipin-mvp.git
+```
+
+本地常见的 `origin` 可能指向 `git@git.ymdd.tech:arc/zhipin-mvp.git`。把代码推到 `origin/test` 只代表 ARC 仓库更新，不代表 Libra/SIT 会构建到这次修改。发布前必须先确认 CFPD 仓库的 `test` 分支已经包含目标提交：
+
+```bash
+git ls-remote git@git.ymdd.tech:cfpd/zhipin-mvp.git refs/heads/test
+```
+
+如果修复先落在其他仓库或分支，不能把整条历史强推到 CFPD。应从 CFPD 当前 `test` 切出临时工作区，只带本次必要改动，再推回 CFPD 的 `test`：
+
+```bash
+git fetch git@git.ymdd.tech:cfpd/zhipin-mvp.git '+refs/heads/*:refs/remotes/cfpd/*' --prune
+git worktree add -B codex/cfpd-<fix-name> /tmp/zhipin-cfpd-<fix-name> cfpd/test
+cd /tmp/zhipin-cfpd-<fix-name>
+# 修改代码并完成专项验证
+git push git@git.ymdd.tech:cfpd/zhipin-mvp.git HEAD:test
+```
+
+Libra 页面操作时，先选择 `test` 分支并点击“开始构建”。构建成功后，必须核对页面中的“提交内容”或 `CommitID` 等于刚推到 CFPD `test` 的提交，再点击该行“发布到SIT”。不要发布旧行，尤其不要只看“构建成功”绿色对勾。
+
+如果点击“发布到SIT”弹出：
+
+```text
+发布请求发起失败：zhipin-server该模块在当前环境无主机
+zhipin-frontend该模块在当前环境无主机
+```
+
+这说明 Libra 的 SIT 环境未给 `zhipin-server` / `zhipin-frontend` 绑定主机或应用实例，是发布平台配置问题，不是代码构建失败。需要在 Libra 的“应用维护 / k8s应用管理”里补齐模块与 SIT 主机/实例绑定，或联系运维处理。遇到该弹窗时仍需单独验证测试站是否已被构建流程同步静态包：
+
+```bash
+curl -sS -L -D /tmp/test-zhipin.headers https://test-zhipin.yimidida.com/ -o /tmp/test-zhipin.html
+rg -o '/assets/[^" ]+' /tmp/test-zhipin.html | sort -u
+```
+
+前端展示类修复可继续检查对应资产内容；例如右上角中国国旗修复，应在新 JS/CSS 中看到 `🇨🇳`，且不再出现旧的红白双色旗 CSS。
+
 ### 方案 A：Flask 托管前端静态文件（单进程，推荐小团队）
 
 1. 构建前端：

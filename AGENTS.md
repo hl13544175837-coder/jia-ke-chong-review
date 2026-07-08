@@ -82,6 +82,24 @@ AI 开始开发、修复、重构、配置调整或文档维护前，应先读�
 - 不回滚、不覆盖、不格式化用户未授权的改动；如果用户改动影响当前任务，先说明冲突和推荐处理方式。
 - 提交或交付前必须说明本轮 diff 范围、实际验证命令、未验证项和文档同步情况。
 
+## Libra / SIT 发布防错规则
+
+当用户要求“推送到 test”“发布到 SIT”“test-zhipin 没变化”“Libra 发布”等与公司测试环境相关的操作时，必须先确认发布平台读取的代码源。当前 Libra/SIT 读取的是：
+
+```bash
+git@git.ymdd.tech:cfpd/zhipin-mvp.git
+```
+
+不要只看本地默认 `origin`。`origin` 可能指向 `git@git.ymdd.tech:arc/zhipin-mvp.git`，推到 `origin/test` 不等于发布平台能看到。发布前必须用以下命令核对 CFPD `test`：
+
+```bash
+git ls-remote git@git.ymdd.tech:cfpd/zhipin-mvp.git refs/heads/test
+```
+
+如果目标修复先在 ARC、GitHub 或其他分支上完成，应从 `cfpd/test` 新建临时工作区，最小化移植本次改动，再推到 CFPD `test`；禁止把无关历史整条强推到 CFPD。Libra 构建成功后，必须用页面中的“提交内容”或 `CommitID` 对齐 CFPD `test` 最新提交，不能只凭绿色对勾判断发布正确。
+
+如果 Libra “发布到SIT”提示 `zhipin-server` 或 `zhipin-frontend` 在当前环境无主机，这是发布平台主机/应用实例绑定缺失，应说明为运维配置问题，并继续用 `curl https://test-zhipin.yimidida.com/` 与静态资产内容验证测试站是否已被构建流程同步。
+
 ## 试点 / 上线判断规则
 
 当用户询问“是否可以试点上线”“是否已经相对完善”“是否可以发给真实用户测试”时，不能只按主流程能跑通、自动化测试通过或核心权限正常来判断。必须先区分：
