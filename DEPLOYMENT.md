@@ -238,7 +238,7 @@ git push git@git.ymdd.tech:cfpd/zhipin-mvp.git HEAD:test
 
 Libra 页面操作时，先选择 `test` 分支并点击“开始构建”。构建成功后，必须核对页面中的“提交内容”或 `CommitID` 等于刚推到 CFPD `test` 的提交，再点击该行“发布到SIT”。不要发布旧行，尤其不要只看“构建成功”绿色对勾。
 
-CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，Makefile 会兜底使用 `RC` 和当前时间戳，避免生成 `zhipin-frontend:` / `zhipin-server:` 这类空镜像标签导致构建失败。
+CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 和 Makefile 会兜底使用 `RC` 和当前时间戳，避免生成 `zhipin-frontend:` / `zhipin-server:` 这类空镜像标签导致构建失败；Libra 包记录也会使用同一个 `RC_<时间戳>` 版本号。
 
 如果点击“发布到SIT”弹出：
 

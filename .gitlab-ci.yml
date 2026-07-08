@@ -15,8 +15,10 @@ buildTest:
 
   script:
     - echo ${PWD}
+    - export PKG_TAG="${PKG_TAG:-RC}"
+    - export PKG_VERSION="${PKG_VERSION:-$(date +%Y%m%d%H%M)}"
     - make all PKG_TAG=$PKG_TAG PKG_VERSION=$PKG_VERSION
-    - /deploy/script/ci/package.py $projectname  $rc_version"_"$PKG_VERSION  $projectid $pipelineid $jobid ${PWD} ${commitid} $envlabel
+    - /deploy/script/ci/package.py $projectname  $PKG_TAG"_"$PKG_VERSION  $projectid $pipelineid $jobid ${PWD} ${commitid} $envlabel
     
   tags:
     - t_FRONTEND
