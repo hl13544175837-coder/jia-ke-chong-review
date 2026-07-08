@@ -4,6 +4,14 @@
 PKG_TAG ?= RC
 PKG_VERSION ?= $(shell date +%Y%m%d%H%M)
 
+ifeq ($(strip $(PKG_TAG)),)
+	override PKG_TAG := RC
+endif
+
+ifeq ($(strip $(PKG_VERSION)),)
+	override PKG_VERSION := $(shell date +%Y%m%d%H%M)
+endif
+
 # Determine registry based on PKG_TAG
 ifeq ($(PKG_TAG),GA)
 	REGISTRY = registry.ymdd.tech
