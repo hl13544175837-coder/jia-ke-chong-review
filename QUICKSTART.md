@@ -57,7 +57,7 @@ npm run dev                   # http://localhost:5173，自动代理到 :5001
 
 ### 5. 需要 LLM Key 才能用的功能
 
-简历 AI 解析、JD 结构化、AI 面试出题评分、AI 助手对话。其余功能（登录、候选人、岗位、流程、BI、面试报告）完全离线可用。
+简历 AI 解析、JD 结构化、AI 面试出题评分、AI 助手对话。其余功能（登录、候选人、岗位、流程、BI、已生成的面试报告查看）完全离线可用。
 
 在 `backend/.env` 填（参考 `.env.example`）：
 
@@ -75,7 +75,7 @@ OPENAI_API_KEY=sk-你的key
 完整步骤见 `DEPLOYMENT.md` §6，关键点：
 
 1. 构建前端：`cd frontend && npm run build`（生成 `frontend/dist/`，由 Flask 同源托管）
-2. 配置生产 `.env`：可从 `backend/lightweight-pilot.env.example` 复制起步，替换 JWT_SECRET（≥32字符强随机）、DATABASE_URL（PostgreSQL）、CORS_ORIGINS、LLM Key
+2. 配置生产 `.env`：可从 `backend/lightweight-pilot.env.example` 复制起步，替换 JWT_SECRET（≥32字符强随机）、DATABASE_URL（MySQL 或 PostgreSQL；公司试用库当前按 MySQL 配置）、CORS_ORIGINS、LLM Key
 3. 启动前自检（只读，不打印密钥）：`python backend/scripts/check_pilot_readiness.py`
 4. 启动：`cd backend && gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 "run:app"`，访问 `http://服务器:5000`
 5. 上线前必读：`docs/06_试点上线检查清单.md`（C1–C12）和 `docs/07_上线部署前TOP10清单_给AI执行.md`

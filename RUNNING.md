@@ -163,11 +163,12 @@ python backend/scripts/cleanup_demo_data.py --confirm
 
 ## 需要 LLM Key 的功能
 
-以下功能需要配置 API Key，其余功能（登录、候选人、岗位、流程、BI、面试报告）完全离线可用：
+以下功能需要配置 API Key，其余功能（登录、候选人、岗位、流程、BI、已生成的面试报告查看）完全离线可用：
 
 - JD 结构化解析
 - AI 面试出题 & 评分
 - 简历上传解析
+- AI 助手对话与 AI 写操作提议
 
 创建 `backend/.env`（参考 `.env.example`）：
 
