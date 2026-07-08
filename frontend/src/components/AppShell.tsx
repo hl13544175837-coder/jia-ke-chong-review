@@ -247,7 +247,9 @@ export function AppShell() {
 
           <div className="enterprise-topbar-actions">
             <span className="enterprise-topbar-chip">
-              <span className="enterprise-flag-cn" aria-hidden="true" />
+              <span className="enterprise-flag-cn" aria-hidden="true">
+                🇨🇳
+              </span>
               中国
             </span>
             <span className="enterprise-topbar-chip">中文 ▾</span>
