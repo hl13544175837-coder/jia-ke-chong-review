@@ -214,6 +214,8 @@ OPENAI_API_KEY=sk-your-openai-key
 
 ### 公司 Libra / SIT 发布防错说明
 
+可复用的实际发布路线见 [docs/08_Libra_SIT发布路线.md](./docs/08_Libra_SIT发布路线.md)。后续用户说“发布到 test / SIT”或“test-zhipin 没变化”时，先按该文档执行。
+
 公司测试站 `https://test-zhipin.yimidida.com/` 不是读取本地默认 `origin` 仓库。Libra 发布平台当前读取的代码源是：
 
 ```bash
