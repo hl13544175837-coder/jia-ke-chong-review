@@ -18,6 +18,7 @@ export function RejectionDispositionForm({
   const [nextContactAt, setNextContactAt] = useState('');
   const [tagsText, setTagsText] = useState('');
   const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const tags = tagsText
     .split(/[，,]/)
@@ -25,10 +26,15 @@ export function RejectionDispositionForm({
     .filter(Boolean);
 
   async function handleSubmit() {
-    const finalNote = reason.trim() ? `淘汰原因：${reason.trim()}` : '淘汰沉淀';
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      setError('请填写淘汰原因');
+      return;
+    }
+    const finalNote = `淘汰原因：${trimmedReason}`;
     await onSubmit(
       {
-        reason: reason.trim(),
+        reason: trimmedReason,
         enter_talent_pool: enterTalentPool,
         next_contact_at: nextContactAt || undefined,
         tags,
@@ -44,8 +50,12 @@ export function RejectionDispositionForm({
         label="淘汰原因"
         value={reason}
         placeholder="例：经验年限不足 / 薪资不匹配"
-        onChange={(e) => setReason(e.target.value)}
+        onChange={(e) => {
+          setReason(e.target.value);
+          setError(null);
+        }}
       />
+      {error && <p className="text-xs text-danger-700">{error}</p>}
       <label className="flex items-center gap-2 text-sm text-body">
         <input
           type="checkbox"
@@ -75,7 +85,7 @@ export function RejectionDispositionForm({
         onChange={(e) => setNote(e.target.value)}
       />
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="danger" size="sm" loading={busy} disabled={busy} onClick={handleSubmit}>
+        <Button type="button" variant="danger" size="sm" loading={busy} disabled={busy || !reason.trim()} onClick={handleSubmit}>
           确认淘汰
         </Button>
         <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={onCancel}>

@@ -448,7 +448,7 @@ export function JobMatchPage() {
           to="/jobs"
           className="mb-4 inline-flex items-center gap-1 text-sm text-muted hover:text-body"
         >
-          ← 返回岗位画像
+          ← 返回招聘岗位
         </Link>
         <div className="mt-4">
           <ErrorState message="无效的岗位 ID" />
@@ -463,15 +463,15 @@ export function JobMatchPage() {
       <div>
         <nav className="mb-2 flex items-center gap-1.5 text-sm text-muted">
           <Link to="/jobs" className="hover:text-body hover:underline">
-            岗位画像
+            招聘岗位
           </Link>
           <span className="text-muted-soft">›</span>
-          <span className="text-ink">匹配候选人</span>
+          <span className="text-ink">匹配结果</span>
         </nav>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="mb-1 font-display text-2xl text-ink">
-              候选人匹配
+              岗位匹配结果
             </h1>
             <p className="text-sm text-muted">岗位 ID：{jobId} · AI 先推荐，也可以人工搜索全库候选人</p>
           </div>

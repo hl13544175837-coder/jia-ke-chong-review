@@ -891,7 +891,7 @@ export function JobsPage() {
                               <>
                                 <Link
                                   to={`/jobs/${job.id}/match`}
-                                  className="text-xs font-medium text-ink hover:text-body hover:underline"
+                                  className="inline-flex h-8 items-center justify-center rounded-md border border-hairline bg-canvas px-3 text-xs font-semibold text-ink transition-colors hover:bg-surface-soft"
                                 >
                                   匹配候选人
                                 </Link>

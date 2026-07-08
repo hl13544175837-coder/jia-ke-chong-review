@@ -93,7 +93,7 @@ const WORKFLOW_ACTIONS: WorkflowAction[] = [
   },
   {
     to: '/jobs',
-    label: '选择岗位匹配',
+    label: '匹配候选人',
     desc: '先选岗位，再运行候选人匹配并加入流程',
     icon: Briefcase,
     roles: ['recruiter', 'manager', 'admin'],

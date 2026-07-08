@@ -1,8 +1,8 @@
 // 候选人档案页（HR 视角）— 展示候选人判断卡片、核心技能证据和简历结构化内容。
 
-import { useState, type ReactNode } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { AlertTriangle, Edit3, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { AlertTriangle, ArrowRight, Briefcase, Edit3, MoreHorizontal, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import {
   Radar,
   RadarChart,
@@ -17,9 +17,13 @@ import { useAsync } from '../../../lib/useAsync';
 import { useAuth } from '../../../lib/auth';
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, Spinner, ErrorState, Input, useToast } from '../../../components/ui';
 import { Reveal } from '../../../components/motion';
-import { PipelineProgress } from '../../../components/candidate/PipelineProgress';
 import { ReassignOwner } from '../../../components/candidate/ReassignOwner';
+import { RejectionDispositionForm } from '../../../components/pipeline/RejectionDispositionForm';
+import { OfferDrawer } from '../../../components/pipeline/OfferDrawer';
+import { STAGES, stageLabel } from '../../../lib/pipelineStages';
+import { NEXT_STAGE, isInterviewStage, isTerminalStage, stageAgeLabel } from '../../../lib/pipelineInsights';
 import type { CandidateSourceInfo, CandidateTag, ResumeJson } from '../types';
+import type { CandidateDispositionInput, CandidatePipelineItem, PipelineStage } from '../../../types';
 
 // Cal.com 近黑配色 hex（recharts 不接受 tailwind 类）
 const RADAR_STROKE = '#111111';
@@ -445,8 +449,22 @@ const SECTION_ORDER = [
   'languages',
 ];
 
+const RESUME_TOP_ID = 'candidate-full-resume';
+
+const RESUME_OUTLINE_ITEMS = [
+  { label: '全部', targets: [] },
+  { label: '重点', targets: ['summary', 'name', 'contact', 'email', 'phone', 'intent_city'] },
+  { label: '经历', targets: ['experience', 'work_experience'] },
+  { label: '项目', targets: ['projects', 'project_experience'] },
+  { label: '教育/证书/其他', targets: ['education', 'certifications', 'languages', 'additional_info'] },
+];
+
 function sectionLabel(key: string): string {
   return SECTION_LABELS[key] ?? key;
+}
+
+function resumeSectionId(key: string): string {
+  return `resume-section-${key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 }
 
 function sortedEntries(obj: ResumeJson): [string, unknown][] {
@@ -486,16 +504,16 @@ function ResumeSection({ sectionKey, value }: { sectionKey: string; value: unkno
   }
 
   return (
-    <div>
+    <section id={resumeSectionId(sectionKey)} className="scroll-mt-24">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
         {label}
       </h3>
       {content}
-    </div>
+    </section>
   );
 }
 
-function ResumeJsonView({ resumeJson }: { resumeJson: ResumeJson }) {
+function resumeContentEntries(resumeJson: ResumeJson): [string, unknown][] {
   // 后端 resume_json 结构为 { extracted_info: {...简历字段}, skills: [...], upload_date }。
   // 真正可读的简历内容在 extracted_info 里；skills 已由左栏技能标签单独展示，
   // upload_date 是元数据。故优先解包 extracted_info 渲染；兼容旧的扁平结构。
@@ -505,14 +523,55 @@ function ResumeJsonView({ resumeJson }: { resumeJson: ResumeJson }) {
       ? (ei as ResumeJson)
       : resumeJson;
 
-  const entries = sortedEntries(source).filter(
+  return sortedEntries(source).filter(
     ([k]) => k !== 'skills' && k !== 'upload_date' && k !== 'extracted_info'
   );
+}
+
+function ResumeOutlineNav({ resumeJson }: { resumeJson: ResumeJson }) {
+  const entries = resumeContentEntries(resumeJson);
+  const entryKeys = new Set(entries.map(([key]) => key));
+  const outlineItems = RESUME_OUTLINE_ITEMS.map((item) => {
+    const target = item.targets.find((key) => entryKeys.has(key));
+    return {
+      label: item.label,
+      href: item.targets.length === 0 ? `#${RESUME_TOP_ID}` : target ? `#${resumeSectionId(target)}` : null,
+    };
+  }).filter((item) => item.href !== null);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>简历</CardTitle>
+      </CardHeader>
+      <CardBody className="space-y-2">
+        {outlineItems.length > 0 ? (
+          <nav aria-label="简历目录" className="space-y-1">
+            {outlineItems.map((item) => (
+              <a
+                key={item.label}
+                href={item.href ?? `#${RESUME_TOP_ID}`}
+                className="block rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-soft hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        ) : (
+          <p className="text-sm text-muted-soft">暂无可定位的简历段落。</p>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function ResumeJsonView({ resumeJson }: { resumeJson: ResumeJson }) {
+  const entries = resumeContentEntries(resumeJson);
   if (entries.length === 0) {
     return <p className="text-sm text-muted-soft">暂无简历结构化内容</p>;
   }
   return (
-    <Reveal className="space-y-6" stagger={0.07}>
+    <Reveal className="space-y-4" stagger={0.05}>
       {entries.map(([k, v]) => (
         <ResumeSection key={k} sectionKey={k} value={v} />
       ))}
@@ -980,6 +1039,407 @@ function SourceInfoCard({ source }: { source: CandidateSourceInfo | null | undef
   );
 }
 
+function pipelineTimestamp(pipeline: CandidatePipelineItem): number {
+  if (!pipeline.updated_at) return 0;
+  const ts = new Date(pipeline.updated_at).getTime();
+  return Number.isNaN(ts) ? 0 : ts;
+}
+
+function sortPipelinesByRecent(pipelines: CandidatePipelineItem[]): CandidatePipelineItem[] {
+  return [...pipelines].sort((a, b) => pipelineTimestamp(b) - pipelineTimestamp(a));
+}
+
+function CandidatePipelineSelector({
+  pipelines,
+  selectedJobId,
+  loading,
+  error,
+  onSelectJob,
+  onRetry,
+}: {
+  pipelines: CandidatePipelineItem[];
+  selectedJobId: number | null;
+  loading: boolean;
+  error: Error | null;
+  onSelectJob: (jobId: number) => void;
+  onRetry: () => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>招聘进展</CardTitle>
+      </CardHeader>
+      <CardBody>
+        {loading ? (
+          <Spinner size="sm" />
+        ) : error ? (
+          <ErrorState message={error.message} onRetry={onRetry} />
+        ) : pipelines.length === 0 ? (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-soft">该候选人尚未进入任何岗位流程。</p>
+            <Link
+              to="/candidates"
+              className="inline-flex text-sm font-semibold text-ink hover:underline"
+            >
+              回到简历库加入流程
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {sortPipelinesByRecent(pipelines).map((pipeline) => {
+              const selected = selectedJobId === pipeline.job_id;
+              return (
+                <button
+                  key={pipeline.job_id}
+                  type="button"
+                  onClick={() => onSelectJob(pipeline.job_id)}
+                  className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${
+                    selected
+                      ? 'border-ink bg-surface-soft'
+                      : 'border-hairline bg-canvas hover:bg-surface-soft'
+                  }`}
+                >
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-ink">
+                        {pipeline.job_title}
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-soft">
+                        {stageAgeLabel(pipeline.updated_at)}
+                      </span>
+                    </span>
+                    <Badge tone={selected ? 'brand' : 'neutral'} className="shrink-0">
+                      {stageLabel(pipeline.stage)}
+                    </Badge>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function CandidatePipelineActionPanel({
+  candidateId,
+  candidateName,
+  pipeline,
+  pipelines,
+  loading,
+  error,
+  selectedJobId,
+  canMove,
+  canReassign,
+  currentOwnerId,
+  onSelectJob,
+  onReload,
+  onCandidateReload,
+}: {
+  candidateId: number;
+  candidateName: string;
+  pipeline: CandidatePipelineItem | null;
+  pipelines: CandidatePipelineItem[];
+  loading: boolean;
+  error: Error | null;
+  selectedJobId: number | null;
+  canMove: boolean;
+  canReassign: boolean;
+  currentOwnerId?: number;
+  onSelectJob: (jobId: number) => void;
+  onReload: () => void;
+  onCandidateReload: () => void;
+}) {
+  const toast = useToast();
+  const [moving, setMoving] = useState(false);
+  const [moveNote, setMoveNote] = useState('');
+  const [showDisposition, setShowDisposition] = useState(false);
+  const [showOffer, setShowOffer] = useState(false);
+  const [showCorrection, setShowCorrection] = useState(false);
+  const [targetStage, setTargetStage] = useState<PipelineStage | ''>('');
+  const [correctionReason, setCorrectionReason] = useState('');
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMoveNote('');
+    setShowDisposition(false);
+    setShowOffer(false);
+    setShowCorrection(false);
+    setTargetStage('');
+    setCorrectionReason('');
+    setCorrectionError(null);
+  }, [candidateId, pipeline?.job_id, pipeline?.stage]);
+
+  async function movePipeline(
+    toStage: PipelineStage,
+    note?: string,
+    disposition?: CandidateDispositionInput,
+  ) {
+    if (!pipeline) return;
+    setMoving(true);
+    try {
+      await api.movePipeline({
+        candidate_id: candidateId,
+        job_id: pipeline.job_id,
+        stage: toStage,
+        note,
+        disposition,
+      });
+      toast.success(`${candidateName || '候选人'} 已更新至「${stageLabel(toStage)}」`);
+      setMoveNote('');
+      setShowDisposition(false);
+      setShowCorrection(false);
+      onReload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '流程更新失败');
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  async function correctStage() {
+    if (!targetStage || !pipeline) return;
+    const reason = correctionReason.trim();
+    if (!reason) {
+      setCorrectionError('请填写修正原因');
+      return;
+    }
+    const message = '修正会影响当前阶段和 BI 当前存量，历史记录会保留。确认继续？';
+    if (!window.confirm(message)) return;
+    setCorrectionError(null);
+    await movePipeline(targetStage, `阶段修正：${reason}`);
+    setTargetStage('');
+    setCorrectionReason('');
+  }
+
+  const nextStage = pipeline ? NEXT_STAGE[pipeline.stage] : undefined;
+  const terminal = pipeline ? isTerminalStage(pipeline.stage) : false;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>动作</CardTitle>
+            <p className="mt-1 text-xs text-muted-soft">对当前岗位流程生效</p>
+          </div>
+          {moving && <Spinner size="sm" />}
+        </div>
+      </CardHeader>
+      <CardBody className="space-y-4">
+        {loading ? (
+          <Spinner size="sm" />
+        ) : error ? (
+          <ErrorState message={error.message} onRetry={onReload} />
+        ) : !pipeline ? (
+          <div className="space-y-2 rounded-md border border-hairline bg-surface-soft px-3 py-3">
+            <p className="text-sm font-semibold text-ink">暂无可推进流程</p>
+            <p className="text-sm leading-6 text-muted">
+              该候选人还没有进入岗位流程，先回到简历库选择目标岗位后加入流程。
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="rounded-md border border-hairline bg-surface-soft px-3 py-3">
+              <p className="text-xs font-semibold text-muted">当前操作岗位</p>
+              <div className="mt-2 flex items-start gap-2">
+                <Briefcase className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-ink">{pipeline.job_title}</p>
+                  <p className="mt-1 text-xs text-muted-soft">
+                    {stageLabel(pipeline.stage)} · {stageAgeLabel(pipeline.updated_at)}
+                  </p>
+                </div>
+              </div>
+              {pipelines.length > 1 && (
+                <select
+                  value={selectedJobId ?? ''}
+                  onChange={(event) => onSelectJob(Number(event.target.value))}
+                  className="mt-3 h-9 w-full rounded-md border border-hairline bg-canvas px-2 text-sm text-ink focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
+                  aria-label="切换当前操作岗位"
+                >
+                  {sortPipelinesByRecent(pipelines).map((item) => (
+                    <option key={item.job_id} value={item.job_id}>
+                      {item.job_title} · {stageLabel(item.stage)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {!canMove && (
+              <div className="rounded-md border border-hairline bg-surface-soft px-3 py-2 text-sm text-muted">
+                当前角色只能查看候选人材料和面试相关入口，不能推进主流程。
+              </div>
+            )}
+
+            {canMove && !terminal && (
+              <section className="space-y-2">
+                <label htmlFor="candidate-profile-move-note" className="text-xs font-semibold text-muted">
+                  推进备注（可选）
+                </label>
+                <textarea
+                  id="candidate-profile-move-note"
+                  rows={2}
+                  maxLength={240}
+                  value={moveNote}
+                  onChange={(event) => setMoveNote(event.target.value)}
+                  disabled={moving}
+                  className="w-full resize-none rounded-md border border-hairline bg-canvas px-3 py-2 text-sm text-ink placeholder:text-muted-soft focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink disabled:opacity-60"
+                  placeholder="例如：业务反馈通过，安排面试"
+                />
+                {nextStage && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => movePipeline(nextStage, moveNote.trim() || undefined)}
+                    disabled={moving}
+                  >
+                    推进到 {stageLabel(nextStage)}
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Button>
+                )}
+              </section>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              {isInterviewStage(pipeline.stage) && (
+                <Link
+                  to={`/interviews?job=${pipeline.job_id}&candidate=${candidateId}`}
+                  className="inline-flex h-8 items-center justify-center rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
+                >
+                  填写面试反馈
+                </Link>
+              )}
+              {pipeline.stage === 'offer' && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setShowOffer((value) => !value)}
+                  disabled={moving}
+                >
+                  记录 Offer
+                </Button>
+              )}
+              <Link
+                to={`/pipeline?job=${pipeline.job_id}&candidate=${candidateId}&stage=${pipeline.stage}`}
+                className="inline-flex h-8 items-center justify-center rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
+              >
+                查看流程详情
+              </Link>
+            </div>
+
+            {canMove && !terminal && (
+              <div className="border-t border-hairline-soft pt-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="danger"
+                  onClick={() => setShowDisposition((value) => !value)}
+                  disabled={moving}
+                >
+                  {showDisposition ? '收起淘汰' : '淘汰'}
+                </Button>
+                {showDisposition && (
+                  <RejectionDispositionForm
+                    busy={moving}
+                    onCancel={() => setShowDisposition(false)}
+                    onSubmit={(disposition, note) =>
+                      movePipeline('rejected', note, disposition)
+                    }
+                  />
+                )}
+              </div>
+            )}
+
+            {canMove && (
+              <section className="border-t border-hairline-soft pt-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="w-full justify-start px-0 text-muted hover:bg-transparent hover:text-ink"
+                  onClick={() => setShowCorrection((value) => !value)}
+                  aria-expanded={showCorrection}
+                >
+                  <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                  更多操作：修正阶段
+                </Button>
+                {showCorrection && (
+                  <div className="mt-3 rounded-md border border-warning-200 bg-warning-50 px-3 py-3">
+                    <label htmlFor="candidate-profile-target-stage" className="text-xs font-semibold text-warning-700">
+                      修正阶段
+                    </label>
+                    <p className="mt-1 text-xs leading-5 text-warning-700">
+                      用于误推进、误淘汰等补救。修正会影响当前阶段和 BI 当前存量，历史记录会保留。
+                    </p>
+                    <select
+                      id="candidate-profile-target-stage"
+                      value={targetStage}
+                      onChange={(event) => {
+                        setTargetStage(event.target.value as PipelineStage);
+                        setCorrectionError(null);
+                      }}
+                      className="mt-2 h-9 w-full rounded-md border border-hairline bg-canvas px-2 text-sm text-ink focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
+                    >
+                      <option value="">选择阶段</option>
+                      {STAGES.map((item) => (
+                        <option key={item.key} value={item.key} disabled={item.key === pipeline.stage}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                    <label htmlFor="candidate-profile-correction-reason" className="mb-1 mt-2 block text-xs font-semibold text-warning-700">
+                      修正原因（必填）
+                    </label>
+                    <input
+                      id="candidate-profile-correction-reason"
+                      value={correctionReason}
+                      onChange={(event) => {
+                        setCorrectionReason(event.target.value);
+                        setCorrectionError(null);
+                      }}
+                      placeholder="例如：刚才误点，改回待筛选"
+                      className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 text-sm text-ink focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
+                    />
+                    <Button
+                      type="button"
+                      className="mt-2"
+                      size="sm"
+                      variant="secondary"
+                      disabled={!targetStage || moving}
+                      onClick={() => void correctStage()}
+                    >
+                      保存修正
+                    </Button>
+                    {correctionError && <p className="mt-2 text-xs text-danger-600">{correctionError}</p>}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {pipeline.stage === 'offer' && showOffer && (
+              <OfferDrawer candidateId={candidateId} jobId={pipeline.job_id} />
+            )}
+          </>
+        )}
+
+        {canReassign && (
+          <div className="border-t border-hairline-soft pt-3">
+            <ReassignOwner
+              candidateId={candidateId}
+              currentOwnerId={currentOwnerId}
+              onReassigned={onCandidateReload}
+            />
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
 // ---- 主页面 ----
 
 export function CandidateProfilePage() {
@@ -989,11 +1449,14 @@ export function CandidateProfilePage() {
   const { role } = useAuth();
   const canReassign = role === 'manager' || role === 'admin';
   const canEditProfile = role !== 'interviewer';
+  const canMovePipeline = role === 'recruiter' || role === 'manager' || role === 'admin';
   const toast = useToast();
   const [retryingParse, setRetryingParse] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [exportingCandidate, setExportingCandidate] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(null);
+  const [selectedPipelineJobId, setSelectedPipelineJobId] = useState<number | null>(null);
 
   // useAsync 无条件调用，fetch 函数在 id 无效时短路，不发送请求
   const { data, loading, error, reload } = useAsync(
@@ -1002,6 +1465,40 @@ export function CandidateProfilePage() {
         ? Promise.reject(new Error('invalid id'))
         : api.getCandidate(candidateId),
     [candidateId, isInvalidId]
+  );
+
+  const pipelineAsync = useAsync(
+    () =>
+      isInvalidId
+        ? Promise.reject(new Error('invalid id'))
+        : api.getCandidatePipelines(candidateId),
+    [candidateId, isInvalidId],
+  );
+
+  const pipelines = useMemo(
+    () => pipelineAsync.data?.pipelines ?? [],
+    [pipelineAsync.data],
+  );
+
+  useEffect(() => {
+    if (pipelines.length === 0) {
+      setSelectedPipelineJobId(null);
+      return;
+    }
+    if (
+      selectedPipelineJobId === null ||
+      !pipelines.some((pipeline) => pipeline.job_id === selectedPipelineJobId)
+    ) {
+      setSelectedPipelineJobId(sortPipelinesByRecent(pipelines)[0].job_id);
+    }
+  }, [pipelines, selectedPipelineJobId]);
+
+  const selectedPipeline = useMemo(
+    () =>
+      pipelines.find((pipeline) => pipeline.job_id === selectedPipelineJobId) ??
+      sortPipelinesByRecent(pipelines)[0] ??
+      null,
+    [pipelines, selectedPipelineJobId],
   );
 
   const handleRetryParse = async () => {
@@ -1054,6 +1551,26 @@ export function CandidateProfilePage() {
       toast.error(err instanceof Error ? err.message : '保存候选人档案失败');
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleExportCandidate = async () => {
+    setExportingCandidate(true);
+    try {
+      const blob = await api.exportCandidate(candidateId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `candidate-${candidateId}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success('候选人简历已导出');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '导出候选人简历失败');
+    } finally {
+      setExportingCandidate(false);
     }
   };
 
@@ -1135,26 +1652,33 @@ export function CandidateProfilePage() {
         )}
       </div>
 
-	      <Reveal as="div" className="grid grid-cols-1 gap-6 lg:grid-cols-3" stagger={0.1} y={20}>
-	        {/* 左栏 — 候选人判断 */}
-		        <div className="lg:col-span-1">
-		          <div className="space-y-4">
-		            <CandidateJudgementCard
-		              resumeJson={resume_json}
-		              source={source}
-		              tags={tags}
-		              coreTags={coreTags}
-		              hiddenSkillCount={hiddenSkillCount}
-		            />
-		            <SourceInfoCard source={source} />
-		          </div>
-		        </div>
+      <Reveal
+        as="div"
+        className="grid grid-cols-1 gap-5 xl:grid-cols-[240px_minmax(0,1fr)_300px]"
+        stagger={0.08}
+        y={16}
+      >
+        {/* 左栏 — 目录与岗位流程 */}
+        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+          <ResumeOutlineNav resumeJson={resume_json} />
+          <CandidatePipelineSelector
+            pipelines={pipelines}
+            selectedJobId={selectedPipeline?.job_id ?? selectedPipelineJobId}
+            loading={pipelineAsync.loading}
+            error={pipelineAsync.error}
+            onSelectJob={setSelectedPipelineJobId}
+            onRetry={pipelineAsync.reload}
+          />
+        </aside>
 
-        {/* 右栏 — 简历详情 */}
-        <div className="lg:col-span-2">
-          <Card>
+        {/* 中栏 — 完整简历阅读器 */}
+        <main className="min-w-0">
+          <Card id={RESUME_TOP_ID} className="xl:max-h-[calc(100vh-11rem)] xl:overflow-hidden">
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>简历详情</CardTitle>
+              <div>
+                <CardTitle>完整简历</CardTitle>
+                <p className="mt-1 text-xs text-muted-soft">结构化简历内容，阅读区可独立滚动</p>
+              </div>
               {editingProfile ? (
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -1178,19 +1702,32 @@ export function CandidateProfilePage() {
                     保存修改
                   </Button>
                 </div>
-              ) : canEditProfile ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleStartEditProfile}
-                >
-                  <Edit3 className="h-4 w-4" aria-hidden="true" />
-                  编辑档案
-                </Button>
-              ) : null}
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    loading={exportingCandidate}
+                    onClick={handleExportCandidate}
+                  >
+                    导出简历
+                  </Button>
+                  {canEditProfile && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleStartEditProfile}
+                    >
+                      <Edit3 className="h-4 w-4" aria-hidden="true" />
+                      编辑档案
+                    </Button>
+                  )}
+                </div>
+              )}
             </CardHeader>
-            <CardBody>
+            <CardBody className="xl:max-h-[calc(100vh-15.5rem)] xl:overflow-y-auto">
               {parseFailed && (
                 <div className="mb-4 rounded-md border border-danger-200 bg-danger-50 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1226,29 +1763,35 @@ export function CandidateProfilePage() {
               )}
             </CardBody>
           </Card>
-        </div>
-      </Reveal>
+        </main>
 
-      {/* 招聘进展 */}
-      <div className="mt-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>招聘进展</CardTitle>
-            {canReassign && (
-              <div className="mt-2">
-                <ReassignOwner
-                  candidateId={candidateId}
-                  currentOwnerId={data.owner_hr_id}
-                  onReassigned={reload}
-                />
-              </div>
-            )}
-          </CardHeader>
-          <CardBody>
-            <PipelineProgress candidateId={candidateId} />
-          </CardBody>
-        </Card>
-      </div>
+        {/* 右栏 — 流程动作与判断 */}
+        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+          <CandidatePipelineActionPanel
+            candidateId={candidateId}
+            candidateName={name_masked}
+            pipeline={selectedPipeline}
+            pipelines={pipelines}
+            selectedJobId={selectedPipeline?.job_id ?? selectedPipelineJobId}
+            loading={pipelineAsync.loading}
+            error={pipelineAsync.error}
+            canMove={canMovePipeline}
+            canReassign={canReassign}
+            currentOwnerId={data.owner_hr_id}
+            onSelectJob={setSelectedPipelineJobId}
+            onReload={pipelineAsync.reload}
+            onCandidateReload={reload}
+          />
+          <CandidateJudgementCard
+            resumeJson={resume_json}
+            source={source}
+            tags={tags}
+            coreTags={coreTags}
+            hiddenSkillCount={hiddenSkillCount}
+          />
+          <SourceInfoCard source={source} />
+        </aside>
+      </Reveal>
     </div>
   );
 }

@@ -246,6 +246,21 @@ export const api = {
   getCandidate(candidateId: number): Promise<CandidateDetail> {
     return request(`/resume/${candidateId}`);
   },
+  async exportCandidate(candidateId: number): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    const token = getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${API_BASE}/candidates/${candidateId}/export`, { headers });
+    if (!res.ok) {
+      if (res.status === 401 && unauthorizedHandler) {
+        unauthorizedHandler();
+      }
+      throw new ApiError(res.status, `Request failed with status ${res.status}`);
+    }
+    return res.blob();
+  },
   retryCandidateParse(candidateId: number): Promise<RetryParseResponse> {
     return request(`/resume/${candidateId}/retry-parse`, { method: 'POST' });
   },
