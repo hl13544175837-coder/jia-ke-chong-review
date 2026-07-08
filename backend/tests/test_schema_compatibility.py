@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 from sqlalchemy import inspect
@@ -32,3 +33,51 @@ def test_create_app_backfills_legacy_upload_batch_columns(tmp_path):
 
     expected_columns = {column.name for column in UploadBatch.__table__.columns}
     assert expected_columns.issubset(columns)
+
+
+def test_create_app_backfills_legacy_feedback_org_before_normalizing_tags(tmp_path):
+    db_path = tmp_path / "legacy_feedback.db"
+    connection = sqlite3.connect(db_path)
+    connection.execute(
+        """
+        CREATE TABLE interview_feedback (
+            id INTEGER PRIMARY KEY,
+            candidate_id INTEGER NOT NULL,
+            job_id INTEGER NOT NULL,
+            round VARCHAR(30) NOT NULL,
+            interviewer_id INTEGER NOT NULL,
+            score INTEGER,
+            passed BOOLEAN,
+            strengths TEXT,
+            concerns TEXT,
+            reason_tags JSON,
+            evaluation_json JSON,
+            note TEXT,
+            created_at DATETIME
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO interview_feedback (
+            id, candidate_id, job_id, round, interviewer_id, reason_tags
+        ) VALUES (1, 1, 1, 'interview_first', 1, '["岗位画像变化"]')
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    class LegacyFeedbackConfig(TestingConfig):
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+
+    app = create_app(LegacyFeedbackConfig)
+
+    with app.app_context():
+        columns = {column["name"] for column in inspect(db.engine).get_columns("interview_feedback")}
+        row = db.session.execute(db.text("SELECT org_id, reason_tags FROM interview_feedback WHERE id = 1")).one()
+
+    assert "org_id" in columns
+    assert row.org_id == 1
+    tags = json.loads(row.reason_tags)
+    assert "岗位要求变化" in tags
+    assert "岗位画像变化" not in tags

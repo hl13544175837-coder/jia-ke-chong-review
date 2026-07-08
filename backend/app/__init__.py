@@ -46,10 +46,10 @@ def create_app(config=None):
         db.create_all()
         _ensure_job_metadata_columns()
         _ensure_workflow_enhancement_columns()
-        _normalize_legacy_feedback_reason_tags()
         _ensure_org_and_privacy_columns()
         _ensure_upload_batch_columns()
         _ensure_user_security_columns()
+        _normalize_legacy_feedback_reason_tags()
 
     _register_frontend(app)
 
