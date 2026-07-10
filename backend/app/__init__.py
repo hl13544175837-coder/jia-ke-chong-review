@@ -41,6 +41,7 @@ def create_app(config=None):
     _register_request_audit(app)
     _register_idempotency(app)
     _register_security_headers(app)
+    _register_healthcheck(app)
 
     with app.app_context():
         db.create_all()
@@ -54,6 +55,15 @@ def create_app(config=None):
     _register_frontend(app)
 
     return app
+
+
+def _register_healthcheck(app):
+    @app.get("/api/health")
+    def healthcheck():
+        return jsonify({
+            "status": "ok",
+            "service": "zhipin-server",
+        })
 
 
 def _register_security_headers(app):
