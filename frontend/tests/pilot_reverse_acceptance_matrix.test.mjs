@@ -17,7 +17,7 @@ const pendingFeedbackPanel = readRepo('frontend/src/components/interviewRecords/
 const interviewPage = readRepo('frontend/src/pages/InterviewListPage.tsx');
 const interviewLoop = readRepo('backend/tests/test_interview_loop.py');
 const batchPipeline = readRepo('backend/tests/test_job_match_batch_pipeline.py');
-const biMetrics = readRepo('backend/tests/test_bi_metrics.py');
+const biMetrics = readRepo('backend/tests/test_demand_bi_isolation.py');
 
 [
   '反向路径',
@@ -42,7 +42,7 @@ assert.match(
 
 assert.match(
   workflowGuidance,
-  /暂无可加入候选人[\s\S]*修正阶段[\s\S]*数据质量提醒[\s\S]*面试反馈跟进[\s\S]*部门协同情况/,
+  /暂无可加入候选人[\s\S]*修正阶段[\s\S]*暂无招聘需求[\s\S]*面试反馈跟进[\s\S]*当前协同责任/,
   'Workflow guidance tests should cover empty data, recovery, and BI management interpretation without a separate help entry',
 );
 
@@ -78,6 +78,6 @@ assert.match(
 
 assert.match(
   biMetrics,
-  /data_quality_warnings[\s\S]*interviewer_accountability/,
-  'BI tests should cover data quality warnings and interviewer accountability, not only top-line totals',
+  /transferred[\s\S]*outstanding_feedback[\s\S]*current_responsibility/,
+  'BI tests should cover transferred, pending feedback, and current responsibility by Demand',
 );

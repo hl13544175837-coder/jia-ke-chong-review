@@ -7,10 +7,11 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, error, className, id, ...props },
+  { label, error, className, id, required, ...props },
   ref,
 ) {
   const inputId = id || props.name;
+  const errorId = error && inputId ? `${inputId}-error` : undefined;
   return (
     <div className="w-full">
       {label && (
@@ -19,11 +20,18 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           className="mb-1.5 block text-sm font-medium text-ink"
         >
           {label}
+          {required && (
+            <span className="ml-1 text-danger-600" aria-hidden="true">*</span>
+          )}
         </label>
       )}
       <input
         ref={ref}
         id={inputId}
+        required={required}
+        aria-required={required || undefined}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={errorId}
         className={cn(
           'h-10 w-full rounded-md border border-hairline bg-canvas px-3.5 text-sm text-ink',
           'placeholder:text-muted-soft',
@@ -34,7 +42,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         )}
         {...props}
       />
-      {error && <p className="mt-1 text-xs text-danger-600">{error}</p>}
+      {error && <p id={errorId} className="mt-1 text-xs text-danger-600">{error}</p>}
     </div>
   );
 });

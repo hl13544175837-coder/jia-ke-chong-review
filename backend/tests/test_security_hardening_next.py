@@ -113,17 +113,31 @@ def test_interviewer_cannot_upload_resume(client, make_user):
     assert response.status_code == 403
 
 
-def test_recruiter_cannot_upload_into_another_recruiters_job(client, make_user, app):
+def test_recruiter_cannot_upload_into_another_recruiters_demand(client, make_user, app):
     _, token = make_user("upload-owner@x.com", role="recruiter")
     other_id, _ = make_user("upload-other@x.com", role="recruiter")
     other_job_id, _ = _seed_job_candidate(app, other_id)
+    with app.app_context():
+        from app import db
+        from app.models import RecruitmentDemand
+
+        other_demand = RecruitmentDemand(
+            org_id=1,
+            job_id=other_job_id,
+            owner_hr_id=other_id,
+            request_no=f"REQ-SEC-{other_job_id}",
+            status="active",
+        )
+        db.session.add(other_demand)
+        db.session.commit()
+        other_demand_id = other_demand.id
 
     response = client.post(
         "/api/resume/upload",
         headers=_auth(token),
         data={
             "files": (io.BytesIO(b"%PDF-1.4\n"), "resume.pdf"),
-            "target_job_id": str(other_job_id),
+            "target_demand_id": str(other_demand_id),
         },
         content_type="multipart/form-data",
     )

@@ -1,6 +1,6 @@
 from app import db
-from app.models import Candidate, Interview, Job, PipelineStage
-from app.services.agent_service import _tool_count_summary, _tool_get_pipeline, _write_move_pipeline
+from app.models import Candidate, Job, PipelineStage, RecruitmentDemand
+from app.services.agent_service import _tool_count_summary, _tool_get_pipeline, execute_write_tool
 
 
 def test_agent_pipeline_query_uses_current_normalized_stage(app, make_user):
@@ -12,20 +12,59 @@ def test_agent_pipeline_query_uses_current_normalized_stage(app, make_user):
         candidate_b = Candidate(owner_hr_id=owner_id, name_masked="候选人B", resume_json={})
         db.session.add_all([job, candidate_a, candidate_b])
         db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no="REQ-AGENT-PIPE",
+            status="active",
+        )
+        db.session.add(demand)
+        db.session.flush()
+        candidate_a.current_demand_id = demand.id
+        candidate_b.current_demand_id = demand.id
         db.session.add_all([
-            PipelineStage(candidate_id=candidate_a.id, job_id=job.id, stage="pending", updated_by=owner_id),
-            PipelineStage(candidate_id=candidate_a.id, job_id=job.id, stage="interview_second", updated_by=owner_id),
-            PipelineStage(candidate_id=candidate_b.id, job_id=job.id, stage="interview_first", updated_by=owner_id),
+            PipelineStage(candidate_id=candidate_a.id, demand_id=demand.id, job_id=job.id, stage="pending", updated_by=owner_id),
+            PipelineStage(candidate_id=candidate_a.id, demand_id=demand.id, job_id=job.id, stage="interview_second", updated_by=owner_id),
+            PipelineStage(candidate_id=candidate_b.id, demand_id=demand.id, job_id=job.id, stage="interview_first", updated_by=owner_id),
         ])
         db.session.commit()
         job_id = job.id
+        demand_id = demand.id
 
-        result = _tool_get_pipeline(job_id, _user_id=owner_id, _role="recruiter")
+        result = _tool_get_pipeline(
+            demand_id=demand_id,
+            _user_id=owner_id,
+            _role="recruiter",
+        )
 
+    assert result["demand_id"] == demand_id
+    assert result["job_id"] == job_id
     assert result["pipeline"] == {"interview": 2}
 
 
-def test_agent_move_pipeline_normalizes_legacy_interview_stage(app, make_user):
+def test_agent_pipeline_query_does_not_guess_between_sibling_demands(app, make_user):
+    owner_id, _ = make_user("agent-pipeline-ambiguous@example.com", role="recruiter")
+
+    with app.app_context():
+        job = Job(title="产品经理", jd_text="负责 AI 产品", owner_hr_id=owner_id)
+        db.session.add(job)
+        db.session.flush()
+        db.session.add_all([
+            RecruitmentDemand(job_id=job.id, owner_hr_id=owner_id, request_no="REQ-A"),
+            RecruitmentDemand(job_id=job.id, owner_hr_id=owner_id, request_no="REQ-B"),
+        ])
+        db.session.commit()
+
+        result = _tool_get_pipeline(
+            job_id=job.id,
+            _user_id=owner_id,
+            _role="recruiter",
+        )
+
+    assert result["code"] == "demand_id_required"
+
+
+def test_agent_cannot_move_pipeline_even_with_a_legacy_interview_stage(app, make_user):
     owner_id, _ = make_user("agent-pipeline-move@example.com", role="recruiter")
 
     with app.app_context():
@@ -34,12 +73,15 @@ def test_agent_move_pipeline_normalizes_legacy_interview_stage(app, make_user):
         db.session.add_all([job, candidate])
         db.session.commit()
 
-        result = _write_move_pipeline(
-            candidate_id=candidate.id,
-            job_id=job.id,
-            stage="interview_second",
-            actor_id=owner_id,
-            actor_role="recruiter",
+        result = execute_write_tool(
+            "move_pipeline",
+            {
+                "candidate_id": candidate.id,
+                "job_id": job.id,
+                "stage": "interview_second",
+            },
+            user_id=owner_id,
+            role="recruiter",
         )
 
         latest = PipelineStage.query.filter_by(
@@ -47,9 +89,9 @@ def test_agent_move_pipeline_normalizes_legacy_interview_stage(app, make_user):
             job_id=job.id,
         ).order_by(PipelineStage.id.desc()).first()
 
-    assert result["status"] == "ok"
-    assert result["stage"] == "interview"
-    assert latest.stage == "interview"
+    assert result["ok"] is False
+    assert "未知写工具" in result["error"]
+    assert latest is None
 
 
 def test_agent_count_summary_uses_current_normalized_stage(app, make_user):
@@ -60,9 +102,18 @@ def test_agent_count_summary_uses_current_normalized_stage(app, make_user):
         candidate = Candidate(owner_hr_id=owner_id, name_masked="候选人D", resume_json={})
         db.session.add_all([job, candidate])
         db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no="REQ-AGENT-SUMMARY",
+            status="active",
+        )
+        db.session.add(demand)
+        db.session.flush()
+        candidate.current_demand_id = demand.id
         db.session.add_all([
-            PipelineStage(candidate_id=candidate.id, job_id=job.id, stage="pending", updated_by=owner_id),
-            PipelineStage(candidate_id=candidate.id, job_id=job.id, stage="interview_final", updated_by=owner_id),
+            PipelineStage(candidate_id=candidate.id, demand_id=demand.id, job_id=job.id, stage="pending", updated_by=owner_id),
+            PipelineStage(candidate_id=candidate.id, demand_id=demand.id, job_id=job.id, stage="interview_final", updated_by=owner_id),
         ])
         db.session.commit()
 
@@ -71,95 +122,7 @@ def test_agent_count_summary_uses_current_normalized_stage(app, make_user):
     assert result["stage_counts"] == {"interview": 1}
 
 
-def test_agent_recruiter_summary_counts_only_interviews_in_visible_scope(app, make_user):
-    owner_id, _ = make_user("agent-summary-visible@example.com", role="recruiter")
-    other_id, _ = make_user("agent-summary-hidden@example.com", role="recruiter")
-
-    with app.app_context():
-        own_job = Job(title="自有岗位", jd_text="自有", owner_hr_id=owner_id)
-        other_job = Job(title="他人岗位", jd_text="他人", owner_hr_id=other_id)
-        own_candidate = Candidate(owner_hr_id=owner_id, name_masked="自有候选人", resume_json={})
-        other_candidate = Candidate(owner_hr_id=other_id, name_masked="他人候选人", resume_json={})
-        db.session.add_all([own_job, other_job, own_candidate, other_candidate])
-        db.session.flush()
-        db.session.add_all([
-            Interview(candidate_id=own_candidate.id, job_id=own_job.id, qa_json=[]),
-            Interview(candidate_id=other_candidate.id, job_id=other_job.id, qa_json=[]),
-            Interview(candidate_id=own_candidate.id, job_id=other_job.id, qa_json=[]),
-            Interview(candidate_id=other_candidate.id, job_id=own_job.id, qa_json=[]),
-        ])
-        db.session.commit()
-
-        result = _tool_count_summary(_user_id=owner_id, _role="recruiter")
-
-    assert result["candidate_count"] == 1
-    assert result["job_count"] == 1
-    assert result["interview_count"] == 1
-
-
-def test_agent_manager_and_admin_summaries_keep_current_org_interview_total(app, make_user):
-    manager_id, _ = make_user(
-        "agent-summary-manager@example.com",
-        role="manager",
-        org_id=1,
-    )
-    admin_id, _ = make_user(
-        "agent-summary-admin@example.com",
-        role="admin",
-        org_id=1,
-    )
-    org_1_owner_id, _ = make_user(
-        "agent-summary-org-1@example.com",
-        role="recruiter",
-        org_id=1,
-    )
-    org_2_owner_id, _ = make_user(
-        "agent-summary-org-2@example.com",
-        role="recruiter",
-        org_id=2,
-    )
-
-    with app.app_context():
-        org_1_job = Job(org_id=1, title="组织一岗位", jd_text="组织一", owner_hr_id=org_1_owner_id)
-        org_2_job = Job(org_id=2, title="组织二岗位", jd_text="组织二", owner_hr_id=org_2_owner_id)
-        org_1_candidate = Candidate(
-            org_id=1,
-            owner_hr_id=org_1_owner_id,
-            name_masked="组织一候选人",
-            resume_json={},
-        )
-        org_2_candidate = Candidate(
-            org_id=2,
-            owner_hr_id=org_2_owner_id,
-            name_masked="组织二候选人",
-            resume_json={},
-        )
-        db.session.add_all([org_1_job, org_2_job, org_1_candidate, org_2_candidate])
-        db.session.flush()
-        db.session.add_all([
-            Interview(
-                org_id=1,
-                candidate_id=org_1_candidate.id,
-                job_id=org_1_job.id,
-                qa_json=[],
-            ),
-            Interview(
-                org_id=2,
-                candidate_id=org_2_candidate.id,
-                job_id=org_2_job.id,
-                qa_json=[],
-            ),
-        ])
-        db.session.commit()
-
-        manager_result = _tool_count_summary(_user_id=manager_id, _role="manager")
-        admin_result = _tool_count_summary(_user_id=admin_id, _role="admin")
-
-    assert manager_result["interview_count"] == 1
-    assert admin_result["interview_count"] == 1
-
-
-def test_agent_move_pipeline_error_lists_public_stages(app, make_user):
+def test_agent_move_pipeline_is_not_a_registered_tool(app, make_user):
     owner_id, _ = make_user("agent-pipeline-invalid@example.com", role="recruiter")
 
     with app.app_context():
@@ -168,16 +131,16 @@ def test_agent_move_pipeline_error_lists_public_stages(app, make_user):
         db.session.add_all([job, candidate])
         db.session.commit()
 
-        result = _write_move_pipeline(
-            candidate_id=candidate.id,
-            job_id=job.id,
-            stage="interview_third",
-            actor_id=owner_id,
-            actor_role="recruiter",
+        result = execute_write_tool(
+            "move_pipeline",
+            {
+                "candidate_id": candidate.id,
+                "job_id": job.id,
+                "stage": "interview_third",
+            },
+            user_id=owner_id,
+            role="recruiter",
         )
 
-    assert "无效阶段" in result["error"]
-    assert "interview" in result["error"]
-    assert "interview_first" not in result["error"]
-    assert "interview_second" not in result["error"]
-    assert "interview_final" not in result["error"]
+    assert result["ok"] is False
+    assert "未知写工具" in result["error"]

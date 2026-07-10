@@ -76,6 +76,15 @@ export const STAGES: StageConfig[] = [
     badgeBg: 'bg-danger-100 text-danger-700',
     dot: 'bg-danger-500',
   },
+  {
+    key: 'transferred',
+    label: '已转出',
+    bg: 'bg-surface-soft',
+    border: 'border-hairline',
+    text: 'text-muted',
+    badgeBg: 'bg-surface-strong text-muted',
+    dot: 'bg-muted',
+  },
 ];
 
 export const STAGE_BY_KEY: Record<PipelineStage, StageConfig> = STAGES.reduce(

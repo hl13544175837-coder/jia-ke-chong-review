@@ -41,7 +41,7 @@ interface RoleInfo {
 const ROLE_INFO: Record<Role, RoleInfo> = {
   recruiter: {
     label: '招聘专员',
-    duty: '管理候选人简历、创建岗位，运行智能匹配与预筛参考',
+    duty: '管理招聘需求与候选人，跟进筛选、面试和 Offer',
     icon: UserCog,
     accent: 'bg-blue-50 text-accent-blue',
     gradient: 'linear-gradient(135deg, #007AFF, #5856D6)',
@@ -49,19 +49,19 @@ const ROLE_INFO: Record<Role, RoleInfo> = {
   },
   manager: {
     label: '经理',
-    duty: '洞察团队招聘漏斗与专员效能，把控招聘全局',
+    duty: '关注团队招聘进度与卡点，协调责任人完成需求',
     icon: LineChart,
     accent: 'bg-purple-50 text-accent-purple',
     gradient: 'linear-gradient(135deg, #AF52DE, #5856D6)',
-    action: { to: '/bi', label: '查看数据看板' },
+    action: { to: '/bi', label: '查看进度与卡点' },
   },
   admin: {
     label: '管理员',
-    duty: '系统全量管理与团队效能监控，统筹整体运转',
+    duty: '保障账号、权限与招聘流程稳定运行',
     icon: ShieldCheck,
     accent: 'bg-brand-50 text-ink',
     gradient: 'linear-gradient(135deg, #111111, #374151)',
-    action: { to: '/bi', label: '查看数据看板' },
+    action: { to: '/bi', label: '查看进度与卡点' },
   },
   interviewer: {
     label: '面试官',
@@ -92,9 +92,9 @@ const WORKFLOW_ACTIONS: WorkflowAction[] = [
     roles: ['recruiter', 'manager', 'admin'],
   },
   {
-    to: '/jobs',
-    label: '匹配候选人',
-    desc: '先选岗位，再运行候选人匹配并加入流程',
+    to: '/demands',
+    label: '管理招聘需求',
+    desc: '按需求跟进 HC、进度、卡点和负责人',
     icon: Briefcase,
     roles: ['recruiter', 'manager', 'admin'],
   },
@@ -114,8 +114,8 @@ const WORKFLOW_ACTIONS: WorkflowAction[] = [
   },
   {
     to: '/bi',
-    label: '查看团队看板',
-    desc: '看漏斗、转化率和专员效能',
+    label: '查看进度看板',
+    desc: '查看需求进度、卡点和责任协同',
     icon: BarChart3,
     roles: ['manager', 'admin'],
   },
@@ -136,7 +136,7 @@ const WORKFLOW_ACTIONS: WorkflowAction[] = [
 ];
 
 const ACTION_ORDER_BY_ROLE: Record<Role, string[]> = {
-  recruiter: ['/upload', '/jobs', '/pipeline'],
+  recruiter: ['/upload', '/demands', '/pipeline'],
   manager: ['/bi', '/pipeline', '/agent'],
   admin: ['/bi', '/admin/settings', '/agent'],
   interviewer: ['/interviews'],
@@ -379,8 +379,8 @@ function RecruiterPerformancePanel({ performance }: { performance: BiStaffMember
     <section>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="font-display text-lg text-ink">近 30 天当前负责盘子</h2>
-          <p className="mt-1 text-sm text-muted">按查询时的当前负责人归属统计，不代表事件发生时点的历史绩效</p>
+          <h2 className="font-display text-lg text-ink">我的招聘进度</h2>
+          <p className="mt-1 text-sm text-muted">仅用于进度协同，不作为正式绩效依据</p>
         </div>
         <Badge tone="neutral">近 30 天</Badge>
       </div>

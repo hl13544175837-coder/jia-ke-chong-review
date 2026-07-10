@@ -4,6 +4,12 @@ from flask import Blueprint, request, jsonify, g
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from ..services.match_service import MatchService
+from ..services.demand_context_service import (
+    DemandContextError,
+    can_manage_demand,
+    resolve_demand_context,
+)
+from ..services.pipeline_service import PipelineServiceError, move_candidate
 from .. import db
 from ..models import Candidate, Job
 from .access import (
@@ -336,11 +342,17 @@ def batch_add_to_pipeline(job_id):
     if not isinstance(raw_ids, list) or len(raw_ids) == 0:
         return jsonify({"error": "candidate_ids required"}), 400
 
-    job = db.get_or_404(Job, job_id)
-    if not can_manage_job(g.user_id, g.role, job):
+    try:
+        demand = resolve_demand_context(
+            org_id=g.org_id,
+            demand_id=data.get("demand_id"),
+            job_id=job_id,
+            open_only=True,
+        )
+    except DemandContextError as error:
+        return jsonify(error.as_payload()), error.status_code
+    if not can_manage_demand(g.user_id, g.role, g.org_id, demand):
         return jsonify({"error": "Forbidden"}), 403
-    if not job_is_active(job):
-        return jsonify({"error": "岗位已关闭，请先恢复在招后再加入流程"}), 400
 
     candidate_ids = []
     seen = set()
@@ -361,7 +373,10 @@ def batch_add_to_pipeline(job_id):
     existing_ids = {
         row[0]
         for row in db.session.query(PipelineStage.candidate_id)
-        .filter(PipelineStage.job_id == job.id, PipelineStage.candidate_id.in_(candidate_ids))
+        .filter(
+            PipelineStage.demand_id == demand.id,
+            PipelineStage.candidate_id.in_(candidate_ids),
+        )
         .distinct()
         .all()
     }
@@ -376,6 +391,8 @@ def batch_add_to_pipeline(job_id):
     added = 0
     skipped_existing = 0
     skipped_missing = 0
+    skipped_conflict = 0
+    failures = []
     for candidate_id in candidate_ids:
         if candidate_id not in visible_ids:
             skipped_missing += 1
@@ -383,30 +400,44 @@ def batch_add_to_pipeline(job_id):
         if candidate_id in existing_ids:
             skipped_existing += 1
             continue
-        db.session.add(PipelineStage(
-            org_id=g.org_id,
-            candidate_id=candidate_id,
-            job_id=job.id,
-            stage="pending",
-            updated_by=g.user_id,
-            note="批量加入匹配流程",
-        ))
-        added += 1
+        try:
+            move_candidate(
+                candidate_id=candidate_id,
+                demand_id=demand.id,
+                org_id=g.org_id,
+                actor_id=g.user_id,
+                stage="pending",
+                note="批量加入招聘需求",
+            )
+            added += 1
+        except PipelineServiceError as error:
+            skipped_conflict += 1
+            failures.append({
+                "candidate_id": candidate_id,
+                "code": error.code,
+                "error": error.message,
+            })
 
-    db.session.commit()
     record_event(
         "pipeline.batch_add",
-        entity_id=job.id,
-        entity_type="job",
+        entity_id=demand.id,
+        entity_type="recruitment_demand",
+        demand_id=demand.id,
         payload={
+            "demand_id": demand.id,
+            "job_id": demand.job_id,
             "added": added,
             "skipped_existing": skipped_existing,
             "skipped_missing": skipped_missing,
+            "skipped_conflict": skipped_conflict,
         },
     )
     return jsonify({
-        "job_id": job.id,
+        "demand_id": demand.id,
+        "job_id": demand.job_id,
         "added": added,
         "skipped_existing": skipped_existing,
         "skipped_missing": skipped_missing,
+        "skipped_conflict": skipped_conflict,
+        "failures": failures,
     })

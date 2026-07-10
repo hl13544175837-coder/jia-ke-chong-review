@@ -20,6 +20,12 @@ from ..time_utils import utc_now
 from sqlalchemy import func
 from sqlalchemy.orm import aliased
 from .access import can_read_job, same_org
+from ..services.bi_service import build_demand_operational_metrics
+from ..services.demand_context_service import (
+    DemandContextError,
+    can_read_demand,
+    resolve_demand_context,
+)
 
 bp = Blueprint("bi", __name__)
 
@@ -1106,11 +1112,37 @@ def staff_detail(hr_id):
 @bp.get("/bi/job/<int:job_id>")
 @require_auth
 def job_funnel(job_id):
-    """单岗位招聘漏斗：主管/管理员可看全部；招聘专员只看自己负责范围。"""
+    """Legacy Job BI only proxies when the Job resolves to one Demand."""
     from ..models import Job
     job = db.get_or_404(Job, job_id)
     if not same_org(job, g.org_id):
         return jsonify({"error": "岗位不存在"}), 404
+
+    try:
+        demand = resolve_demand_context(org_id=g.org_id, job_id=job_id)
+    except DemandContextError as error:
+        if error.code != "demand_not_found":
+            return jsonify(error.as_payload()), error.status_code
+        # Historical data may have no Demand yet. Preserve the old read-only
+        # response, explicitly marking it as a legacy Job aggregate.
+        demand = None
+
+    if demand is not None:
+        if not can_read_demand(g.user_id, g.role, g.org_id, demand):
+            return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+        payload = build_demand_operational_metrics(demand)
+        payload.update(
+            {
+                "job_id": job_id,
+                "job_title": job.title,
+                "compatibility": {
+                    "mode": "single_demand",
+                    "aggregate": False,
+                },
+            }
+        )
+        return jsonify(payload)
+
     scope = _job_bi_scope(job)
     if scope is None:
         return jsonify({"error": "Forbidden"}), 403
@@ -1122,4 +1154,22 @@ def job_funnel(job_id):
         "job_title": job.title,
         "scope": scope,
         "funnel": funnel,
+        "compatibility": {
+            "mode": "legacy_job_without_demand",
+            "aggregate": True,
+        },
     })
+
+
+@bp.get("/bi/demand/<int:demand_id>")
+@require_auth
+def demand_operational_metrics(demand_id):
+    demand = RecruitmentDemand.query.filter_by(
+        id=demand_id,
+        org_id=g.org_id,
+    ).first()
+    if demand is None:
+        return jsonify({"error": "需求不存在", "code": "demand_not_found"}), 404
+    if not can_read_demand(g.user_id, g.role, g.org_id, demand):
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    return jsonify(build_demand_operational_metrics(demand))

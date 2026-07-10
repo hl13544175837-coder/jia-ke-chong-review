@@ -14,7 +14,7 @@ export function isInterviewStage(stage: PipelineStage): boolean {
 }
 
 export function isTerminalStage(stage: PipelineStage): boolean {
-  return stage === 'onboarded' || stage === 'rejected';
+  return stage === 'onboarded' || stage === 'rejected' || stage === 'transferred';
 }
 
 export function stageAgeDays(updatedAt?: string | null): number | null {

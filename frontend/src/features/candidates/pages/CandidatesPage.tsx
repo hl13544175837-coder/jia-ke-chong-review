@@ -1,6 +1,6 @@
 // 简历库页面 — 展示上传后由 AI 解析出的候选人简历摘要、技能标签与筛选结果。
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { RotateCcw, Target, Upload, UserPlus, Users } from 'lucide-react';
 import { candidatesApi as api } from '../api';
@@ -62,24 +62,6 @@ const PARSE_STATUS_LABELS: Record<ParseStatus, string> = {
 
 function candidateTags(candidate: CandidateListItem): CandidateTag[] {
   return Array.isArray(candidate.top_tags) ? candidate.top_tags : [];
-}
-
-function searchableText(candidate: CandidateListItem): string {
-  const exp = candidate.latest_experience;
-  return [
-    candidate.name_masked,
-    candidate.email_masked,
-    candidate.phone_masked,
-    candidate.intent_city,
-    candidate.education_summary,
-    exp?.company,
-    exp?.position,
-    exp?.duration,
-    ...candidateTags(candidate).map((t) => t.tag),
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
 }
 
 function scoreTone(score: number) {
@@ -262,22 +244,22 @@ function SourceSummary({ candidate }: { candidate: CandidateListItem }) {
 
 interface CandidateRowProps {
   candidate: CandidateListItem;
-  targetJobId: string;
+  targetDemandId: string;
   jobFit: MatchResultItem | null;
   jobFitLoading: boolean;
   jobFitError: boolean;
   addingCandidateId: number | null;
-  onAddToJob: (candidateId: number) => void;
+  onAddToDemand: (candidateId: number) => void;
 }
 
 function CandidateRow({
   candidate,
-  targetJobId,
+  targetDemandId,
   jobFit,
   jobFitLoading,
   jobFitError,
   addingCandidateId,
-  onAddToJob,
+  onAddToDemand,
 }: CandidateRowProps) {
   const isAdding = addingCandidateId === candidate.id;
   return (
@@ -303,7 +285,7 @@ function CandidateRow({
         <JobFitSummary
           candidate={candidate}
           jobFit={jobFit}
-          hasTargetJob={Boolean(targetJobId)}
+          hasTargetJob={Boolean(targetDemandId)}
           loading={jobFitLoading}
           error={jobFitError}
         />
@@ -328,11 +310,11 @@ function CandidateRow({
             variant="secondary"
             size="sm"
             loading={isAdding}
-            disabled={!targetJobId || isAdding}
-            onClick={() => onAddToJob(candidate.id)}
+            disabled={!targetDemandId || isAdding}
+            onClick={() => onAddToDemand(candidate.id)}
           >
             <UserPlus className="h-4 w-4" />
-            加入所选岗位流程
+            加入所选需求
           </Button>
         </div>
       </td>
@@ -342,19 +324,25 @@ function CandidateRow({
 
 export function CandidatesPage() {
   const [query, setQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [libraryTotal, setLibraryTotal] = useState<number | null>(null);
+  const composingRef = useRef(false);
   const [cityFilter, setCityFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState('all');
   const [sourceChannelFilter, setSourceChannelFilter] = useState('all');
   const [parseStatusFilter, setParseStatusFilter] = useState<'all' | ParseStatus>('all');
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState<'all' | 'in_pipeline' | 'not_in_pipeline'>('all');
   const [scoreFilter, setScoreFilter] = useState('0');
-  const [targetJobId, setTargetJobId] = useState('');
+  const [targetDemandId, setTargetDemandId] = useState('');
   const [addingCandidateId, setAddingCandidateId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const debouncedQuery = useDebounce(query, 300);
-  const jobsAsync = useAsync(() => api.listJobs(), []);
+  const debouncedQuery = useDebounce(searchQuery, 300);
+  const demandsAsync = useAsync(
+    () => api.listDemands({ status: 'all', page: 1, page_size: 100 }),
+    [],
+  );
 
   const { data, loading, error, reload } = useAsync(
     () => api.searchCandidates({
@@ -376,12 +364,28 @@ export function CandidatesPage() {
   }, [debouncedQuery, cityFilter, sourceChannelFilter, parseStatusFilter, pipelineStatusFilter]);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
-  const totalCandidates = data?.total ?? candidates.length;
-  const selectedJobId = targetJobId ? Number(targetJobId) : 0;
-  const selectedJob = useMemo(
-    () => (jobsAsync.data ?? []).find((job) => String(job.id) === targetJobId) ?? null,
-    [jobsAsync.data, targetJobId],
+  const resultTotal = data?.total ?? candidates.length;
+  const hasServerFilters =
+    debouncedQuery.trim() !== '' ||
+    cityFilter !== 'all' ||
+    sourceChannelFilter !== 'all' ||
+    parseStatusFilter !== 'all' ||
+    pipelineStatusFilter !== 'all';
+
+  useEffect(() => {
+    if (data && !hasServerFilters) {
+      setLibraryTotal(data.total);
+    }
+  }, [data, hasServerFilters]);
+
+  const totalCandidates = libraryTotal ?? resultTotal;
+  const selectedDemand = useMemo(
+    () => (demandsAsync.data?.items ?? []).find(
+      (demand) => String(demand.id) === targetDemandId,
+    ) ?? null,
+    [demandsAsync.data, targetDemandId],
   );
+  const selectedJobId = selectedDemand?.job_id ?? 0;
   const candidateIds = useMemo(() => candidates.map((candidate) => candidate.id), [candidates]);
   const candidateIdKey = candidateIds.join(',');
   const matchPreviewAsync = useAsync(
@@ -431,16 +435,14 @@ export function CandidatesPage() {
   }, [candidates, sourceChannelFilter]);
 
   const filteredCandidates = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
     const minScore = Number(scoreFilter);
     return candidates
       .filter((candidate) => {
-        const matchesQuery = !normalizedQuery || searchableText(candidate).includes(normalizedQuery);
         const matchesCity = cityFilter === 'all' || candidate.intent_city === cityFilter;
         const matchesTag =
           tagFilter === 'all' || candidateTags(candidate).some((skill) => skill.tag === tagFilter);
         const matchesScore = (candidate.max_score ?? 0) >= minScore;
-        return matchesQuery && matchesCity && matchesTag && matchesScore;
+        return matchesCity && matchesTag && matchesScore;
       })
       .sort((a, b) => {
         if (selectedJobId) {
@@ -451,12 +453,12 @@ export function CandidatesPage() {
         if (scoreDiff !== 0) return scoreDiff;
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
-  }, [candidates, cityFilter, matchByCandidateId, query, scoreFilter, selectedJobId, tagFilter]);
+  }, [candidates, cityFilter, matchByCandidateId, scoreFilter, selectedJobId, tagFilter]);
 
   const uniqueTagCount = tagOptions.length;
   const highScoreCount = candidates.filter((c) => (c.max_score ?? 0) >= 4).length;
   const hasActiveFilters =
-    query.trim() !== '' ||
+    searchQuery.trim() !== '' ||
     cityFilter !== 'all' ||
     tagFilter !== 'all' ||
     sourceChannelFilter !== 'all' ||
@@ -465,7 +467,9 @@ export function CandidatesPage() {
     scoreFilter !== '0';
 
   function resetFilters() {
+    composingRef.current = false;
     setQuery('');
+    setSearchQuery('');
     setCityFilter('all');
     setTagFilter('all');
     setSourceChannelFilter('all');
@@ -477,10 +481,10 @@ export function CandidatesPage() {
     setPage(1);
   }
 
-  async function handleAddToJob(candidateId: number) {
-    const jobId = Number(targetJobId);
-    if (!targetJobId || Number.isNaN(jobId)) {
-      setActionError('请先选择要加入的岗位');
+  async function handleAddToDemand(candidateId: number) {
+    const demandId = Number(targetDemandId);
+    if (!selectedJobId || !targetDemandId || Number.isNaN(demandId)) {
+      setActionError('请先选择要加入的招聘需求');
       setActionMessage(null);
       return;
     }
@@ -489,23 +493,23 @@ export function CandidatesPage() {
     setActionError(null);
     setActionMessage(null);
     try {
-      const result = await api.batchAddToPipeline(jobId, [candidateId]);
+      const result = await api.batchAddToPipeline(selectedJobId, [candidateId], demandId);
       if (result.added > 0) {
-        setActionMessage('已加入岗位流程，当前阶段为待筛选');
+        setActionMessage('已加入该招聘需求，当前阶段为待筛选');
         reload();
       } else if (result.skipped_existing > 0) {
-        setActionMessage('这位候选人已经在该岗位流程中');
+        setActionMessage('这位候选人已经在该招聘需求中');
       } else {
-        setActionMessage('未加入岗位流程，请刷新后重试');
+        setActionMessage('未加入招聘需求，请根据提示处理后重试');
       }
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : '加入岗位失败');
+      setActionError(err instanceof Error ? err.message : '加入招聘需求失败');
     } finally {
       setAddingCandidateId(null);
     }
   }
 
-  if (loading) {
+  if (loading && data === null) {
     return (
       <div className="flex items-center justify-center py-32">
         <Spinner size="lg" />
@@ -513,7 +517,7 @@ export function CandidatesPage() {
     );
   }
 
-  if (error) {
+  if (error && data === null) {
     return (
       <div>
         <h1 className="mb-1 text-2xl font-display text-ink">简历库</h1>
@@ -531,8 +535,8 @@ export function CandidatesPage() {
         description={
           <>
             已收录 <AnimatedNumber value={totalCandidates} /> 份简历
-            {selectedJob ? (
-              <> · 正在按「{selectedJob.title}」查看岗位适配</>
+            {selectedDemand ? (
+              <> · 正在按「{selectedDemand.job_title} · {selectedDemand.job_department} · {selectedDemand.job_city}」查看适配</>
             ) : (
               <>
                 {' '}· 当前页核心技能 <AnimatedNumber value={uniqueTagCount} /> 类
@@ -545,18 +549,18 @@ export function CandidatesPage() {
             <EnterpriseMetric label="简历总量" value={<AnimatedNumber value={totalCandidates} />} tone="success" />
             <EnterpriseMetric label="高匹配候选人" value={<AnimatedNumber value={highScoreCount} />} />
             <EnterpriseMetric
-              label={selectedJob ? '当前页匹配结果' : '可筛选技能'}
-              value={<AnimatedNumber value={selectedJob ? matchByCandidateId.size : uniqueTagCount} />}
+              label={selectedDemand ? '当前页匹配结果' : '可筛选技能'}
+              value={<AnimatedNumber value={selectedDemand ? matchByCandidateId.size : uniqueTagCount} />}
             />
             <EnterpriseMetric label="当前显示" value={filteredCandidates.length} />
           </>
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Link to="/jobs">
+            <Link to="/demands">
               <Button variant="secondary">
                 <Target className="h-4 w-4" />
-                岗位匹配
+                选择招聘需求
               </Button>
             </Link>
             <Link to="/upload">
@@ -592,7 +596,22 @@ export function CandidatesPage() {
                 <Input
                   label="搜索简历"
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) => {
+                    const nextQuery = event.target.value;
+                    setQuery(nextQuery);
+                    if (!composingRef.current) {
+                      setSearchQuery(nextQuery);
+                    }
+                  }}
+                  onCompositionStart={() => {
+                    composingRef.current = true;
+                  }}
+                  onCompositionEnd={(event) => {
+                    composingRef.current = false;
+                    const nextQuery = event.currentTarget.value;
+                    setQuery(nextQuery);
+                    setSearchQuery(nextQuery);
+                  }}
                   placeholder="姓名、邮箱、公司、岗位、学校或技能"
                 />
                 <Select
@@ -673,35 +692,37 @@ export function CandidatesPage() {
               <div className="mt-4 border-t border-hairline-soft pt-4">
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.6fr)]">
                   <Select
-                    label="目标岗位"
-                    value={targetJobId}
+                    label="目标招聘需求"
+                    value={targetDemandId}
                     onChange={(event) => {
-                      setTargetJobId(event.target.value);
+                      setTargetDemandId(event.target.value);
                       setActionError(null);
                       setActionMessage(null);
                     }}
                   >
-                    <option value="">不限制岗位</option>
-                    {(jobsAsync.data ?? []).map((job) => (
-                      <option key={job.id} value={job.id}>
-                        {[job.job_code, job.title, job.city, job.department].filter(Boolean).join(' · ')}
+                    <option value="">先不加入需求</option>
+                    {(demandsAsync.data?.items ?? [])
+                      .filter((demand) => ['pending', 'active'].includes(demand.status))
+                      .map((demand) => (
+                      <option key={demand.id} value={demand.id}>
+                        {[demand.request_no, demand.job_title, demand.job_department, demand.job_city].filter(Boolean).join(' · ')}
                       </option>
                     ))}
                   </Select>
                   <div className="flex items-end">
                     <div className="w-full rounded-md border border-hairline bg-surface-soft px-3 py-2 text-xs text-muted">
-                      {jobsAsync.loading ? (
-                        <span>正在加载岗位…</span>
-                      ) : jobsAsync.error ? (
-                        <span className="text-danger-600">{jobsAsync.error.message}</span>
-                      ) : targetJobId && matchPreviewAsync.loading ? (
+                      {demandsAsync.loading ? (
+                        <span>正在加载招聘需求…</span>
+                      ) : demandsAsync.error ? (
+                        <span className="text-danger-600">{demandsAsync.error.message}</span>
+                      ) : targetDemandId && matchPreviewAsync.loading ? (
                         <span>正在计算当前页候选人与该岗位的命中、欠缺和建议。</span>
-                      ) : targetJobId && matchPreviewAsync.error ? (
-                        <span className="text-danger-600">岗位匹配预览失败，仍可查看核心技能并加入流程。</span>
-                      ) : targetJobId ? (
-                        <span>列表已切换为岗位匹配摘要；点击“加入所选岗位流程”才会推进候选人。</span>
+                      ) : targetDemandId && matchPreviewAsync.error ? (
+                        <span className="text-danger-600">职位匹配预览失败，请重试后再决定是否加入需求。</span>
+                      ) : targetDemandId ? (
+                        <span>列表已切换为职位匹配摘要；点击“加入所选需求”才会写入流程。</span>
                       ) : (
-                        <span>先扫简历库；选择岗位后，再看每位候选人的命中、欠缺和推进建议。</span>
+                        <span>先扫简历库；选择具体招聘需求后，再看匹配并决定是否加入。</span>
                       )}
                     </div>
                   </div>
@@ -714,8 +735,12 @@ export function CandidatesPage() {
           <EnterpriseTableCard
             title="候选人列表"
             summary={
-              <span>
-                当前显示 {filteredCandidates.length} / {totalCandidates} 份
+              <span aria-live="polite">
+                {loading
+                  ? '正在搜索，当前列表保持可见…'
+                  : error
+                    ? '搜索失败，当前仍显示上一次结果'
+                    : `当前显示 ${filteredCandidates.length} / ${resultTotal} 份`}
               </span>
             }
             footer={
@@ -741,7 +766,7 @@ export function CandidatesPage() {
 	                    <tr>
 	                      <th className="px-5 py-3">候选人</th>
 	                      <th className="px-5 py-3">简历摘要</th>
-	                      <th className="px-5 py-3">{targetJobId ? '岗位匹配摘要' : '核心技能'}</th>
+	                      <th className="px-5 py-3">{targetDemandId ? '职位匹配摘要' : '核心技能'}</th>
 	                      <th className="px-5 py-3">来源信息</th>
 	                      <th className="px-5 py-3">最高分</th>
 	                      <th className="px-5 py-3">入库时间</th>
@@ -753,12 +778,12 @@ export function CandidatesPage() {
 	                      <CandidateRow
 	                        key={candidate.id}
 	                        candidate={candidate}
-	                        targetJobId={targetJobId}
+	                        targetDemandId={targetDemandId}
 	                        jobFit={matchByCandidateId.get(candidate.id) ?? null}
-	                        jobFitLoading={Boolean(targetJobId && matchPreviewAsync.loading)}
-	                        jobFitError={Boolean(targetJobId && matchPreviewAsync.error)}
+	                        jobFitLoading={Boolean(targetDemandId && matchPreviewAsync.loading)}
+	                        jobFitError={Boolean(targetDemandId && matchPreviewAsync.error)}
 	                        addingCandidateId={addingCandidateId}
-	                        onAddToJob={handleAddToJob}
+	                        onAddToDemand={handleAddToDemand}
 	                      />
 	                    ))}
                   </Reveal>

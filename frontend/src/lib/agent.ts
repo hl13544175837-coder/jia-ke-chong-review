@@ -61,7 +61,7 @@ export interface ToolMeta {
   icon: LucideIcon;
 }
 
-// Static Chinese labels + icons for the 7 known tools. Unknown tools fall back
+// Static Chinese labels + icons for the known tools. Unknown tools fall back
 // to a generic wrench + the raw name so the UI never breaks on new tools.
 const TOOL_META: Record<string, ToolMeta> = {
   list_candidates: { label: '候选人列表', icon: Users },
@@ -71,10 +71,7 @@ const TOOL_META: Record<string, ToolMeta> = {
   get_pipeline: { label: '候选人流程', icon: KanbanSquare },
   get_bi_overview: { label: '团队报表', icon: BarChart3 },
   count_summary: { label: '系统概览', icon: Gauge },
-  // 写操作工具
-  create_job: { label: '创建岗位', icon: Briefcase },
-  move_pipeline: { label: '推进管道', icon: KanbanSquare },
-  start_interview: { label: '发起面试', icon: Target },
+  // 一期 AI 仅可在用户确认后保存匹配结果。
   run_match: { label: '运行匹配', icon: Target },
 };
 

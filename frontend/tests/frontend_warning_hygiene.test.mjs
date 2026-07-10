@@ -20,13 +20,14 @@ assert.doesNotMatch(
 assert.match(uiIndex, /useToast/, 'UI barrel should still export useToast for existing callers');
 
 const demandsPage = readSource('features/demands/pages/DemandsPage.tsx');
+const demandForm = readSource('features/demands/components/DemandForm.tsx');
 assert.match(
   demandsPage,
-  /const jobs = useMemo\(\(\) => jobsAsync\.data \?\? \[\], \[jobsAsync\.data\]\)/,
-  'Demand page should memoize jobs fallback array to avoid unstable hook deps',
+  /useAsync\([\s\S]*demandsApi\.listDemands\(query\)[\s\S]*query\.status/,
+  'Demand page should refetch from explicit primitive query dependencies',
 );
 assert.match(
-  demandsPage,
-  /const demands = useMemo\(\(\) => demandsAsync\.data \?\? \[\], \[demandsAsync\.data\]\)/,
-  'Demand page should memoize demands fallback array to avoid unstable hook deps',
+  demandForm,
+  /const ownerOptions = useMemo/,
+  'Demand form should memoize its role-derived owner options',
 );

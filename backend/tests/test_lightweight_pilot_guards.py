@@ -8,7 +8,7 @@ def _auth(token):
 def _seed_job_candidate(app, owner_id):
     with app.app_context():
         from app import db
-        from app.models import Candidate, Job
+        from app.models import Candidate, Job, RecruitmentDemand
 
         job = Job(
             org_id=1,
@@ -23,6 +23,13 @@ def _seed_job_candidate(app, owner_id):
             resume_json={"extracted_info": {"name": "试点候选人"}},
         )
         db.session.add_all([job, candidate])
+        db.session.flush()
+        db.session.add(RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no=f"REQ-PILOT-{job.id}",
+            status="active",
+        ))
         db.session.commit()
         return job.id, candidate.id
 
@@ -105,20 +112,28 @@ def test_repeated_interview_feedback_returns_existing_feedback(client, make_user
     job_id, candidate_id = _seed_job_candidate(app, owner_id)
     with app.app_context():
         from app import db
-        from app.models import InterviewAssignment
+        from app.models import InterviewAssignment, RecruitmentDemand
 
-        db.session.add(InterviewAssignment(
+        demand = RecruitmentDemand.query.filter_by(job_id=job_id).one()
+        assignment = InterviewAssignment(
             org_id=1,
             candidate_id=candidate_id,
             job_id=job_id,
+            demand_id=demand.id,
             round="round_1",
+            round_sequence=1,
+            is_primary=True,
             interviewer_id=interviewer_id,
-        ))
+        )
+        db.session.add(assignment)
         db.session.commit()
+        demand_id = demand.id
+        assignment_id = assignment.id
 
     payload = {
         "candidate_id": candidate_id,
-        "job_id": job_id,
+        "demand_id": demand_id,
+        "assignment_id": assignment_id,
         "round": "round_1",
         "score": 4,
         "passed": True,
@@ -133,7 +148,11 @@ def test_repeated_interview_feedback_returns_existing_feedback(client, make_user
     with app.app_context():
         from app.models import InterviewFeedback
 
-        assert InterviewFeedback.query.filter_by(candidate_id=candidate_id, job_id=job_id).count() == 1
+        assert InterviewFeedback.query.filter_by(
+            candidate_id=candidate_id,
+            demand_id=demand_id,
+            assignment_id=assignment_id,
+        ).count() == 1
 
 
 def test_repeated_resume_upload_reuses_first_result(client, make_user, app, monkeypatch):

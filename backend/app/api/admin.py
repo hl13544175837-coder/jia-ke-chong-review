@@ -106,6 +106,14 @@ def _parse_datetime_arg(name):
 @require_role("admin")
 def audit_logs():
     actor_id = request.args.get("actor_id", type=int)
+    raw_demand_id = request.args.get("demand_id")
+    try:
+        demand_id = int(raw_demand_id) if raw_demand_id is not None else None
+    except (TypeError, ValueError):
+        return jsonify({
+            "error": "demand_id 必须是整数",
+            "code": "invalid_demand_id",
+        }), 400
     action = request.args.get("action", "").strip()
     entity_type = request.args.get("entity_type", "").strip()
     page = _positive_int_arg("page", 1)
@@ -116,6 +124,8 @@ def audit_logs():
     query = Event.query.filter(Event.org_id == g.org_id)
     if actor_id is not None:
         query = query.filter(Event.actor_id == actor_id)
+    if demand_id is not None:
+        query = query.filter(Event.demand_id == demand_id)
     if action:
         query = query.filter(Event.action == action)
     if entity_type:
@@ -145,6 +155,7 @@ def audit_logs():
             "action": log.action,
             "entity_type": log.entity_type,
             "entity_id": log.entity_id,
+            "demand_id": log.demand_id,
             "payload": log.payload or {},
             "request_id": log.request_id,
             "ip": log.ip,

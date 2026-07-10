@@ -20,6 +20,11 @@ class Candidate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     owner_hr_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    current_demand_id = db.Column(
+        db.Integer,
+        db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"),
+        index=True,
+    )
     upload_batch_id = db.Column(db.Integer, db.ForeignKey("upload_batches.id"))
     name_masked = db.Column(db.String(100))
     email_masked = db.Column(db.String(100))
@@ -34,9 +39,15 @@ class Candidate(db.Model):
     parse_error = db.Column(db.Text)
     tags = db.relationship("CandidateTag", backref="candidate", cascade="all,delete-orphan")
     stages = db.relationship("PipelineStage", backref="candidate")
+    current_demand = db.relationship("RecruitmentDemand", foreign_keys=[current_demand_id])
+    demand_flows = db.relationship("CandidateDemandFlow", back_populates="candidate")
 
 
 class UploadBatch(db.Model):
+    __table_args__ = (
+        db.Index("ix_upload_batches_org_demand", "org_id", "demand_id"),
+    )
+
     __tablename__ = "upload_batches"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
@@ -45,6 +56,7 @@ class UploadBatch(db.Model):
     source_link = db.Column(db.Text)
     referrer = db.Column(db.String(120), default="")
     target_job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"))
+    demand_id = db.Column(db.Integer, db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"))
     note = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utc_now)
 
@@ -74,11 +86,22 @@ class Job(db.Model):
 
 
 class RecruitmentDemand(db.Model):
+    __table_args__ = (
+        db.Index("ix_recruitment_demands_org_job", "org_id", "job_id"),
+        db.Index("ix_recruitment_demands_org_owner_status", "org_id", "owner_hr_id", "status"),
+        db.Index("ix_recruitment_demands_org_status_created", "org_id", "status", "created_at"),
+    )
+
     __tablename__ = "recruitment_demands"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"), nullable=False)
     owner_hr_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    city = db.Column(db.String(80), default="")
+    department = db.Column(db.String(120), default="")
+    job_title_snapshot = db.Column(db.String(200), default="")
+    jd_text_snapshot = db.Column(db.Text)
     request_no = db.Column(db.String(80), default="")
     requester_name = db.Column(db.String(120), default="")
     requester_department = db.Column(db.String(120), default="")
@@ -90,11 +113,63 @@ class RecruitmentDemand(db.Model):
     headcount = db.Column(db.Integer, default=1, nullable=False)
     status = db.Column(db.String(20), default="active", nullable=False)
     close_reason = db.Column(db.Text)
+    closed_at = db.Column(db.DateTime)
+    closed_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     downgrade_reason = db.Column(db.Text)
     note = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utc_now)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
     job = db.relationship("Job", backref="demands")
+    candidate_flows = db.relationship(
+        "CandidateDemandFlow",
+        back_populates="demand",
+        foreign_keys="CandidateDemandFlow.demand_id",
+    )
+
+
+class CandidateDemandFlow(db.Model):
+    __tablename__ = "candidate_demand_flows"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "org_id",
+            "candidate_id",
+            "demand_id",
+            name="uq_candidate_demand_flows_org_candidate_demand",
+        ),
+        db.Index("ix_candidate_demand_flows_org_demand_status", "org_id", "demand_id", "status"),
+        db.Index("ix_candidate_demand_flows_org_owner_status", "org_id", "owner_hr_id", "status"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, default=1, nullable=False)
+    candidate_id = db.Column(
+        db.Integer,
+        db.ForeignKey("candidates.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    demand_id = db.Column(
+        db.Integer,
+        db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    owner_hr_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"))
+    status = db.Column(db.String(20), default="active", nullable=False)
+    started_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    ended_at = db.Column(db.DateTime)
+    transfer_from_demand_id = db.Column(
+        db.Integer,
+        db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"),
+    )
+    transfer_reason = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    candidate = db.relationship("Candidate", back_populates="demand_flows")
+    demand = db.relationship(
+        "RecruitmentDemand",
+        back_populates="candidate_flows",
+        foreign_keys=[demand_id],
+    )
 
 
 class TalentMap(db.Model):
@@ -176,11 +251,16 @@ class Match(db.Model):
 
 
 class Interview(db.Model):
+    __table_args__ = (
+        db.Index("ix_interviews_org_demand_candidate", "org_id", "demand_id", "candidate_id"),
+    )
+
     __tablename__ = "interviews"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     candidate_id = db.Column(db.Integer, db.ForeignKey("candidates.id"))
     job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"))
+    demand_id = db.Column(db.Integer, db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"))
     qa_json = db.Column(db.JSON)
     ai_report = db.Column(db.JSON)
     score = db.Column(db.Float)
@@ -193,15 +273,27 @@ VALID_STAGES = {
     "interview",
     "interview_first", "interview_second", "interview_final",
     "offer", "onboarded", "rejected",
+    "transferred",
 }
 
 
 class PipelineStage(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_pipeline_stages_org_demand_candidate_ts",
+            "org_id",
+            "demand_id",
+            "candidate_id",
+            "ts",
+        ),
+    )
+
     __tablename__ = "pipeline_stages"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     candidate_id = db.Column(db.Integer, db.ForeignKey("candidates.id"))
     job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"))
+    demand_id = db.Column(db.Integer, db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"))
     stage = db.Column(db.String(50), nullable=False)
     updated_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     note = db.Column(db.Text)  # 本次阶段变更原因/备注，可空
@@ -209,11 +301,21 @@ class PipelineStage(db.Model):
 
 
 class CandidateDisposition(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_candidate_dispositions_org_demand_candidate",
+            "org_id",
+            "demand_id",
+            "candidate_id",
+        ),
+    )
+
     __tablename__ = "candidate_dispositions"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     candidate_id = db.Column(db.Integer, db.ForeignKey("candidates.id"), nullable=False)
     job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"), nullable=False)
+    demand_id = db.Column(db.Integer, db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"))
     reason = db.Column(db.String(240), default="")
     enter_talent_pool = db.Column(db.Boolean, default=True, nullable=False)
     next_contact_at = db.Column(db.Date)
@@ -224,11 +326,16 @@ class CandidateDisposition(db.Model):
 
 
 class OfferRecord(db.Model):
+    __table_args__ = (
+        db.Index("ix_offer_records_org_demand_candidate", "org_id", "demand_id", "candidate_id"),
+    )
+
     __tablename__ = "offer_records"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     candidate_id = db.Column(db.Integer, db.ForeignKey("candidates.id"), nullable=False)
     job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"), nullable=False)
+    demand_id = db.Column(db.Integer, db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"))
     salary_range = db.Column(db.String(120), default="")
     onboard_date = db.Column(db.Date)
     approval_status = db.Column(db.String(40), default="draft")
@@ -239,12 +346,25 @@ class OfferRecord(db.Model):
 
 
 class InterviewAssignment(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_interview_assignments_org_demand_candidate_round",
+            "org_id",
+            "demand_id",
+            "candidate_id",
+            "round_sequence",
+        ),
+    )
+
     __tablename__ = "interview_assignments"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     candidate_id = db.Column(db.Integer, db.ForeignKey("candidates.id"), nullable=False)
     job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"), nullable=False)
+    demand_id = db.Column(db.Integer, db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"))
     round = db.Column(db.String(30), nullable=False)
+    round_sequence = db.Column(db.Integer, default=1, nullable=False)
+    is_primary = db.Column(db.Boolean, default=False, nullable=False)
     interviewer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     scheduled_at = db.Column(db.DateTime)
     location = db.Column(db.String(240), default="")
@@ -255,6 +375,10 @@ class InterviewAssignment(db.Model):
 
 
 class Event(db.Model):
+    __table_args__ = (
+        db.Index("ix_events_org_demand_ts", "org_id", "demand_id", "ts"),
+    )
+
     __tablename__ = "events"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
@@ -263,6 +387,7 @@ class Event(db.Model):
     action = db.Column(db.String(100), nullable=False)
     entity_id = db.Column(db.Integer)
     entity_type = db.Column(db.String(50))
+    demand_id = db.Column(db.Integer, db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"))
     payload = db.Column(db.JSON)
     request_id = db.Column(db.String(80))
     ip = db.Column(db.String(80))
@@ -286,10 +411,15 @@ class AuditLog(db.Model):
 
 
 class Notification(db.Model):
+    __table_args__ = (
+        db.Index("ix_notifications_org_demand_user", "org_id", "demand_id", "user_id"),
+    )
+
     __tablename__ = "notifications"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    demand_id = db.Column(db.Integer, db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"))
     type = db.Column(db.String(50), nullable=False)
     title = db.Column(db.String(200), nullable=False)
     body = db.Column(db.Text)
@@ -345,11 +475,26 @@ class ConversationMessage(db.Model):
 
 
 class InterviewFeedback(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_interview_feedback_org_demand_candidate_round",
+            "org_id",
+            "demand_id",
+            "candidate_id",
+            "round",
+        ),
+    )
+
     __tablename__ = "interview_feedback"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     candidate_id = db.Column(db.Integer, db.ForeignKey("candidates.id"), nullable=False)
     job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"), nullable=False)
+    demand_id = db.Column(db.Integer, db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"))
+    assignment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("interview_assignments.id", ondelete="RESTRICT"),
+    )
     round = db.Column(db.String(30), nullable=False)  # interview_first/second/final
     interviewer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     score = db.Column(db.Integer)        # 1-5

@@ -35,8 +35,8 @@ assert.match(
 
 assert.match(
   page,
-  /api\.getPipelineBoard/,
-  'Interview records workspace should derive pending feedback from existing pipeline boards',
+  /api\.getDemandPipelineBoard/,
+  'Interview records workspace should derive pending feedback from demand-scoped pipeline boards',
 );
 
 assert.match(
@@ -113,8 +113,8 @@ assert.match(
 
 assert.match(
   pendingPanel,
-  /canOpenPipeline\s*\?\s*`\/pipeline\?job=\$\{item\.job_id\}&candidate=\$\{item\.candidate_id\}`\s*:\s*`\/candidates\/\$\{item\.candidate_id\}`/,
-  'Pending feedback cards should send interviewers to candidate detail instead of a forbidden pipeline route',
+  /canOpenPipeline[\s\S]*`\/pipeline\?demand=\$\{item\.demand_id\}&candidate=\$\{item\.candidate_id\}`[\s\S]*`\/candidates\/\$\{item\.candidate_id\}`/,
+  'Pending feedback cards should preserve demand context while sending interviewers to candidate detail',
 );
 
 assert.match(
@@ -131,25 +131,25 @@ assert.match(
 
 assert.match(
   feedbackForm,
+  /demand_id:\s*demandId/,
+  'Feedback form should submit feedback in the selected recruitment demand',
+);
+
+assert.doesNotMatch(
+  feedbackForm,
   /api\.movePipeline/,
-  'Feedback form should support submitting feedback and moving the candidate in one action',
+  'Feedback form must not advance the candidate automatically',
 );
 
-assert.match(
+assert.doesNotMatch(
   feedbackForm,
-  /提交并推进 Offer/,
-  'Feedback form should expose a submit-and-advance-to-offer action',
-);
-
-assert.match(
-  feedbackForm,
-  /提交并淘汰/,
-  'Feedback form should expose a submit-and-reject action',
+  /提交并推进|提交并淘汰/,
+  'Feedback form should leave advance or rejection to HR after feedback',
 );
 
 const filters = readSource('components/interviewRecords/InterviewFilters.tsx');
 assert.match(filters, /候选人/);
-assert.match(filters, /岗位/);
+assert.match(filters, /招聘需求/);
 assert.match(filters, /面试官/);
 assert.match(filters, /结果/);
 assert.match(filters, /近 7 天/);

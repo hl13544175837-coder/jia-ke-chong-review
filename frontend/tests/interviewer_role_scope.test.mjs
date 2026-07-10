@@ -90,18 +90,18 @@ assert.match(
 );
 assert.match(
   feedbackForm,
-  /canMovePipeline\??:\s*boolean/,
-  'Feedback form should expose an explicit permission for pipeline-moving actions',
+  /demandId:\s*number/,
+  'Feedback form should require demand context for new writes',
 );
-assert.match(
+assert.doesNotMatch(
   feedbackForm,
-  /canMovePipeline\s*&&[\s\S]*提交并推进 Offer[\s\S]*提交并淘汰/,
-  'Feedback form should hide pipeline-moving buttons when the current role cannot move candidates',
+  /canMovePipeline|api\.movePipeline|提交并推进|提交并淘汰/,
+  'No role should receive pipeline-moving controls inside interview feedback',
 );
-assert.match(
+assert.doesNotMatch(
   interviewPage,
-  /canMovePipeline=\{!isInterviewer\}/,
-  'Interviewer feedback entry should pass a narrowed pipeline-moving permission',
+  /canMovePipeline=/,
+  'Interview page should never delegate pipeline decisions to the feedback form',
 );
 assert.match(
   appShell,

@@ -76,7 +76,9 @@ export function InterviewReportPage() {
           面试报告 #{data.id}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          候选人 ID {data.candidate_id} · 岗位 ID {data.job_id}
+          候选人 ID {data.candidate_id}
+          {data.demand_id ? ` · 招聘需求 ID ${data.demand_id}` : ' · 历史未归属需求'}
+          {' · '}岗位 ID {data.job_id}
         </p>
       </div>
 
@@ -85,6 +87,7 @@ export function InterviewReportPage() {
         meta={{
           interviewId: data.id,
           candidateId: data.candidate_id,
+          demandId: data.demand_id,
           jobId: data.job_id,
           createdAt: data.created_at,
         }}

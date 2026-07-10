@@ -12,8 +12,8 @@ import {
   filterInterviewRecords,
   filterPendingFeedback,
   mergePendingFeedback,
+  uniqueDemands,
   uniqueInterviewers,
-  uniqueJobs,
   type InterviewFiltersState,
   type PendingFeedbackItem,
   type RecordFocus,
@@ -41,26 +41,26 @@ import { MyInterviewsPanel } from '../components/interviewRecords/MyInterviewsPa
 import { FeedbackForm } from '../components/interview/FeedbackForm';
 import { InterviewGuidePanel } from '../components/interview/InterviewGuidePanel';
 import type {
-  CandidateListItem,
   InterviewAssignment,
+  InterviewFeedbackResponse,
   InterviewerOption,
   InterviewListItem,
-  JobListItem,
   PipelineBoard,
+  RecruitmentDemand,
 } from '../types';
 
 interface InterviewWorkspaceData {
   records: InterviewListItem[];
   boards: PipelineBoard[];
-  jobs: JobListItem[];
-  candidates: CandidateListItem[];
+  demands: RecruitmentDemand[];
   assignments: InterviewAssignment[];
   interviewers: InterviewerOption[];
 }
 
 function pendingFeedbackKey(item: PendingFeedbackItem | null): string | null {
   if (!item) return null;
-  return `${item.job_id}-${item.candidate_id}-${item.round}`;
+  const scope = item.demand_id === null ? `job-${item.job_id}` : `demand-${item.demand_id}`;
+  return `${scope}-${item.candidate_id}-${item.round}-${item.assignment_id ?? 'unassigned'}`;
 }
 
 function positiveIdFromParam(value: string | null): number | null {
@@ -76,34 +76,37 @@ function focusFromParam(value: string | null): RecordFocus | null {
 }
 
 export function InterviewListPage() {
-  const { role } = useAuth();
+  const { role, userId } = useAuth();
   const [searchParams] = useSearchParams();
   const requestedFocus = focusFromParam(searchParams.get('focus'));
   const [focus, setFocus] = useState<RecordFocus>(() => requestedFocus ?? defaultFocusForRole(role));
   const [filters, setFilters] = useState<InterviewFiltersState>(DEFAULT_INTERVIEW_FILTERS);
   const [selectedRecord, setSelectedRecord] = useState<InterviewListItem | null>(null);
   const [selectedPending, setSelectedPending] = useState<PendingFeedbackItem | null>(null);
+  const [submissionNotice, setSubmissionNotice] = useState<string | null>(null);
   const [assignmentPanelOpen, setAssignmentPanelOpen] = useState(false);
   const feedbackFormRef = useRef<HTMLDivElement | null>(null);
   const assignmentPanelRef = useRef<HTMLDivElement | null>(null);
   const isInterviewer = role === 'interviewer';
-  const requestedJobId = positiveIdFromParam(searchParams.get('job'));
+  const requestedDemandId = positiveIdFromParam(searchParams.get('demand'));
   const requestedCandidateId = positiveIdFromParam(searchParams.get('candidate'));
 
   const workspaceAsync = useAsync<InterviewWorkspaceData>(async () => {
-    const [records, jobs, candidates, assignments, interviewers] = await Promise.all([
+    const [records, demandResponse, assignments, interviewers] = await Promise.all([
       api.listInterviews(),
-      isInterviewer ? Promise.resolve([] as JobListItem[]) : api.listJobs(),
-      isInterviewer ? Promise.resolve([] as CandidateListItem[]) : api.listCandidates(),
+      isInterviewer
+        ? Promise.resolve({ items: [] as RecruitmentDemand[] })
+        : api.listDemands({ status: 'all', page: 1, page_size: 100, sort: 'created_at_desc' }),
       api.listInterviewAssignments(),
       isInterviewer ? Promise.resolve([] as InterviewerOption[]) : api.listInterviewers(),
     ]);
+    const demands = demandResponse.items;
     const boards = isInterviewer
       ? []
       : await Promise.all(
-          jobs.map(async (job) => {
+          demands.map(async (demand) => {
             try {
-              return await api.getPipelineBoard(job.id);
+              return await api.getDemandPipelineBoard(demand.id);
             } catch {
               return null;
             }
@@ -111,8 +114,7 @@ export function InterviewListPage() {
         );
     return {
       records,
-      jobs,
-      candidates,
+      demands,
       assignments,
       interviewers,
       boards: boards.filter((board): board is PipelineBoard => board !== null),
@@ -120,14 +122,17 @@ export function InterviewListPage() {
   }, [role, isInterviewer]);
 
   const records = useMemo(() => workspaceAsync.data?.records ?? [], [workspaceAsync.data]);
-  const jobs = useMemo(() => workspaceAsync.data?.jobs ?? [], [workspaceAsync.data]);
-  const candidates = useMemo(() => workspaceAsync.data?.candidates ?? [], [workspaceAsync.data]);
+  const demands = useMemo(() => workspaceAsync.data?.demands ?? [], [workspaceAsync.data]);
   const assignments = useMemo(() => workspaceAsync.data?.assignments ?? [], [workspaceAsync.data]);
+  const myAssignments = useMemo(
+    () => assignments.filter((assignment) => assignment.interviewer_id === userId),
+    [assignments, userId],
+  );
   const interviewers = useMemo(() => workspaceAsync.data?.interviewers ?? [], [workspaceAsync.data]);
   const boards = useMemo(() => workspaceAsync.data?.boards ?? [], [workspaceAsync.data]);
 
   const pipelinePending = useMemo(() => buildPendingFeedback(boards, records), [boards, records]);
-  const assignedPending = useMemo(() => buildAssignedPendingFeedback(assignments), [assignments]);
+  const assignedPending = useMemo(() => buildAssignedPendingFeedback(myAssignments), [myAssignments]);
   const pending = useMemo(
     () => role === 'interviewer'
       ? assignedPending
@@ -143,7 +148,14 @@ export function InterviewListPage() {
     [records, filters, focus],
   );
   const stats = useMemo(() => computeInterviewStats(records, pending), [records, pending]);
-  const jobOptions = useMemo(() => uniqueJobs(records, jobs), [records, jobs]);
+  const demandOptions = useMemo(
+    () => uniqueDemands(records, demands, assignments),
+    [records, demands, assignments],
+  );
+  const schedulableDemands = useMemo(
+    () => demands.filter((demand) => demand.status === 'pending' || demand.status === 'active'),
+    [demands],
+  );
   const interviewerOptions = useMemo(() => uniqueInterviewers(records), [records]);
   const showInterviewerFilter = role === 'manager' || role === 'admin';
   const interviewTitle = role === 'interviewer' ? '我的面试' : '面试任务';
@@ -162,16 +174,17 @@ export function InterviewListPage() {
   const handleStartAssignmentFeedback = useCallback(
     (assignment: InterviewAssignment) => {
       const target = pending.find(
-        (item) =>
-          item.candidate_id === assignment.candidate_id &&
-          item.job_id === assignment.job_id &&
-          item.round === assignment.round,
+        (item) => item.assignment_id === assignment.id,
       ) ?? {
         candidate_id: assignment.candidate_id,
         name_masked: assignment.name_masked ?? `候选人 #${assignment.candidate_id}`,
+        demand_id: assignment.demand_id,
+        assignment_id: assignment.id,
         job_id: assignment.job_id,
         job_title: assignment.job_title ?? `岗位 #${assignment.job_id}`,
         round: assignment.round,
+        round_sequence: assignment.round_sequence,
+        is_primary: assignment.is_primary,
         updated_at: assignment.scheduled_at ?? assignment.created_at,
         updated_by_name: assignment.created_by_name,
       };
@@ -179,7 +192,7 @@ export function InterviewListPage() {
       setFilters((current) => ({
         ...current,
         query: '',
-        jobId: assignment.job_id,
+        demandId: assignment.demand_id ?? current.demandId,
         round: assignment.round,
       }));
       setSelectedPending(target);
@@ -195,8 +208,8 @@ export function InterviewListPage() {
   const focusOptions = [
     { value: 'pending' as const, label: `待我处理 ${pending.length}` },
     { value: 'all' as const, label: '面试记录' },
-    { value: 'passed' as const, label: '已通过' },
-    { value: 'failed' as const, label: '未通过' },
+    { value: 'passed' as const, label: '反馈建议通过' },
+    { value: 'failed' as const, label: '反馈建议不通过' },
   ];
 
   useEffect(() => {
@@ -206,22 +219,46 @@ export function InterviewListPage() {
   }, [requestedFocus]);
 
   useEffect(() => {
+    if (!requestedDemandId) return;
+    setFilters((current) => current.demandId === requestedDemandId
+      ? current
+      : { ...current, demandId: requestedDemandId });
+  }, [requestedDemandId]);
+
+  useEffect(() => {
     if (!requestedCandidateId) return;
     const target = pending.find(
       (item) =>
         item.candidate_id === requestedCandidateId &&
-        (requestedJobId === null || item.job_id === requestedJobId),
+        (requestedDemandId === null || item.demand_id === requestedDemandId),
     );
-    if (!target) return;
-    setFocus('pending');
-    setFilters((current) => ({
-      ...current,
-      jobId: requestedJobId ?? current.jobId,
-    }));
-    if (pendingFeedbackKey(selectedPending) !== pendingFeedbackKey(target)) {
-      setSelectedPending(target);
+    if (target) {
+      setFocus('pending');
+      if (pendingFeedbackKey(selectedPending) !== pendingFeedbackKey(target)) {
+        setSelectedPending(target);
+      }
+      return;
     }
-  }, [pending, requestedCandidateId, requestedJobId, selectedPending]);
+    const completed = records.find(
+      (item) =>
+        item.candidate_id === requestedCandidateId &&
+        (requestedDemandId === null || item.demand_id === requestedDemandId),
+    );
+    if (completed) {
+      setFocus('all');
+      setSelectedRecord(completed);
+    }
+  }, [pending, records, requestedCandidateId, requestedDemandId, selectedPending]);
+
+  const handleFeedbackSubmitted = useCallback((result: InterviewFeedbackResponse) => {
+    setSubmissionNotice(
+      result.next_action === 'awaiting_hr_decision'
+        ? '主面试官反馈已提交，本轮完成，待 HR 确认下一步。'
+        : '反馈已提交，等待主面试官完成本轮。',
+    );
+    setSelectedPending(null);
+    void workspaceAsync.reload();
+  }, [workspaceAsync]);
 
   useEffect(() => {
     if (!selectedPending) return;
@@ -258,10 +295,17 @@ export function InterviewListPage() {
       )}
 
       {!workspaceAsync.loading && !workspaceAsync.error && (
-        <MyInterviewsPanel
-          assignments={assignments}
-          onStartFeedback={handleStartAssignmentFeedback}
-        />
+        <>
+          {submissionNotice && (
+            <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
+              {submissionNotice}
+            </div>
+          )}
+          <MyInterviewsPanel
+            assignments={myAssignments}
+            onStartFeedback={handleStartAssignmentFeedback}
+          />
+        </>
       )}
 
       {!workspaceAsync.loading && !workspaceAsync.error && records.length === 0 && pending.length === 0 && (
@@ -289,8 +333,8 @@ export function InterviewListPage() {
           {role !== 'interviewer' && (
             <div ref={assignmentPanelRef} tabIndex={-1} className="scroll-mt-6 focus:outline-none">
               <InterviewAssignmentPanel
-                candidates={candidates}
-                jobs={jobs}
+                demands={schedulableDemands}
+                boards={boards}
                 interviewers={interviewers}
                 assignments={assignments}
                 open={assignmentPanelOpen}
@@ -324,7 +368,7 @@ export function InterviewListPage() {
 
           <InterviewFilters
             filters={filters}
-            jobs={jobOptions}
+            demands={demandOptions}
             interviewers={interviewerOptions}
             showInterviewerFilter={showInterviewerFilter}
             onChange={setFilters}
@@ -333,8 +377,8 @@ export function InterviewListPage() {
           {role !== 'interviewer' && (
             <div ref={assignmentPanelRef} tabIndex={-1} className="scroll-mt-6 focus:outline-none">
               <InterviewAssignmentPanel
-                candidates={candidates}
-                jobs={jobs}
+                demands={schedulableDemands}
+                boards={boards}
                 interviewers={interviewers}
                 assignments={assignments}
                 open={assignmentPanelOpen}
@@ -350,6 +394,9 @@ export function InterviewListPage() {
                 items={filteredPending}
                 activeKey={pendingFeedbackKey(selectedPending)}
                 onStartFeedback={handleStartPendingFeedback}
+                canStartFeedback={(item) => Boolean(
+                  item.assignment_id && myAssignments.some((assignment) => assignment.id === item.assignment_id),
+                )}
                 canOpenPipeline={!isInterviewer}
               />
 
@@ -374,21 +421,35 @@ export function InterviewListPage() {
                       </div>
                     </CardHeader>
                     <CardBody className="space-y-4">
-                      <InterviewGuidePanel
-                        candidateId={selectedPending.candidate_id}
-                        jobId={selectedPending.job_id}
-                        round={selectedPending.round}
-                      />
-                      <FeedbackForm
-                        candidateId={selectedPending.candidate_id}
-                        jobId={selectedPending.job_id}
-                        initialRound={selectedPending.round}
-                        canMovePipeline={!isInterviewer}
-                        onSubmitted={() => {
-                          setSelectedPending(null);
-                          void workspaceAsync.reload();
-                        }}
-                      />
+                      {selectedPending.demand_id ? (
+                        <>
+                          <InterviewGuidePanel
+                            candidateId={selectedPending.candidate_id}
+                            demandId={selectedPending.demand_id}
+                            round={selectedPending.round}
+                          />
+                          <FeedbackForm
+                            candidateId={selectedPending.candidate_id}
+                            demandId={selectedPending.demand_id}
+                            assignmentId={selectedPending.assignment_id}
+                            initialRound={selectedPending.round}
+                            onSubmitted={handleFeedbackSubmitted}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <div className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
+                            这是兼容期历史任务，尚未回填招聘需求。系统只会在该岗位能唯一解析到需求时接受反馈。
+                          </div>
+                          <FeedbackForm
+                            candidateId={selectedPending.candidate_id}
+                            jobId={selectedPending.job_id}
+                            assignmentId={selectedPending.assignment_id}
+                            initialRound={selectedPending.round}
+                            onSubmitted={handleFeedbackSubmitted}
+                          />
+                        </>
+                      )}
                     </CardBody>
                   </Card>
                 </div>

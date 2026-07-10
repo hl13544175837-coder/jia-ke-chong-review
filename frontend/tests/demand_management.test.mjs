@@ -26,12 +26,13 @@ assert.match(nav, /activePaths:\s*\[[\s\S]*'\/jobs'[\s\S]*\]/, 'Recruitment nav 
 const demandFeature = readSource('features/demands/index.ts');
 assert.match(
   demandFeature,
-  /topLevelPaths:\s*\[[\s\S]*'\/demands'[\s\S]*'\/jobs'[\s\S]*\]/,
-  'Recruitment feature should treat both demand and job portrait pages as top-level pages',
+  /topLevelPaths:\s*\[['"]\/demands['"]\]/,
+  'Only recruitment demands should occupy the top-level recruitment entry',
 );
 
 const routes = readSource('features/demands/routes.tsx');
 assert.match(routes, /path:\s*'\/demands'/, 'Demand feature should register the list route');
+assert.match(routes, /path:\s*'\/demands\/:id'/, 'Demand feature should register the detail route');
 
 const api = readSource('features/demands/api.ts');
 assert.match(api, /listDemands/, 'Demand API wrapper should list demands');
@@ -45,19 +46,16 @@ assert.match(types, /interface RecruitmentDemand/, 'Shared types should expose R
 assert.match(types, /business_review_count/, 'Demand metrics should expose business feedback backlog');
 
 const page = readSource('features/demands/pages/DemandsPage.tsx');
+const form = readSource('features/demands/components/DemandForm.tsx');
+const filters = readSource('features/demands/components/DemandFilters.tsx');
+const table = readSource('features/demands/components/DemandTable.tsx');
 const recruitmentTabs = readSource('components/recruitment/RecruitmentManagementTabs.tsx');
-assert.match(page, /招聘管理/, 'Demand page should live under the consolidated recruitment management title');
+assert.match(page, /招聘需求/, 'Demand page should identify the concrete recruitment unit');
 assert.match(page, /RecruitmentManagementTabs/, 'Demand page should reuse the shared recruitment tabs');
 assert.match(recruitmentTabs, /用人需求/, 'Recruitment tabs should expose the demand tab label');
-assert.match(recruitmentTabs, /岗位画像/, 'Recruitment tabs should expose the job portrait tab label');
-assert.match(page, /业务提需求时间/, 'Demand form should capture when business raised the request');
-assert.match(page, /HR 接手时间/, 'Demand form should capture when HR accepted the request');
-assert.match(page, /关闭需求/, 'Demand cards should support closing stale or invalid requests');
-assert.match(page, /降级/, 'Demand cards should support priority downgrade');
-assert.match(page, /调整优先级/, 'Demand cards should support correcting demand priority after mistakes');
-assert.match(page, /恢复需求/, 'Demand cards should support restoring mistakenly closed demands');
-assert.match(page, /业务侧卡点/, 'Demand cards should call out when the business side is blocking progress');
-assert.match(page, /HR 侧卡点/, 'Demand cards should call out when HR-side action is missing');
-assert.match(page, /阶段分布/, 'Demand cards should visualize the linked job pipeline distribution');
-assert.match(page, /current_stage_counts/, 'Demand cards should use current pipeline stage counts for progress context');
-assert.match(page, /hr_no_recommendation/, 'Demand cards should understand HR no-recommendation risk flags');
+assert.doesNotMatch(recruitmentTabs, /岗位画像|人才地图/, 'Template and placeholder modules should not occupy trial tabs');
+assert.match(form, /提需求日期/, 'Demand form should capture when business raised the request');
+assert.match(form, /HR 接手日期/, 'Demand form may capture when HR accepted the request');
+assert.match(filters, /最新创建在前/, 'Demand list should default to newest-first sorting');
+assert.match(table, /<table/, 'Demand list should be a scannable table rather than cards');
+assert.match(table, /demand=\$\{demand\.id\}/, 'Demand metrics should drill into scoped candidates');

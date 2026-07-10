@@ -1,4 +1,4 @@
-// 候选人流程页 — 按岗位管理每位候选人的当前阶段，
+// 候选人流程页 — 按招聘需求管理每位候选人的当前阶段，
 // 并支持在右侧详情中推进、淘汰、跳转阶段与加入新候选人。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -17,9 +17,9 @@ import {
 } from '../components/ui';
 import type {
   CandidateDispositionInput,
-  JobListItem,
   PipelineStage,
   PipelineBoardCandidate,
+  RecruitmentDemand,
 } from '../types';
 import { STAGES, stageLabel } from '../lib/pipelineStages';
 import { AddToPipeline } from '../components/pipeline/AddToPipeline';
@@ -27,9 +27,14 @@ import { PipelineStageTabs } from '../components/pipeline/PipelineStageTabs';
 import { PipelineCandidateList } from '../components/pipeline/PipelineCandidateList';
 import { PipelineCandidatePanel } from '../components/pipeline/PipelineCandidatePanel';
 
-function formatJobOption(job: JobListItem) {
-  const code = job.job_code || `JOB-${job.id}`;
-  return [code, job.title, job.city, job.department].filter(Boolean).join(' · ');
+function formatDemandOption(demand: RecruitmentDemand) {
+  return [
+    demand.request_no || `REQ-${demand.id}`,
+    demand.job_title,
+    demand.job_department,
+    demand.job_city,
+    demand.owner_hr_name,
+  ].filter(Boolean).join(' · ');
 }
 
 const PREFERRED_STAGE_ORDER: PipelineStage[] = [
@@ -38,6 +43,7 @@ const PREFERRED_STAGE_ORDER: PipelineStage[] = [
   'offer',
   'ai_screen',
   'pending',
+  'transferred',
   'rejected',
   'onboarded',
 ];
@@ -54,26 +60,62 @@ interface PendingMove {
 
 export function PipelinePage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const demandParam = Number(searchParams.get('demand'));
   const jobParam = Number(searchParams.get('job'));
   const candidateParam = Number(searchParams.get('candidate'));
   const requestedStage = parseStageParam(searchParams.get('stage'));
+  const requestedDemandId = Number.isFinite(demandParam) && demandParam > 0 ? demandParam : null;
   const requestedJobId = Number.isFinite(jobParam) && jobParam > 0 ? jobParam : null;
   const highlightedCandidateId =
     Number.isFinite(candidateParam) && candidateParam > 0 ? candidateParam : null;
 
-  const jobsAsync = useAsync(() => api.listJobs(), []);
-  const [selectedJobId, setSelectedJobId] = useState<number | null>(requestedJobId);
+  const demandsAsync = useAsync(
+    () => api.listDemands({ status: 'all', page: 1, page_size: 100 }),
+    [],
+  );
+  const [selectedDemandId, setSelectedDemandId] = useState<number | null>(requestedDemandId);
 
-  const effectiveJobId =
-    selectedJobId ??
-    (jobsAsync.data && jobsAsync.data.length > 0 ? jobsAsync.data[0].id : null);
+  const demandItems = demandsAsync.data?.items ?? [];
+  const hasCompleteVisibleDemandList =
+    demandsAsync.data !== null && demandsAsync.data.total === demandItems.length;
+  const selectedDemand =
+    selectedDemandId !== null
+      ? demandItems.find((demand) => demand.id === selectedDemandId) ?? null
+      : null;
+  const legacyJobDemands =
+    selectedDemandId === null && requestedJobId !== null
+      ? demandItems.filter((demand) => demand.job_id === requestedJobId)
+      : [];
+  const effectiveDemand =
+    selectedDemand ??
+    (selectedDemandId !== null
+      ? null
+      : requestedJobId !== null
+        ? hasCompleteVisibleDemandList && legacyJobDemands.length === 1
+          ? legacyJobDemands[0]
+          : null
+        : demandItems[0] ?? null);
+  const effectiveDemandId = effectiveDemand?.id ?? null;
+  const effectiveJobId = effectiveDemand?.job_id ?? null;
+  const demandResolutionError =
+    !demandsAsync.loading && !demandsAsync.error
+      ? selectedDemandId !== null && selectedDemand === null
+        ? '该招聘需求不存在或你无权查看，请从下拉列表选择可访问的需求。'
+        : selectedDemandId === null && requestedJobId !== null && !hasCompleteVisibleDemandList
+          ? '这个旧岗位链接无法在当前列表中安全确认唯一需求，系统不会替你猜。请选择具体招聘需求。'
+        : selectedDemandId === null && requestedJobId !== null && legacyJobDemands.length > 1
+          ? '这个旧岗位链接对应多个招聘需求，系统不会替你猜。请选择具体招聘需求。'
+          : selectedDemandId === null && requestedJobId !== null && legacyJobDemands.length === 0
+            ? '这个旧岗位链接没有可访问的招聘需求，请从下拉列表重新选择。'
+            : null
+      : null;
 
   const boardAsync = useAsync(
     () =>
-      effectiveJobId !== null
-        ? api.getPipelineBoard(effectiveJobId)
+      effectiveDemandId !== null
+        ? api.getDemandPipelineBoard(effectiveDemandId)
         : Promise.resolve(null),
-      [effectiveJobId],
+      [effectiveDemandId],
   );
 
   const toast = useToast();
@@ -97,15 +139,15 @@ export function PipelinePage() {
   const listHighlightCandidateId = recentlyMovedCandidateId ?? highlightedCandidateId;
 
   useEffect(() => {
-    setSelectedJobId(requestedJobId);
+    setSelectedDemandId(requestedDemandId);
     setPendingMove(null);
     setRecentlyMovedCandidateId(null);
     setActiveStage(requestedStage ?? 'pending');
     setSelectedCandidateId(highlightedCandidateId);
     setShowAddToPipeline(false);
-  }, [highlightedCandidateId, requestedJobId, requestedStage]);
+  }, [highlightedCandidateId, requestedDemandId, requestedStage]);
 
-  // 已在本岗位流程中的候选人 id 集合（供"加入流程"排除）。
+  // 已在本招聘需求流程中的候选人 id 集合（供"加入流程"排除）。
   const existingIds = useMemo(
     () => new Set(candidates.map((c) => c.candidate_id)),
     [candidates],
@@ -146,10 +188,10 @@ export function PipelinePage() {
 
   useEffect(() => {
     if (pendingMove || highlightedCandidate || boardAsync.loading || boardAsync.error) return;
-    if (effectiveJobId === null || candidates.length === 0) return;
+    if (effectiveDemandId === null || candidates.length === 0) return;
 
     const autoStageKey = [
-      effectiveJobId,
+      effectiveDemandId,
       requestedStage ?? 'auto',
       candidates.map((candidate) => `${candidate.candidate_id}:${candidate.stage}`).join(','),
     ].join('|');
@@ -166,7 +208,7 @@ export function PipelinePage() {
     if (nextStage !== activeStage) {
       setActiveStage(nextStage);
       setSelectedCandidateId(byStage[nextStage]?.[0]?.candidate_id ?? null);
-      setSearchParams({ job: String(effectiveJobId), stage: nextStage }, { replace: true });
+      setSearchParams({ demand: String(effectiveDemandId), stage: nextStage }, { replace: true });
       return;
     }
 
@@ -182,7 +224,7 @@ export function PipelinePage() {
     boardAsync.loading,
     byStage,
     candidates,
-    effectiveJobId,
+    effectiveDemandId,
     highlightedCandidate,
     pendingMove,
     requestedStage,
@@ -245,14 +287,14 @@ export function PipelinePage() {
       note?: string,
       disposition?: CandidateDispositionInput,
     ) => {
-      if (effectiveJobId === null) return;
+      if (effectiveDemandId === null) return;
       setBusyId(candidateId);
       setPendingMove(null);
       setRecentlyMovedCandidateId(null);
       try {
         const res = await api.movePipeline({
           candidate_id: candidateId,
-          job_id: effectiveJobId,
+          demand_id: effectiveDemandId,
           stage: toStage,
           note,
           disposition,
@@ -265,13 +307,13 @@ export function PipelinePage() {
         setBusyId(null);
       }
     },
-    [effectiveJobId, boardAsync, toast],
+    [effectiveDemandId, boardAsync, toast],
   );
 
-  const handleJobChange = useCallback(
-    (jobId: number) => {
-      setSelectedJobId(jobId);
-      setSearchParams({ job: String(jobId), stage: activeStage });
+  const handleDemandChange = useCallback(
+    (demandId: number) => {
+      setSelectedDemandId(demandId);
+      setSearchParams({ demand: String(demandId), stage: activeStage });
       setPendingMove(null);
       setRecentlyMovedCandidateId(null);
       setSelectedCandidateId(null);
@@ -284,13 +326,13 @@ export function PipelinePage() {
     (stage: PipelineStage) => {
       setActiveStage(stage);
       setSelectedCandidateId(byStage[stage]?.[0]?.candidate_id ?? null);
-      if (effectiveJobId !== null) {
-        setSearchParams({ job: String(effectiveJobId), stage });
+      if (effectiveDemandId !== null) {
+        setSearchParams({ demand: String(effectiveDemandId), stage });
       } else {
         setSearchParams({ stage });
       }
     },
-    [byStage, effectiveJobId, setSearchParams],
+    [byStage, effectiveDemandId, setSearchParams],
   );
 
   return (
@@ -313,27 +355,27 @@ export function PipelinePage() {
         </p>
       </details>
 
-      {jobsAsync.loading && (
+      {demandsAsync.loading && (
         <div className="flex items-center gap-2 text-sm text-muted">
           <Spinner size="sm" />
-          加载岗位列表…
+          加载招聘需求…
         </div>
       )}
 
-      {!jobsAsync.loading && jobsAsync.error && (
-        <ErrorState message={jobsAsync.error.message} onRetry={jobsAsync.reload} />
+      {!demandsAsync.loading && demandsAsync.error && (
+        <ErrorState message={demandsAsync.error.message} onRetry={demandsAsync.reload} />
       )}
 
-      {!jobsAsync.loading && !jobsAsync.error && jobsAsync.data?.length === 0 && (
+      {!demandsAsync.loading && !demandsAsync.error && demandItems.length === 0 && (
         <Card>
           <EmptyState
             icon={KanbanSquare}
-            title="暂无岗位"
-            description="请先创建岗位画像，再查看候选人流程"
+            title="暂无招聘需求"
+            description="请先创建具体招聘需求，再加入候选人并推进流程"
             action={
-              <Link to="/jobs">
+              <Link to="/demands">
                 <Button variant="secondary" size="sm">
-                  新建岗位
+                  新建招聘需求
                 </Button>
               </Link>
             }
@@ -341,30 +383,35 @@ export function PipelinePage() {
         </Card>
       )}
 
-      {!jobsAsync.loading && !jobsAsync.error && (jobsAsync.data?.length ?? 0) > 0 && (
+      {!demandsAsync.loading && !demandsAsync.error && demandItems.length > 0 && (
         <>
-          {/* 岗位选择 + 匹配入口 */}
+          {/* 招聘需求选择 + 匹配入口 */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-              <label htmlFor="job-select" className="text-sm font-medium text-ink">
-                当前岗位
+              <label htmlFor="demand-select" className="text-sm font-medium text-ink">
+                当前招聘需求
               </label>
               <select
-                id="job-select"
+                id="demand-select"
                 className="h-10 min-w-0 rounded-md border border-hairline bg-canvas px-3 text-sm text-ink focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink sm:min-w-[360px]"
-                value={effectiveJobId ?? ''}
-                onChange={(e) => handleJobChange(Number(e.target.value))}
+                value={effectiveDemandId ?? ''}
+                onChange={(e) => handleDemandChange(Number(e.target.value))}
               >
-                {(jobsAsync.data ?? []).map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {formatJobOption(j)}
+                {effectiveDemandId === null && (
+                  <option value="" disabled>
+                    请选择具体招聘需求
+                  </option>
+                )}
+                {demandItems.map((demand) => (
+                  <option key={demand.id} value={demand.id}>
+                    {formatDemandOption(demand)}
                   </option>
                 ))}
               </select>
               {boardAsync.loading && <Spinner size="sm" />}
             </div>
 
-            {effectiveJobId !== null && (
+            {effectiveDemandId !== null && effectiveJobId !== null && (
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
@@ -376,7 +423,7 @@ export function PipelinePage() {
                   <UserPlus className="h-4 w-4" />
                   添加候选人
                 </Button>
-                <Link to={`/jobs/${effectiveJobId}/match`}>
+                <Link to={`/jobs/${effectiveJobId}/match?demand=${effectiveDemandId}`}>
                   <Button type="button" variant="ghost" size="sm">
                     去匹配更多候选人 →
                   </Button>
@@ -385,9 +432,20 @@ export function PipelinePage() {
             )}
           </div>
 
+          {demandResolutionError && (
+            <Card>
+              <EmptyState
+                icon={KanbanSquare}
+                title="无法定位招聘需求"
+                description={demandResolutionError}
+              />
+            </Card>
+          )}
+
           {/* 加入候选人到流程 */}
-          {effectiveJobId !== null && showAddToPipeline && (
+          {!demandResolutionError && effectiveDemandId !== null && effectiveJobId !== null && showAddToPipeline && (
             <AddToPipeline
+              demandId={effectiveDemandId}
               jobId={effectiveJobId}
               existingIds={existingIds}
               onAdded={() => {
@@ -406,11 +464,11 @@ export function PipelinePage() {
           )}
 
           {/* 候选人流程工作区 */}
-          {!boardAsync.loading && boardAsync.error && (
+          {!demandResolutionError && effectiveDemandId !== null && !boardAsync.loading && boardAsync.error && (
             <ErrorState message={boardAsync.error.message} onRetry={boardAsync.reload} />
           )}
 
-          {!boardAsync.error && (
+          {!demandResolutionError && effectiveDemandId !== null && !boardAsync.error && (
             <div className="space-y-4">
               <PipelineStageTabs
                 stages={STAGES}
@@ -423,6 +481,7 @@ export function PipelinePage() {
                   stage={activeStageConfig}
                   candidates={activeCandidates}
                   counts={stageCounts}
+                  demandId={effectiveDemandId}
                   jobId={effectiveJobId}
                   selectedCandidateId={selectedCandidateId}
                   highlightedCandidateId={listHighlightCandidateId}
@@ -430,9 +489,10 @@ export function PipelinePage() {
                   onJumpToStage={handleStageSelect}
                   onSelect={(candidate) => setSelectedCandidateId(candidate.candidate_id)}
                 />
-                {effectiveJobId !== null && (
+                {effectiveDemandId !== null && effectiveJobId !== null && (
                   <PipelineCandidatePanel
                     candidate={selectedCandidate}
+                    demandId={effectiveDemandId}
                     jobId={effectiveJobId}
                     busy={
                       selectedCandidate
@@ -441,6 +501,10 @@ export function PipelinePage() {
                         : false
                     }
                     onMove={handleMove}
+                    onTransferred={() => {
+                      toast.success('已转入目标需求；原需求保留「已转出」记录');
+                      boardAsync.reload();
+                    }}
                   />
                 )}
               </div>
@@ -448,9 +512,9 @@ export function PipelinePage() {
           )}
 
           {/* 空流程提示 */}
-          {!boardAsync.loading && !boardAsync.error && candidates.length === 0 && (
+          {!demandResolutionError && effectiveDemandId !== null && !boardAsync.loading && !boardAsync.error && candidates.length === 0 && (
             <p className="text-center text-sm text-muted-soft">
-              本岗位流程中暂无候选人，可先点击「添加候选人」或去匹配更多候选人。
+              本招聘需求中暂无候选人，可先点击「添加候选人」或去匹配更多候选人。
             </p>
           )}
         </>

@@ -12,7 +12,6 @@ assert.match(source, /<Suspense/, 'Lazy routes should be wrapped in Suspense');
 [
   'AgentPage',
   'BiPage',
-  'TalentMapPage',
   'PipelinePage',
   'InterviewListPage',
   'InterviewsPage',
@@ -24,3 +23,9 @@ assert.match(source, /<Suspense/, 'Lazy routes should be wrapped in Suspense');
     `${page} should be loaded only when its route is visited`,
   );
 });
+
+assert.doesNotMatch(
+  source,
+  /const TalentMapPage = lazy/,
+  'Unavailable talent map should not be part of the trial route bundle',
+);

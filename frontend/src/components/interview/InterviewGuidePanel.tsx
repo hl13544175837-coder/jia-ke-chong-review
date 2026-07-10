@@ -4,16 +4,28 @@ import { useAsync } from '../../lib/useAsync';
 import type { InterviewGuide, InterviewRound } from '../../types';
 import { Badge, Spinner } from '../ui';
 
-interface InterviewGuidePanelProps {
+interface DemandInterviewGuideProps {
   candidateId: number;
+  demandId: number;
+  jobId?: never;
+  round: InterviewRound;
+}
+
+interface LegacyInterviewGuideProps {
+  candidateId: number;
+  demandId?: never;
   jobId: number;
   round: InterviewRound;
 }
 
-export function InterviewGuidePanel({ candidateId, jobId, round }: InterviewGuidePanelProps) {
+type InterviewGuidePanelProps = DemandInterviewGuideProps | LegacyInterviewGuideProps;
+
+export function InterviewGuidePanel({ candidateId, demandId, jobId, round }: InterviewGuidePanelProps) {
   const { data, loading, error } = useAsync<InterviewGuide>(
-    () => api.getInterviewGuide(candidateId, jobId, round),
-    [candidateId, jobId, round],
+    () => demandId
+      ? api.getInterviewGuide(candidateId, demandId, round)
+      : api.getLegacyInterviewGuide(candidateId, jobId as number, round),
+    [candidateId, demandId, jobId, round],
   );
 
   return (

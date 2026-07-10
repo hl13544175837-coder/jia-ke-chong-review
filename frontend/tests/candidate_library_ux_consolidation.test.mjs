@@ -12,11 +12,11 @@ function readSource(path) {
 
 const page = readSource('features/candidates/pages/CandidatesPage.tsx');
 
-assert.match(page, /岗位匹配/, 'Top-right job action should be framed as job matching');
+assert.match(page, /选择招聘需求/, 'Top-right action should return to the demand workspace');
 assert.doesNotMatch(page, /按岗位找候选人/, 'Top-right action should not duplicate the job filter wording');
 
-assert.match(page, /目标岗位/, 'Job filter should be labeled as the target job');
-assert.match(page, /不限制岗位/, 'Job filter should default to not restricting by job');
+assert.match(page, /目标招聘需求/, 'Assignment filter should select the exact target demand');
+assert.match(page, /先不加入需求/, 'Demand selection should remain optional while browsing the library');
 assert.doesNotMatch(page, /按岗位查看/, 'Job filter should not sound like a second page entry');
 assert.doesNotMatch(page, /不按岗位筛选/, 'Job filter placeholder should use plainer wording');
 

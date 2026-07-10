@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
-"""BOSS 直聘收件箱闭环编排服务。
+"""BOSS 直聘收件箱候选人导入服务。
 
-把「收件箱拉取 → 批量导入候选人库 → AI 简历初筛」串成一条流水线，复用既有能力：
+历史实现曾把「收件箱拉取 → 批量导入候选人库 → AI 简历初筛」
+串成一条流水线。P0 期间 BOSS 不是试点入口，更不能绕过 Demand 语义：
 - BossService：boss-cli 招聘端封装（简历下载）。
-- PreScreenService：LLM 简历评估。
-- Candidate / UploadBatch / PipelineStage / Interview 模型。
+- Candidate / UploadBatch 模型。
 
 设计约束（与产品确认）：
 - 简历来源 = 已沟通收件箱（inbox），导入存完整 Markdown 原文 + 解析出的基础字段。
 - 节流 = 限量 + 间隔（默认 1.5s/条），命中 rate_limited 立即停止，已成功的保留。
-- AI 筛选 = LLM 简历评估，写 Interview 记录并把候选人阶段推进到 ai_screen。
+- 携带 ``target_job_id`` 的自动入池不再执行；必须经显式 Demand 入口。
+- BOSS AI 初筛在 P0 直接 fail closed，不写 Interview，不改主流程。
 - 面试安排 = 初筛后由用户在系统「面试安排」流程内创建（POST /interview/assignments），
   不再向 BOSS 直聘发面试邀请（该动作依赖短效 __zp_stoken__，云端无法稳定持有）。
 
@@ -18,7 +19,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import time
 from pathlib import Path
@@ -29,9 +29,6 @@ from flask import current_app
 from .. import db
 from ..models import (
     Candidate,
-    Interview,
-    Job,
-    PipelineStage,
     UploadBatch,
 )
 from .boss_service import BossService
@@ -136,7 +133,7 @@ class BossPipelineService:
         """批量下载并导入候选人简历（限量+间隔+去重+入库）。
 
         items: [{geek_id, name?, security_id?, friend_id?, job?}]，至少含 geek_id。
-        - target_job_id：导入后自动加入该系统岗位的 pipeline（stage=pending）。
+        - target_job_id：旧客户端参数；P0 携带时直接 fail closed，不自动入池。
         - boss_job：BOSS 侧 encryptJobId，下载简历时透传 --job（缺省取 item.job）。
         - 命中 rate_limited 立即停止，已成功记录保留；返回逐条结果与统计。
         """
@@ -153,12 +150,17 @@ class BossPipelineService:
             return {"ok": False, "data": None,
                     "error": {"code": "invalid_params", "message": "items 不能为空"}}
 
-        # 系统岗位校验（用于自动入池）
+        # BOSS 是隐藏的实验能力。P0 不接受只有 job_id 的流程写入，
+        # 防止服务被其他入口直接调用时绕过 API 层。
         if target_job_id is not None:
-            job = db.session.get(Job, target_job_id)
-            if job is None:
-                return {"ok": False, "data": None,
-                        "error": {"code": "invalid_params", "message": "target_job_id 对应岗位不存在"}}
+            return {
+                "ok": False,
+                "data": None,
+                "error": {
+                    "code": "demand_id_required",
+                    "message": "BOSS 导入不能按职位模板自动入池，请在候选人库中明确选择招聘需求。",
+                },
+            }
 
         # 一个导入批次
         batch = UploadBatch(
@@ -240,14 +242,6 @@ class BossPipelineService:
             db.session.flush()
             existing.add(geek_id)
 
-            if target_job_id is not None:
-                db.session.add(PipelineStage(
-                    candidate_id=candidate.id,
-                    job_id=target_job_id,
-                    stage="pending",
-                    updated_by=owner_hr_id,
-                    note="BOSS 批量导入自动入池",
-                ))
             imported += 1
             results.append({"geek_id": geek_id, "name": display_name, "status": "ok",
                             "candidate_id": candidate.id,
@@ -274,99 +268,17 @@ class BossPipelineService:
         candidate_ids: List[int],
         job_id: int,
     ) -> Dict[str, Any]:
-        """对已导入候选人做 LLM 简历初筛，写 Interview 记录并推进到 ai_screen 阶段。
+        """P0 不开放 BOSS AI 初筛写入。
 
-        - 复用 PreScreenService.evaluate_resume(简历文本, JD)。
-        - 简历文本优先取 resume_json.raw_markdown，回退读 raw_file_path。
-        - 每个候选人写一条 Interview（qa_json 留空，ai_report 存评估详情）。
-        - 阶段推进到 ai_screen（不自动通过/淘汰，由人工在后续环节决策）。
+        该旧入口只接受 ``job_id``，无法保证 Interview 归属具体 Demand；
+        而且 AI 不能改写主流程。因此服务层也 fail closed，避免绕过
+        隐藏的前端入口或 API 路由直接调用。
         """
-        job = db.session.get(Job, job_id)
-        if job is None:
-            return {"ok": False, "data": None,
-                    "error": {"code": "invalid_params", "message": "job_id 对应岗位不存在"}}
-        if not candidate_ids:
-            return {"ok": False, "data": None,
-                    "error": {"code": "invalid_params", "message": "candidate_ids 不能为空"}}
-
-        jd_text = job.jd_text or ""
-        results: List[Dict[str, Any]] = []
-        screened = failed = 0
-
-        for cid in candidate_ids:
-            candidate = db.session.get(Candidate, cid)
-            if candidate is None or candidate.owner_hr_id != owner_hr_id:
-                failed += 1
-                results.append({"candidate_id": cid, "status": "error",
-                                "reason": "候选人不存在或无权操作"})
-                continue
-            resume_text = self._load_resume_text(candidate)
-            if not resume_text:
-                failed += 1
-                results.append({"candidate_id": cid, "name": candidate.name_masked,
-                                "status": "error", "reason": "无可用简历文本"})
-                continue
-            try:
-                report = self.prescreen.evaluate_resume(resume_text, jd_text)
-            except Exception as e:  # noqa: BLE001
-                logger.exception("AI 简历评估失败 candidate_id=%s", cid)
-                failed += 1
-                results.append({"candidate_id": cid, "name": candidate.name_masked,
-                                "status": "error", "reason": f"AI 评估失败：{e}"})
-                continue
-
-            score = report.get("score")
-            try:
-                score = float(score)
-            except (TypeError, ValueError):
-                score = None
-            iv = Interview(
-                candidate_id=cid,
-                job_id=job_id,
-                qa_json=[],
-                ai_report={"type": "resume_screen", **report},
-                score=score,
-                pass_recommended=bool(report.get("pass_recommended")),
-            )
-            db.session.add(iv)
-            # 推进到 ai_screen
-            db.session.add(PipelineStage(
-                candidate_id=cid,
-                job_id=job_id,
-                stage="ai_screen",
-                updated_by=owner_hr_id,
-                note="AI 简历初筛",
-            ))
-            screened += 1
-            results.append({
-                "candidate_id": cid,
-                "name": candidate.name_masked,
-                "status": "ok",
-                "score": score,
-                "pass_recommended": bool(report.get("pass_recommended")),
-                "summary": report.get("summary", ""),
-                "highlights": report.get("highlights", []),
-                "concerns": report.get("concerns", []),
-            })
-
-        db.session.commit()
         return {
-            "ok": True,
-            "data": {"screened": screened, "failed": failed, "results": results},
-            "error": None,
+            "ok": False,
+            "data": None,
+            "error": {
+                "code": "feature_not_available",
+                "message": "BOSS AI 初筛在 P0 未开放，请使用招聘需求下的匹配分析。",
+            },
         }
-
-    def _load_resume_text(self, candidate: Candidate) -> str:
-        rj = candidate.resume_json if isinstance(candidate.resume_json, dict) else {}
-        text = rj.get("raw_markdown") or ""
-        if text:
-            return text
-        if candidate.raw_file_path and os.path.exists(candidate.raw_file_path):
-            try:
-                return Path(candidate.raw_file_path).read_text(encoding="utf-8", errors="ignore")
-            except Exception:  # noqa: BLE001
-                return ""
-        # 退化：拼接结构化字段
-        if rj:
-            return "\n".join(f"{k}: {v}" for k, v in rj.items() if isinstance(v, (str, int, float)))
-        return ""

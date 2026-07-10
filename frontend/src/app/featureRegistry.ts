@@ -3,7 +3,6 @@ import type { LucideIcon } from 'lucide-react';
 import type { Role } from '../types';
 import { candidatesFeature } from '../features/candidates';
 import { demandsFeature } from '../features/demands';
-import { bossFeature } from '../features/boss';
 
 export interface FeatureNavItem {
   to: string;
@@ -29,7 +28,6 @@ export interface AppFeature {
 export const featureRegistry: AppFeature[] = [
   candidatesFeature,
   demandsFeature,
-  bossFeature,
 ];
 
 export const featureNavItems = featureRegistry.flatMap((feature) => feature.navItems);

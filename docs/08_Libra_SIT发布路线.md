@@ -1,7 +1,8 @@
 # 08 · Libra / SIT 发布路线
 
 > 适用场景：用户说“发布到 test”“发布到 SIT”“test-zhipin 没变化”“公司服务器 test 没更新”时，先按本文执行，不要重新猜发布链路。
-> 最近文档同步：2026-07-10。最后一次成功样例仅用于说明流程，不代表当前测试站版本。
+
+> **2026-07-10 状态**：项目负责人已授权以 `codex/demand-scoped-p0` 替换 SIT 测试验收版；覆盖前的 `test/api` 节点 `690e00a` 已保存到两个 `backup/*-before-local-p0-20260710-1830` 分支。SIT 演示数据允许清空或重建；实际同步状态仍以 CFPD refs、Libra CommitID 和测试站资产为准。
 
 ## 一句话结论
 
@@ -11,6 +12,8 @@
 2. CFPD `test` 和 `api` 最好保持同一个目标提交。
 3. 进入 Libra 的执行 pipeline 页，选择 `test` 分支构建，并勾选“构建完成自动部署到 SIT 环境”。
 4. 以测试站 HTML 资产哈希变化作为最终验收，不只看通知或绿色对勾。
+
+`demand_id` 版本还必须加上：同引擎备份恢复、单次 migration Owner、schema revision、audit/backfill/verify 报告、cutover marker 和兄弟 Demand 业务冒烟。没有这些证据时，只能判定“镜像/静态资产已发布”，不能判定“demand-scoped 切换完成”。
 
 历史上也可能通过构建成功行的“发布到SIT”按钮完成发布。现在不要把它当作首选路线；只有确认该行 `CommitID` 等于 CFPD `test` 最新提交，且最终测试站资产确实变化时，才算发布成功。
 
@@ -94,6 +97,17 @@ https://libra.yimidida.com/#/cicd/ci/pipelineexec/2994/4334,4335
 4. 提交构建。
 5. 构建成功后确认 pipeline 的 `sha` 等于 CFPD `test` 最新提交。
 
+#### demand_id 版本的发布顺序
+
+Libra 开始构建不会自动证明 schema 已迁移。发布前先让运维确认一次性 migration 使用哪种路径：Libra init job、独立 K8S Job，或受控人工命令。不允许让多个后端 worker 在启动时同时跑 migration。
+
+1. 在 SIT 同引擎临时库验证 pre-cutover 备份恢复；MySQL 必须有真实临时库导入与核对证据。
+2. 运行 Expand migration，记录前后 schema revision。
+3. 运行 audit/backfill dry-run；歧义 bundle 经业务负责人批准后才允许回填。
+4. verify 通过后部署 dual-write 兼容版，做 shadow comparison，不立即 Contract。
+5. 新前端、新后端、AI、BI、通知、审计全部对齐且旧 worker/旧资产退出后，由负责人决定是否设置 cutover marker。
+6. 一旦开放同 Job 并行多 Demand，不得只回退旧镜像；只能向前修复或停写后整体恢复 pre-cutover 快照。
+
 可用 Libra API 复核 pipeline：
 
 ```text
@@ -112,7 +126,7 @@ zhipin-frontend(RC_<时间戳>|test) - 成功
 
 ## 验收方式
 
-只凭 Libra 通知不够，必须同时验证前端资产和后端服务。前端先确认测试站静态资产：
+只凭 Libra 通知不够，必须用测试站静态资产确认：
 
 ```bash
 curl -sS -L -D /tmp/test-zhipin.headers https://test-zhipin.yimidida.com/ -o /tmp/test-zhipin.html
@@ -127,14 +141,18 @@ curl -sS -L https://test-zhipin.yimidida.com/assets/CandidateProfilePage-RlmuqnX
 rg '完整简历|阅读区可独立滚动|当前操作岗位|淘汰原因' /tmp/CandidateProfilePage-RlmuqnXF.js
 ```
 
-后端至少验证健康接口、未登录权限和本次变更对应的受控 API。当前 `/api/health` 只证明进程存活，不单独证明数据库、uploads 或外部依赖可用：
+后端至少验证健康、未登录权限和本次变更对应的受控 API。`/api/health` 只能证明进程存活，不能单独证明 schema、backfill、数据库、uploads 或外部依赖正确：
 
 ```bash
 curl -sS -i https://test-zhipin.yimidida.com/api/health
 curl -sS -i https://test-zhipin.yimidida.com/api/jobs   # 未登录应为 401/403
 ```
 
-最终发布证据必须记录：`CFPD test SHA + Libra pipeline/CommitID + 前端资产哈希 + 后端健康/API 冒烟 + 验证时间与执行人`。缺任一项只能判定为部分验证，不能说 SIT 已同步。
+demand-scoped P0 最终证据集：
+
+`CFPD test SHA + Libra pipeline/CommitID + 前端资产哈希 + 后端版本/受控 API + schema revision + audit/backfill/verify 报告 + 同引擎备份恢复证据 + cutover marker 状态 + 同 Job 双 Demand 冒烟 + 验证人/时间`。
+
+缺任一项只能判定为部分验证，不能说 demand-scoped P0 已在 SIT 完成切换。
 
 ## 常见坑
 

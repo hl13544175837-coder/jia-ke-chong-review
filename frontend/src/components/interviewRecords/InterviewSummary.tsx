@@ -9,8 +9,8 @@ interface InterviewSummaryProps {
 const items = [
   { key: 'today', label: '今日反馈', icon: Clock3, tone: 'text-brand-700' },
   { key: 'pending', label: '待填写反馈', icon: ClipboardList, tone: 'text-warning-700' },
-  { key: 'passed', label: '通过', icon: CheckCircle2, tone: 'text-success-700' },
-  { key: 'failed', label: '不通过', icon: XCircle, tone: 'text-danger-700' },
+  { key: 'passed', label: '建议通过', icon: CheckCircle2, tone: 'text-success-700' },
+  { key: 'failed', label: '建议不通过', icon: XCircle, tone: 'text-danger-700' },
 ] as const;
 
 export function InterviewSummary({ stats }: InterviewSummaryProps) {

@@ -1,13 +1,12 @@
 export type {
   DemandCloseInput,
   DemandDowngradeInput,
+  DemandListQuery,
+  DemandListResponse,
   DemandOwnerTransferInput,
   DemandPriority,
-  DemandRestoreInput,
   DemandStatus,
-  OpenDemandStatus,
   RecruitmentDemand,
   RecruitmentDemandInput,
   RecruitmentDemandMetrics,
-  RecruitmentDemandUpdateInput,
 } from '../../types';

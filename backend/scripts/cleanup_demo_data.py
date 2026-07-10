@@ -8,14 +8,10 @@ import argparse
 import os
 import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import MetaData, and_, create_engine, delete, inspect, or_, select
-
-try:
-    from scripts.backup_pilot_data import database_url_summary
-except ModuleNotFoundError:  # Direct execution adds backend/scripts, not backend, to sys.path.
-    from backup_pilot_data import database_url_summary
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -219,114 +215,41 @@ def _collect_plan(connection, tables, demo_domain):
 
 def _safe_upload_dirs(project_root):
     root = project_root.resolve()
-    configured = os.environ.get("UPLOAD_FOLDER")
-    upload_dir = Path(configured).expanduser() if configured else root / "backend" / "uploads"
-    if not upload_dir.is_absolute():
-        upload_dir = root / upload_dir
-    resolved = upload_dir.resolve()
-    if resolved == root or resolved in root.parents:
-        raise SystemExit(f"Refusing unsafe upload folder: {resolved}")
-    return [resolved]
-
-
-def _paths_overlap(first, second):
-    return first == second or first in second.parents or second in first.parents
-
-
-def _validate_cleanup_paths(project_root, database_url, upload_dirs):
-    root = project_root.resolve()
-    backup_root = Path(os.environ.get("BACKUP_DIR", str(ROOT / "backups"))).expanduser().resolve()
-    sqlite_path = None
-    if database_url.startswith("sqlite:///"):
-        sqlite_path = Path(database_url[len("sqlite:///"):]).expanduser().resolve()
-
-    for upload_dir in upload_dirs:
-        if _paths_overlap(upload_dir, backup_root):
-            raise SystemExit(
-                f"Refusing unsafe cleanup path overlap: uploads={upload_dir} backups={backup_root}"
-            )
-        if sqlite_path is not None and _paths_overlap(upload_dir, sqlite_path):
-            raise SystemExit(
-                f"Refusing unsafe cleanup path overlap: uploads={upload_dir} database={sqlite_path}"
-            )
-    if sqlite_path is not None and _paths_overlap(backup_root, sqlite_path):
-        raise SystemExit(
-            f"Refusing unsafe cleanup path overlap: backups={backup_root} database={sqlite_path}"
-        )
-    if backup_root == root or backup_root in root.parents:
-        raise SystemExit(f"Refusing unsafe cleanup path: backups={backup_root}")
-
-
-def _candidate_file_references(connection, tables, plan):
-    candidates = tables.get("candidates")
-    condition = dict(plan).get("candidates")
-    if (
-        candidates is None
-        or condition is None
-        or "id" not in candidates.c
-        or "raw_file_path" not in candidates.c
-    ):
-        return [], []
-
-    demo_rows = connection.execute(
-        select(candidates.c.id, candidates.c.raw_file_path).where(condition)
-    ).fetchall()
-    demo_ids = {row[0] for row in demo_rows}
-    demo_references = [row[1] for row in demo_rows if row[1]]
-    protected_references = [
-        row[1]
-        for row in connection.execute(select(candidates.c.id, candidates.c.raw_file_path)).fetchall()
-        if row[0] not in demo_ids and row[1]
+    candidates = [
+        root / "backend" / "uploads",
+        root / "uploads",
     ]
-    return demo_references, protected_references
+    safe_dirs = []
+    for path in candidates:
+        resolved = path.resolve()
+        if root not in (resolved, *resolved.parents):
+            raise SystemExit(f"Refusing to clean path outside project root: {resolved}")
+        safe_dirs.append(resolved)
+    return safe_dirs
 
 
-def _resolved_reference(project_root, raw_file_path):
-    path = Path(str(raw_file_path)).expanduser()
-    if not path.is_absolute():
-        path = project_root / path
-    return path, path.resolve()
+def _file_count(path):
+    if not path.exists():
+        return 0
+    return sum(1 for item in path.rglob("*") if item.is_file() or item.is_symlink())
 
 
-def _inside_any(path, roots):
-    return any(path == root or root in path.parents for root in roots)
+def _clear_directory_files(path):
+    if not path.exists():
+        path.mkdir(parents=True, exist_ok=True)
+        return 0
 
-
-def _safe_demo_files(project_root, upload_dirs, demo_references, protected_references):
-    root = project_root.resolve()
-    allowed_roots = [path.resolve() for path in upload_dirs]
-    protected_paths = {
-        resolved
-        for raw_path in protected_references
-        for _path, resolved in [_resolved_reference(root, raw_path)]
-    }
-    safe_files = set()
-    unsafe_count = 0
-    for raw_path in demo_references:
-        original, resolved = _resolved_reference(root, raw_path)
-        if original.is_symlink() or not _inside_any(resolved, allowed_roots):
-            unsafe_count += 1
-            continue
-        if resolved in protected_paths:
-            continue
-        if resolved.is_file():
-            safe_files.add(resolved)
-        elif resolved.exists():
-            unsafe_count += 1
-    return sorted(safe_files), unsafe_count
-
-
-def _delete_demo_files(paths, upload_dirs):
-    allowed_roots = [path.resolve() for path in upload_dirs]
-    deleted = 0
-    for path in paths:
-        current = path.resolve()
-        if path.is_symlink() or current != path or not _inside_any(current, allowed_roots):
-            continue
-        if path.is_file():
-            path.unlink()
-            deleted += 1
-    return deleted
+    count = 0
+    for item in sorted(path.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        if item.is_file() or item.is_symlink():
+            item.unlink()
+            count += 1
+        elif item.is_dir():
+            try:
+                item.rmdir()
+            except OSError:
+                pass
+    return count
 
 
 def _run_backup(database_url, upload_dirs):
@@ -334,25 +257,18 @@ def _run_backup(database_url, upload_dirs):
     import backup_pilot_data
 
     backup_root = Path(os.environ.get("BACKUP_DIR", str(ROOT / "backups"))).expanduser().resolve()
-    target_dir = backup_pilot_data._create_snapshot_dir(backup_root, suffix="-cleanup-demo-data")
-    try:
-        backup_pilot_data._backup_database(database_url, target_dir, dry_run=False)
-        backup_pilot_data._backup_uploads(upload_dirs[0], target_dir, dry_run=False)
-    except BaseException:
-        shutil.rmtree(target_dir, ignore_errors=True)
-        raise
+    target_dir = backup_root / (datetime.now(UTC).strftime("%Y%m%d-%H%M%S") + "-cleanup-demo-data")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    backup_pilot_data._backup_database(database_url, target_dir, dry_run=False)
+
+    for upload_dir in upload_dirs:
+        label = "backend_uploads" if upload_dir.name == "uploads" and upload_dir.parent.name == "backend" else upload_dir.name
+        upload_target = target_dir / label
+        upload_target.mkdir(parents=True, exist_ok=True)
+        backup_pilot_data._backup_uploads(upload_dir, upload_target, dry_run=False)
 
     print(f"backup complete: {target_dir}")
     return target_dir
-
-
-def _delete_counted_rows(connection, tables, counts):
-    for table_name, rows in counts:
-        row_ids = [row[0] for row in rows]
-        table = tables[table_name]
-        for offset in range(0, len(row_ids), 500):
-            batch_ids = row_ids[offset:offset + 500]
-            connection.execute(delete(table).where(table.c.id.in_(batch_ids)))
 
 
 def main():
@@ -365,47 +281,28 @@ def main():
 
     project_root = Path(args.project_root).expanduser().resolve()
     database_url = _database_url()
-    is_mysql = database_url.startswith(("mysql://", "mysql+pymysql://"))
-    if args.confirm and is_mysql:
-        raise SystemExit(
-            "Confirmed MySQL demo cleanup is disabled because restore_pilot_data.py cannot restore "
-            "database.sql. Use the DBA-reviewed manual cleanup path in DEPLOYMENT.md or add and verify "
-            "MySQL restore support first."
-        )
     engine = create_engine(database_url)
     upload_dirs = _safe_upload_dirs(project_root)
-    _validate_cleanup_paths(project_root, database_url, upload_dirs)
 
     with engine.begin() as connection:
         tables = _load_tables(engine)
         table_names = set(inspect(engine).get_table_names())
         plan = _collect_plan(connection, tables, args.demo_email_domain)
-        demo_references, protected_references = _candidate_file_references(connection, tables, plan)
-        demo_files, unsafe_file_count = _safe_demo_files(
-            project_root,
-            upload_dirs,
-            demo_references,
-            protected_references,
-        )
         counts = []
         for table_name, condition in plan:
             if table_name not in table_names:
                 continue
             table = tables[table_name]
-            frozen_rows = connection.execute(
-                select(table.c.id).where(condition).with_for_update()
-            ).fetchall()
-            counts.append((table_name, frozen_rows))
+            counts.append((table_name, connection.execute(select(table.c.id).where(condition)).fetchall()))
 
+        file_counts = [(path, _file_count(path)) for path in upload_dirs]
         mode = "DELETE CONFIRMED" if args.confirm else "DRY RUN"
-        print(f"{mode}: demo cleanup for {database_url_summary(database_url)}")
+        print(f"{mode}: demo cleanup for {database_url}")
         for table_name, rows in counts:
             print(f"{table_name}: {len(rows)}")
-        print(f"demo upload files: {len(demo_files)}")
-        if unsafe_file_count:
-            print(f"skipped unsafe demo file references: {unsafe_file_count}")
-        if is_mysql:
-            print("WARNING: MySQL --confirm cleanup is disabled; follow the DBA-reviewed path in DEPLOYMENT.md.")
+        for path, count in file_counts:
+            label = "backend/uploads files" if path.parts[-2:] == ("backend", "uploads") else "uploads files"
+            print(f"{label}: {count}")
 
         if not args.confirm:
             print("No data deleted. Re-run with --confirm after reviewing counts.")
@@ -413,9 +310,13 @@ def main():
 
         _run_backup(database_url, upload_dirs)
 
-        _delete_counted_rows(connection, tables, counts)
+        conditions_by_name = dict(plan)
+        for table_name, _rows in counts:
+            table = tables[table_name]
+            condition = conditions_by_name[table_name]
+            connection.execute(delete(table).where(condition))
 
-    deleted_files = _delete_demo_files(demo_files, upload_dirs)
+    deleted_files = sum(_clear_directory_files(path) for path in upload_dirs)
     print(f"cleanup complete: deleted upload files {deleted_files}")
 
 

@@ -1,7 +1,15 @@
-// BI看板 — Apple Health/Fitness 风格数据看板。
-// 毛玻璃 KPI 卡片、渐变漏斗、光环仪表、GSAP 增强动效。
-
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  ArrowRight,
+  BarChart3,
+  Briefcase,
+  ClipboardList,
+  Clock3,
+  MessageSquareWarning,
+  UserRound,
+  Users,
+} from 'lucide-react';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
 import {
@@ -11,1090 +19,441 @@ import {
   CardBody,
   CardHeader,
   CardTitle,
-  SegmentedControl,
-  Spinner,
+  EmptyState,
   PageHeader,
+  Select,
+  Spinner,
 } from '../components/ui';
 import type {
-  BiDataQualityWarning,
-  BiDepartmentAccountability,
+  BiDemandOperationalMetrics,
   BiFunnel,
-  BiInterviewerAccountability,
-  BiSourceQuality,
-  BiStaffMember,
+  DemandStatus,
+  RecruitmentDemand,
 } from '../types';
-import type { ReactNode } from 'react';
-import { Reveal, AnimatedNumber } from '../components/motion';
-import { FunnelDiagram, ConversionRing } from '../components/bi/BiVisuals';
 
-// ─── 常量 ─────────────────────────────────────────────────────────────────────
+const PURPOSE_LABEL = '仅用于进度、卡点和当前责任协同，不用于绩效考核';
 
-const DAYS_OPTIONS: { label: string; value: number }[] = [
-  { label: '近 7 天', value: 7 },
-  { label: '近 30 天', value: 30 },
-  { label: '近 90 天', value: 90 },
-];
+const DEMAND_STATUS_LABELS: Record<DemandStatus, string> = {
+  pending: '待启动',
+  active: '招聘中',
+  paused: '已暂停',
+  filled: '已完成',
+  cancelled: '已取消',
+  closed: '已关闭',
+};
 
-// 漏斗展示的 5 个概念阶段。MVP 主流程只保留一个"面试中"阶段。
-const FUNNEL_STAGES: { label: string; value: (f: BiFunnel) => number }[] = [
-  { label: '待筛选', value: (f) => safeNum(f.pending) },
-  { label: 'AI初筛', value: (f) => safeNum(f.ai_screen) },
-  { label: '面试中', value: (f) => safeNum(f.interview) },
-  { label: 'Offer', value: (f) => safeNum(f.offer) },
-  { label: '已入职', value: (f) => safeNum(f.onboarded) },
-];
+const FUNNEL_STAGES = [
+  { key: 'pending', label: '待筛选', tone: 'neutral' },
+  { key: 'ai_screen', label: 'AI 初筛', tone: 'brand' },
+  { key: 'business_review', label: '业务待反馈', tone: 'warning' },
+  { key: 'interview', label: '面试中', tone: 'accent' },
+  { key: 'offer', label: 'Offer', tone: 'purple' },
+  { key: 'onboarded', label: '已入职', tone: 'success' },
+  { key: 'rejected', label: '已淘汰', tone: 'danger' },
+  { key: 'transferred', label: '已转出', tone: 'teal' },
+] as const;
 
-// Apple 风格渐变配色
-const FUNNEL_COLORS: string[] = [
-  '#007AFF',
-  '#5856D6',
-  '#AF52DE',
-  '#FF9500',
-  '#34C759',
-];
-const REJECTED_COLOR = '#FF3B30';
+type FunnelStageKey = (typeof FUNNEL_STAGES)[number]['key'];
+type BadgeTone = (typeof FUNNEL_STAGES)[number]['tone'];
 
-const BAR_COLOR_RESUMES = '#007AFF';
-const BAR_COLOR_ONBOARDED = '#34C759';
-const BAR_COLOR_RECOMMENDATIONS = '#FF9500';
-
-// ─── 工具函数 ─────────────────────────────────────────────────────────────────
-
-function safeNum(v: number | undefined): number {
-  const n = v ?? 0;
-  return Number.isFinite(n) ? n : 0;
+function safeNum(value: number | undefined): number {
+  return Number.isFinite(value) ? (value ?? 0) : 0;
 }
 
-function pct(n: number): string {
-  const v = Number.isFinite(n) ? n : 0;
-  return v.toFixed(1) + '%';
+function parseDemandId(value: string | null): number | null {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function safeRate(numerator: number, denominator: number): number {
-  const n = safeNum(numerator);
-  const d = safeNum(denominator);
-  if (d <= 0) return 0;
-  return Math.round((n / d) * 1000) / 10;
+function formatDate(value: string | null): string {
+  if (!value) return '未设置';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(date);
 }
 
-function sumStaff(staff: BiStaffMember[], field: keyof BiStaffMember): number {
-  return staff.reduce((acc, item) => {
-    const value = item[field];
-    return acc + (typeof value === 'number' ? safeNum(value) : 0);
-  }, 0);
+function demandLabel(demand: RecruitmentDemand): string {
+  const context = [demand.requester_department, demand.job_city].filter(Boolean).join(' · ');
+  return `${demand.request_no || `D${demand.id}`} · ${demand.job_title}${context ? ` · ${context}` : ''}`;
 }
 
-function teamAvgConversion(staff: BiStaffMember[]): number {
-  const resumes = sumStaff(staff, 'resumes');
-  if (resumes <= 0) return 0;
-  return safeRate(sumStaff(staff, 'onboarded'), resumes);
+function statusTone(status: string): 'success' | 'warning' | 'neutral' | 'danger' {
+  if (status === 'active') return 'success';
+  if (status === 'pending' || status === 'paused') return 'warning';
+  if (status === 'cancelled') return 'danger';
+  return 'neutral';
 }
 
-function DataQualityWarningsPanel({ warnings }: { warnings: BiDataQualityWarning[] }) {
-  if (warnings.length === 0) return null;
-
+function SummaryCard({ title, value, detail, children }: {
+  title: string;
+  value: ReactNode;
+  detail: string;
+  children?: ReactNode;
+}) {
   return (
-    <div className="rounded-md border border-warning-200 bg-warning-50 px-4 py-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-warning-700">数据质量提醒</p>
-        <Badge tone="warning">{warnings.length} 条</Badge>
-      </div>
-      <div className="space-y-2">
-        {warnings.slice(0, 4).map((item) => (
-          <div key={`${item.metric}-${item.label}`} className="text-sm text-warning-700">
-            <span className="font-medium">{item.label}</span>
-            <span className="mx-1 text-warning-700">·</span>
-            <span>{item.detail}</span>
-            <span className="ml-2 tabular-nums text-warning-700">
-              {item.numerator}/{item.denominator}
-            </span>
-          </div>
-        ))}
-      </div>
-      <p className="mt-2 text-xs text-warning-700">下一步：检查是否跳过面试直接进入 Offer。</p>
-    </div>
-  );
-}
-
-// ─── 子组件 ───────────────────────────────────────────────────────────────────
-
-// Apple 风格 KPI 卡片
-function KpiCard({ label, value, sub, accent }: { label: string; value: ReactNode; sub?: string; accent?: string }) {
-  return (
-    <Card variant="elevated" className="overflow-hidden">
-      <CardBody className="relative">
-        {accent && (
-          <div
-            className="absolute -right-4 -top-4 h-16 w-16 rounded-full opacity-10"
-            style={{ background: accent }}
-          />
-        )}
-        <p className="text-xs font-medium text-muted uppercase tracking-wide mb-2">{label}</p>
-        <p className="text-2xl font-display text-ink">{value}</p>
-        {sub && <p className="mt-0.5 text-xs text-muted-soft">{sub}</p>}
+    <Card variant="elevated">
+      <CardBody>
+        <p className="text-xs font-medium text-muted">{title}</p>
+        <p className="mt-2 text-2xl font-display text-ink">{value}</p>
+        <p className="mt-1 text-xs leading-5 text-muted">{detail}</p>
+        {children}
       </CardBody>
     </Card>
   );
 }
 
-function MetricTile({
-  label,
-  value,
-  sub,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: ReactNode;
-  sub?: string;
-  tone?: 'neutral' | 'danger' | 'warning' | 'success';
-}) {
-  const toneClass = {
-    neutral: 'text-ink',
-    danger: 'text-danger-700',
-    warning: 'text-warning-700',
-    success: 'text-success-700',
-  }[tone];
-
+function hasOperationalFacts(metrics: BiDemandOperationalMetrics): boolean {
   return (
-    <div className="rounded-md border border-hairline bg-surface-soft px-3 py-2.5">
-      <p className="text-xs text-muted">{label}</p>
-      <p className={`mt-1 text-xl font-display ${toneClass}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-muted-soft">{sub}</p>}
-    </div>
+    safeNum(metrics.funnel.funnel_total) > 0
+    || metrics.stage_age.length > 0
+    || metrics.outstanding_feedback.count > 0
+    || metrics.offers.total > 0
   );
 }
 
-// 专员行内条形图
-function InlineBar({ value, max, color }: { value: number; max: number; color: string }) {
-  const width = max > 0 ? Math.round((value / max) * 100) : 0;
-  return (
-    <div className="flex items-center gap-2 min-w-0">
-      <div className="flex-1 h-2 rounded-full bg-surface-strong overflow-hidden min-w-0" style={{ minWidth: 40 }}>
-        <div
-          className="h-full rounded-full transition-all duration-700 ease-apple"
-          style={{ width: `${width}%`, background: `linear-gradient(90deg, ${color}dd, ${color})` }}
-        />
-      </div>
-      <span className="text-xs tabular-nums text-body shrink-0 w-6 text-right">{value}</span>
-    </div>
-  );
+function stageCount(funnel: BiFunnel, stage: FunnelStageKey): number {
+  return safeNum(funnel[stage]);
 }
 
-// 专员效能对比表
-function StaffTable({
-  staff,
-  onSelect,
-}: {
-  staff: BiStaffMember[];
-  onSelect: (hrId: number) => void;
-}) {
-  const maxResumes = Math.max(...staff.map((s) => safeNum(s.resumes)), 1);
-  const maxRecommendations = Math.max(...staff.map((s) => safeNum(s.effective_recommendations)), 1);
-  const maxOnboarded = Math.max(...staff.map((s) => safeNum(s.onboarded)), 1);
-  const avgRecommendRate = staff.length === 0
-    ? 0
-    : staff.reduce((acc, s) => acc + safeNum(s.recommendation_to_onboard_rate), 0) / staff.length;
-
-  if (staff.length === 0) {
-    return <p className="text-sm text-muted py-2">暂无专员数据</p>;
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-hairline">
-            <th className="py-2.5 pr-4 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              专员
-            </th>
-            <th className="py-2.5 pr-6 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 100 }}>
-              简历量
-            </th>
-            <th className="py-2.5 pr-6 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 100 }}>
-              有效推荐
-            </th>
-            <th className="py-2.5 pr-6 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 96 }}>
-              推荐成功面试
-            </th>
-            <th className="py-2.5 pr-6 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 96 }}>
-              面试通过
-            </th>
-            <th className="py-2.5 pr-6 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 100 }}>
-              入职数
-            </th>
-            <th className="py-2.5 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              推荐入职率
-            </th>
-          </tr>
-        </thead>
-        <Reveal as="tbody" stagger={0.05} y={10}>
-          {staff.map((s) => {
-            const recommendRate = safeNum(s.recommendation_to_onboard_rate);
-            const aboveAvg = recommendRate > avgRecommendRate;
-            const atAvg = recommendRate === avgRecommendRate;
-            const convColor = aboveAvg ? '#34C759' : atAvg ? '#111111' : '#FF3B30';
-            return (
-              <tr
-                key={s.hr_id}
-                className="border-b border-hairline-soft transition-all duration-200 hover:bg-surface-soft hover:shadow-apple-sm cursor-pointer"
-                onClick={() => onSelect(s.hr_id)}
-                tabIndex={0}
-                role="button"
-                aria-label={`查看 ${s.name} 的详情`}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') onSelect(s.hr_id);
-                }}
-              >
-                <td className="py-3 pr-4 font-medium text-ink whitespace-nowrap">
-                  {s.name}
-                </td>
-                <td className="py-3 pr-6" style={{ minWidth: 100 }}>
-                  <InlineBar value={safeNum(s.resumes)} max={maxResumes} color={BAR_COLOR_RESUMES} />
-                </td>
-                <td className="py-3 pr-6" style={{ minWidth: 100 }}>
-                  <InlineBar
-                    value={safeNum(s.effective_recommendations)}
-                    max={maxRecommendations}
-                    color={BAR_COLOR_RECOMMENDATIONS}
-                  />
-                </td>
-	                <td className="py-3 pr-6" style={{ minWidth: 96 }}>
-	                  <div className="flex flex-col gap-0.5">
-	                    <span className="text-sm font-semibold tabular-nums text-ink">
-	                      {safeNum(s.interview_entries)}
-	                    </span>
-	                    <span className="text-xs tabular-nums text-muted-soft">
-	                      推荐进面
-	                    </span>
-	                  </div>
-	                </td>
-	                <td className="py-3 pr-6" style={{ minWidth: 96 }}>
-	                  <div className="flex flex-col gap-0.5">
-	                    <span className="text-sm font-semibold tabular-nums text-ink">
-	                      {safeNum(s.interview_passed)} / {safeNum(s.interview_entries)}
-	                    </span>
-	                    <span className="text-xs tabular-nums text-muted-soft">
-	                      {pct(safeNum(s.interview_pass_rate))}
-	                    </span>
-	                  </div>
-	                </td>
-                <td className="py-3 pr-6" style={{ minWidth: 100 }}>
-                  <InlineBar value={safeNum(s.onboarded)} max={maxOnboarded} color={BAR_COLOR_ONBOARDED} />
-                </td>
-                <td className="py-3">
-                  <span
-                    className="text-xs font-semibold tabular-nums"
-                    style={{ color: convColor }}
-                  >
-                    {pct(recommendRate)}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </Reveal>
-      </table>
-      <p className="mt-2 text-xs text-muted-soft">点击专员行可查看其漏斗详情</p>
-    </div>
-  );
-}
-
-function SourceQualityTable({ sources }: { sources: BiSourceQuality[] }) {
-  const maxResumes = Math.max(...sources.map((s) => safeNum(s.resumes)), 1);
-  const maxOnboarded = Math.max(...sources.map((s) => safeNum(s.onboarded)), 1);
-
-  if (sources.length === 0) {
-    return <p className="text-sm text-muted py-2">暂无渠道数据</p>;
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-hairline">
-            <th className="py-2.5 pr-4 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              渠道
-            </th>
-            <th className="py-2.5 pr-6 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 100 }}>
-              简历量
-            </th>
-            <th className="py-2.5 pr-6 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 96 }}>
-              推荐成功面试
-            </th>
-            <th className="py-2.5 pr-6 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 96 }}>
-              面试通过
-            </th>
-            <th className="py-2.5 pr-6 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 96 }}>
-              面试到 Offer
-            </th>
-            <th className="py-2.5 pr-6 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 90 }}>
-              Offer
-            </th>
-            <th className="py-2.5 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap" style={{ minWidth: 100 }}>
-              入职率
-            </th>
-          </tr>
-        </thead>
-        <Reveal as="tbody" stagger={0.05} y={10}>
-          {sources.map((source) => (
-            <tr key={source.channel} className="border-b border-hairline-soft transition-colors hover:bg-surface-soft">
-              <td className="py-3 pr-4 font-medium text-ink whitespace-nowrap">
-                {source.channel}
-              </td>
-              <td className="py-3 pr-6" style={{ minWidth: 100 }}>
-                <InlineBar value={safeNum(source.resumes)} max={maxResumes} color={BAR_COLOR_RESUMES} />
-              </td>
-	              <td className="py-3 pr-6 tabular-nums text-body" style={{ minWidth: 96 }}>
-	                {safeNum(source.interview_entries)}
-	                <span className="ml-1 text-xs text-muted-soft">
-	                  {pct(safeRate(safeNum(source.interview_entries), safeNum(source.resumes)))}
-	                </span>
-	              </td>
-	              <td className="py-3 pr-6" style={{ minWidth: 96 }}>
-	                <div className="flex flex-col gap-0.5">
-	                  <span className="text-sm font-semibold tabular-nums text-ink">
-	                    {safeNum(source.interview_passed)} / {safeNum(source.interview_entries)}
-	                  </span>
-	                  <span className="text-xs tabular-nums text-muted-soft">
-	                    {pct(safeNum(source.interview_pass_rate))}
-	                  </span>
-	                </div>
-	              </td>
-	              <td className="py-3 pr-6" style={{ minWidth: 96 }}>
-	                <div className="flex flex-col gap-0.5">
-	                  <span className="text-sm font-semibold tabular-nums text-ink">
-	                    {safeNum(source.offer_entries)} / {safeNum(source.interview_entries)}
-	                  </span>
-	                  <span className="text-xs tabular-nums text-muted-soft">
-	                    {pct(safeNum(source.interview_to_offer_rate))}
-	                  </span>
-	                </div>
-	              </td>
-              <td className="py-3 pr-6 tabular-nums text-body" style={{ minWidth: 90 }}>
-                {safeNum(source.offer_entries)}
-              </td>
-              <td className="py-3" style={{ minWidth: 100 }}>
-                <div className="flex items-center gap-2">
-                  <div className="w-16 shrink-0">
-                    <InlineBar value={safeNum(source.onboarded)} max={maxOnboarded} color={BAR_COLOR_ONBOARDED} />
-                  </div>
-                  <span className="text-xs font-semibold tabular-nums text-success-700">
-                    {pct(safeNum(source.onboard_rate))}
-                  </span>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </Reveal>
-      </table>
-    </div>
-  );
-}
-
-function InterviewerAccountabilityTable({ interviewers }: { interviewers: BiInterviewerAccountability[] }) {
-  if (interviewers.length === 0) {
-    return <p className="text-sm text-muted py-2">暂无面试官数据</p>;
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-hairline">
-            <th className="py-2.5 pr-4 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              面试官
-            </th>
-            <th className="py-2.5 pr-4 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              面试安排
-            </th>
-            <th className="py-2.5 pr-4 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              通过 / 拒绝
-            </th>
-            <th className="py-2.5 pr-4 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              通过率
-            </th>
-            <th className="py-2.5 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              待补反馈
-            </th>
-          </tr>
-        </thead>
-        <Reveal as="tbody" stagger={0.04} y={8}>
-          {interviewers.map((item) => (
-            <tr
-              key={`${item.interviewer_id ?? 'unknown'}-${item.interviewer_name}`}
-              className="border-b border-hairline-soft transition-colors hover:bg-surface-soft"
-            >
-              <td className="py-3 pr-4 font-medium text-ink whitespace-nowrap">
-                {item.interviewer_name}
-              </td>
-              <td className="py-3 pr-4 tabular-nums text-body whitespace-nowrap">
-                {safeNum(item.assigned_count)}
-                <span className="ml-1 text-xs text-muted-soft">
-                  已反馈 {safeNum(item.feedback_submitted)}
-                </span>
-              </td>
-              <td className="py-3 pr-4 tabular-nums whitespace-nowrap">
-                <span className="text-success-700">{safeNum(item.passed_count)}</span>
-                <span className="mx-1 text-muted-soft">/</span>
-                <span className="text-danger-700">{safeNum(item.rejected_count)}</span>
-              </td>
-              <td className="py-3 pr-4 tabular-nums text-body whitespace-nowrap">
-                {pct(safeNum(item.pass_rate))}
-              </td>
-              <td className="py-3 tabular-nums whitespace-nowrap">
-                <span className={item.pending_feedback > 0 ? 'text-warning-700' : 'text-muted'}>
-                  {safeNum(item.pending_feedback)}
-                </span>
-                <span className="ml-1 text-xs text-muted-soft">
-                  超时 {safeNum(item.overdue_feedback)}
-                </span>
-              </td>
-            </tr>
-          ))}
-        </Reveal>
-      </table>
-    </div>
-  );
-}
-
-function DepartmentAccountabilityTable({ departments }: { departments: BiDepartmentAccountability[] }) {
-  if (departments.length === 0) {
-    return <p className="text-sm text-muted py-2">暂无用人部门数据</p>;
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-hairline">
-            <th className="py-2.5 pr-4 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              用人部门
-            </th>
-            <th className="py-2.5 pr-4 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              面试安排
-            </th>
-            <th className="py-2.5 pr-4 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              通过 / 拒绝
-            </th>
-            <th className="py-2.5 pr-4 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              待补反馈
-            </th>
-            <th className="py-2.5 text-left text-xs font-medium text-muted uppercase tracking-wide whitespace-nowrap">
-              轮次明细
-            </th>
-          </tr>
-        </thead>
-        <Reveal as="tbody" stagger={0.04} y={8}>
-          {departments.map((item) => (
-            <tr
-              key={item.department}
-              className="border-b border-hairline-soft transition-colors hover:bg-surface-soft"
-            >
-              <td className="py-3 pr-4 font-medium text-ink whitespace-nowrap">
-                {item.department}
-                <div className="mt-0.5 text-xs text-muted-soft">
-                  {safeNum(item.jobs_count)} 个岗位 · {safeNum(item.interviewers_count)} 位面试官
-                </div>
-              </td>
-              <td className="py-3 pr-4 tabular-nums text-body whitespace-nowrap">
-                {safeNum(item.assigned_count)}
-                <span className="ml-1 text-xs text-muted-soft">
-                  已反馈 {safeNum(item.feedback_submitted)}
-                </span>
-              </td>
-              <td className="py-3 pr-4 tabular-nums whitespace-nowrap">
-                <span className="text-success-700">{safeNum(item.passed_count)}</span>
-                <span className="mx-1 text-muted-soft">/</span>
-                <span className="text-danger-700">{safeNum(item.rejected_count)}</span>
-                <span className="ml-2 text-xs text-muted-soft">
-                  {pct(safeNum(item.pass_rate))}
-                </span>
-              </td>
-              <td className="py-3 pr-4 tabular-nums whitespace-nowrap">
-                <span className={item.pending_feedback > 0 ? 'text-warning-700' : 'text-muted'}>
-                  {safeNum(item.pending_feedback)}
-                </span>
-                <span className="ml-1 text-xs text-muted-soft">
-                  超时 {safeNum(item.overdue_feedback)}
-                </span>
-              </td>
-              <td className="py-3">
-                <div className="flex min-w-[220px] flex-wrap gap-1.5">
-                  {item.rounds.slice(0, 4).map((round) => (
-                    <span
-                      key={`${item.department}-${round.round}`}
-                      className="rounded-md bg-surface-soft px-2 py-1 text-xs tabular-nums text-body"
-                    >
-                      {round.round_label} {safeNum(round.passed_count)}/{safeNum(round.assigned_count)}
-                    </span>
-                  ))}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </Reveal>
-      </table>
-    </div>
-  );
-}
-
-// ─── 第一层 — 团队总览 ────────────────────────────────────────────────────────
-
-function TeamOverview({
-  days,
-  onDaysChange,
-}: {
-  days: number;
-  onDaysChange: (d: number) => void;
-}) {
-  const { data, loading, error, reload } = useAsync(
-    () => api.biOverview(days),
-    [days],
+function DemandMetrics({ demandId }: { demandId: number }) {
+  const { data: metrics, loading, error, reload } = useAsync(
+    () => api.biDemand(demandId),
+    [demandId],
   );
 
-  const [selectedHrId, setSelectedHrId] = useState<number | null>(null);
-  const sourceQuality = data?.source_quality ?? [];
-  const interviewerPendingFeedback = data?.interviewer_accountability.reduce(
-    (acc, item) => acc + safeNum(item.pending_feedback),
-    0,
-  ) ?? 0;
-  const departmentPendingFeedback = data?.department_accountability.reduce(
-    (acc, item) => acc + safeNum(item.pending_feedback),
-    0,
-  ) ?? 0;
-
-  if (selectedHrId !== null) {
-    const staffMember = data?.staff.find((s) => s.hr_id === selectedHrId) ?? null;
-    const avgConv = data ? teamAvgConversion(data.staff) : null;
+  if (loading) {
     return (
-      <StaffDrilldown
-        hrId={selectedHrId}
-        days={days}
-        staffMember={staffMember}
-        teamAvgConv={avgConv}
-        onBack={() => setSelectedHrId(null)}
-      />
+      <div className="flex items-center justify-center py-24" aria-label="正在加载需求进度">
+        <Spinner size="lg" />
+      </div>
     );
   }
 
+  if (error) {
+    return (
+      <Card>
+        <EmptyState
+          icon={BarChart3}
+          title="这个需求的进度暂时无法加载"
+          description={error.message}
+          action={<Button variant="secondary" onClick={reload}>重试</Button>}
+        />
+      </Card>
+    );
+  }
+
+  if (!metrics) return null;
+
+  if (!hasOperationalFacts(metrics)) {
+    return (
+      <Card>
+        <EmptyState
+          icon={ClipboardList}
+          title="这个需求还没有候选人流程事实"
+          description="先把候选人加入该需求的流程，阶段、面试、Offer 和 HC 进度才会在这里出现。"
+          action={(
+            <Link
+              to={`/pipeline?demand=${demandId}`}
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--enterprise-brand)] px-5 text-sm font-semibold text-on-primary hover:bg-[var(--enterprise-brand-dark)]"
+            >
+              去候选人流程 <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          )}
+        />
+      </Card>
+    );
+  }
+
+  const purposeLabel = metrics.purpose_label || PURPOSE_LABEL;
+  const responsibility = metrics.current_responsibility;
+
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <PageHeader
-        title="数据看板"
-        description="看团队招聘进度、卡点和协同跟进"
-        actions={
-          <SegmentedControl<number>
-            options={DAYS_OPTIONS}
-            value={days}
-            onChange={onDaysChange}
-            size="sm"
-          />
-        }
-      />
-
-      {loading && (
-        <div className="flex items-center justify-center py-32">
-          <Spinner size="lg" />
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-hairline bg-surface-card px-4 py-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-display text-ink">{metrics.demand.title}</h2>
+            <Badge tone={statusTone(metrics.demand.status)}>
+              {DEMAND_STATUS_LABELS[metrics.demand.status as DemandStatus] ?? metrics.demand.status}
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted">
+            {[metrics.demand.department, metrics.demand.city].filter(Boolean).join(' · ') || '部门与城市未记录'}
+            {' · '}目标日期 {formatDate(metrics.demand.target_date)}
+          </p>
         </div>
-      )}
+        <Badge tone="info">{purposeLabel}</Badge>
+      </div>
 
-      {error && (
-        <div className="rounded-lg bg-danger-50 px-4 py-3 text-sm text-danger-700">
-          {error.message}
-          <button onClick={reload} className="ml-3 font-medium underline hover:no-underline">
-            重试
-          </button>
-        </div>
-      )}
-
-      {!loading && !error && data && (
-        <div className="space-y-6">
-          <DataQualityWarningsPanel warnings={data.data_quality_warnings} />
-
-          {/* KPI 指标行 — Apple 风格毛玻璃卡片 */}
-          <Reveal as="div" className="grid grid-cols-2 gap-4 sm:grid-cols-4" stagger={0.07}>
-            <KpiCard
-              label="在招专员"
-              value={<AnimatedNumber value={data.staff.length} />}
-              sub="本期活跃"
-              accent="#007AFF"
-            />
-            <KpiCard
-              label="当前入职"
-              value={<AnimatedNumber value={safeNum(data.funnel.onboarded)} />}
-              sub={`归档 ${safeNum(data.funnel.archived_total)} 人`}
-              accent="#34C759"
-            />
-            <KpiCard
-              label="全流程入职占比"
-              value={<AnimatedNumber value={safeNum(data.funnel.conversion_rate)} decimals={1} suffix="%" />}
-              sub="活跃流程 + 归档结果"
-              accent="#AF52DE"
-            />
-            <KpiCard
-              label="当前流程人数"
-              value={<AnimatedNumber value={safeNum(data.funnel.pipeline_total)} />}
-              sub="不含已入职/已淘汰"
-              accent="#FF9500"
-            />
-          </Reveal>
-
-          <Reveal as="div" className="grid grid-cols-2 gap-4 sm:grid-cols-4" stagger={0.07}>
-            <KpiCard
-              label="有效推荐"
-              value={<AnimatedNumber value={sumStaff(data.staff, 'effective_recommendations')} />}
-              sub="已进入候选人流程"
-              accent="#FF9500"
-            />
-            <KpiCard
-              label="推荐成功面试"
-              value={
-                <span className="inline-flex items-baseline gap-1">
-                  <AnimatedNumber value={sumStaff(data.staff, 'interview_entries')} />
+      <Card variant="elevated">
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle>流程阶段</CardTitle>
+              <p className="mt-1 text-xs text-muted">每个数字都可进入该需求的候选人明细</p>
+            </div>
+            <Badge tone="neutral">当前流程人数 {safeNum(metrics.funnel.pipeline_total)}</Badge>
+          </div>
+        </CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+            {FUNNEL_STAGES.map((stage) => (
+              <Link
+                key={stage.key}
+                to={`/pipeline?demand=${demandId}&stage=${stage.key}`}
+                className="group rounded-lg border border-hairline bg-surface-soft px-3 py-3 transition hover:border-[var(--enterprise-brand)] hover:bg-surface-card"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted">{stage.label}</span>
+                  <Badge tone={stage.tone as BadgeTone}>{stageCount(metrics.funnel, stage.key)}</Badge>
+                </div>
+                <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--enterprise-brand-dark)]">
+                  查看明细 <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" aria-hidden="true" />
                 </span>
-              }
-              sub="进入面试中阶段"
-              accent="#007AFF"
-            />
-            <KpiCard
-              label="面试通过"
-              value={
-                <span className="inline-flex items-baseline gap-1">
-                  <AnimatedNumber value={sumStaff(data.staff, 'interview_passed')} />
-                  <span className="text-base text-muted">
-                    / {sumStaff(data.staff, 'interview_entries')}
-                  </span>
-                </span>
-              }
-              sub={`通过率 ${pct(safeRate(
-                sumStaff(data.staff, 'interview_passed'),
-                sumStaff(data.staff, 'interview_entries'),
-              ))}`}
-              accent="#5856D6"
-            />
-            <KpiCard
-              label="待补反馈"
-              value={<AnimatedNumber value={sumStaff(data.staff, 'feedback_pending')} />}
-              sub={`${sumStaff(data.staff, 'feedback_overdue')} 条已超时`}
-              accent="#FF3B30"
-            />
-          </Reveal>
+              </Link>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-muted">“已转出”单独记录，不计入“已淘汰”。</p>
+        </CardBody>
+      </Card>
 
-          <Reveal as="div" className="grid grid-cols-1 gap-6 lg:grid-cols-2" stagger={0.08} y={16}>
-            <Card variant="elevated">
-              <CardHeader>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <CardTitle>需求健康</CardTitle>
-                  <Badge tone="neutral">
-                    A/B/C {safeNum(data.demands.priority_counts.A)} / {safeNum(data.demands.priority_counts.B)} / {safeNum(data.demands.priority_counts.C)}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardBody>
-                <div className="grid grid-cols-2 gap-3">
-                  <MetricTile
-                    label="活跃需求"
-                    value={<AnimatedNumber value={data.demands.active_total} />}
-                    sub="待处理与招聘中"
-                  />
-                  <MetricTile
-                    label="逾期需求"
-                    value={<AnimatedNumber value={data.demands.overdue} />}
-                    sub="超过目标日期"
-                    tone={data.demands.overdue > 0 ? 'danger' : 'success'}
-                  />
-                  <MetricTile
-                    label="HR 无推荐"
-                    value={<AnimatedNumber value={data.demands.hr_no_recommendation} />}
-                    sub="接手 7 天未推荐"
-                    tone={data.demands.hr_no_recommendation > 0 ? 'warning' : 'success'}
-                  />
-                  <MetricTile
-                    label="业务待反馈"
-                    value={<AnimatedNumber value={data.demands.business_feedback_pending} />}
-                    sub="卡在业务复核"
-                    tone={data.demands.business_feedback_pending > 0 ? 'warning' : 'success'}
-                  />
-                </div>
-              </CardBody>
-            </Card>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <SummaryCard
+          title="HC 进度"
+          value={`${metrics.hc.onboarded_count} / ${metrics.hc.headcount}`}
+          detail={`完成度 ${safeNum(metrics.hc.completion_rate).toFixed(1)}% · 剩余 ${metrics.hc.remaining} 人`}
+        >
+          {metrics.hc.completion_suggested && (
+            <Badge tone="success" className="mt-3">已达 HC，建议由 HR 确认完成</Badge>
+          )}
+        </SummaryCard>
+        <SummaryCard
+          title="Offer"
+          value={metrics.offers.total}
+          detail="Offer 事实只归当前招聘需求"
+        >
+          <Link
+            to={`/pipeline?demand=${demandId}&stage=offer`}
+            className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--enterprise-brand-dark)] hover:underline"
+          >
+            查看 Offer 候选人 <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        </SummaryCard>
+        <SummaryCard
+          title="当前协同责任"
+          value={responsibility.owner_name || '未指定负责人'}
+          detail={`活动候选人 ${responsibility.active_candidates} 人 · 待补反馈 ${responsibility.outstanding_feedback} 条`}
+        />
+      </div>
 
-            <Card variant="elevated">
-              <CardHeader>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <CardTitle>简历消化</CardTitle>
-                  <Badge tone="neutral">
-                    进流程 {pct(safeNum(data.resumes.pipeline_entry_rate))}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardBody>
-                <div className="grid grid-cols-2 gap-3">
-                  <MetricTile
-                    label="入库简历"
-                    value={<AnimatedNumber value={data.resumes.total_candidates} />}
-                    sub="当前周期"
-                  />
-                  <MetricTile
-                    label="绑定岗位"
-                    value={<AnimatedNumber value={data.resumes.linked_to_job} />}
-                    sub={`${data.resumes.unassigned} 份暂未绑定`}
-                  />
-                  <MetricTile
-                    label="已匹配"
-                    value={<AnimatedNumber value={data.resumes.matched_candidates} />}
-                    sub={`匹配率 ${pct(safeNum(data.resumes.match_rate))}`}
-                  />
-                  <MetricTile
-                    label="已进流程"
-                    value={<AnimatedNumber value={data.resumes.in_pipeline} />}
-                    sub={`${data.resumes.not_in_pipeline} 份未进流程`}
-                    tone={data.resumes.not_in_pipeline > 0 ? 'warning' : 'success'}
-                  />
-                  <MetricTile
-                    label="进流程率"
-                    value={
-                      <AnimatedNumber
-                        value={safeNum(data.resumes.pipeline_entry_rate)}
-                        decimals={1}
-                        suffix="%"
-                      />
-                    }
-                    sub="入库到流程转化"
-                    tone={data.resumes.pipeline_entry_rate > 0 ? 'success' : 'neutral'}
-                  />
-                </div>
-              </CardBody>
-            </Card>
-          </Reveal>
-
-          {/* 图表行 */}
-          <Reveal as="div" className="grid grid-cols-1 gap-6 lg:grid-cols-2" stagger={0.1} y={20}>
-            {/* 团队招聘漏斗 */}
-            <Card variant="elevated">
-              <CardHeader>
-                <CardTitle>团队当前阶段分布</CardTitle>
-              </CardHeader>
-              <CardBody>
-                <FunnelDiagram
-                  stages={FUNNEL_STAGES.map(({ label, value }, i) => ({
-                    label,
-                    value: value(data.funnel),
-                    color: FUNNEL_COLORS[i] ?? '#007AFF',
-                  }))}
-                  rejected={safeNum(data.funnel.rejected)}
-                  rejectedColor={REJECTED_COLOR}
-                />
-              </CardBody>
-            </Card>
-
-            {/* 转化率仪表 + 阶段汇总 */}
-            <Card variant="elevated">
-              <CardHeader>
-                <CardTitle>流程状态总览</CardTitle>
-              </CardHeader>
-              <CardBody>
-                <div className="mb-5 flex justify-center">
-                  <ConversionRing
-                    percent={safeNum(data.funnel.conversion_rate)}
-                    label="全流程入职占比"
-                    color="#007AFF"
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {FUNNEL_STAGES.map(({ label, value }) => (
-                    <div key={label} className="rounded-xl bg-surface-soft px-3 py-2.5 transition-colors hover:bg-surface-card">
-                      <p className="text-xs text-muted mb-0.5">{label}</p>
-                      <p className="text-lg font-display text-ink">
-                        <AnimatedNumber value={value(data.funnel)} />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <Card variant="elevated">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <CardTitle>阶段停留</CardTitle>
+                <p className="mt-1 text-xs text-muted">先看停留最久的候选人，协调当前责任人</p>
+              </div>
+              <Clock3 className="h-5 w-5 text-muted" aria-hidden="true" />
+            </div>
+          </CardHeader>
+          <CardBody>
+            {metrics.stage_age.length === 0 ? (
+              <p className="text-sm text-muted">暂无阶段停留记录</p>
+            ) : (
+              <div className="divide-y divide-hairline-soft">
+                {metrics.stage_age.slice(0, 8).map((item) => (
+                  <Link
+                    key={`${item.candidate_id}-${item.stage}`}
+                    to={`/pipeline?demand=${demandId}&stage=${item.stage}&candidate=${item.candidate_id}`}
+                    className="flex items-center justify-between gap-4 py-3 hover:text-[var(--enterprise-brand-dark)]"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">{item.candidate_name}</p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {item.stage_label} · 最后处理 {item.last_actor_name || '未记录'}
                       </p>
                     </div>
-                  ))}
-                </div>
-              </CardBody>
-            </Card>
-          </Reveal>
-
-          {/* 专员效能对比 */}
-          <Card variant="elevated">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>HR 绩效</CardTitle>
-                {data.staff.length > 0 && (
-                  <Badge tone="neutral">团队均转化率 {pct(teamAvgConversion(data.staff))}</Badge>
-                )}
+                    <Badge tone={item.age_days >= 7 ? 'warning' : 'neutral'}>{item.age_days} 天</Badge>
+                  </Link>
+                ))}
               </div>
-            </CardHeader>
-            <CardBody>
-              {data.staff.length === 0 ? (
-                <p className="text-sm text-muted">本期暂无专员数据</p>
-              ) : (
-                <StaffTable staff={data.staff} onSelect={setSelectedHrId} />
-              )}
-            </CardBody>
-          </Card>
+            )}
+          </CardBody>
+        </Card>
 
-          <Reveal as="div" className="grid grid-cols-1 gap-6 xl:grid-cols-2" stagger={0.08} y={16}>
-            <Card variant="elevated">
-              <CardHeader>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <CardTitle>面试反馈跟进</CardTitle>
-                    <p className="mt-1 text-xs leading-5 text-muted">
-                      看谁还有反馈没补，不是用来简单排名面试官。
-                    </p>
-                  </div>
-                  {data.interviewer_accountability.length > 0 && (
-                    <Badge tone={interviewerPendingFeedback > 0 ? 'warning' : 'neutral'}>
-                      待补 {interviewerPendingFeedback}
-                    </Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardBody>
-                <InterviewerAccountabilityTable interviewers={data.interviewer_accountability} />
-              </CardBody>
-            </Card>
-
-            <Card variant="elevated">
-              <CardHeader>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <CardTitle>部门协同情况</CardTitle>
-                    <p className="mt-1 text-xs leading-5 text-muted">
-                      看哪个部门需要同步反馈和判断标准，不是给部门贴标签。
-                    </p>
-                  </div>
-                  {data.department_accountability.length > 0 && (
-                    <Badge tone={departmentPendingFeedback > 0 ? 'warning' : 'neutral'}>
-                      待补 {departmentPendingFeedback}
-                    </Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardBody>
-                <DepartmentAccountabilityTable departments={data.department_accountability} />
-              </CardBody>
-            </Card>
-          </Reveal>
-
-          <Card variant="elevated">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>渠道质量</CardTitle>
-                {sourceQuality.length > 0 && (
-                  <Badge tone="neutral">来源 {sourceQuality.length}</Badge>
-                )}
+        <Card variant="elevated">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <CardTitle>面试反馈跟进</CardTitle>
+                <p className="mt-1 text-xs text-muted">只用来找待办和当前责任，不排名面试官</p>
               </div>
-            </CardHeader>
-            <CardBody>
-              <SourceQualityTable sources={sourceQuality} />
-            </CardBody>
-          </Card>
+              <Badge tone={metrics.outstanding_feedback.count > 0 ? 'warning' : 'success'}>
+                待补反馈 {metrics.outstanding_feedback.count}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardBody>
+            {metrics.outstanding_feedback.items.length === 0 ? (
+              <p className="text-sm text-muted">当前没有待补的面试反馈。</p>
+            ) : (
+              <div className="divide-y divide-hairline-soft">
+                {metrics.outstanding_feedback.items.slice(0, 8).map((item) => (
+                  <Link
+                    key={item.assignment_id}
+                    to={`/interviews?demand=${demandId}`}
+                    className="flex items-center justify-between gap-4 py-3 hover:text-[var(--enterprise-brand-dark)]"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">{item.candidate_name}</p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {item.round || `第 ${item.round_sequence} 轮`} · {item.interviewer_name || '未记录面试官'}
+                        {item.is_primary ? ' · 主面试官' : ' · 辅助面试官'}
+                      </p>
+                    </div>
+                    <Badge tone="warning">超时 {item.overdue_days} 天</Badge>
+                  </Link>
+                ))}
+              </div>
+            )}
+            <Link
+              to={`/interviews?demand=${demandId}`}
+              className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-[var(--enterprise-brand-dark)] hover:underline"
+            >
+              打开该需求的面试待办 <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </CardBody>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="flex items-center gap-3 rounded-lg border border-hairline bg-surface-soft px-4 py-3">
+          <Users className="h-5 w-5 text-muted" aria-hidden="true" />
+          <div><p className="text-xs text-muted">当前流程</p><p className="text-sm font-medium text-ink">{safeNum(metrics.funnel.pipeline_total)} 人</p></div>
         </div>
-      )}
+        <div className="flex items-center gap-3 rounded-lg border border-hairline bg-surface-soft px-4 py-3">
+          <Briefcase className="h-5 w-5 text-muted" aria-hidden="true" />
+          <div><p className="text-xs text-muted">Offer 记录</p><p className="text-sm font-medium text-ink">{metrics.offers.total} 条</p></div>
+        </div>
+        <div className="flex items-center gap-3 rounded-lg border border-hairline bg-surface-soft px-4 py-3">
+          <UserRound className="h-5 w-5 text-muted" aria-hidden="true" />
+          <div><p className="text-xs text-muted">当前负责人</p><p className="text-sm font-medium text-ink">{responsibility.owner_name || '未指定'}</p></div>
+        </div>
+      </div>
     </div>
   );
 }
 
-// ─── 第二层 — 专员漏斗下钻 ────────────────────────────────────────────────────
-
-function StaffDrilldown({
-  hrId,
-  days,
-  staffMember,
-  teamAvgConv,
-  onBack,
-}: {
-  hrId: number;
-  days: number;
-  staffMember: BiStaffMember | null;
-  teamAvgConv: number | null;
-  onBack: () => void;
-}) {
-  const { data, loading, error, reload } = useAsync(
-    () => api.biStaff(hrId, days),
-    [hrId, days],
+export function BiPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDemandId = parseDemandId(searchParams.get('demand'));
+  const [selectedDemandId, setSelectedDemandId] = useState<number | null>(null);
+  const {
+    data: demandList,
+    loading: demandsLoading,
+    error: demandsError,
+    reload: reloadDemands,
+  } = useAsync(
+    () => api.listDemands({ status: 'all', page: 1, page_size: 100, sort: 'created_at_desc' }),
+    [],
   );
 
-  const name = staffMember?.name ?? `专员 #${hrId}`;
-  const conv = staffMember ? safeNum(staffMember.conversion_rate) : null;
-  const avg = teamAvgConv ?? 0;
-  const aboveAvg = conv !== null && conv > avg;
-  const atAvg = conv !== null && conv === avg;
+  const demands = demandList?.items ?? [];
+
+  useEffect(() => {
+    if (!demandList) return;
+    if (demandList.items.length === 0) {
+      if (selectedDemandId !== null) setSelectedDemandId(null);
+      return;
+    }
+
+    const selectedIsVisible = selectedDemandId !== null
+      && demandList.items.some((item) => item.id === selectedDemandId);
+    const requestedIsVisible = requestedDemandId !== null
+      && demandList.items.some((item) => item.id === requestedDemandId);
+    const nextId = selectedIsVisible
+      ? selectedDemandId
+      : requestedIsVisible
+        ? requestedDemandId
+        : demandList.items[0].id;
+
+    if (selectedDemandId !== nextId) setSelectedDemandId(nextId);
+    if (requestedDemandId !== nextId) {
+      setSearchParams({ demand: String(nextId) }, { replace: true });
+    }
+  }, [demandList, requestedDemandId, selectedDemandId, setSearchParams]);
+
+  const selectDemand = (demandId: number) => {
+    setSelectedDemandId(demandId);
+    setSearchParams({ demand: String(demandId) }, { replace: true });
+  };
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Back navigation */}
-      <button
-        onClick={onBack}
-        className="inline-flex items-center gap-1 text-sm text-muted hover:text-ink transition-colors duration-200 focus:outline-none focus-visible:underline"
-      >
-        ← 返回团队总览
-      </button>
+    <div className="space-y-6">
+      <PageHeader
+        title="进度看板"
+        description="按具体招聘需求看进度、卡点和当前责任"
+        actions={demands.length > 0 ? (
+          <label className="flex min-w-[280px] flex-col gap-1 text-xs font-medium text-muted" htmlFor="bi-demand-select">
+            选择招聘需求
+            <Select
+              id="bi-demand-select"
+              value={selectedDemandId ?? ''}
+              onChange={(event) => selectDemand(Number(event.target.value))}
+              aria-label="选择招聘需求"
+            >
+              {demands.map((demand) => (
+                <option key={demand.id} value={demand.id}>{demandLabel(demand)}</option>
+              ))}
+            </Select>
+          </label>
+        ) : undefined}
+      />
 
-      {/* Staff header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-display text-ink">{name}</h1>
-          <p className="mt-0.5 text-sm text-muted">专员漏斗详情 · 当前存量 · 绩效按近 {days} 天入库简历</p>
-        </div>
-        {conv !== null && teamAvgConv !== null && (
-          <Badge tone={aboveAvg ? 'success' : atAvg ? 'neutral' : 'danger'}>
-            转化率 {pct(conv)}{' '}
-            {aboveAvg ? '▲ 高于' : atAvg ? '= ' : '▼ 低于'}团队均值 {pct(avg)}
-          </Badge>
-        )}
+      <div className="flex items-start gap-2 rounded-md border border-[#b8ddff] bg-[#edf6ff] px-4 py-3 text-sm text-[#1e6fd9]">
+        <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <p>{PURPOSE_LABEL}。当前负责人回答“现在该谁接住”，不改写历史操作人。</p>
       </div>
 
-      {/* Staff KPI cards */}
-      {staffMember && (
-        <Reveal as="div" className="grid grid-cols-2 gap-4 sm:grid-cols-4" stagger={0.07}>
-          <KpiCard
-            label="简历量"
-            value={<AnimatedNumber value={safeNum(staffMember.resumes)} />}
-            sub={`解析失败 ${safeNum(staffMember.parse_failed)}`}
-            accent="#007AFF"
-          />
-          <KpiCard
-            label="有效推荐"
-            value={<AnimatedNumber value={safeNum(staffMember.effective_recommendations)} />}
-            sub="进入候选人流程"
-            accent="#FF9500"
-          />
-          <KpiCard
-            label="推荐成功面试"
-            value={
-              <span className="inline-flex items-baseline gap-1">
-                <AnimatedNumber value={safeNum(staffMember.interview_entries)} />
-              </span>
-            }
-            sub="进入面试中阶段"
-            accent="#007AFF"
-          />
-          <KpiCard
-            label="面试通过"
-            value={
-              <span className="inline-flex items-baseline gap-1">
-                <AnimatedNumber value={safeNum(staffMember.interview_passed)} />
-                <span className="text-base text-muted">
-                  / {safeNum(staffMember.interview_entries)}
-                </span>
-              </span>
-            }
-            sub={`通过率 ${pct(safeNum(staffMember.interview_pass_rate))}`}
-            accent="#5856D6"
-          />
-          <KpiCard
-            label="Offer"
-            value={<AnimatedNumber value={safeNum(staffMember.offer_entries)} />}
-            sub="已推进到 Offer"
-            accent="#AF52DE"
-          />
-          <KpiCard
-            label="入职数"
-            value={<AnimatedNumber value={safeNum(staffMember.onboarded)} />}
-            sub="候选人已入职"
-            accent="#34C759"
-          />
-          <KpiCard
-            label="推荐入职率"
-            value={
-              <AnimatedNumber
-                value={safeNum(staffMember.recommendation_to_onboard_rate)}
-                decimals={1}
-                suffix="%"
-              />
-            }
-            accent="#34C759"
-          />
-          <KpiCard
-            label="反馈待补"
-            value={<AnimatedNumber value={safeNum(staffMember.feedback_pending)} />}
-            sub={`${safeNum(staffMember.feedback_overdue)} 条已超时`}
-            accent="#FF3B30"
-          />
-        </Reveal>
-      )}
-
-      {loading && (
-        <div className="flex items-center justify-center py-24">
+      {demandsLoading && (
+        <div className="flex items-center justify-center py-24" aria-label="正在加载招聘需求">
           <Spinner size="lg" />
         </div>
       )}
 
-      {error && (
-        <div className="rounded-lg bg-danger-50 px-4 py-3 text-sm text-danger-700">
-          {error.message}
-          <button onClick={reload} className="ml-3 font-medium underline hover:no-underline">
-            重试
-          </button>
-        </div>
-      )}
-
-      {!loading && !error && (
-        <DataQualityWarningsPanel warnings={data?.data_quality_warnings ?? []} />
-      )}
-
-      {!loading && !error && data && (
-        <Card variant="elevated">
-          <CardHeader>
-            <CardTitle>个人招聘漏斗</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
-              <FunnelDiagram
-                stages={FUNNEL_STAGES.map(({ label, value }, i) => ({
-                  label,
-                  value: value(data.funnel),
-                  color: FUNNEL_COLORS[i] ?? '#007AFF',
-                }))}
-                rejected={safeNum(data.funnel.rejected)}
-                rejectedColor={REJECTED_COLOR}
-              />
-              <div className="flex justify-center lg:px-4">
-                <ConversionRing
-                  percent={safeNum(data.funnel.conversion_rate)}
-                  label="个人入职占比"
-                  color="#007AFF"
-                  size={160}
-                />
-              </div>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {FUNNEL_STAGES.map(({ label, value }) => (
-                <div key={label} className="rounded-xl bg-surface-soft px-3 py-2.5 transition-colors hover:bg-surface-card">
-                  <p className="text-xs text-muted mb-0.5">{label}</p>
-                  <p className="text-xl font-display text-ink">
-                    <AnimatedNumber value={value(data.funnel)} />
-                  </p>
-                </div>
-              ))}
-              <div className="rounded-xl bg-danger-50 px-3 py-2.5">
-                <p className="text-xs text-danger-600 mb-0.5">淘汰</p>
-                <p className="text-xl font-display text-danger-700">
-                  <AnimatedNumber value={safeNum(data.funnel.rejected)} />
-                </p>
-              </div>
-            </div>
-          </CardBody>
+      {demandsError && (
+        <Card>
+          <EmptyState
+            icon={BarChart3}
+            title="招聘需求暂时无法加载"
+            description={demandsError.message}
+            action={<Button variant="secondary" onClick={reloadDemands}>重试</Button>}
+          />
         </Card>
       )}
 
-      <div className="pt-2">
-        <Button variant="secondary" size="sm" onClick={onBack}>
-          ← 返回团队总览
-        </Button>
-      </div>
+      {!demandsLoading && !demandsError && demandList && demands.length === 0 && (
+        <Card>
+          <EmptyState
+            icon={ClipboardList}
+            title="暂无招聘需求"
+            description="进度看板只展示真实招聘需求下的流程事实，不会用空 KPI 代替业务数据。"
+            action={(
+              <Link
+                to="/demands"
+                className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--enterprise-brand)] px-5 text-sm font-semibold text-on-primary hover:bg-[var(--enterprise-brand-dark)]"
+              >
+                去创建招聘需求 <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            )}
+          />
+        </Card>
+      )}
+
+      {!demandsLoading && !demandsError && selectedDemandId !== null && (
+        <DemandMetrics demandId={selectedDemandId} />
+      )}
     </div>
   );
-}
-
-// ─── 页面根组件 ────────────────────────────────────────────────────────────────
-
-export function BiPage() {
-  const [days, setDays] = useState<number>(30);
-
-  return <TeamOverview days={days} onDaysChange={setDays} />;
 }

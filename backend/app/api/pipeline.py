@@ -1,438 +1,351 @@
-from datetime import date
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, g, jsonify, request
 from sqlalchemy import func
+
+from .. import db
 from ..middleware.auth import require_auth
 from ..middleware.events import record_event
-from .. import db
-from ..models import Candidate, CandidateDisposition, Job, OfferRecord, PipelineStage, VALID_STAGES, User
-from .access import (
-    can_access_candidate,
-    can_manage_job,
-    can_read_job,
-    job_is_active,
-    same_org,
-    visible_candidate_query,
+from ..models import Candidate, InterviewAssignment, PipelineStage, RecruitmentDemand
+from ..services.demand_context_service import (
+    DemandContextError,
+    can_manage_demand,
+    can_read_demand,
+    resolve_demand_context,
 )
+from ..services.pipeline_service import (
+    LEGACY_INTERVIEW_STAGES,
+    PIPELINE_STAGE_ORDER,
+    STAGE_ORDER,
+    PipelineServiceError,
+    get_offer_record,
+    move_candidate,
+    normalize_pipeline_stage,
+    parse_date,
+    pipeline_board,
+    pipeline_counts,
+    pipeline_history,
+    save_offer_record,
+    stage_sort_index,
+    transfer_candidate as transfer_candidate_service,
+)
+from .access import visible_candidate_query
+
 
 bp = Blueprint("pipeline", __name__)
 
-# 阶段顺序（用于"推进/回退"语义与前端排序）。rejected 是终态，不在主序列里。
-# MVP 主流程只保留"面试中"，历史的一面/二面/终面统一归到 interview。
-STAGE_ORDER = ["pending", "ai_screen", "business_review", "interview", "offer", "onboarded"]
-LEGACY_INTERVIEW_STAGES = {"interview_first", "interview_second", "interview_final"}
-PIPELINE_STAGE_ORDER = STAGE_ORDER + ["rejected"]
 
-
-def normalize_pipeline_stage(stage):
-    return "interview" if stage in LEGACY_INTERVIEW_STAGES else stage
-
-
+# Compatibility exports used by existing read-only modules. They remain
+# job-scoped until those callers move to explicit Demand context.
 def _stage_sort_index(stage):
-    normalized = normalize_pipeline_stage(stage)
-    return STAGE_ORDER.index(normalized) if normalized in STAGE_ORDER else len(STAGE_ORDER)
+    return stage_sort_index(stage)
 
 
 def _parse_date(value):
-    if not value:
-        return None
-    try:
-        return date.fromisoformat(str(value)[:10])
-    except ValueError:
-        return None
-
-
-def _offer_payload(offer):
-    if offer is None:
-        return None
-    return {
-        "id": offer.id,
-        "candidate_id": offer.candidate_id,
-        "job_id": offer.job_id,
-        "salary_range": offer.salary_range or "",
-        "onboard_date": offer.onboard_date.isoformat() if offer.onboard_date else None,
-        "approval_status": offer.approval_status or "draft",
-        "note": offer.note or "",
-        "updated_at": offer.updated_at.isoformat() if offer.updated_at else None,
-    }
+    return parse_date(value)
 
 
 def _latest_stage_subquery(job_id=None):
-    """
-    PipelineStage 是 append-only 流水表：一个候选人推进多次会留多行。
-    要得到"当前阶段分布"，必须先取每个 (candidate_id, job_id) 的最新一行。
-    返回一个子查询，列为 (candidate_id, job_id, max_id)。
-    """
-    q = db.session.query(
+    query = db.session.query(
         PipelineStage.candidate_id.label("candidate_id"),
         PipelineStage.job_id.label("job_id"),
         func.max(PipelineStage.id).label("max_id"),
     )
     if job_id is not None:
-        q = q.filter(PipelineStage.job_id == job_id)
-    return q.group_by(PipelineStage.candidate_id, PipelineStage.job_id).subquery()
+        query = query.filter(PipelineStage.job_id == job_id)
+    return query.group_by(PipelineStage.candidate_id, PipelineStage.job_id).subquery()
+
+
+def _error_response(error):
+    return jsonify(error.as_payload()), error.status_code
+
+
+def _resolve_demand(*, demand_id=None, job_id=None):
+    return resolve_demand_context(
+        org_id=g.org_id,
+        demand_id=demand_id,
+        job_id=job_id,
+        open_only=False,
+    )
+
+
+def _read_scope(demand):
+    if can_read_demand(g.user_id, g.role, g.org_id, demand):
+        return True, None
+    if g.role != "interviewer":
+        return False, None
+    assigned_ids = [
+        row[0]
+        for row in (
+            db.session.query(InterviewAssignment.candidate_id)
+            .filter_by(
+                org_id=g.org_id,
+                interviewer_id=g.user_id,
+                demand_id=demand.id,
+            )
+            .distinct()
+            .all()
+        )
+    ]
+    if not assigned_ids:
+        sibling_count = RecruitmentDemand.query.filter_by(
+            org_id=g.org_id,
+            job_id=demand.job_id,
+        ).count()
+        if sibling_count == 1:
+            assigned_ids = [
+                row[0]
+                for row in (
+                    db.session.query(InterviewAssignment.candidate_id)
+                    .filter_by(
+                        org_id=g.org_id,
+                        interviewer_id=g.user_id,
+                        demand_id=None,
+                        job_id=demand.job_id,
+                    )
+                    .distinct()
+                    .all()
+                )
+            ]
+    return bool(assigned_ids), assigned_ids
+
+
+def _manage_allowed(demand):
+    return can_manage_demand(g.user_id, g.role, g.org_id, demand)
+
+
+def _route_demand(route_demand_id=None, legacy_job_id=None):
+    return _resolve_demand(demand_id=route_demand_id, job_id=legacy_job_id)
+
+
+def _path_id_mismatch(path_id, body_id):
+    if path_id is None or body_id is None:
+        return False
+    try:
+        return int(body_id) != path_id
+    except (TypeError, ValueError):
+        return True
 
 
 @bp.post("/pipeline/move")
+@bp.post("/pipeline/demands/<int:demand_id>/move")
 @require_auth
-def move_stage():
-    data = request.get_json() or {}
-    candidate_id = data.get("candidate_id")
-    job_id = data.get("job_id")
-    to_stage = data.get("stage")
-    note = data.get("note")
-
-    if not candidate_id or not job_id or not to_stage:
-        return jsonify({"error": "candidate_id, job_id, stage required"}), 400
-    if to_stage not in VALID_STAGES:
-        return jsonify({"error": f"Invalid stage. Valid: {sorted(PIPELINE_STAGE_ORDER)}"}), 400
-    to_stage = normalize_pipeline_stage(to_stage)
+def move_stage(demand_id=None):
     if g.role == "interviewer":
         return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json() or {}
+    candidate_id = data.get("candidate_id")
+    to_stage = data.get("stage")
+    if not candidate_id or not to_stage:
+        return jsonify({"error": "candidate_id, stage required"}), 400
 
-    candidate = db.session.get(Candidate, candidate_id)
-    if candidate is None:
-        return jsonify({"error": "候选人不存在"}), 404
-    job = db.session.get(Job, job_id)
-    if job is None:
-        return jsonify({"error": "岗位不存在"}), 404
-    if not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, candidate_id, job_id):
-        return jsonify({"error": "Forbidden"}), 403
-    if not can_manage_job(g.user_id, g.role, job):
-        return jsonify({"error": "Forbidden"}), 403
-    if not job_is_active(job):
-        return jsonify({"error": "岗位已关闭，请先恢复在招后再推进流程"}), 400
-
-    # 当前阶段（用于事件记录与返回，便于前端给出"从 X 到 Y"的反馈）
-    prev = (
-        PipelineStage.query
-        .filter_by(candidate_id=candidate_id, job_id=job_id)
-        .order_by(PipelineStage.id.desc())
-        .first()
-    )
-    from_stage = normalize_pipeline_stage(prev.stage) if prev else None
-    if (
-        prev is not None
-        and from_stage == to_stage
-        and prev.updated_by == g.user_id
-        and (prev.note or "") == (note or "")
-    ):
-        return jsonify({
-            "status": "ok",
-            "stage": to_stage,
-            "from": from_stage,
-            "candidate_id": candidate_id,
-            "name_masked": candidate.name_masked,
-            "deduplicated": True,
-        })
-
-    ps = PipelineStage(
-        org_id=g.org_id,
-        candidate_id=candidate_id,
-        job_id=job_id,
-        stage=to_stage,
-        updated_by=g.user_id,
-        note=note,
-    )
-    db.session.add(ps)
-    db.session.commit()
-    record_event("pipeline.moved", entity_id=candidate_id, entity_type="candidate",
-                 payload={"job_id": job_id, "from": from_stage, "to": to_stage, "note": note})
-    if to_stage == "onboarded":
-        record_event("candidate.onboarded", entity_id=candidate_id, entity_type="candidate",
-                     payload={"job_id": job_id})
-    if to_stage == "rejected" and isinstance(data.get("disposition"), dict):
-        disposition_data = data["disposition"]
-        tags = disposition_data.get("tags") or []
-        if isinstance(tags, str):
-            tags = [t.strip() for t in tags.split(",") if t.strip()]
-        elif not isinstance(tags, list):
-            tags = []
-        disposition = CandidateDisposition(
-            org_id=g.org_id,
-            candidate_id=candidate_id,
-            job_id=job_id,
-            reason=str(disposition_data.get("reason") or "")[:240],
-            enter_talent_pool=bool(disposition_data.get("enter_talent_pool", True)),
-            next_contact_at=_parse_date(disposition_data.get("next_contact_at")),
-            tags=[str(t).strip()[:60] for t in tags if str(t).strip()][:12],
-            note=str(disposition_data.get("note") or ""),
-            created_by=g.user_id,
+    body_demand_id = data.get("demand_id")
+    if _path_id_mismatch(demand_id, body_demand_id):
+        return jsonify({"error": "路径 demand_id 与请求体不一致", "code": "demand_id_mismatch"}), 409
+    try:
+        demand = _resolve_demand(
+            demand_id=demand_id if demand_id is not None else body_demand_id,
+            job_id=data.get("job_id"),
         )
-        db.session.add(disposition)
-        db.session.commit()
-        record_event("candidate.disposition", entity_id=candidate_id, entity_type="candidate",
-                     payload={"job_id": job_id, "reason": disposition.reason,
-                              "enter_talent_pool": disposition.enter_talent_pool})
-    return jsonify({
-        "status": "ok",
-        "stage": to_stage,
-        "from": from_stage,
-        "candidate_id": candidate_id,
-        "name_masked": candidate.name_masked,
-        "deduplicated": False,
-    })
+        if not _manage_allowed(demand):
+            return jsonify({"error": "Forbidden"}), 403
+        if visible_candidate_query(g.user_id, g.role).filter(
+            Candidate.id == candidate_id
+        ).first() is None:
+            return jsonify({"error": "Forbidden"}), 403
+        result = move_candidate(
+            candidate_id=candidate_id,
+            demand_id=demand.id,
+            org_id=g.org_id,
+            actor_id=g.user_id,
+            stage=to_stage,
+            note=data.get("note"),
+            disposition_data=data.get("disposition"),
+        )
+    except (DemandContextError, PipelineServiceError) as error:
+        return _error_response(error)
+
+    if not result["deduplicated"]:
+        record_event(
+            "pipeline.moved",
+            entity_id=candidate_id,
+            entity_type="candidate",
+            demand_id=demand.id,
+            payload={
+                "demand_id": demand.id,
+                "job_id": demand.job_id,
+                "from": result["from"],
+                "to": result["stage"],
+                "note": data.get("note"),
+            },
+        )
+        if result["stage"] == "onboarded":
+            record_event(
+                "candidate.onboarded",
+                entity_id=candidate_id,
+                entity_type="candidate",
+                demand_id=demand.id,
+                payload={"demand_id": demand.id, "job_id": demand.job_id},
+            )
+        if result["stage"] == "rejected" and isinstance(data.get("disposition"), dict):
+            record_event(
+                "candidate.disposition",
+                entity_id=candidate_id,
+                entity_type="candidate",
+                demand_id=demand.id,
+                payload={
+                    "demand_id": demand.id,
+                    "job_id": demand.job_id,
+                    "reason": str(data["disposition"].get("reason") or "")[:240],
+                },
+            )
+    return jsonify(result)
 
 
 @bp.post("/pipeline/transfer")
+@bp.post("/pipeline/demands/<int:from_demand_id>/transfer")
 @require_auth
-def transfer_candidate():
-    data = request.get_json() or {}
-    candidate_id = data.get("candidate_id")
-    from_job_id = data.get("from_job_id")
-    to_job_id = data.get("to_job_id")
-    reason = str(data.get("reason") or "").strip()
-
-    if not candidate_id or not from_job_id or not to_job_id:
-        return jsonify({"error": "candidate_id, from_job_id, to_job_id required"}), 400
-    if not reason:
-        return jsonify({"error": "转入其他招聘需求需要填写原因"}), 400
-    if from_job_id == to_job_id:
-        return jsonify({"error": "目标招聘需求不能和当前需求相同"}), 400
+def transfer_candidate(from_demand_id=None):
     if g.role == "interviewer":
         return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json() or {}
+    candidate_id = data.get("candidate_id")
+    reason = str(data.get("reason") or "").strip()
+    if not candidate_id:
+        return jsonify({"error": "candidate_id required"}), 400
 
-    candidate = db.session.get(Candidate, candidate_id)
-    if candidate is None:
-        return jsonify({"error": "候选人不存在"}), 404
-    source_job = db.session.get(Job, from_job_id)
-    target_job = db.session.get(Job, to_job_id)
-    if source_job is None or not same_org(source_job, g.org_id):
-        return jsonify({"error": "当前招聘需求不存在"}), 404
-    if target_job is None or not same_org(target_job, g.org_id):
-        return jsonify({"error": "目标招聘需求不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, candidate_id, from_job_id):
-        return jsonify({"error": "Forbidden"}), 403
-    if not can_manage_job(g.user_id, g.role, source_job):
-        return jsonify({"error": "Forbidden"}), 403
-    if not can_manage_job(g.user_id, g.role, target_job):
-        return jsonify({"error": "Forbidden"}), 403
-    if not job_is_active(target_job):
-        return jsonify({"error": "目标招聘需求已关闭，请先恢复在招后再转入"}), 400
+    body_from_demand_id = data.get("from_demand_id")
+    if _path_id_mismatch(from_demand_id, body_from_demand_id):
+        return jsonify({"error": "路径 demand_id 与转出需求不一致", "code": "demand_id_mismatch"}), 409
 
-    source_latest = (
-        PipelineStage.query
-        .filter_by(candidate_id=candidate_id, job_id=from_job_id)
-        .order_by(PipelineStage.id.desc())
-        .first()
-    )
-    if source_latest is None:
-        return jsonify({"error": "候选人不在当前招聘需求流程中"}), 400
-    from_stage = normalize_pipeline_stage(source_latest.stage)
-    if from_stage in ("rejected", "onboarded"):
-        return jsonify({"error": "候选人当前流程已结束，无法转入其他招聘需求"}), 400
-
-    target_latest = (
-        PipelineStage.query
-        .filter_by(candidate_id=candidate_id, job_id=to_job_id)
-        .order_by(PipelineStage.id.desc())
-        .first()
-    )
-    if target_latest is not None and normalize_pipeline_stage(target_latest.stage) not in ("rejected", "onboarded"):
-        return jsonify({"error": "候选人已在目标招聘需求流程中"}), 409
-
-    transfer_reason = reason[:240]
-    source_note = f"转入其他招聘需求：{target_job.title}；原因：{transfer_reason}"
-    target_note = f"从 {source_job.title} 转入；原因：{transfer_reason}"
-    db.session.add_all([
-        PipelineStage(
-            org_id=g.org_id,
+    try:
+        source = _resolve_demand(
+            demand_id=from_demand_id if from_demand_id is not None else body_from_demand_id,
+            job_id=data.get("from_job_id"),
+        )
+        target = _resolve_demand(
+            demand_id=data.get("to_demand_id"),
+            job_id=data.get("to_job_id"),
+        )
+        if not _manage_allowed(source) or not _manage_allowed(target):
+            return jsonify({"error": "Forbidden"}), 403
+        result = transfer_candidate_service(
             candidate_id=candidate_id,
-            job_id=from_job_id,
-            stage="rejected",
-            updated_by=g.user_id,
-            note=source_note,
-        ),
-        PipelineStage(
+            from_demand_id=source.id,
+            to_demand_id=target.id,
             org_id=g.org_id,
-            candidate_id=candidate_id,
-            job_id=to_job_id,
-            stage="pending",
-            updated_by=g.user_id,
-            note=target_note,
-        ),
-    ])
-    db.session.commit()
+            actor_id=g.user_id,
+            reason=reason,
+        )
+    except (DemandContextError, PipelineServiceError) as error:
+        return _error_response(error)
+
     record_event(
         "pipeline.transferred",
         entity_id=candidate_id,
         entity_type="candidate",
-        payload={
-            "from_job_id": from_job_id,
-            "to_job_id": to_job_id,
-            "from_stage": from_stage,
-            "to_stage": "pending",
-            "reason": transfer_reason,
-        },
+        demand_id=target.id,
+        payload={**result, "reason": reason[:240]},
     )
-    return jsonify({
-        "status": "ok",
-        "candidate_id": candidate_id,
-        "name_masked": candidate.name_masked,
-        "from_job_id": from_job_id,
-        "to_job_id": to_job_id,
-        "from_stage": from_stage,
-        "to_stage": "pending",
-    })
+    return jsonify(result)
 
 
 @bp.get("/pipeline/<int:job_id>")
+@bp.get("/pipeline/demands/<int:demand_id>")
 @require_auth
-def get_pipeline(job_id):
-    """返回某岗位各 stage 的【当前】候选人数量（按最新阶段去重，不再重复计数历史流水）"""
-    job = db.session.get(Job, job_id)
-    if job is None or not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not can_read_job(g.user_id, g.role, job):
+def get_pipeline(job_id=None, demand_id=None):
+    try:
+        demand = _route_demand(route_demand_id=demand_id, legacy_job_id=job_id)
+    except DemandContextError as error:
+        return _error_response(error)
+    allowed, candidate_ids = _read_scope(demand)
+    if not allowed:
         return jsonify({"error": "Forbidden"}), 403
-    latest = _latest_stage_subquery(job_id)
-    rows = (
-        db.session.query(PipelineStage.stage, func.count(PipelineStage.id))
-        .join(latest, PipelineStage.id == latest.c.max_id)
-        .join(Candidate, Candidate.id == PipelineStage.candidate_id)
-        .filter(Candidate.deleted_at.is_(None))
-        .group_by(PipelineStage.stage)
-    )
-    if g.role not in ("manager", "admin"):
-        rows = rows.filter(Candidate.id.in_(
-            visible_candidate_query(g.user_id, g.role).with_entities(Candidate.id)
-        ))
-    rows = rows.all()
-    counts = {}
-    for stage, count in rows:
-        normalized = normalize_pipeline_stage(stage)
-        counts[normalized] = counts.get(normalized, 0) + count
-    return jsonify(counts)
+    return jsonify(pipeline_counts(demand, candidate_ids=candidate_ids))
 
 
 @bp.get("/pipeline/<int:job_id>/board")
+@bp.get("/pipeline/demands/<int:demand_id>/board")
 @require_auth
-def get_board(job_id):
-    """
-    招聘流程看板数据：返回该岗位下每位候选人的【当前阶段】，
-    以便前端在对应阶段列里渲染候选人卡片，并就地变更状态。
-    """
-    job = db.session.get(Job, job_id)
-    if job is None or not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not can_read_job(g.user_id, g.role, job):
+def get_board(job_id=None, demand_id=None):
+    try:
+        demand = _route_demand(route_demand_id=demand_id, legacy_job_id=job_id)
+    except DemandContextError as error:
+        return _error_response(error)
+    allowed, candidate_ids = _read_scope(demand)
+    if not allowed:
         return jsonify({"error": "Forbidden"}), 403
-
-    latest = _latest_stage_subquery(job_id)
-    rows = (
-        db.session.query(PipelineStage, Candidate, User)
-        .join(latest, PipelineStage.id == latest.c.max_id)
-        .join(Candidate, Candidate.id == PipelineStage.candidate_id)
-        .outerjoin(User, User.id == PipelineStage.updated_by)
-        .filter(Candidate.deleted_at.is_(None))
-    )
-    if g.role not in ("manager", "admin"):
-        rows = rows.filter(Candidate.id.in_(
-            visible_candidate_query(g.user_id, g.role).with_entities(Candidate.id)
-        ))
-    rows = rows.all()
-
-    candidates = [{
-        "candidate_id": ps.candidate_id,
-        "name_masked": cand.name_masked or f"候选人 {ps.candidate_id}",
-        "stage": normalize_pipeline_stage(ps.stage),
-        "note": ps.note,
-        "updated_at": ps.ts.isoformat() if ps.ts else None,
-        "updated_by_name": user.name if user else None,
-    } for ps, cand, user in rows]
-    # 稳定排序：按阶段顺序，再按更新时间倒序
-    candidates.sort(key=lambda c: (
-        _stage_sort_index(c["stage"]),
-        c["updated_at"] or "",
-    ))
-
-    return jsonify({
-        "job_id": job_id,
-        "job_title": job.title,
-        "stage_order": PIPELINE_STAGE_ORDER,
-        "candidates": candidates,
-    })
+    return jsonify(pipeline_board(demand, candidate_ids=candidate_ids))
 
 
 @bp.get("/pipeline/<int:job_id>/history/<int:candidate_id>")
+@bp.get("/pipeline/demands/<int:demand_id>/history/<int:candidate_id>")
 @require_auth
-def get_history(job_id, candidate_id):
-    """单个候选人在某岗位的阶段流转时间线（按时间正序）。"""
-    job = db.session.get(Job, job_id)
-    if job is None or not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, candidate_id, job_id):
+def get_history(candidate_id, job_id=None, demand_id=None):
+    try:
+        demand = _route_demand(route_demand_id=demand_id, legacy_job_id=job_id)
+    except DemandContextError as error:
+        return _error_response(error)
+    allowed, candidate_ids = _read_scope(demand)
+    if not allowed or (candidate_ids is not None and candidate_id not in candidate_ids):
         return jsonify({"error": "Forbidden"}), 403
-    rows = (
-        db.session.query(PipelineStage, User)
-        .outerjoin(User, User.id == PipelineStage.updated_by)
-        .filter(PipelineStage.job_id == job_id,
-                PipelineStage.candidate_id == candidate_id)
-        .order_by(PipelineStage.id.asc())
-        .all()
-    )
-    timeline = [{
-        "stage": normalize_pipeline_stage(ps.stage),
-        "ts": ps.ts.isoformat() if ps.ts else None,
-        "updated_by_name": user.name if user else None,
-        "note": ps.note,
-    } for ps, user in rows]
-    return jsonify({"job_id": job_id, "candidate_id": candidate_id, "timeline": timeline})
+    candidate = Candidate.query.filter_by(
+        id=candidate_id,
+        org_id=g.org_id,
+        deleted_at=None,
+    ).first()
+    if candidate is None:
+        return jsonify({"error": "候选人不存在", "code": "candidate_not_found"}), 404
+    return jsonify(pipeline_history(demand, candidate_id))
 
 
 @bp.get("/pipeline/<int:job_id>/offer/<int:candidate_id>")
+@bp.get("/pipeline/demands/<int:demand_id>/offer/<int:candidate_id>")
 @require_auth
-def get_offer(job_id, candidate_id):
-    job = db.session.get(Job, job_id)
-    if job is None or not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, candidate_id, job_id):
+def get_offer(candidate_id, job_id=None, demand_id=None):
+    try:
+        demand = _route_demand(route_demand_id=demand_id, legacy_job_id=job_id)
+    except DemandContextError as error:
+        return _error_response(error)
+    allowed, candidate_ids = _read_scope(demand)
+    if not allowed or (candidate_ids is not None and candidate_id not in candidate_ids):
         return jsonify({"error": "Forbidden"}), 403
-    offer = (OfferRecord.query
-             .filter_by(candidate_id=candidate_id, job_id=job_id)
-             .order_by(OfferRecord.id.desc())
-             .first())
-    return jsonify(_offer_payload(offer) or {
-        "candidate_id": candidate_id,
-        "job_id": job_id,
-        "salary_range": "",
-        "onboard_date": None,
-        "approval_status": "draft",
-        "note": "",
-    })
+    candidate = Candidate.query.filter_by(
+        id=candidate_id,
+        org_id=g.org_id,
+        deleted_at=None,
+    ).first()
+    if candidate is None:
+        return jsonify({"error": "候选人不存在", "code": "candidate_not_found"}), 404
+    return jsonify(get_offer_record(demand, candidate_id))
 
 
 @bp.put("/pipeline/<int:job_id>/offer/<int:candidate_id>")
+@bp.put("/pipeline/demands/<int:demand_id>/offer/<int:candidate_id>")
 @require_auth
-def save_offer(job_id, candidate_id):
+def save_offer(candidate_id, job_id=None, demand_id=None):
     if g.role == "interviewer":
         return jsonify({"error": "Forbidden"}), 403
-    if db.session.get(Candidate, candidate_id) is None:
-        return jsonify({"error": "候选人不存在"}), 404
-    job = db.session.get(Job, job_id)
-    if job is None or not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, candidate_id, job_id):
-        return jsonify({"error": "Forbidden"}), 403
-    if not can_manage_job(g.user_id, g.role, job):
-        return jsonify({"error": "Forbidden"}), 403
-    if not job_is_active(job):
-        return jsonify({"error": "岗位已关闭，请先恢复在招后再发放 Offer"}), 400
-    data = request.get_json() or {}
-    offer = (OfferRecord.query
-             .filter_by(candidate_id=candidate_id, job_id=job_id)
-             .order_by(OfferRecord.id.desc())
-             .first())
-    if offer is None:
-        offer = OfferRecord(org_id=g.org_id, candidate_id=candidate_id, job_id=job_id, created_by=g.user_id)
-        db.session.add(offer)
-
-    offer.salary_range = str(data.get("salary_range") or "")[:120]
-    offer.onboard_date = _parse_date(data.get("onboard_date"))
-    offer.approval_status = str(data.get("approval_status") or "draft")[:40]
-    offer.note = str(data.get("note") or "")
-    db.session.commit()
-    record_event("offer.saved", entity_id=candidate_id, entity_type="candidate",
-                 payload={"job_id": job_id, "approval_status": offer.approval_status})
-    return jsonify(_offer_payload(offer))
+    try:
+        demand = _route_demand(route_demand_id=demand_id, legacy_job_id=job_id)
+        if not _manage_allowed(demand):
+            return jsonify({"error": "Forbidden"}), 403
+        payload = save_offer_record(
+            demand_id=demand.id,
+            candidate_id=candidate_id,
+            org_id=g.org_id,
+            actor_id=g.user_id,
+            data=request.get_json() or {},
+        )
+    except (DemandContextError, PipelineServiceError) as error:
+        return _error_response(error)
+    record_event(
+        "offer.saved",
+        entity_id=candidate_id,
+        entity_type="candidate",
+        demand_id=demand.id,
+        payload={
+            "demand_id": demand.id,
+            "job_id": demand.job_id,
+            "approval_status": payload["approval_status"],
+        },
+    )
+    return jsonify(payload)

@@ -16,7 +16,8 @@ const pipelineList = readSource('components/pipeline/PipelineCandidateList.tsx')
 const agentPage = readSource('pages/AgentPage.tsx');
 const myInterviews = readSource('components/interviewRecords/MyInterviewsPanel.tsx');
 const interviewPage = readSource('pages/InterviewListPage.tsx');
-const demandsPage = readSource('features/demands/pages/DemandsPage.tsx');
+const demandsPage = readSource('features/demands/pages/DemandDetailPage.tsx')
+  + readSource('features/demands/components/DemandActionDialog.tsx');
 const settingsPage = readSource('pages/admin/SystemSettingsPage.tsx');
 const usersPage = readSource('pages/admin/UsersPage.tsx');
 
@@ -58,8 +59,8 @@ assert.match(
 );
 assert.match(
   pipelinePage,
-  /setSearchParams\(\{ job: String\(jobId\), stage: activeStage \}\)/,
-  'Pipeline job switching should preserve the active stage in the URL',
+  /setSearchParams\(\{ demand: String\(demandId\), stage: activeStage \}\)/,
+  'Pipeline demand switching should preserve the active stage in the URL',
 );
 assert.match(
   pipelineList,

@@ -22,7 +22,7 @@ assert.match(
 assert.match(
   candidatesPage,
   /api\.previewJobMatch\(selectedJobId,\s*candidateIds\)/,
-  'Candidate library should load match results after HR selects a target job',
+  'Candidate library should load job-template match results after HR selects a target demand',
 );
 
 assert.match(
@@ -33,8 +33,8 @@ assert.match(
 
 assert.match(
   candidatesPage,
-  /岗位匹配摘要/,
-  'Candidate table should name the column by the selected job context',
+  /职位匹配摘要/,
+  'Candidate table should distinguish template matching from demand assignment',
 );
 
 assert.match(

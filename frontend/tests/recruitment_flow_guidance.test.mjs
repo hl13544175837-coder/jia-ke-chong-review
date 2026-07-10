@@ -69,14 +69,14 @@ assert.match(
 
 assert.match(
   pipelinePage,
-  /formatJobOption/,
-  'Pipeline page should format job selector options with business identifiers',
+  /formatDemandOption/,
+  'Pipeline page should format demand selector options with business identifiers',
 );
 
 assert.match(
   pipelinePage,
-  /job\.job_code \|\| `JOB-\$\{job\.id\}`/,
-  'Pipeline job selector should fall back to a visible JOB-id when no job code exists',
+  /demand\.request_no \|\| `REQ-\$\{demand\.id\}`/,
+  'Pipeline demand selector should fall back to a visible REQ-id when no request number exists',
 );
 
 assert.match(

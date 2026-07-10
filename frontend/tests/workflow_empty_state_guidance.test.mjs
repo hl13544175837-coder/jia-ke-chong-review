@@ -63,17 +63,21 @@ assert.match(
   'Jobs page should offer a clear restore action for closed jobs',
 );
 
-for (const [name, source] of [
-  ['demands page', demandsPage],
-  ['pipeline page', pipelinePage],
-  ['interview assignment panel', interviewAssignment],
-]) {
-  assert.match(
-    source,
-    /新建岗位/,
-    `${name} should guide users to create a job when the target job is missing`,
-  );
-}
+assert.match(
+  demandsPage,
+  /新建岗位（职位 \/ JD）/,
+  'Demand creation should guide users to create a reusable job template when none exists',
+);
+assert.match(
+  pipelinePage,
+  /新建招聘需求/,
+  'Pipeline should guide users to create a demand when there is no demand to operate',
+);
+assert.match(
+  interviewAssignment,
+  /没有目标需求？创建需求/,
+  'Interview assignment should guide users to create a demand when there is no demand to operate',
+);
 
 assert.doesNotMatch(
   uploadPage,
@@ -94,8 +98,8 @@ assert.match(
 
 assert.match(
   interviewAssignment,
-  /暂无候选人，请先上传简历/,
-  'Interview assignment should guide HR to upload resumes when no candidate exists',
+  /该需求暂无“面试中”候选人，去候选人流程查看/,
+  'Interview assignment should explain that candidates must first reach the interview stage in this demand',
 );
 assert.match(
   interviewAssignment,
@@ -114,13 +118,13 @@ assert.match(
 );
 assert.match(
   interviewAssignment,
-  /没有目标候选人？上传简历/,
-  'Interview assignment should keep an upload entry visible next to candidate selection',
+  /to=\{`\/pipeline\?demand=\$\{selectedDemandId\}`\}/,
+  'Interview assignment should link back to the exact demand pipeline when no interview-stage candidate exists',
 );
 assert.match(
   interviewAssignment,
-  /没有目标岗位？新建岗位/,
-  'Interview assignment should keep a job creation entry visible next to job selection',
+  /没有目标需求？创建需求/,
+  'Interview assignment should keep a demand creation entry visible next to demand selection',
 );
 assert.match(
   interviewListPage,
@@ -172,8 +176,8 @@ assert.match(
 
 assert.match(
   biPage,
-  /数据质量提醒/,
-  'BI page should keep data-quality warnings as the operational explanation path',
+  /暂无招聘需求/,
+  'BI page should explain that a report needs a real Demand first',
 );
 assert.match(
   biPage,
@@ -182,8 +186,8 @@ assert.match(
 );
 assert.match(
   biPage,
-  /部门协同情况/,
-  'BI page should keep department collaboration visible without a separate explanation button',
+  /当前协同责任/,
+  'BI page should make the current owner visible without ranking departments',
 );
 
 assert.match(

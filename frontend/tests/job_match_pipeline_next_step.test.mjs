@@ -17,8 +17,8 @@ const candidateCard = readSource('components/pipeline/CandidateCard.tsx');
 
 assert.match(
   jobMatchPage,
-  /to=\{`\/pipeline\?job=\$\{jobId\}&candidate=\$\{item\.candidate_id\}`\}/,
-  'Joined match rows should link directly to the pipeline board for the same job and candidate',
+  /`\/pipeline\?demand=\$\{demandId\}&candidate=\$\{item\.candidate_id\}`/,
+  'Joined match rows should link directly to the exact demand pipeline and candidate',
 );
 
 assert.match(
@@ -29,8 +29,8 @@ assert.match(
 
 assert.match(
   jobMatchPage,
-  /api\.getPipelineBoard\(jobId\)/,
-  'Match page should load the current job pipeline so joined state survives refresh and back navigation',
+  /api\.getDemandPipelineBoard\(demandId\)/,
+  'Match page should load the exact demand pipeline so sibling demands are not mixed',
 );
 
 assert.match(
@@ -42,7 +42,7 @@ assert.match(
 assert.match(
   pipelinePage,
   /useSearchParams/,
-  'Pipeline page should read URL params so deep links can select the relevant job',
+  'Pipeline page should read URL params so deep links can select the relevant demand',
 );
 
 assert.match(

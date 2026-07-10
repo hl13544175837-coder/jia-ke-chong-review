@@ -15,23 +15,23 @@ const types = readSource('types/index.ts');
 
 assert.match(
   types,
-  /interface BiInterviewerAccountability/,
-  'BI should type interviewer accountability metrics',
+  /interface BiDemandOutstandingFeedback/,
+  'BI should type demand-scoped interview feedback follow-up',
 );
 assert.match(
   types,
-  /interface BiDepartmentAccountability/,
-  'BI should type department accountability metrics',
+  /interface BiDemandCurrentResponsibility/,
+  'BI should type the current demand responsibility view',
 );
 assert.match(
   types,
-  /interviewer_accountability:\s*BiInterviewerAccountability\[\]/,
-  'BiOverview should expose interviewer accountability rows',
+  /outstanding_feedback:\s*BiDemandOutstandingFeedback/,
+  'Demand BI should expose outstanding feedback rows',
 );
 assert.match(
   types,
-  /department_accountability:\s*BiDepartmentAccountability\[\]/,
-  'BiOverview should expose department accountability rows',
+  /current_responsibility:\s*BiDemandCurrentResponsibility/,
+  'Demand BI should expose current responsibility without rewriting history',
 );
 assert.match(
   biPage,
@@ -40,8 +40,8 @@ assert.match(
 );
 assert.match(
   biPage,
-  /部门协同情况/,
-  'BI page should frame department accountability as collaboration health',
+  /当前协同责任/,
+  'BI page should show who owns the next coordination action',
 );
 assert.match(
   biPage,
@@ -50,16 +50,11 @@ assert.match(
 );
 assert.match(
   biPage,
-  /不是用来简单排名面试官/,
-  'Interviewer accountability should avoid a blame-oriented interpretation',
-);
-assert.match(
-  biPage,
-  /不是给部门贴标签/,
-  'Department accountability should avoid a blame-oriented interpretation',
+  /不用于绩效考核/,
+  'Operational accountability should avoid a performance interpretation',
 );
 assert.doesNotMatch(
   biPage,
-  /<CardTitle>面试官责任<\/CardTitle>|<CardTitle>用人部门责任<\/CardTitle>/,
-  'BI accountability card titles should not use stiff responsibility labels',
+  /HR 绩效|面试官排名|部门排名/,
+  'The demand BI page should not rank people or departments',
 );

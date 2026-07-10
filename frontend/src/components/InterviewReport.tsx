@@ -98,6 +98,7 @@ interface InterviewReportProps {
   meta?: {
     interviewId: number;
     candidateId: number;
+    demandId?: number | null;
     jobId: number;
     createdAt: string;
   };
@@ -136,6 +137,12 @@ export function InterviewReport({ report, questions, meta }: InterviewReportProp
                 <dt className="font-medium text-body">候选人 ID：</dt>
                 <dd>{meta.candidateId}</dd>
               </div>
+              {meta.demandId && (
+                <div className="flex gap-1">
+                  <dt className="font-medium text-body">招聘需求 ID：</dt>
+                  <dd>{meta.demandId}</dd>
+                </div>
+              )}
               <div className="flex gap-1">
                 <dt className="font-medium text-body">岗位 ID：</dt>
                 <dd>{meta.jobId}</dd>

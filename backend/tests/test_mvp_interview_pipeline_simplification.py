@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app import db
-from app.models import Candidate, InterviewFeedback, Job, PipelineStage, UploadBatch, User
+from app.models import Candidate, InterviewFeedback, Job, PipelineStage, RecruitmentDemand, UploadBatch, User
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,13 +13,22 @@ def _auth(token):
 
 
 def test_pipeline_uses_single_interview_stage_for_mvp(client, make_user, app):
-    _, token = make_user("mvp-pipeline@example.com", role="recruiter", name="流程HR")
+    owner_id, token = make_user("mvp-pipeline@example.com", role="recruiter", name="流程HR")
     with app.app_context():
         job = Job(title="销售顾问", jd_text="销售跟进")
         candidate = Candidate(name_masked="候选人A", resume_json={})
         db.session.add_all([job, candidate])
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no="REQ-MVP-PIPELINE",
+            status="active",
+        )
+        db.session.add(demand)
         db.session.commit()
         job_id = job.id
+        demand_id = demand.id
         candidate_id = candidate.id
 
     response = client.post(
@@ -27,16 +36,16 @@ def test_pipeline_uses_single_interview_stage_for_mvp(client, make_user, app):
         headers=_auth(token),
         json={
             "candidate_id": candidate_id,
-            "job_id": job_id,
+            "demand_id": demand_id,
             "stage": "interview",
             "note": "业务确认进入面试",
         },
     )
 
     assert response.status_code == 200
-    counts = client.get(f"/api/pipeline/{job_id}", headers=_auth(token)).get_json()
+    counts = client.get(f"/api/pipeline/demands/{demand_id}", headers=_auth(token)).get_json()
     assert counts == {"interview": 1}
-    board = client.get(f"/api/pipeline/{job_id}/board", headers=_auth(token)).get_json()
+    board = client.get(f"/api/pipeline/demands/{demand_id}/board", headers=_auth(token)).get_json()
     assert board["stage_order"] == [
         "pending",
         "ai_screen",
@@ -45,6 +54,7 @@ def test_pipeline_uses_single_interview_stage_for_mvp(client, make_user, app):
         "offer",
         "onboarded",
         "rejected",
+        "transferred",
     ]
     assert board["candidates"][0]["stage"] == "interview"
 

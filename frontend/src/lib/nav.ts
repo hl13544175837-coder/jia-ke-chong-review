@@ -45,7 +45,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     to: '/bi',
-    label: '数据看板',
+    label: '进度看板',
     icon: BarChart3,
     roles: ['manager', 'admin'],
   },

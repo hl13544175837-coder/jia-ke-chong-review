@@ -26,8 +26,14 @@ assert.doesNotMatch(
 
 assert.match(
   biPage,
-  /description="看团队招聘进度、卡点和协同跟进"/,
+  /description="按具体招聘需求看进度、卡点和当前责任"/,
   'BI header should use one short business-facing sentence',
+);
+
+assert.match(
+  biPage,
+  /不用于绩效考核/,
+  'BI should state the phase-one non-performance boundary directly',
 );
 
 assert.doesNotMatch(

@@ -78,13 +78,6 @@ class Config:
     BOSS_CLI_BIN = os.environ.get("BOSS_CLI_BIN", "")
     BOSS_CLI_AUTO_INSTALL = os.environ.get("BOSS_CLI_AUTO_INSTALL", "true").lower() == "true"
 
-    # 公司 OA/Merak 会议室、日程、通讯录代理。默认关闭；拿到公司域名和权限后再启用。
-    OA_MERAK_PROXY_ENABLED = os.environ.get("OA_MERAK_PROXY_ENABLED", "false").lower() == "true"
-    OA_MERAK_BASE_URL = os.environ.get("OA_MERAK_BASE_URL", "")
-    OA_MERAK_BEARER_TOKEN = os.environ.get("OA_MERAK_BEARER_TOKEN", "")
-    OA_MERAK_TIMEOUT_SECONDS = int(os.environ.get("OA_MERAK_TIMEOUT_SECONDS", "8"))
-
-
     # 字段级加密密钥（Fernet），用于加密 BOSS 账号 cookies 等敏感数据
     FIELD_ENCRYPTION_KEY = os.environ.get("FIELD_ENCRYPTION_KEY", "")
 
