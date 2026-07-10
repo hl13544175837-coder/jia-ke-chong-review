@@ -13,6 +13,8 @@ function readSource(path) {
 const api = readSource('lib/api.ts');
 assert.match(api, /batchAddToPipeline/, 'API client should expose batchAddToPipeline');
 assert.match(api, /\/jobs\/\$\{jobId\}\/batch-pipeline/, 'Batch add should call the job-scoped backend endpoint');
+assert.match(api, /demand_id/, 'Batch add should send the selected demand context');
+assert.match(api, /getDemandPipelineBoard/, 'Pipeline board should support explicit demand context');
 
 const types = readSource('types/index.ts');
 assert.match(types, /BatchAddToPipelineResponse/, 'Batch add response type should exist');
@@ -23,3 +25,5 @@ assert.match(jobMatchPage, /toggleSelectAll/, 'Match page should support selecti
 assert.match(jobMatchPage, /批量加入流程/, 'Match page should expose a batch add action');
 assert.match(jobMatchPage, /existingPipelineIds\.has/, 'Batch selection should be aware of already-joined candidates');
 assert.match(jobMatchPage, /batchAddToPipeline/, 'Match page should call the batch add API');
+assert.match(jobMatchPage, /searchParams\.get\('demand'\)/, 'Match page should read demand context from the deep link');
+assert.match(jobMatchPage, /demand_id: demandId/, 'Single-candidate joins should write the selected demand id');

@@ -52,6 +52,7 @@ assert.match(
   /pipeline_status:\s*pipelineStatusFilter === 'all' \? undefined : pipelineStatusFilter/,
   'Candidate page should pass assignment status to server search'
 );
-assert.match(candidatesPage, /listJobs/, 'Candidate page should load active jobs for downstream assignment');
-assert.match(candidatesPage, /batchAddToPipeline/, 'Candidate page should add selected resumes to a job safely');
-assert.match(candidatesPage, /加入岗位/, 'Candidate page should expose the action to add library resumes to a job');
+assert.match(candidatesPage, /listDemands/, 'Candidate page should load active demands for downstream assignment');
+assert.match(candidatesPage, /targetDemandId/, 'Candidate page should keep the exact target demand context');
+assert.match(candidatesPage, /batchAddToPipeline\(selectedJobId, \[candidateId\], demandId\)/, 'Candidate page should add selected resumes to the chosen demand safely');
+assert.match(candidatesPage, /加入所选需求/, 'Candidate page should expose the action to add library resumes to a demand');

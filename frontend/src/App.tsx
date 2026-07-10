@@ -24,7 +24,6 @@ const NotificationCenterPage = lazy(() => import('./pages/NotificationCenterPage
 const UploadPage = lazy(() => import('./pages/UploadPage').then((module) => ({ default: module.UploadPage })));
 const JobsPage = lazy(() => import('./pages/JobsPage').then((module) => ({ default: module.JobsPage })));
 const JobMatchPage = lazy(() => import('./pages/JobMatchPage').then((module) => ({ default: module.JobMatchPage })));
-const TalentMapPage = lazy(() => import('./pages/TalentMapPage').then((module) => ({ default: module.TalentMapPage })));
 const PipelinePage = lazy(() => import('./pages/PipelinePage').then((module) => ({ default: module.PipelinePage })));
 const InterviewListPage = lazy(() => import('./pages/InterviewListPage').then((module) => ({ default: module.InterviewListPage })));
 const InterviewsPage = lazy(() => import('./pages/InterviewsPage').then((module) => ({ default: module.InterviewsPage })));
@@ -114,15 +113,6 @@ function AppRoutes() {
             <RequireRole
               allow={['recruiter', 'manager', 'admin']}
               element={<JobMatchPage />}
-            />
-          }
-        />
-        <Route
-          path="/talent-map"
-          element={
-            <RequireRole
-              allow={['recruiter', 'manager', 'admin']}
-              element={<TalentMapPage />}
             />
           }
         />

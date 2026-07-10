@@ -18,6 +18,7 @@ def _positive_int_arg(name, default, max_value=None):
 def _serialize(notification):
     return {
         "id": notification.id,
+        "demand_id": notification.demand_id,
         "type": notification.type,
         "title": notification.title,
         "body": notification.body,

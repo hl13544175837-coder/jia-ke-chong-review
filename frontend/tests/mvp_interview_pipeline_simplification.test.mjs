@@ -27,14 +27,20 @@ assert.match(insights, /business_review:\s*'interview'/, 'Business feedback shou
 assert.match(insights, /interview:\s*'offer'/, 'The main next step from 面试中 should be Offer');
 
 assert.match(feedbackForm, /round_1/, 'Interview feedback should keep concrete round records outside the main pipeline');
-assert.match(feedbackForm, /technical/, 'Interview feedback should support technical interview records');
-assert.match(feedbackForm, /business/, 'Interview feedback should support business interview records');
-assert.match(feedbackForm, /hr/, 'Interview feedback should support HR interview records');
-assert.match(feedbackForm, /提交并推进 Offer/, 'Feedback form should let HR move to Offer when the interview outcome is ready');
+assert.match(feedbackForm, /一面/, 'Interview feedback should expose the approved first-round label');
+assert.match(feedbackForm, /二面/, 'Interview feedback should expose the approved second-round label');
+assert.match(feedbackForm, /终面/, 'Interview feedback should expose the approved final-round label');
+assert.doesNotMatch(
+  feedbackForm.match(/const ROUNDS[\s\S]*?\];/)?.[0] ?? '',
+  /technical|business|hr/,
+  'New feedback tasks should not expose legacy ad-hoc round categories',
+);
+assert.doesNotMatch(feedbackForm, /提交并推进 Offer/, 'Feedback should not silently combine round completion with the HR Offer decision');
+assert.match(feedbackForm, /待 HR 确认下一步/, 'Primary feedback should explicitly return the next decision to HR');
 assert.doesNotMatch(feedbackForm, /interview_second/, 'Feedback form should not force a passed first interview into a second interview');
 
-assert.match(biPage, /推荐成功面试/, 'BI should show generic interview entry metrics');
-assert.match(biPage, /面试通过/, 'BI should show generic interview pass metrics');
+assert.match(biPage, /面试中/, 'BI should show the single generic interview stage');
+assert.match(biPage, /面试反馈跟进/, 'BI should show round feedback as an operational task');
 assert.doesNotMatch(biPage, /一面通过/, 'BI should not use fixed first-interview pass as a top-level KPI');
 assert.doesNotMatch(biPage, /二面通过/, 'BI should not use fixed second-interview pass as a top-level KPI');
 

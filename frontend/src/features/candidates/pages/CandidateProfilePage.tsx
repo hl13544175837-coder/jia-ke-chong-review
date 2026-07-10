@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Briefcase, Edit3, MoreHorizontal, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import { ArrowRight, Briefcase, MoreHorizontal, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
   Radar,
   RadarChart,
@@ -20,9 +20,18 @@ import { Reveal } from '../../../components/motion';
 import { ReassignOwner } from '../../../components/candidate/ReassignOwner';
 import { RejectionDispositionForm } from '../../../components/pipeline/RejectionDispositionForm';
 import { OfferDrawer } from '../../../components/pipeline/OfferDrawer';
+import { OriginalResumeViewer } from '../components/OriginalResumeViewer';
+import { StructuredResumeView } from '../components/StructuredResumeView';
+import { CandidateMatchAnalysis } from '../components/CandidateMatchAnalysis';
 import { STAGES, stageLabel } from '../../../lib/pipelineStages';
 import { NEXT_STAGE, isInterviewStage, isTerminalStage, stageAgeLabel } from '../../../lib/pipelineInsights';
-import type { CandidateSourceInfo, CandidateTag, ResumeJson } from '../types';
+import type {
+  CandidateResumeTab,
+  CandidateSourceInfo,
+  CandidateTag,
+  OriginalResumeInfo,
+  ResumeJson,
+} from '../types';
 import type { CandidateDispositionInput, CandidatePipelineItem, PipelineStage } from '../../../types';
 
 // Cal.com 近黑配色 hex（recharts 不接受 tailwind 类）
@@ -32,6 +41,11 @@ const RADAR_GRID_STROKE = '#e5e7eb';   // hairline
 const RADAR_TICK_FILL = '#6b7280';     // muted
 const CORE_SKILL_LIMIT = 8;
 const JUDGEMENT_SKILL_LIMIT = 6;
+const CANDIDATE_RESUME_TABS: Array<{ key: CandidateResumeTab; label: string; hint: string }> = [
+  { key: 'original', label: '原始简历', hint: '事实真源' },
+  { key: 'structured', label: '结构化画像', hint: '可编辑辅助信息' },
+  { key: 'match', label: '匹配分析', hint: 'AI 建议' },
+];
 
 function sortSkillTags(tags: CandidateTag[]): CandidateTag[] {
   return [...tags]
@@ -1051,17 +1065,17 @@ function sortPipelinesByRecent(pipelines: CandidatePipelineItem[]): CandidatePip
 
 function CandidatePipelineSelector({
   pipelines,
-  selectedJobId,
+  selectedDemandId,
   loading,
   error,
-  onSelectJob,
+  onSelectDemand,
   onRetry,
 }: {
   pipelines: CandidatePipelineItem[];
-  selectedJobId: number | null;
+  selectedDemandId: number | null;
   loading: boolean;
   error: Error | null;
-  onSelectJob: (jobId: number) => void;
+  onSelectDemand: (demandId: number) => void;
   onRetry: () => void;
 }) {
   return (
@@ -1076,7 +1090,7 @@ function CandidatePipelineSelector({
           <ErrorState message={error.message} onRetry={onRetry} />
         ) : pipelines.length === 0 ? (
           <div className="space-y-2">
-            <p className="text-sm text-muted-soft">该候选人尚未进入任何岗位流程。</p>
+            <p className="text-sm text-muted-soft">该候选人尚未进入任何招聘需求。</p>
             <Link
               to="/candidates"
               className="inline-flex text-sm font-semibold text-ink hover:underline"
@@ -1087,12 +1101,12 @@ function CandidatePipelineSelector({
         ) : (
           <div className="space-y-2">
             {sortPipelinesByRecent(pipelines).map((pipeline) => {
-              const selected = selectedJobId === pipeline.job_id;
+              const selected = selectedDemandId === pipeline.demand_id;
               return (
                 <button
-                  key={pipeline.job_id}
+                  key={pipeline.demand_id}
                   type="button"
-                  onClick={() => onSelectJob(pipeline.job_id)}
+                  onClick={() => onSelectDemand(pipeline.demand_id)}
                   className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${
                     selected
                       ? 'border-ink bg-surface-soft'
@@ -1105,7 +1119,7 @@ function CandidatePipelineSelector({
                         {pipeline.job_title}
                       </span>
                       <span className="mt-1 block text-xs text-muted-soft">
-                        {stageAgeLabel(pipeline.updated_at)}
+                        {[pipeline.department, pipeline.city, stageAgeLabel(pipeline.updated_at)].filter(Boolean).join(' · ')}
                       </span>
                     </span>
                     <Badge tone={selected ? 'brand' : 'neutral'} className="shrink-0">
@@ -1129,11 +1143,11 @@ function CandidatePipelineActionPanel({
   pipelines,
   loading,
   error,
-  selectedJobId,
+  selectedDemandId,
   canMove,
   canReassign,
   currentOwnerId,
-  onSelectJob,
+  onSelectDemand,
   onReload,
   onCandidateReload,
 }: {
@@ -1143,11 +1157,11 @@ function CandidatePipelineActionPanel({
   pipelines: CandidatePipelineItem[];
   loading: boolean;
   error: Error | null;
-  selectedJobId: number | null;
+  selectedDemandId: number | null;
   canMove: boolean;
   canReassign: boolean;
   currentOwnerId?: number;
-  onSelectJob: (jobId: number) => void;
+  onSelectDemand: (demandId: number) => void;
   onReload: () => void;
   onCandidateReload: () => void;
 }) {
@@ -1169,7 +1183,7 @@ function CandidatePipelineActionPanel({
     setTargetStage('');
     setCorrectionReason('');
     setCorrectionError(null);
-  }, [candidateId, pipeline?.job_id, pipeline?.stage]);
+  }, [candidateId, pipeline?.demand_id, pipeline?.stage]);
 
   async function movePipeline(
     toStage: PipelineStage,
@@ -1181,7 +1195,7 @@ function CandidatePipelineActionPanel({
     try {
       await api.movePipeline({
         candidate_id: candidateId,
-        job_id: pipeline.job_id,
+        demand_id: pipeline.demand_id,
         stage: toStage,
         note,
         disposition,
@@ -1222,7 +1236,7 @@ function CandidatePipelineActionPanel({
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle>动作</CardTitle>
-            <p className="mt-1 text-xs text-muted-soft">对当前岗位流程生效</p>
+            <p className="mt-1 text-xs text-muted-soft">对当前招聘需求生效</p>
           </div>
           {moving && <Spinner size="sm" />}
         </div>
@@ -1236,32 +1250,32 @@ function CandidatePipelineActionPanel({
           <div className="space-y-2 rounded-md border border-hairline bg-surface-soft px-3 py-3">
             <p className="text-sm font-semibold text-ink">暂无可推进流程</p>
             <p className="text-sm leading-6 text-muted">
-              该候选人还没有进入岗位流程，先回到简历库选择目标岗位后加入流程。
+              该候选人还没有进入招聘需求，先回到简历库选择具体需求后加入。
             </p>
           </div>
         ) : (
           <>
             <div className="rounded-md border border-hairline bg-surface-soft px-3 py-3">
-              <p className="text-xs font-semibold text-muted">当前操作岗位</p>
+              <p className="text-xs font-semibold text-muted">当前操作需求</p>
               <div className="mt-2 flex items-start gap-2">
                 <Briefcase className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-ink">{pipeline.job_title}</p>
                   <p className="mt-1 text-xs text-muted-soft">
-                    {stageLabel(pipeline.stage)} · {stageAgeLabel(pipeline.updated_at)}
+                    {[pipeline.department, pipeline.city, stageLabel(pipeline.stage), stageAgeLabel(pipeline.updated_at)].filter(Boolean).join(' · ')}
                   </p>
                 </div>
               </div>
               {pipelines.length > 1 && (
                 <select
-                  value={selectedJobId ?? ''}
-                  onChange={(event) => onSelectJob(Number(event.target.value))}
+                  value={selectedDemandId ?? ''}
+                  onChange={(event) => onSelectDemand(Number(event.target.value))}
                   className="mt-3 h-9 w-full rounded-md border border-hairline bg-canvas px-2 text-sm text-ink focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
-                  aria-label="切换当前操作岗位"
+                  aria-label="切换当前操作需求"
                 >
                   {sortPipelinesByRecent(pipelines).map((item) => (
-                    <option key={item.job_id} value={item.job_id}>
-                      {item.job_title} · {stageLabel(item.stage)}
+                    <option key={item.demand_id} value={item.demand_id}>
+                      {[item.job_title, item.department, item.city, stageLabel(item.stage)].filter(Boolean).join(' · ')}
                     </option>
                   ))}
                 </select>
@@ -1306,7 +1320,7 @@ function CandidatePipelineActionPanel({
             <div className="flex flex-wrap gap-2">
               {isInterviewStage(pipeline.stage) && (
                 <Link
-                  to={`/interviews?job=${pipeline.job_id}&candidate=${candidateId}`}
+                  to={`/interviews?demand=${pipeline.demand_id}&candidate=${candidateId}`}
                   className="inline-flex h-8 items-center justify-center rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
                 >
                   填写面试反馈
@@ -1324,7 +1338,7 @@ function CandidatePipelineActionPanel({
                 </Button>
               )}
               <Link
-                to={`/pipeline?job=${pipeline.job_id}&candidate=${candidateId}&stage=${pipeline.stage}`}
+                to={`/pipeline?demand=${pipeline.demand_id}&candidate=${candidateId}&stage=${pipeline.stage}`}
                 className="inline-flex h-8 items-center justify-center rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
               >
                 查看流程详情
@@ -1421,7 +1435,7 @@ function CandidatePipelineActionPanel({
             )}
 
             {pipeline.stage === 'offer' && showOffer && (
-              <OfferDrawer candidateId={candidateId} jobId={pipeline.job_id} />
+              <OfferDrawer candidateId={candidateId} demandId={pipeline.demand_id} jobId={pipeline.job_id} />
             )}
           </>
         )}
@@ -1456,7 +1470,9 @@ export function CandidateProfilePage() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [exportingCandidate, setExportingCandidate] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft | null>(null);
-  const [selectedPipelineJobId, setSelectedPipelineJobId] = useState<number | null>(null);
+  const [selectedPipelineDemandId, setSelectedPipelineDemandId] = useState<number | null>(null);
+  const [activeResumeTab, setActiveResumeTab] = useState<CandidateResumeTab>('original');
+  const [showRecruitmentActions, setShowRecruitmentActions] = useState(false);
 
   // useAsync 无条件调用，fetch 函数在 id 无效时短路，不发送请求
   const { data, loading, error, reload } = useAsync(
@@ -1482,23 +1498,23 @@ export function CandidateProfilePage() {
 
   useEffect(() => {
     if (pipelines.length === 0) {
-      setSelectedPipelineJobId(null);
+      setSelectedPipelineDemandId(null);
       return;
     }
     if (
-      selectedPipelineJobId === null ||
-      !pipelines.some((pipeline) => pipeline.job_id === selectedPipelineJobId)
+      selectedPipelineDemandId === null ||
+      !pipelines.some((pipeline) => pipeline.demand_id === selectedPipelineDemandId)
     ) {
-      setSelectedPipelineJobId(sortPipelinesByRecent(pipelines)[0].job_id);
+      setSelectedPipelineDemandId(sortPipelinesByRecent(pipelines)[0].demand_id);
     }
-  }, [pipelines, selectedPipelineJobId]);
+  }, [pipelines, selectedPipelineDemandId]);
 
   const selectedPipeline = useMemo(
     () =>
-      pipelines.find((pipeline) => pipeline.job_id === selectedPipelineJobId) ??
+      pipelines.find((pipeline) => pipeline.demand_id === selectedPipelineDemandId) ??
       sortPipelinesByRecent(pipelines)[0] ??
       null,
-    [pipelines, selectedPipelineJobId],
+    [pipelines, selectedPipelineDemandId],
   );
 
   const handleRetryParse = async () => {
@@ -1519,6 +1535,7 @@ export function CandidateProfilePage() {
     if (!data) return;
     setProfileDraft(buildProfileDraft(data.resume_json, data.tags));
     setEditingProfile(true);
+    setActiveResumeTab('structured');
   };
 
   const handleCancelEditProfile = () => {
@@ -1622,10 +1639,16 @@ export function CandidateProfilePage() {
   const coreTags = hasTags ? getCoreSkillTags(tags) : [];
   const hiddenSkillCount = hasTags ? Math.max(tags.length - coreTags.length, 0) : 0;
   const parseFailed = parse_status === 'failed';
+  const originalResume: OriginalResumeInfo = data.original_resume ?? {
+    available: false,
+    filename: null,
+    mime_type: null,
+    preview_url: `/api/resume/${candidateId}/original/preview`,
+    download_url: `/api/resume/${candidateId}/original/download`,
+  };
 
   return (
-    <div>
-      {/* 面包屑导航 */}
+    <div className="mx-auto w-full max-w-[1600px]">
       <nav aria-label="面包屑" className="mb-4">
         <Link
           to="/candidates"
@@ -1637,8 +1660,7 @@ export function CandidateProfilePage() {
         <span className="text-sm text-ink">{name_masked}</span>
       </nav>
 
-      {/* 页头 */}
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-display text-ink">
             {name_masked}
@@ -1647,150 +1669,159 @@ export function CandidateProfilePage() {
             录入时间：{formatDate(created_at)}
           </p>
         </div>
-        {hasTags && (
-          <Badge tone="neutral">核心 {coreTags.length} / 共 {tags.length} 个技能</Badge>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {hasTags && (
+            <Badge tone="neutral">核心 {coreTags.length} / 共 {tags.length} 个技能</Badge>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            aria-expanded={showRecruitmentActions}
+            aria-controls="candidate-recruitment-actions"
+            onClick={() => setShowRecruitmentActions((value) => !value)}
+          >
+            <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+            {showRecruitmentActions ? '收起招聘操作' : '招聘操作'}
+          </Button>
+        </div>
       </div>
 
-      <Reveal
-        as="div"
-        className="grid grid-cols-1 gap-5 xl:grid-cols-[240px_minmax(0,1fr)_300px]"
-        stagger={0.08}
-        y={16}
-      >
-        {/* 左栏 — 目录与岗位流程 */}
-        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-          <ResumeOutlineNav resumeJson={resume_json} />
-          <CandidatePipelineSelector
-            pipelines={pipelines}
-            selectedJobId={selectedPipeline?.job_id ?? selectedPipelineJobId}
-            loading={pipelineAsync.loading}
-            error={pipelineAsync.error}
-            onSelectJob={setSelectedPipelineJobId}
-            onRetry={pipelineAsync.reload}
-          />
-        </aside>
+      {showRecruitmentActions && (
+        <div id="candidate-recruitment-actions">
+          <Reveal
+            as="section"
+            className="mb-5 grid gap-5 rounded-xl border border-hairline bg-surface-soft/50 p-4 lg:grid-cols-[minmax(260px,360px)_minmax(0,1fr)]"
+            y={8}
+          >
+            <CandidatePipelineSelector
+              pipelines={pipelines}
+              selectedDemandId={selectedPipeline?.demand_id ?? selectedPipelineDemandId}
+              loading={pipelineAsync.loading}
+              error={pipelineAsync.error}
+              onSelectDemand={setSelectedPipelineDemandId}
+              onRetry={pipelineAsync.reload}
+            />
+            <CandidatePipelineActionPanel
+              candidateId={candidateId}
+              candidateName={name_masked}
+              pipeline={selectedPipeline}
+              pipelines={pipelines}
+              selectedDemandId={selectedPipeline?.demand_id ?? selectedPipelineDemandId}
+              loading={pipelineAsync.loading}
+              error={pipelineAsync.error}
+              canMove={canMovePipeline}
+              canReassign={canReassign && pipelines.length === 0}
+              currentOwnerId={data.owner_hr_id}
+              onSelectDemand={setSelectedPipelineDemandId}
+              onReload={pipelineAsync.reload}
+              onCandidateReload={reload}
+            />
+          </Reveal>
+        </div>
+      )}
 
-        {/* 中栏 — 完整简历阅读器 */}
-        <main className="min-w-0">
-          <Card id={RESUME_TOP_ID} className="xl:max-h-[calc(100vh-11rem)] xl:overflow-hidden">
-            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle>完整简历</CardTitle>
-                <p className="mt-1 text-xs text-muted-soft">结构化简历内容，阅读区可独立滚动</p>
-              </div>
-              {editingProfile ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleCancelEditProfile}
-                    disabled={savingProfile}
-                  >
-                    <X className="h-4 w-4" aria-hidden="true" />
-                    取消
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="accent"
-                    size="sm"
-                    loading={savingProfile}
-                    onClick={handleSaveProfile}
-                  >
-                    <Save className="h-4 w-4" aria-hidden="true" />
-                    保存修改
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    loading={exportingCandidate}
-                    onClick={handleExportCandidate}
-                  >
-                    导出简历
-                  </Button>
-                  {canEditProfile && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={handleStartEditProfile}
-                    >
-                      <Edit3 className="h-4 w-4" aria-hidden="true" />
-                      编辑档案
-                    </Button>
-                  )}
-                </div>
-              )}
-            </CardHeader>
-            <CardBody className="xl:max-h-[calc(100vh-15.5rem)] xl:overflow-y-auto">
-              {parseFailed && (
-                <div className="mb-4 rounded-md border border-danger-200 bg-danger-50 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex gap-3">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-600" aria-hidden="true" />
-                      <div>
-                        <p className="text-sm font-semibold text-danger-700">简历解析失败</p>
-                        <p className="mt-1 text-sm leading-relaxed text-danger-700">
-                          {parse_error || '原始文件已保留，可以重新解析，也可以直接手动补全档案。'}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      loading={retryingParse}
-                      onClick={handleRetryParse}
-                      className="shrink-0"
-                    >
-                      <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                      重新解析
-                    </Button>
-                  </div>
-                </div>
-              )}
-              {editingProfile && profileDraft ? (
-                <ProfileEditForm draft={profileDraft} onChange={setProfileDraft} />
-              ) : resume_json && Object.keys(resume_json).length > 0 ? (
-                <ResumeJsonView resumeJson={resume_json} />
-              ) : (
-                <p className="text-sm text-muted-soft">暂无简历结构化内容</p>
-              )}
-            </CardBody>
-          </Card>
-        </main>
+      <div className="mb-5 rounded-xl border border-hairline bg-canvas p-1 shadow-card">
+        <div role="tablist" aria-label="候选人简历视图" className="grid w-full grid-cols-3 gap-1">
+          {CANDIDATE_RESUME_TABS.map((tab) => {
+            const active = activeResumeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                id={`candidate-resume-tab-${tab.key}`}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-controls={`candidate-resume-panel-${tab.key}`}
+                onClick={() => setActiveResumeTab(tab.key)}
+                className={`min-w-0 rounded-lg px-2 py-3 text-left transition-colors sm:px-4 ${
+                  active ? 'bg-ink text-white shadow-apple-sm' : 'text-muted hover:bg-surface-soft hover:text-ink'
+                }`}
+              >
+                <span className="block text-sm font-semibold">{tab.label}</span>
+                <span className={`mt-0.5 hidden text-xs sm:block ${active ? 'text-white/60' : 'text-muted-soft'}`}>
+                  {tab.hint}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-        {/* 右栏 — 流程动作与判断 */}
-        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-          <CandidatePipelineActionPanel
-            candidateId={candidateId}
-            candidateName={name_masked}
-            pipeline={selectedPipeline}
-            pipelines={pipelines}
-            selectedJobId={selectedPipeline?.job_id ?? selectedPipelineJobId}
-            loading={pipelineAsync.loading}
-            error={pipelineAsync.error}
-            canMove={canMovePipeline}
-            canReassign={canReassign}
-            currentOwnerId={data.owner_hr_id}
-            onSelectJob={setSelectedPipelineJobId}
-            onReload={pipelineAsync.reload}
-            onCandidateReload={reload}
-          />
-          <CandidateJudgementCard
-            resumeJson={resume_json}
-            source={source}
-            tags={tags}
-            coreTags={coreTags}
-            hiddenSkillCount={hiddenSkillCount}
-          />
-          <SourceInfoCard source={source} />
-        </aside>
+      <Reveal as="main" className="min-w-0" y={10}>
+        {activeResumeTab === 'original' && (
+          <div
+            id="candidate-resume-panel-original"
+            role="tabpanel"
+            aria-labelledby="candidate-resume-tab-original"
+          >
+            <OriginalResumeViewer
+              candidateId={candidateId}
+              info={originalResume}
+              parseFailed={parseFailed}
+            />
+          </div>
+        )}
+
+        {activeResumeTab === 'structured' && (
+          <div
+            id="candidate-resume-panel-structured"
+            role="tabpanel"
+            aria-labelledby="candidate-resume-tab-structured"
+          >
+            <div id={RESUME_TOP_ID}>
+              <StructuredResumeView
+                parseFailed={parseFailed}
+                parseError={parse_error}
+                retryingParse={retryingParse}
+                editing={editingProfile}
+                saving={savingProfile}
+                canEdit={canEditProfile}
+                exporting={exportingCandidate}
+                retryLabel="重新解析"
+                editLabel="编辑档案"
+                exportLabel="导出简历"
+                onRetryParse={() => void handleRetryParse()}
+                onStartEdit={handleStartEditProfile}
+                onCancelEdit={handleCancelEditProfile}
+                onSave={() => void handleSaveProfile()}
+                onExport={() => void handleExportCandidate()}
+                outline={<ResumeOutlineNav resumeJson={resume_json} />}
+              >
+                {editingProfile && profileDraft ? (
+                  <ProfileEditForm draft={profileDraft} onChange={setProfileDraft} />
+                ) : resume_json && Object.keys(resume_json).length > 0 ? (
+                  <ResumeJsonView resumeJson={resume_json} />
+                ) : (
+                  <p className="text-sm text-muted-soft">暂无简历结构化内容</p>
+                )}
+              </StructuredResumeView>
+            </div>
+          </div>
+        )}
+
+        {activeResumeTab === 'match' && (
+          <div
+            id="candidate-resume-panel-match"
+            role="tabpanel"
+            aria-labelledby="candidate-resume-tab-match"
+          >
+            <CandidateMatchAnalysis
+              candidateId={candidateId}
+              jobId={selectedPipeline?.job_id ?? null}
+              jobTitle={selectedPipeline?.job_title}
+            >
+              <CandidateJudgementCard
+                resumeJson={resume_json}
+                source={source}
+                tags={tags}
+                coreTags={coreTags}
+                hiddenSkillCount={hiddenSkillCount}
+              />
+              <SourceInfoCard source={source} />
+            </CandidateMatchAnalysis>
+          </div>
+        )}
       </Reveal>
     </div>
   );

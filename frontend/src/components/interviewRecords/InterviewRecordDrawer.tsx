@@ -19,11 +19,13 @@ interface InterviewRecordDrawerProps {
 }
 
 export function InterviewRecordDrawer({ item, onClose }: InterviewRecordDrawerProps) {
-  const journeyAsync = useAsync(
-    () => api.getCandidateJourney(item.candidate_id, item.job_id),
-    [item.candidate_id, item.job_id],
+  const historyAsync = useAsync(
+    () => item.demand_id
+      ? api.getDemandPipelineHistory(item.demand_id, item.candidate_id)
+      : api.getPipelineHistory(item.job_id, item.candidate_id),
+    [item.candidate_id, item.demand_id, item.job_id],
   );
-  const journey = journeyAsync.data;
+  const history = historyAsync.data;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
@@ -44,6 +46,9 @@ export function InterviewRecordDrawer({ item, onClose }: InterviewRecordDrawerPr
             </h2>
             <p className="mt-1 truncate text-sm text-muted">
               {item.job_title ?? `岗位 #${item.job_id}`}
+            </p>
+            <p className="mt-1 text-xs text-muted-soft">
+              {item.demand_id ? `招聘需求 #${item.demand_id}` : '历史未归属需求'}
             </p>
           </div>
           <button
@@ -134,21 +139,21 @@ export function InterviewRecordDrawer({ item, onClose }: InterviewRecordDrawerPr
 
           <section className="mt-5">
             <h3 className="text-sm font-semibold text-ink">流程时间线</h3>
-            {journeyAsync.loading && (
+            {historyAsync.loading && (
               <div className="mt-4 flex items-center gap-2 text-sm text-muted">
                 <Spinner size="sm" />
                 加载时间线…
               </div>
             )}
-            {!journeyAsync.loading && journeyAsync.error && (
-              <p className="mt-3 text-sm text-danger-600">{journeyAsync.error.message}</p>
+            {!historyAsync.loading && historyAsync.error && (
+              <p className="mt-3 text-sm text-danger-600">{historyAsync.error.message}</p>
             )}
-            {!journeyAsync.loading && journey && (
+            {!historyAsync.loading && history && (
               <div className="mt-3 space-y-3">
-                {journey.timeline.length === 0 ? (
+                {history.timeline.length === 0 ? (
                   <p className="text-sm text-muted">暂无流程记录</p>
                 ) : (
-                  journey.timeline.map((step, index) => (
+                  history.timeline.map((step, index) => (
                     <div key={`${step.stage}-${step.ts}-${index}`} className="flex gap-3">
                       <span className="mt-1 h-2 w-2 rounded-full bg-brand-500" />
                       <div className="min-w-0">
@@ -168,54 +173,6 @@ export function InterviewRecordDrawer({ item, onClose }: InterviewRecordDrawerPr
             )}
           </section>
 
-          {journey && journey.feedback.length > 0 && (
-            <section className="mt-5">
-              <h3 className="text-sm font-semibold text-ink">同岗位历史反馈</h3>
-              <div className="mt-3 space-y-2">
-                {journey.feedback.map((feedback) => (
-                  <div
-                    key={feedback.id}
-                    className="rounded-md border border-hairline bg-canvas px-3 py-2"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-ink">
-                        {roundLabel(feedback.round)}
-                      </span>
-                      <Badge tone={resultTone(feedback.passed)}>
-                        {resultLabel(feedback.passed)}
-                      </Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted">
-                      {feedback.interviewer_name ?? '—'} · {feedback.score ?? '—'} 分
-                    </p>
-                    {(feedback.concerns || feedback.note || feedback.strengths) && (
-                      <p className="mt-1 text-sm text-body">
-                        {feedback.concerns || feedback.note || feedback.strengths}
-                      </p>
-                    )}
-                    {feedback.reason_tags.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {feedback.reason_tags.map((tag) => (
-                          <Badge key={tag} tone="warning">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                    {Object.keys(feedback.evaluation).length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {Object.entries(feedback.evaluation).map(([dimension, value]) => (
-                          <Badge key={dimension} tone="neutral">
-                            {dimension} {value}/5
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
         </div>
       </aside>
     </div>

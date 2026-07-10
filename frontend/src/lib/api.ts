@@ -9,6 +9,7 @@ import type {
   AuditLogQuery,
   AuditLogResponse,
   BatchAddToPipelineResponse,
+  BiDemandOperationalMetrics,
   BiOverview,
   BiStaffDetail,
   BiJobDetail,
@@ -24,8 +25,13 @@ import type {
   CreateJobResponse,
   DemandCloseInput,
   DemandDowngradeInput,
+  DemandListQuery,
+  DemandListResponse,
+  DemandOwnerTransferInput,
   DemandRestoreInput,
   InterviewFeedbackInput,
+  InterviewFeedbackResponse,
+  LegacyInterviewFeedbackInput,
   InterviewAssignment,
   InterviewAssignmentInput,
   InterviewGuide,
@@ -50,6 +56,8 @@ import type {
   PipelineCounts,
   PipelineMoveRequest,
   PipelineMoveResponse,
+  PipelineTransferRequest,
+  PipelineTransferResponse,
   RegisterRequest,
   RegisterResponse,
   RecruitmentDemand,
@@ -102,11 +110,13 @@ export function clearToken(): void {
 export class ApiError extends Error {
   status: number;
   code?: string;
-  constructor(status: number, message: string, code?: string) {
+  fields?: Record<string, string>;
+  constructor(status: number, message: string, code?: string, fields?: Record<string, string>) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.fields = fields;
   }
 }
 
@@ -128,15 +138,20 @@ interface RequestOptions {
   body?: unknown;
   // Raw body for multipart uploads; Content-Type is left to the browser.
   formData?: FormData;
+  headers?: Record<string, string>;
+  idempotencyKey?: string;
 }
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, formData } = opts;
-  const headers: Record<string, string> = {};
+  const { method = 'GET', body, formData, idempotencyKey } = opts;
+  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
 
   const token = getToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (idempotencyKey) {
+    headers['Idempotency-Key'] = idempotencyKey;
   }
 
   let payload: BodyInit | undefined;
@@ -197,7 +212,20 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
         ? String((data as Record<string, unknown>).message)
         : null) ||
       `Request failed with status ${res.status}`;
-    throw new ApiError(res.status, message, nestedErrorCode);
+    const topLevelCode =
+      data && typeof data === 'object' && 'code' in data
+        ? String((data as Record<string, unknown>).code)
+        : undefined;
+    const fields =
+      data && typeof data === 'object' && 'fields' in data
+      && (data as Record<string, unknown>).fields
+      && typeof (data as Record<string, unknown>).fields === 'object'
+        ? Object.fromEntries(
+            Object.entries((data as Record<string, unknown>).fields as Record<string, unknown>)
+              .map(([key, value]) => [key, String(value)]),
+          )
+        : undefined;
+    throw new ApiError(res.status, message, nestedErrorCode ?? topLevelCode, fields);
   }
 
   return data as T;
@@ -228,6 +256,7 @@ export const api = {
       source_channel?: string;
       source_link?: string;
       referrer?: string;
+      target_demand_id?: number | null;
       target_job_id?: number | null;
       source_note?: string;
     },
@@ -327,14 +356,21 @@ export const api = {
     return request(`/jobs${suffix}`);
   },
   // ---- Recruitment demands ----
-  listDemands(): Promise<RecruitmentDemand[]> {
-    return request('/demands');
+  listDemands(query: DemandListQuery = {}): Promise<DemandListResponse> {
+    const search = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        search.set(key, String(value));
+      }
+    });
+    const suffix = search.size > 0 ? `?${search.toString()}` : '';
+    return request(`/demands${suffix}`);
   },
   getDemand(demandId: number): Promise<RecruitmentDemand> {
     return request(`/demands/${demandId}`);
   },
-  createDemand(payload: RecruitmentDemandInput): Promise<RecruitmentDemand> {
-    return request('/demands', { method: 'POST', body: payload });
+  createDemand(payload: RecruitmentDemandInput, idempotencyKey: string): Promise<RecruitmentDemand> {
+    return request('/demands', { method: 'POST', body: payload, idempotencyKey });
   },
   updateDemand(
     demandId: number,
@@ -348,8 +384,14 @@ export const api = {
   downgradeDemand(demandId: number, payload: DemandDowngradeInput): Promise<RecruitmentDemand> {
     return request(`/demands/${demandId}/downgrade`, { method: 'POST', body: payload });
   },
-  restoreDemand(demandId: number, payload: DemandRestoreInput = {}): Promise<RecruitmentDemand> {
+  restoreDemand(demandId: number, payload: DemandRestoreInput): Promise<RecruitmentDemand> {
     return request(`/demands/${demandId}/restore`, { method: 'POST', body: payload });
+  },
+  reassignDemandOwner(
+    demandId: number,
+    payload: DemandOwnerTransferInput,
+  ): Promise<RecruitmentDemand> {
+    return request(`/demands/${demandId}/owner`, { method: 'PATCH', body: payload });
   },
 
   // ---- Talent maps ----
@@ -403,10 +445,11 @@ export const api = {
   batchAddToPipeline(
     jobId: number,
     candidateIds: number[],
+    demandId?: number,
   ): Promise<BatchAddToPipelineResponse> {
     return request(`/jobs/${jobId}/batch-pipeline`, {
       method: 'POST',
-      body: { candidate_ids: candidateIds },
+      body: { candidate_ids: candidateIds, demand_id: demandId },
     });
   },
   // Thin alias kept only for backend compatibility (POST /match with job_id in
@@ -428,25 +471,42 @@ export const api = {
   listInterviews(): Promise<InterviewListItem[]> {
     return request('/interviews');
   },
-  submitFeedback(payload: InterviewFeedbackInput): Promise<{ id: number; status: string }> {
+  submitFeedback(
+    payload: InterviewFeedbackInput | LegacyInterviewFeedbackInput,
+  ): Promise<InterviewFeedbackResponse> {
     return request('/interview/feedback', { method: 'POST', body: payload });
   },
   listInterviewers(): Promise<InterviewerOption[]> {
     return request('/interview/interviewers');
   },
-  listInterviewAssignments(): Promise<InterviewAssignment[]> {
-    return request('/interview/assignments');
+  listInterviewAssignments(query: {
+    demand_id?: number;
+    candidate_id?: number;
+    job_id?: number;
+  } = {}): Promise<InterviewAssignment[]> {
+    const search = new URLSearchParams();
+    if (query.demand_id) search.set('demand_id', String(query.demand_id));
+    if (query.candidate_id) search.set('candidate_id', String(query.candidate_id));
+    if (query.job_id) search.set('job_id', String(query.job_id));
+    const suffix = search.size > 0 ? `?${search.toString()}` : '';
+    return request(`/interview/assignments${suffix}`);
   },
   createInterviewAssignment(payload: InterviewAssignmentInput): Promise<InterviewAssignment> {
     return request('/interview/assignments', { method: 'POST', body: payload });
   },
-  getInterviewGuide(candidateId: number, jobId: number, round: string): Promise<InterviewGuide> {
+  getInterviewGuide(candidateId: number, demandId: number, round: string): Promise<InterviewGuide> {
+    return request(`/interview/guide?candidate_id=${candidateId}&demand_id=${demandId}&round=${round}`);
+  },
+  getLegacyInterviewGuide(candidateId: number, jobId: number, round: string): Promise<InterviewGuide> {
     return request(`/interview/guide?candidate_id=${candidateId}&job_id=${jobId}&round=${round}`);
   },
 
   // ---- Pipeline ----
   movePipeline(payload: PipelineMoveRequest): Promise<PipelineMoveResponse> {
     return request('/pipeline/move', { method: 'POST', body: payload });
+  },
+  transferPipeline(payload: PipelineTransferRequest): Promise<PipelineTransferResponse> {
+    return request('/pipeline/transfer', { method: 'POST', body: payload });
   },
   getPipeline(jobId: number): Promise<PipelineCounts> {
     return request(`/pipeline/${jobId}`);
@@ -455,15 +515,27 @@ export const api = {
   getPipelineBoard(jobId: number): Promise<PipelineBoard> {
     return request(`/pipeline/${jobId}/board`);
   },
+  getDemandPipelineBoard(demandId: number): Promise<PipelineBoard> {
+    return request(`/pipeline/demands/${demandId}/board`);
+  },
   // Stage-transition timeline for one candidate in one job.
   getPipelineHistory(jobId: number, candidateId: number): Promise<PipelineHistory> {
     return request(`/pipeline/${jobId}/history/${candidateId}`);
   },
+  getDemandPipelineHistory(demandId: number, candidateId: number): Promise<PipelineHistory> {
+    return request(`/pipeline/demands/${demandId}/history/${candidateId}`);
+  },
   getOfferRecord(jobId: number, candidateId: number): Promise<OfferRecord> {
     return request(`/pipeline/${jobId}/offer/${candidateId}`);
   },
+  getDemandOfferRecord(demandId: number, candidateId: number): Promise<OfferRecord> {
+    return request(`/pipeline/demands/${demandId}/offer/${candidateId}`);
+  },
   saveOfferRecord(jobId: number, candidateId: number, payload: Partial<OfferRecord>): Promise<OfferRecord> {
     return request(`/pipeline/${jobId}/offer/${candidateId}`, { method: 'PUT', body: payload });
+  },
+  saveDemandOfferRecord(demandId: number, candidateId: number, payload: Partial<OfferRecord>): Promise<OfferRecord> {
+    return request(`/pipeline/demands/${demandId}/offer/${candidateId}`, { method: 'PUT', body: payload });
   },
 
   // ---- BI (manager/admin only) ----
@@ -476,6 +548,9 @@ export const api = {
   // Single-job funnel — all roles.
   biJob(jobId: number, days = 90): Promise<BiJobDetail> {
     return request(`/bi/job/${jobId}?days=${days}`);
+  },
+  biDemand(demandId: number): Promise<BiDemandOperationalMetrics> {
+    return request(`/bi/demand/${demandId}`);
   },
 
   // ---- Account ----
@@ -584,8 +659,8 @@ export const api = {
   getCandidatePipelines(candidateId: number): Promise<CandidatePipelines> {
     return request(`/candidates/${candidateId}/pipelines`);
   },
-  getCandidateJourney(candidateId: number, jobId: number): Promise<CandidateJourney> {
-    return request(`/candidates/${candidateId}/journey?job_id=${jobId}`);
+  getCandidateJourney(candidateId: number, demandId: number): Promise<CandidateJourney> {
+    return request(`/candidates/${candidateId}/journey?demand_id=${demandId}`);
   },
   reassignCandidate(
     candidateId: number,

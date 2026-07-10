@@ -1,19 +1,26 @@
 import hashlib
+import mimetypes
 import os, uuid, zipfile
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
 from flask import current_app
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, send_file
 from werkzeug.utils import secure_filename
 from ..middleware.auth import require_auth, require_role
 from ..middleware.rate_limit import rate_limit
 from ..middleware.events import record_event
 from ..services.resume_service import ResumeBatchService
+from ..services.demand_context_service import (
+    DemandContextError,
+    can_manage_demand,
+    resolve_demand_context,
+)
+from ..services.pipeline_service import PipelineServiceError, move_candidate
 from ..source_channels import normalize_resume_source_channel
 from .. import db
 from ..models import Candidate, Event, UploadBatch
 from ..time_utils import utc_now
-from .access import can_access_candidate, can_manage_job, job_is_active, same_org
+from .access import can_access_candidate, same_org
 
 bp = Blueprint("resume", __name__)
 
@@ -35,6 +42,10 @@ ZIP_MAX_ENTRIES = 100              # zip 内最多处理的文件条目数
 ZIP_MAX_FILE_SIZE = 20 * 1024 * 1024     # 单个解压文件上限 20MB
 ZIP_MAX_TOTAL_SIZE = 200 * 1024 * 1024   # 解压总大小上限 200MB
 UPLOAD_DEDUP_WINDOW = timedelta(minutes=10)
+ORIGINAL_RESUME_MIME_TYPES = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 
 
 def _ext(filename):
@@ -84,6 +95,113 @@ def _validate_upload_file(file_storage):
     return None
 
 
+def _original_resume_urls(candidate_id):
+    base = f"/api/resume/{candidate_id}/original"
+    return {
+        "preview_url": f"{base}/preview",
+        "download_url": f"{base}/download",
+    }
+
+
+def _resolve_original_resume(candidate):
+    """Resolve a stored resume only when it remains inside UPLOAD_FOLDER.
+
+    The return value deliberately separates an internal path from public
+    metadata so callers never serialize the server filesystem location.
+    """
+    if not candidate.raw_file_path:
+        return None, "missing_path"
+
+    upload_root = Path(current_app.config.get("UPLOAD_FOLDER") or "/tmp/zhipin_uploads")
+    upload_root = upload_root.expanduser().resolve()
+    stored = Path(candidate.raw_file_path).expanduser()
+    resolved = (stored if stored.is_absolute() else upload_root / stored).resolve()
+    if resolved != upload_root and upload_root not in resolved.parents:
+        return None, "out_of_root"
+    if not resolved.is_file():
+        return None, "missing_file"
+
+    suffix = resolved.suffix.lower()
+    mime_type = ORIGINAL_RESUME_MIME_TYPES.get(suffix)
+    if mime_type is None:
+        guessed, _ = mimetypes.guess_type(resolved.name)
+        if guessed not in ORIGINAL_RESUME_MIME_TYPES.values():
+            return None, "unsupported_type"
+        mime_type = guessed
+    return {
+        "path": resolved,
+        "filename": f"candidate-{candidate.id}-resume{suffix}",
+        "mime_type": mime_type,
+    }, None
+
+
+def _original_resume_payload(candidate):
+    resolved, _ = _resolve_original_resume(candidate)
+    urls = _original_resume_urls(candidate.id)
+    if resolved is None:
+        return {
+            "available": False,
+            "filename": None,
+            "mime_type": None,
+            **urls,
+        }
+    return {
+        "available": True,
+        "filename": resolved["filename"],
+        "mime_type": resolved["mime_type"],
+        **urls,
+    }
+
+
+def _original_resume_candidate(candidate_id):
+    candidate = db.session.get(Candidate, candidate_id)
+    if candidate is None or not same_org(candidate, g.org_id) or candidate.deleted_at is not None:
+        return None, (jsonify({"error": "候选人不存在"}), 404)
+    if not can_access_candidate(g.user_id, g.role, candidate_id):
+        return None, (jsonify({"error": "Forbidden"}), 403)
+    return candidate, None
+
+
+def _serve_original_resume(candidate_id, *, as_attachment):
+    candidate, error_response = _original_resume_candidate(candidate_id)
+    if error_response is not None:
+        return error_response
+
+    resolved, reason = _resolve_original_resume(candidate)
+    if resolved is None:
+        record_event(
+            "resume.original.access_denied",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            payload={"reason": reason},
+            result="denied",
+            failure_reason=reason,
+            severity="warning",
+        )
+        return jsonify({
+            "code": "original_resume_missing",
+            "error": "原始简历文件不可用",
+        }), 404
+
+    action = "resume.original.downloaded" if as_attachment else "resume.original.previewed"
+    record_event(
+        action,
+        entity_id=candidate.id,
+        entity_type="candidate",
+        payload={"mime_type": resolved["mime_type"]},
+    )
+    response = send_file(
+        resolved["path"],
+        mimetype=resolved["mime_type"],
+        as_attachment=as_attachment,
+        download_name=resolved["filename"],
+        conditional=True,
+        max_age=0,
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 def _file_fingerprints(files):
     fingerprints = []
     for file_storage in files:
@@ -108,7 +226,7 @@ def _file_fingerprints(files):
     return sorted(fingerprints, key=lambda item: (item["filename"], item["sha256"]))
 
 
-def _upload_dedup_key(files, target_job_id):
+def _upload_dedup_key(files, target_demand_id, target_job_id):
     source_channel = normalize_resume_source_channel(request.form.get("source_channel"))
     source_link = (request.form.get("source_link") or "").strip()
     referrer = (request.form.get("referrer") or "").strip()[:120]
@@ -116,6 +234,7 @@ def _upload_dedup_key(files, target_job_id):
     raw = {
         "org_id": g.org_id,
         "actor_id": g.user_id,
+        "target_demand_id": target_demand_id,
         "target_job_id": target_job_id,
         "source_channel": source_channel,
         "source_link": source_link,
@@ -148,34 +267,31 @@ def _recent_completed_upload(upload_key):
     return None
 
 
-def _add_to_target_pipeline(candidate, target_job_id):
-    if not target_job_id:
+def _add_to_target_pipeline(candidate, target_demand_id):
+    if not target_demand_id:
         return False
 
-    from ..models import PipelineStage
-
-    exists = PipelineStage.query.filter_by(
+    result = move_candidate(
         candidate_id=candidate.id,
-        job_id=target_job_id,
-    ).first()
-    if exists:
-        return False
-
-    db.session.add(PipelineStage(
+        demand_id=target_demand_id,
         org_id=g.org_id,
-        candidate_id=candidate.id,
-        job_id=target_job_id,
+        actor_id=g.user_id,
         stage="pending",
-        updated_by=g.user_id,
-        note="上传简历后自动进入待筛选",
-    ))
+        note="上传简历后进入待筛选",
+    )
     record_event(
         "pipeline.moved",
         entity_id=candidate.id,
         entity_type="candidate",
-        payload={"job_id": target_job_id, "stage": "pending", "source": "resume_upload"},
+        demand_id=target_demand_id,
+        payload={
+            "demand_id": target_demand_id,
+            "job_id": result["job_id"],
+            "stage": "pending",
+            "source": "resume_upload",
+        },
     )
-    return True
+    return not result.get("deduplicated", False)
 
 
 def _related_jobs_for_candidate(candidate):
@@ -231,7 +347,15 @@ def _refresh_related_job_matches(candidate):
     return refreshed
 
 
-def _process_resume(svc, fpath, display_name, results, upload_batch_id=None, target_job_id=None):
+def _process_resume(
+    svc,
+    fpath,
+    display_name,
+    results,
+    upload_batch_id=None,
+    target_demand_id=None,
+    target_job_id=None,
+):
     """解析单份简历并入库，把结果（成功/失败）追加到 results。
     display_name 用于结果展示（zip 内文件会带 "xxx.zip → 文件名" 前缀）。"""
     try:
@@ -240,11 +364,33 @@ def _process_resume(svc, fpath, display_name, results, upload_batch_id=None, tar
         from ..models import CandidateTag
         CandidateTag.query.filter_by(candidate_id=candidate.id).update({"org_id": g.org_id})
         db.session.commit()
-        record_event("resume.uploaded", entity_id=candidate.id, entity_type="candidate")
-        auto_joined = _add_to_target_pipeline(candidate, target_job_id)
+        record_event(
+            "resume.uploaded",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            demand_id=target_demand_id,
+        )
+        try:
+            auto_joined = _add_to_target_pipeline(candidate, target_demand_id)
+        except PipelineServiceError as error:
+            results.append({
+                "file": display_name,
+                "status": "ok",
+                "candidate_id": candidate.id,
+                "target_demand_id": target_demand_id,
+                "target_job_id": target_job_id,
+                "pipeline_joined": False,
+                "pipeline_error": error.message,
+                "pipeline_error_code": error.code,
+            })
+            return
         result = {"file": display_name, "status": "ok", "candidate_id": candidate.id}
         if auto_joined:
-            result.update({"target_job_id": target_job_id, "pipeline_stage": "pending"})
+            result.update({
+                "target_demand_id": target_demand_id,
+                "target_job_id": target_job_id,
+                "pipeline_stage": "pending",
+            })
         results.append(result)
     except Exception as e:
         candidate = svc.create_failed_candidate(
@@ -260,6 +406,7 @@ def _process_resume(svc, fpath, display_name, results, upload_batch_id=None, tar
             "resume.parse_failed",
             entity_id=candidate.id,
             entity_type="candidate",
+            demand_id=target_demand_id,
             payload={"file": display_name, "reason": str(e)[:500]},
         )
         results.append({
@@ -270,7 +417,16 @@ def _process_resume(svc, fpath, display_name, results, upload_batch_id=None, tar
         })
 
 
-def _process_zip(svc, zip_path, zip_display_name, folder, results, upload_batch_id=None, target_job_id=None):
+def _process_zip(
+    svc,
+    zip_path,
+    zip_display_name,
+    folder,
+    results,
+    upload_batch_id=None,
+    target_demand_id=None,
+    target_job_id=None,
+):
     """安全解压 zip，逐个解析其中的 pdf/doc/docx 简历。
     安全防护：
       - 防 zip 炸弹：限制条目数、单文件与总解压大小。
@@ -385,6 +541,7 @@ def _process_zip(svc, zip_path, zip_display_name, folder, results, upload_batch_
                     f"{zip_display_name} → {base}",
                     results,
                     upload_batch_id=upload_batch_id,
+                    target_demand_id=target_demand_id,
                     target_job_id=target_job_id,
                 )
                 processed += 1
@@ -416,18 +573,27 @@ def upload():
     folder = current_app.config.get("UPLOAD_FOLDER") or "/tmp/zhipin_uploads"
     Path(folder).mkdir(parents=True, exist_ok=True)
 
-    from ..models import UploadBatch, Job
+    from ..models import UploadBatch
 
+    target_demand_id = request.form.get("target_demand_id", type=int)
     target_job_id = request.form.get("target_job_id", type=int)
-    target_job = db.session.get(Job, target_job_id) if target_job_id else None
-    if target_job_id and (target_job is None or not same_org(target_job, g.org_id)):
-        return jsonify({"error": "目标岗位不存在"}), 400
-    if target_job is not None and not can_manage_job(g.user_id, g.role, target_job):
-        return jsonify({"error": "Forbidden"}), 403
-    if target_job is not None and not job_is_active(target_job):
-        return jsonify({"error": "岗位已关闭，请先恢复在招后再上传候选人"}), 400
+    target_demand = None
+    if target_demand_id or target_job_id:
+        try:
+            target_demand = resolve_demand_context(
+                org_id=g.org_id,
+                demand_id=target_demand_id,
+                job_id=target_job_id,
+                open_only=True,
+            )
+        except DemandContextError as error:
+            return jsonify(error.as_payload()), error.status_code
+        if not can_manage_demand(g.user_id, g.role, g.org_id, target_demand):
+            return jsonify({"error": "Forbidden"}), 403
+        target_demand_id = target_demand.id
+        target_job_id = target_demand.job_id
 
-    upload_key = _upload_dedup_key(files, target_job_id)
+    upload_key = _upload_dedup_key(files, target_demand_id, target_job_id)
     previous_upload = _recent_completed_upload(upload_key)
     if previous_upload is not None:
         return jsonify({
@@ -444,11 +610,18 @@ def upload():
         source_link=(request.form.get("source_link") or "").strip(),
         referrer=(request.form.get("referrer") or "").strip()[:120],
         target_job_id=target_job_id,
+        demand_id=target_demand_id,
         note=(request.form.get("source_note") or request.form.get("note") or "").strip(),
     )
     db.session.add(batch)
     db.session.commit()
-    record_event("resume.upload_batch.created", entity_id=batch.id, entity_type="upload_batch")
+    record_event(
+        "resume.upload_batch.created",
+        entity_id=batch.id,
+        entity_type="upload_batch",
+        demand_id=target_demand_id,
+        payload={"demand_id": target_demand_id, "job_id": target_job_id},
+    )
 
     svc = ResumeBatchService()
     results = []
@@ -477,6 +650,7 @@ def upload():
                 folder,
                 results,
                 upload_batch_id=batch.id,
+                target_demand_id=target_demand_id,
                 target_job_id=target_job_id,
             )
             # 原始 zip 不再需要，删除（解压出的简历文件已单独保留）
@@ -492,6 +666,7 @@ def upload():
                 f.filename,
                 results,
                 upload_batch_id=batch.id,
+                target_demand_id=target_demand_id,
                 target_job_id=target_job_id,
             )
 
@@ -500,9 +675,11 @@ def upload():
         "resume.upload.completed",
         entity_id=batch.id,
         entity_type="upload_batch",
+        demand_id=target_demand_id,
         payload={
             "upload_fingerprint": upload_key,
             "batch_id": batch.id,
+            "demand_id": target_demand_id,
             "total": len(results),
             "results": results,
         },
@@ -599,9 +776,22 @@ def get_resume(candidate_id):
         "tags": [{"tag": t.tag, "score": t.score} for t in c.tags],
         "parse_status": c.parse_status,
         "parse_error": c.parse_error,
+        "original_resume": _original_resume_payload(c),
         "source": _candidate_source_payload(c),
         "created_at": c.created_at.isoformat(),
     })
+
+
+@bp.get("/resume/<int:candidate_id>/original/preview")
+@require_auth
+def preview_original_resume(candidate_id):
+    return _serve_original_resume(candidate_id, as_attachment=False)
+
+
+@bp.get("/resume/<int:candidate_id>/original/download")
+@require_auth
+def download_original_resume(candidate_id):
+    return _serve_original_resume(candidate_id, as_attachment=True)
 
 
 @bp.patch("/resume/<int:candidate_id>/profile")
@@ -646,6 +836,7 @@ def update_resume_profile(candidate_id):
         "tags": [{"tag": t.tag, "score": t.score} for t in candidate.tags],
         "parse_status": candidate.parse_status,
         "parse_error": candidate.parse_error,
+        "original_resume": _original_resume_payload(candidate),
         "source": _candidate_source_payload(candidate),
         "created_at": candidate.created_at.isoformat(),
         "rematched_jobs": rematched_jobs,
@@ -693,7 +884,7 @@ def retry_parse(candidate_id):
 
 
 def _candidate_source_payload(candidate):
-    from ..models import Job, UploadBatch
+    from ..models import Job, RecruitmentDemand, UploadBatch
 
     if not candidate.upload_batch_id:
         return None
@@ -701,12 +892,15 @@ def _candidate_source_payload(candidate):
     if batch is None:
         return None
     target_job = db.session.get(Job, batch.target_job_id) if batch.target_job_id else None
+    target_demand = db.session.get(RecruitmentDemand, batch.demand_id) if batch.demand_id else None
     return {
         "batch_id": batch.id,
         "channel": normalize_resume_source_channel(batch.source_channel),
         "source_link": batch.source_link or "",
         "referrer": batch.referrer or "",
         "target_job_id": batch.target_job_id,
+        "target_demand_id": batch.demand_id,
+        "target_demand_request_no": target_demand.request_no if target_demand else None,
         "target_job_title": target_job.title if target_job else None,
         "target_job_city": target_job.city if target_job else "",
         "target_job_department": target_job.department if target_job else "",

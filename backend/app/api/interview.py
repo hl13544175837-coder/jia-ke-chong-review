@@ -3,8 +3,16 @@ from flask import Blueprint, request, jsonify, g
 from ..middleware.auth import require_auth
 from ..middleware.events import record_event
 from ..services.interview_service import PreScreenService
+from ..services.interview_workflow_service import (
+    active_primary_assignment,
+    can_manage_interview_context,
+    can_read_interview_context,
+    feedback_assignment,
+    resolve_interview_context,
+)
+from ..services.demand_context_service import DemandContextError
 from .. import db
-from ..models import Candidate, Interview, InterviewAssignment, Job
+from ..models import Candidate, Interview, InterviewAssignment, Job, Notification
 from ..time_utils import utc_now
 from .access import (
     can_access_candidate,
@@ -127,7 +135,7 @@ def _top_candidate_tags(candidate, limit=5):
     return [tag.tag for tag in tags[:limit]]
 
 
-def _build_interview_guide(candidate, job, round_name):
+def _build_interview_guide(candidate, job, round_name, demand_id=None):
     info = _resume_info(candidate)
     skills = _top_candidate_tags(candidate)
     summary = str(info.get("summary") or "").strip()
@@ -166,6 +174,7 @@ def _build_interview_guide(candidate, job, round_name):
     return {
         "candidate_id": candidate.id,
         "job_id": job.id,
+        "demand_id": demand_id,
         "round": round_name,
         "focus": focus,
         "questions": questions,
@@ -185,13 +194,23 @@ def _assignment_payload(item):
     job = db.session.get(Job, item.job_id)
     interviewer = db.session.get(User, item.interviewer_id)
     creator = db.session.get(User, item.created_by) if item.created_by else None
-    feedback_submitted = InterviewFeedback.query.filter_by(
+    feedback_query = InterviewFeedback.query.filter_by(
         org_id=item.org_id or 1,
         candidate_id=item.candidate_id,
-        job_id=item.job_id,
-        round=item.round,
         interviewer_id=item.interviewer_id,
-    ).first() is not None
+    )
+    if item.id:
+        feedback_query = feedback_query.filter(
+            db.or_(
+                InterviewFeedback.assignment_id == item.id,
+                db.and_(
+                    InterviewFeedback.assignment_id.is_(None),
+                    InterviewFeedback.demand_id == item.demand_id,
+                    InterviewFeedback.round == item.round,
+                ),
+            )
+        )
+    feedback_submitted = feedback_query.first() is not None
     scheduled_at = _normalize_for_compare(item.scheduled_at)
     is_overdue = bool(
         scheduled_at and scheduled_at < utc_now() and not feedback_submitted
@@ -201,8 +220,11 @@ def _assignment_payload(item):
         "candidate_id": item.candidate_id,
         "name_masked": candidate.name_masked if candidate else None,
         "job_id": item.job_id,
+        "demand_id": item.demand_id,
         "job_title": job.title if job else None,
         "round": item.round,
+        "round_sequence": item.round_sequence or 1,
+        "is_primary": bool(item.is_primary),
         "interviewer_id": item.interviewer_id,
         "interviewer_name": interviewer.name if interviewer else None,
         "scheduled_at": item.scheduled_at.isoformat() if item.scheduled_at else None,
@@ -216,101 +238,86 @@ def _assignment_payload(item):
     }
 
 
+def _context_error_response(exc):
+    return jsonify(exc.as_payload()), exc.status_code
+
+
 @bp.post("/interview/start")
 @require_auth
 def start_interview():
     """HR 对候选人发起 AI 预筛，生成面试题"""
-    data = request.get_json()
+    data = request.get_json() or {}
     candidate_id = data.get("candidate_id")
-    job_id = data.get("job_id")
-    if not candidate_id or not job_id:
-        return jsonify({"error": "candidate_id and job_id required"}), 400
+    if not candidate_id or not (data.get("demand_id") or data.get("job_id")):
+        return jsonify({"error": "candidate_id and demand_id required", "code": "demand_id_required"}), 400
     if g.role not in ("recruiter", "manager", "admin"):
         return jsonify({"error": "Forbidden"}), 403
 
-    from ..models import Candidate
-
-    candidate = db.session.get(Candidate, candidate_id)
-    if candidate is None or not same_org(candidate, g.org_id) or candidate.deleted_at is not None:
-        return jsonify({"error": "候选人不存在"}), 404
-    job = db.session.get(Job, job_id)
-    if job is None or not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, candidate_id, job_id):
-        return jsonify({"error": "Forbidden"}), 403
-    if not can_manage_job(g.user_id, g.role, job):
-        return jsonify({"error": "Forbidden"}), 403
-    if not job_is_active(job):
-        return jsonify({"error": "岗位已关闭，请先恢复在招后再发起 AI 面试"}), 400
+    try:
+        context = resolve_interview_context(
+            org_id=g.org_id,
+            candidate_id=candidate_id,
+            demand_id=data.get("demand_id"),
+            job_id=data.get("job_id"),
+            open_only=True,
+            require_current=bool(data.get("demand_id")),
+        )
+    except DemandContextError as exc:
+        return _context_error_response(exc)
+    if not can_manage_interview_context(g.user_id, g.role, g.org_id, context):
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    if context.demand is None and not job_is_active(context.job):
+        return jsonify({"error": "岗位已关闭，请先恢复在招后再安排面试"}), 400
     svc = PreScreenService()
-    questions = svc.generate_questions(job.jd_text, count=data.get("count", 5))
+    questions = svc.generate_questions(context.demand.jd_text_snapshot if context.demand else context.job.jd_text, count=data.get("count", 5))
     record_event("interview.started", entity_id=candidate_id, entity_type="candidate",
-                 payload={"job_id": job_id, "actor_id": g.user_id})
-    return jsonify({"candidate_id": candidate_id, "job_id": job_id, "questions": questions})
+                 demand_id=context.demand_id,
+                 payload={"job_id": context.job.id, "demand_id": context.demand_id, "actor_id": g.user_id})
+    return jsonify({"candidate_id": candidate_id, "job_id": context.job.id,
+                    "demand_id": context.demand_id, "questions": questions})
 
 
 @bp.post("/interview/submit")
 @require_auth
 def submit_interview():
     """候选人提交答案，AI 评估并生成报告"""
-    data = request.get_json()
+    data = request.get_json() or {}
     candidate_id = data.get("candidate_id")
-    job_id = data.get("job_id")
     qa_pairs = data.get("qa_pairs", [])  # [{"q": "...", "a": "..."}, ...]
-    if not candidate_id or not job_id or not qa_pairs:
-        return jsonify({"error": "candidate_id, job_id, qa_pairs required"}), 400
+    if not candidate_id or not (data.get("demand_id") or data.get("job_id")) or not qa_pairs:
+        return jsonify({"error": "candidate_id, demand_id, qa_pairs required",
+                        "code": "demand_id_required"}), 400
     if g.role not in ("recruiter", "manager", "admin"):
         return jsonify({"error": "Forbidden"}), 403
 
-    from ..models import Candidate
-
-    candidate = db.session.get(Candidate, candidate_id)
-    if candidate is None or not same_org(candidate, g.org_id) or candidate.deleted_at is not None:
-        return jsonify({"error": "候选人不存在"}), 404
-    job = db.session.get(Job, job_id)
-    if job is None or not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, candidate_id, job_id):
-        return jsonify({"error": "Forbidden"}), 403
-    if not can_manage_job(g.user_id, g.role, job):
-        return jsonify({"error": "Forbidden"}), 403
-    if not job_is_active(job):
-        return jsonify({"error": "岗位已关闭，请先恢复在招后再提交 AI 面试"}), 400
+    try:
+        context = resolve_interview_context(
+            org_id=g.org_id,
+            candidate_id=candidate_id,
+            demand_id=data.get("demand_id"),
+            job_id=data.get("job_id"),
+            open_only=True,
+            require_current=bool(data.get("demand_id")),
+        )
+    except DemandContextError as exc:
+        return _context_error_response(exc)
+    if not can_manage_interview_context(g.user_id, g.role, g.org_id, context):
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
     svc = PreScreenService()
     pairs = [(item["q"], item["a"]) for item in qa_pairs]
-    report = svc.build_report(pairs, job.jd_text)
-    iv = svc.save_report(candidate_id, job_id, pairs, report, org_id=g.org_id)
+    jd_text = context.demand.jd_text_snapshot if context.demand else context.job.jd_text
+    report = svc.build_report(pairs, jd_text)
+    iv = svc.save_report(candidate_id, context.job.id, pairs, report,
+                         org_id=g.org_id, demand_id=context.demand_id)
     record_event("interview.scored", entity_id=candidate_id, entity_type="candidate",
-                 payload={"job_id": job_id, "score": report["avg_score"],
+                 demand_id=context.demand_id,
+                 payload={"job_id": context.job.id, "demand_id": context.demand_id,
+                          "score": report["avg_score"],
                           "pass": report["pass_recommended"]})
-    # R2.1 回写流程：通过→面试中；不通过→淘汰。未入流程先补 ai_screen 再推进。
-    # 不回退、不重复写：若当前阶段已 ≥ 面试中，则通过分支不再追加。
-    from ..models import PipelineStage
-    from .pipeline import STAGE_ORDER, normalize_pipeline_stage
-    last = (PipelineStage.query
-            .filter_by(candidate_id=candidate_id, job_id=job_id)
-            .order_by(PipelineStage.id.desc()).first())
-    passed = report["pass_recommended"]
-    current_stage = normalize_pipeline_stage(last.stage) if last else None
-    cur_idx = STAGE_ORDER.index(current_stage) if current_stage in STAGE_ORDER else -1
-    first_idx = STAGE_ORDER.index("interview")
-
-    if passed and cur_idx >= first_idx:
-        # 已在一面或更靠后，AI 预筛不应让其回退或重复入轮——仅记录预筛分，不动阶段。
-        pass
-    else:
-        if last is None:
-            db.session.add(PipelineStage(candidate_id=candidate_id, job_id=job_id,
-                                         org_id=g.org_id,
-                                         stage="ai_screen", updated_by=g.user_id,
-                                         note="AI 预筛入流程"))
-        target = "interview" if passed else "rejected"
-        note = f"AI 预筛{'通过' if passed else '未通过'}，均分 {report['avg_score']}"
-        db.session.add(PipelineStage(candidate_id=candidate_id, job_id=job_id,
-                                     org_id=g.org_id,
-                                     stage=target, updated_by=g.user_id, note=note))
-    db.session.commit()
-    return jsonify({"interview_id": iv.id, "report": report})
+    # AI 只保存建议。推进、淘汰、Offer 与转派必须由 HR 明确确认。
+    return jsonify({"interview_id": iv.id, "demand_id": context.demand_id,
+                    "report": report, "decision_required": True,
+                    "pipeline_changed": False})
 
 
 @bp.get("/interview/<int:interview_id>")
@@ -319,12 +326,22 @@ def get_report(interview_id):
     iv = db.get_or_404(Interview, interview_id)
     if not same_org(iv, g.org_id):
         return jsonify({"error": "面试记录不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, iv.candidate_id, iv.job_id):
+    try:
+        context = resolve_interview_context(
+            org_id=g.org_id,
+            candidate_id=iv.candidate_id,
+            demand_id=iv.demand_id,
+            job_id=iv.job_id,
+        )
+    except DemandContextError as exc:
+        return _context_error_response(exc)
+    if not can_read_interview_context(g.user_id, g.role, g.org_id, context):
         return jsonify({"error": "Forbidden"}), 403
     return jsonify({
         "id": iv.id,
         "candidate_id": iv.candidate_id,
         "job_id": iv.job_id,
+        "demand_id": iv.demand_id,
         "score": iv.score,
         "pass_recommended": iv.pass_recommended,
         "ai_report": iv.ai_report,
@@ -335,25 +352,30 @@ def get_report(interview_id):
 @bp.get("/interview/guide")
 @require_auth
 def interview_guide():
-    from ..models import Candidate
-
     candidate_id = request.args.get("candidate_id", type=int)
+    demand_id = request.args.get("demand_id", type=int)
     job_id = request.args.get("job_id", type=int)
     round_name = request.args.get("round") or "round_1"
-    if not candidate_id or not job_id:
-        return jsonify({"error": "candidate_id and job_id required"}), 400
+    if not candidate_id or not (demand_id or job_id):
+        return jsonify({"error": "candidate_id and demand_id required",
+                        "code": "demand_id_required"}), 400
     if round_name not in INTERVIEW_ROUNDS:
         return jsonify({"error": "无效面试轮次"}), 400
 
-    candidate = db.session.get(Candidate, candidate_id)
-    if candidate is None or not same_org(candidate, g.org_id) or candidate.deleted_at is not None:
-        return jsonify({"error": "候选人不存在"}), 404
-    job = db.session.get(Job, job_id)
-    if job is None or not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, candidate_id, job_id, round_name):
+    try:
+        context = resolve_interview_context(
+            org_id=g.org_id,
+            candidate_id=candidate_id,
+            demand_id=demand_id,
+            job_id=job_id,
+        )
+    except DemandContextError as exc:
+        return _context_error_response(exc)
+    if not can_read_interview_context(g.user_id, g.role, g.org_id, context, round_name):
         return jsonify({"error": "Forbidden"}), 403
-    return jsonify(_build_interview_guide(candidate, job, round_name))
+    return jsonify(_build_interview_guide(
+        context.candidate, context.job, round_name, context.demand_id
+    ))
 
 
 @bp.post("/interview/feedback")
@@ -361,17 +383,20 @@ def interview_guide():
 def submit_feedback():
     from ..models import Candidate, InterviewFeedback
     data = request.get_json() or {}
-    required = ("candidate_id", "job_id", "round")
-    if not all(data.get(k) for k in required):
-        return jsonify({"error": "candidate_id, job_id, round required"}), 400
-    candidate = db.session.get(Candidate, data["candidate_id"])
-    if candidate is None or not same_org(candidate, g.org_id) or candidate.deleted_at is not None:
-        return jsonify({"error": "候选人不存在"}), 404
-    job = db.session.get(Job, data["job_id"])
-    if job is None or not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not job_is_active(job):
-        return jsonify({"error": "岗位已关闭，请先恢复在招后再提交面试反馈"}), 400
+    if not data.get("candidate_id") or not data.get("round") or not (
+        data.get("demand_id") or data.get("job_id")
+    ):
+        return jsonify({"error": "candidate_id, demand_id, round required",
+                        "code": "demand_id_required"}), 400
+    try:
+        context = resolve_interview_context(
+            org_id=g.org_id,
+            candidate_id=data["candidate_id"],
+            demand_id=data.get("demand_id"),
+            job_id=data.get("job_id"),
+        )
+    except DemandContextError as exc:
+        return _context_error_response(exc)
     score = data.get("score")
     if score is not None:
         try:
@@ -380,25 +405,39 @@ def submit_feedback():
             return jsonify({"error": "score must be an integer between 1 and 5"}), 400
         if score < 1 or score > 5:
             return jsonify({"error": "score must be between 1 and 5"}), 400
-    if not can_access_candidate(
-        g.user_id,
-        g.role,
-        data["candidate_id"],
-        data["job_id"],
-        data["round"],
+    if not can_read_interview_context(
+        g.user_id, g.role, g.org_id, context, data["round"]
     ):
         return jsonify({"error": "Forbidden"}), 403
+    assignment = feedback_assignment(
+        org_id=g.org_id,
+        interviewer_id=g.user_id,
+        assignment_id=data.get("assignment_id"),
+        candidate_id=data["candidate_id"],
+        demand_id=context.demand_id,
+        job_id=context.job.id,
+        round_name=data["round"],
+    )
+    if data.get("assignment_id") and assignment is None:
+        return jsonify({"error": "面试任务不存在或不属于当前面试官",
+                        "code": "assignment_not_found"}), 404
     existing = InterviewFeedback.query.filter_by(
         org_id=g.org_id,
         candidate_id=data["candidate_id"],
-        job_id=data["job_id"],
+        demand_id=context.demand_id,
+        job_id=context.job.id,
         round=data["round"],
         interviewer_id=g.user_id,
     ).first()
     if existing is not None:
-        return jsonify({"id": existing.id, "status": "ok", "deduplicated": True}), 200
+        completed = bool(assignment and assignment.is_primary)
+        return jsonify({"id": existing.id, "status": "ok", "deduplicated": True,
+                        "round_completed": completed,
+                        "next_action": "awaiting_hr_decision" if completed else "awaiting_primary_feedback"}), 200
     fb = InterviewFeedback(
-        candidate_id=data["candidate_id"], job_id=data["job_id"],
+        candidate_id=data["candidate_id"], job_id=context.job.id,
+        demand_id=context.demand_id,
+        assignment_id=assignment.id if assignment else None,
         org_id=g.org_id,
         round=data["round"], interviewer_id=g.user_id,
         score=score, passed=data.get("passed"),
@@ -407,12 +446,42 @@ def submit_feedback():
         evaluation_json=_sanitize_evaluation(data.get("evaluation")),
         note=data.get("note"))
     db.session.add(fb)
+    round_completed = bool(assignment and assignment.is_primary)
+    if assignment:
+        assignment.status = "completed" if round_completed else "feedback_submitted"
+    if round_completed:
+        owner_id = (
+            context.demand.owner_hr_id
+            if context.demand is not None
+            else context.candidate.owner_hr_id
+        )
+        if owner_id:
+            db.session.add(Notification(
+                org_id=g.org_id,
+                user_id=owner_id,
+                demand_id=context.demand_id,
+                type="interview_feedback_ready",
+                title="主面试官已反馈，待 HR 确认下一步",
+                body=(
+                    f"{context.candidate.name_masked or '候选人'}的"
+                    f"第 {assignment.round_sequence} 轮主面试反馈已完成。"
+                ),
+                link=(
+                    f"/interviews?demand={context.demand_id}"
+                    f"&candidate={context.candidate.id}"
+                ),
+            ))
     db.session.commit()
     record_event("interview.feedback", entity_id=data["candidate_id"],
                  entity_type="candidate",
-                 payload={"job_id": data["job_id"], "round": data["round"],
+                 demand_id=context.demand_id,
+                 payload={"job_id": context.job.id, "demand_id": context.demand_id,
+                          "assignment_id": assignment.id if assignment else None,
+                          "round": data["round"],
                           "score": data.get("score"), "passed": data.get("passed")})
-    return jsonify({"id": fb.id, "status": "ok", "deduplicated": False}), 201
+    return jsonify({"id": fb.id, "status": "ok", "deduplicated": False,
+                    "round_completed": round_completed,
+                    "next_action": "awaiting_hr_decision" if round_completed else "awaiting_primary_feedback"}), 201
 
 
 @bp.get("/interview/feedback")
@@ -420,6 +489,7 @@ def submit_feedback():
 def list_feedback():
     from ..models import InterviewFeedback, User
     cid = request.args.get("candidate_id", type=int)
+    did = request.args.get("demand_id", type=int)
     jid = request.args.get("job_id", type=int)
     q = InterviewFeedback.query
     q = q.filter(InterviewFeedback.org_id == g.org_id)
@@ -429,6 +499,7 @@ def list_feedback():
         visible_ids = visible_candidate_query(g.user_id, g.role).with_entities(Candidate.id)
         q = q.filter(InterviewFeedback.candidate_id.in_(visible_ids))
     if cid: q = q.filter_by(candidate_id=cid)
+    if did: q = q.filter_by(demand_id=did)
     if jid: q = q.filter_by(job_id=jid)
     rows = q.order_by(InterviewFeedback.id.desc()).all()
     out = []
@@ -436,6 +507,7 @@ def list_feedback():
         u = db.session.get(User, f.interviewer_id)
         out.append({
             "id": f.id, "candidate_id": f.candidate_id, "job_id": f.job_id,
+            "demand_id": f.demand_id, "assignment_id": f.assignment_id,
             "round": f.round, "interviewer_id": f.interviewer_id,
             "interviewer_name": u.name if u else None,
             "score": f.score, "passed": f.passed,
@@ -474,6 +546,7 @@ def list_interviews():
     for iv in ai_q.order_by(Interview.id.desc()).all():
         items.append({"id": iv.id, "type": "ai", "candidate_id": iv.candidate_id,
                       "name_masked": cname(iv.candidate_id), "job_id": iv.job_id,
+                      "demand_id": iv.demand_id,
                       "job_title": jtitle(iv.job_id), "score": iv.score,
                       "pass": iv.pass_recommended, "round": None,
                       "interviewer_id": None, "interviewer_name": None,
@@ -484,6 +557,7 @@ def list_interviews():
     for f in fb_q.order_by(InterviewFeedback.id.desc()).all():
         items.append({"id": f.id, "type": "feedback", "candidate_id": f.candidate_id,
                       "name_masked": cname(f.candidate_id), "job_id": f.job_id,
+                      "demand_id": f.demand_id, "assignment_id": f.assignment_id,
                       "job_title": jtitle(f.job_id), "score": f.score,
                       "pass": f.passed, "round": f.round,
                       "interviewer_id": f.interviewer_id,
@@ -511,22 +585,37 @@ def list_interviewers():
 @bp.get("/interview/assignments")
 @require_auth
 def list_assignments():
-    from ..models import Candidate
+    from ..models import Candidate, RecruitmentDemand
 
     q = InterviewAssignment.query
     q = q.filter(InterviewAssignment.org_id == g.org_id)
     if g.role == "interviewer":
         q = q.filter_by(interviewer_id=g.user_id)
     elif g.role == "recruiter":
-        own_ids = [c.id for c in visible_candidate_query(g.user_id, g.role).all()]
-        q = q.filter(InterviewAssignment.candidate_id.in_(own_ids or [-1]))
+        q = q.outerjoin(
+            RecruitmentDemand,
+            InterviewAssignment.demand_id == RecruitmentDemand.id,
+        ).filter(
+            db.or_(
+                RecruitmentDemand.owner_hr_id == g.user_id,
+                db.and_(
+                    InterviewAssignment.demand_id.is_(None),
+                    InterviewAssignment.candidate_id.in_(
+                        visible_candidate_query(g.user_id, g.role).with_entities(Candidate.id)
+                    ),
+                ),
+            )
+        )
 
+    demand_id = request.args.get("demand_id", type=int)
     job_id = request.args.get("job_id", type=int)
     candidate_id = request.args.get("candidate_id", type=int)
+    if demand_id:
+        q = q.filter(InterviewAssignment.demand_id == demand_id)
     if job_id:
-        q = q.filter_by(job_id=job_id)
+        q = q.filter(InterviewAssignment.job_id == job_id)
     if candidate_id:
-        q = q.filter_by(candidate_id=candidate_id)
+        q = q.filter(InterviewAssignment.candidate_id == candidate_id)
 
     rows = q.order_by(InterviewAssignment.scheduled_at.asc(), InterviewAssignment.id.desc()).all()
     return jsonify([_assignment_payload(item) for item in rows])
@@ -540,22 +629,26 @@ def create_assignment():
     if g.role not in ("recruiter", "manager", "admin"):
         return jsonify({"error": "Forbidden"}), 403
     data = request.get_json() or {}
-    required = ("candidate_id", "job_id", "round", "interviewer_id")
-    if not all(data.get(k) for k in required):
-        return jsonify({"error": "candidate_id, job_id, round, interviewer_id required"}), 400
+    required = ("candidate_id", "round", "interviewer_id")
+    if not all(data.get(k) for k in required) or not (data.get("demand_id") or data.get("job_id")):
+        return jsonify({"error": "candidate_id, demand_id, round, interviewer_id required",
+                        "code": "demand_id_required"}), 400
     if data["round"] not in INTERVIEW_ROUNDS:
         return jsonify({"error": "无效面试轮次"}), 400
-    candidate = db.session.get(Candidate, data["candidate_id"])
-    if candidate is None or not same_org(candidate, g.org_id) or candidate.deleted_at is not None:
-        return jsonify({"error": "候选人不存在"}), 404
-    job = db.session.get(Job, data["job_id"])
-    if job is None or not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, data["candidate_id"], data["job_id"], data["round"]):
-        return jsonify({"error": "Forbidden"}), 403
-    if not can_manage_job(g.user_id, g.role, job):
-        return jsonify({"error": "Forbidden"}), 403
-    if (job.status or "active") != "active":
+    try:
+        context = resolve_interview_context(
+            org_id=g.org_id,
+            candidate_id=data["candidate_id"],
+            demand_id=data.get("demand_id"),
+            job_id=data.get("job_id"),
+            open_only=True,
+            require_current=bool(data.get("demand_id")),
+        )
+    except DemandContextError as exc:
+        return _context_error_response(exc)
+    if not can_manage_interview_context(g.user_id, g.role, g.org_id, context):
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    if context.demand is None and not job_is_active(context.job):
         return jsonify({"error": "岗位已关闭，请先恢复在招后再安排面试"}), 400
     interviewer = db.session.get(User, data["interviewer_id"])
     if (
@@ -567,11 +660,31 @@ def create_assignment():
         return jsonify({"error": "面试官不存在、未启用或角色不正确"}), 400
 
     scheduled_at = _parse_datetime(data.get("scheduled_at"))
+    try:
+        round_sequence = max(1, int(data.get("round_sequence") or 1))
+    except (TypeError, ValueError):
+        return jsonify({"error": "round_sequence 必须是正整数"}), 400
+    is_primary = bool(data.get("is_primary", True))
+    if is_primary and context.demand_id:
+        existing_primary = active_primary_assignment(
+            org_id=g.org_id,
+            demand_id=context.demand_id,
+            candidate_id=data["candidate_id"],
+            round_sequence=round_sequence,
+        )
+        if existing_primary and existing_primary.interviewer_id != data["interviewer_id"]:
+            return jsonify({
+                "error": "该轮次已有主面试官，如需更换请先取消原任务",
+                "code": "primary_interviewer_exists",
+                "assignment_id": existing_primary.id,
+            }), 409
     existing = InterviewAssignment.query.filter_by(
         org_id=g.org_id,
         candidate_id=data["candidate_id"],
-        job_id=data["job_id"],
+        demand_id=context.demand_id,
+        job_id=context.job.id,
         round=data["round"],
+        round_sequence=round_sequence,
         interviewer_id=data["interviewer_id"],
     ).all()
     normalized_scheduled_at = _normalize_for_compare(scheduled_at)
@@ -598,8 +711,11 @@ def create_assignment():
     assignment = InterviewAssignment(
         org_id=g.org_id,
         candidate_id=data["candidate_id"],
-        job_id=data["job_id"],
+        job_id=context.job.id,
+        demand_id=context.demand_id,
         round=data["round"],
+        round_sequence=round_sequence,
+        is_primary=is_primary,
         interviewer_id=data["interviewer_id"],
         scheduled_at=scheduled_at,
         location=str(data.get("location") or "")[:240],
@@ -608,11 +724,33 @@ def create_assignment():
         created_by=g.user_id,
     )
     db.session.add(assignment)
+    db.session.add(Notification(
+        org_id=g.org_id,
+        user_id=assignment.interviewer_id,
+        demand_id=context.demand_id,
+        type="interview_assignment",
+        title="新的面试任务待反馈",
+        body=(
+            f"{context.candidate.name_masked or '候选人'} · "
+            f"第 {round_sequence} 轮"
+            f"{' · 主面试官' if is_primary else ' · 辅助面试官'}"
+        ),
+        link=(
+            f"/interviews?demand={context.demand_id}"
+            f"&candidate={context.candidate.id}"
+        ),
+    ))
     db.session.commit()
     record_event("interview.assigned", entity_id=assignment.candidate_id,
                  entity_type="candidate",
-                 payload={"job_id": assignment.job_id, "round": assignment.round,
+                 demand_id=context.demand_id,
+                 payload={"job_id": assignment.job_id, "demand_id": context.demand_id,
+                          "round": assignment.round,
+                          "round_sequence": round_sequence,
+                          "is_primary": is_primary,
                           "interviewer_id": assignment.interviewer_id})
     payload = _assignment_payload(assignment)
     payload["deduplicated"] = False
     return jsonify(payload), 201
+    if demand_id:
+        q = q.filter(InterviewAssignment.demand_id == demand_id)

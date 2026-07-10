@@ -28,44 +28,37 @@ async function importTsModule(path) {
 
 const app = readSource('App.tsx');
 const tabs = readSource('components/recruitment/RecruitmentManagementTabs.tsx');
-const demandsNav = readSource('features/demands/nav.ts');
 const demandsFeature = readSource('features/demands/index.ts');
 const api = readSource('lib/api.ts');
 const types = readSource('types/index.ts');
 assert.ok(
   existsSync(join(srcRoot, 'pages/TalentMapPage.tsx')),
-  'Talent map page file should exist',
+  'Talent map implementation may remain in source while its pilot entry is hidden',
 );
 const page = readSource('pages/TalentMapPage.tsx');
 
-assert.match(
+assert.doesNotMatch(
   app,
   /path="\/talent-map"/,
-  'Talent map should be available as a real authenticated route',
+  'Pilot router should not expose the unavailable talent map route',
 );
 
-assert.match(
+assert.doesNotMatch(
   app,
   /TalentMapPage/,
-  'App router should render the talent map page',
+  'Pilot bundle should not register the unavailable talent map page',
 );
 
-assert.match(
+assert.doesNotMatch(
   tabs,
   /to:\s*'\/talent-map'[\s\S]*label:\s*'人才地图'/,
-  'Recruitment management tabs should include 人才地图',
+  'Recruitment management tabs should hide the unavailable talent map entry',
 );
 
-assert.match(
-  demandsNav,
-  /activePaths:\s*\[[\s\S]*'\/talent-map'[\s\S]*\]/,
-  '招聘管理 sidebar entry should stay active on the talent map page',
-);
-
-assert.match(
+assert.doesNotMatch(
   demandsFeature,
   /topLevelPaths:\s*\[[\s\S]*'\/talent-map'[\s\S]*\]/,
-  'Talent map should be treated as a top-level recruitment management page',
+  'Talent map should not be treated as a pilot top-level page',
 );
 
 assert.match(types, /interface TalentMap\b/, 'Shared types should expose TalentMap');

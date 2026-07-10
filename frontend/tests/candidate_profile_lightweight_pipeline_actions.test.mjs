@@ -15,48 +15,20 @@ const candidatesApi = readSource('features/candidates/api.ts');
 
 assert.match(
   candidateProfile,
-  /function ResumeOutlineNav/,
-  'Candidate profile should expose a lightweight left resume outline for quick section jumps',
+  /招聘操作/,
+  'Candidate profile should retain real workflow actions behind an explicit on-demand control',
 );
 
 assert.match(
   candidateProfile,
-  /const RESUME_OUTLINE_ITEMS/,
-  'Resume outline should be curated as a short reading-mode list instead of mirroring every parsed field',
+  /showRecruitmentActions/,
+  'Recruiting actions should be collapsible instead of occupying a permanent side rail',
 );
 
-for (const label of ['全部', '重点', '经历', '项目', '教育/证书/其他']) {
-  assert.match(
-    candidateProfile,
-    new RegExp(`label: '${label}'`),
-    `Resume outline should include the simplified "${label}" entry`,
-  );
-}
-
-for (const noisyLabel of ['姓名', '邮箱', '电话', '意向城市']) {
-  assert.doesNotMatch(
-    candidateProfile,
-    new RegExp(`<span className="truncate">\\{sectionLabel\\(key\\)\\}<\\/span>|label: '${noisyLabel}'`),
-    `Resume outline should not expose low-value field-level entry "${noisyLabel}"`,
-  );
-}
-
-assert.match(
+assert.doesNotMatch(
   candidateProfile,
-  /function CandidatePipelineActionPanel/,
-  'Candidate profile should have a right-side pipeline action panel instead of burying actions below the resume',
-);
-
-assert.match(
-  candidateProfile,
-  /完整简历/,
-  'The central reading area should clearly remain the full resume, not just a summary',
-);
-
-assert.match(
-  candidateProfile,
-  /overflow-y-auto/,
-  'The full resume should use an independent reader scroll area on desktop',
+  /xl:grid-cols-\[240px_minmax\(0,1fr\)_300px\]/,
+  'Candidate profile must remove the old permanent three-column reader layout',
 );
 
 assert.match(
@@ -79,8 +51,14 @@ assert.match(
 
 assert.match(
   candidateProfile,
-  /当前操作岗位/,
-  'When a candidate has pipeline context, the action panel should show which job will be affected',
+  /当前操作需求/,
+  'When a candidate has pipeline context, the action panel should show which demand will be affected',
+);
+
+assert.match(
+  candidateProfile,
+  /demand_id:\s*pipeline\.demand_id/,
+  'Candidate profile workflow writes should carry the selected demand id',
 );
 
 assert.match(

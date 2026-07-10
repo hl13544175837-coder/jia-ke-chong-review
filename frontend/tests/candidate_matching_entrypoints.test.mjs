@@ -40,8 +40,8 @@ assert.doesNotMatch(
 const dashboard = readSource('pages/DashboardPage.tsx');
 assert.match(
   dashboard,
-  /to:\s*'\/jobs'[\s\S]*label:\s*'匹配候选人'/,
-  'Dashboard common actions should send HR to the existing job list to choose a job',
+  /to:\s*'\/demands'[\s\S]*label:\s*'管理招聘需求'/,
+  'Dashboard should lead with the concrete recruitment demand rather than a job-template action',
 );
 
 const recruitmentTabs = readSource('components/recruitment/RecruitmentManagementTabs.tsx');

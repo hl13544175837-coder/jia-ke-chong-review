@@ -53,8 +53,14 @@ export function MyInterviewsPanel({ assignments, onStartFeedback }: MyInterviews
                       <Badge tone={item.is_overdue ? 'danger' : 'warning'}>
                         {item.is_overdue ? '超时待反馈' : roundLabel(item.round)}
                       </Badge>
+                      <Badge tone={item.is_primary ? 'brand' : 'neutral'}>
+                        {item.is_primary ? '主面试官' : '辅助面试官'}
+                      </Badge>
                     </div>
                     <p className="mt-1 truncate text-sm text-muted">{item.job_title ?? `岗位 #${item.job_id}`}</p>
+                    <p className="mt-1 text-xs text-muted-soft">
+                      {item.demand_id ? `招聘需求 #${item.demand_id}` : '历史未归属需求'} · 第 {item.round_sequence} 轮
+                    </p>
                     <p className="mt-1 text-xs text-muted-soft">
                       {item.scheduled_at ? formatDate(item.scheduled_at) : '未定时间'}
                       {item.interviewer_name ? ` · ${item.interviewer_name}` : ''}

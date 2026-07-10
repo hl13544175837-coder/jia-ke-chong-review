@@ -1,5 +1,5 @@
 from app import db
-from app.models import Candidate, CandidateTag, Event, Job
+from app.models import Candidate, CandidateTag, Event, Job, RecruitmentDemand
 
 
 def _auth(token):
@@ -128,3 +128,133 @@ def test_agent_write_records_ai_source_and_result(app, client, make_user):
         assert event.result == "success"
         assert event.payload["tool"] == "run_match"
         assert event.payload["target_ids"]["job_id"] == job_id
+
+
+def test_admin_audit_logs_filter_and_return_demand_id(app, client, make_user):
+    actor_id, _ = make_user("audit-demand-actor@example.com", role="recruiter")
+    _, admin_token = make_user("audit-demand-admin@example.com", role="admin")
+
+    with app.app_context():
+        job = Job(org_id=1, title="测试岗位", jd_text="测试")
+        db.session.add(job)
+        db.session.flush()
+        demand_a = RecruitmentDemand(
+            org_id=1,
+            job_id=job.id,
+            owner_hr_id=actor_id,
+            status="active",
+        )
+        demand_b = RecruitmentDemand(
+            org_id=1,
+            job_id=job.id,
+            owner_hr_id=actor_id,
+            status="active",
+        )
+        db.session.add_all([demand_a, demand_b])
+        db.session.flush()
+        key_actions = [
+            "demand.created",
+            "demand.owner_reassigned",
+            "demand.closed",
+            "pipeline.transferred",
+            "interview.assigned",
+            "interview.feedback",
+            "offer.saved",
+        ]
+        for action in key_actions:
+            db.session.add(
+                Event(
+                    org_id=1,
+                    actor_id=actor_id,
+                    actor_role="recruiter",
+                    action=action,
+                    entity_type="demand",
+                    entity_id=demand_a.id,
+                    demand_id=demand_a.id,
+                )
+            )
+        db.session.add(
+            Event(
+                org_id=1,
+                actor_id=actor_id,
+                actor_role="recruiter",
+                action="demand.created",
+                entity_type="demand",
+                entity_id=demand_b.id,
+                demand_id=demand_b.id,
+            )
+        )
+        db.session.commit()
+        demand_a_id = demand_a.id
+
+    response = client.get(
+        f"/api/admin/audit-logs?demand_id={demand_a_id}&per_page=50",
+        headers=_auth(admin_token),
+    )
+
+    assert response.status_code == 200
+    logs = response.get_json()["logs"]
+    assert {item["action"] for item in logs} == set(key_actions)
+    assert {item["demand_id"] for item in logs} == {demand_a_id}
+
+
+def test_admin_audit_logs_reject_invalid_demand_filter(client, make_user):
+    _, admin_token = make_user("audit-invalid-demand-admin@example.com", role="admin")
+
+    response = client.get(
+        "/api/admin/audit-logs?demand_id=not-an-integer",
+        headers=_auth(admin_token),
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "invalid_demand_id"
+
+
+def test_demand_owner_transfer_does_not_rewrite_historical_actor(
+    app, client, make_user
+):
+    old_owner_id, _ = make_user("audit-old-owner@example.com", role="recruiter")
+    new_owner_id, _ = make_user("audit-new-owner@example.com", role="recruiter")
+    manager_id, manager_token = make_user(
+        "audit-transfer-manager@example.com", role="manager"
+    )
+
+    with app.app_context():
+        job = Job(org_id=1, title="产品经理", jd_text="产品规划")
+        db.session.add(job)
+        db.session.flush()
+        demand = RecruitmentDemand(
+            org_id=1,
+            job_id=job.id,
+            owner_hr_id=old_owner_id,
+            status="active",
+        )
+        db.session.add(demand)
+        db.session.flush()
+        historical = Event(
+            org_id=1,
+            actor_id=old_owner_id,
+            actor_role="recruiter",
+            action="pipeline.moved",
+            entity_type="candidate",
+            entity_id=99,
+            demand_id=demand.id,
+        )
+        db.session.add(historical)
+        db.session.commit()
+        demand_id = demand.id
+        historical_id = historical.id
+
+    response = client.patch(
+        f"/api/demands/{demand_id}/owner",
+        headers=_auth(manager_token),
+        json={"owner_hr_id": new_owner_id, "reason": "调整当前协同责任"},
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        historical = db.session.get(Event, historical_id)
+        reassigned = _latest_event("demand.owner_reassigned")
+        assert historical.actor_id == old_owner_id
+        assert reassigned.actor_id == manager_id
+        assert reassigned.demand_id == demand_id

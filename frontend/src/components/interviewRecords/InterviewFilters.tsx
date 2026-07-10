@@ -1,11 +1,11 @@
 import type { InterviewFiltersState } from '../../lib/interviewRecords';
 import { INTERVIEW_ROUNDS } from '../../lib/interviewRecords';
-import type { JobListItem } from '../../types';
+import type { InterviewDemandOption } from '../../lib/interviewRecords';
 import { Card, Input, Select } from '../ui';
 
 interface InterviewFiltersProps {
   filters: InterviewFiltersState;
-  jobs: JobListItem[];
+  demands: InterviewDemandOption[];
   interviewers: Array<{ id: number; name: string }>;
   showInterviewerFilter: boolean;
   onChange: (next: InterviewFiltersState) => void;
@@ -13,7 +13,7 @@ interface InterviewFiltersProps {
 
 export function InterviewFilters({
   filters,
-  jobs,
+  demands,
   interviewers,
   showInterviewerFilter,
   onChange,
@@ -34,16 +34,16 @@ export function InterviewFilters({
         />
 
         <Select
-          label="岗位"
-          value={String(filters.jobId)}
+          label="招聘需求"
+          value={String(filters.demandId)}
           onChange={(e) =>
-            update('jobId', e.target.value === 'all' ? 'all' : Number(e.target.value))
+            update('demandId', e.target.value === 'all' ? 'all' : Number(e.target.value))
           }
         >
-          <option value="all">全部岗位</option>
-          {jobs.map((job) => (
-            <option key={job.id} value={job.id}>
-              {job.title}
+          <option value="all">全部招聘需求</option>
+          {demands.map((demand) => (
+            <option key={demand.id} value={demand.id}>
+              {demand.label}
             </option>
           ))}
         </Select>
@@ -67,8 +67,8 @@ export function InterviewFilters({
           onChange={(e) => update('result', e.target.value as InterviewFiltersState['result'])}
         >
           <option value="all">全部结果</option>
-          <option value="passed">通过</option>
-          <option value="failed">不通过</option>
+          <option value="passed">建议通过</option>
+          <option value="failed">建议不通过</option>
           <option value="empty">未填写</option>
         </Select>
 

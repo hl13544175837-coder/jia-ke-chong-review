@@ -12,17 +12,26 @@ from ..middleware.events import record_event
 from .. import db
 from ..models import (
     Candidate,
+    CandidateDemandFlow,
     CandidateDisposition,
     Event,
     Job,
     PipelineStage,
     Interview,
+    InterviewAssignment,
     InterviewFeedback,
+    RecruitmentDemand,
     UploadBatch,
     User,
     VALID_STAGES,
 )
 from ..time_utils import utc_now
+from ..services.demand_context_service import (
+    DemandContextError,
+    can_read_demand,
+    resolve_demand_context,
+    visible_demand_query,
+)
 from ..source_channels import normalize_resume_source_channel, resume_source_channel_filter_values
 from .pipeline import LEGACY_INTERVIEW_STAGES, STAGE_ORDER, _latest_stage_subquery, normalize_pipeline_stage
 from .access import (
@@ -284,6 +293,7 @@ def list_candidates():
             "search",
             "stage",
             "job_id",
+            "demand_id",
             "city",
             "source_channel",
             "parse_status",
@@ -302,6 +312,7 @@ def list_candidates():
 
     search = request.args.get("search", "").strip()
     stage = request.args.get("stage", "").strip()
+    demand_id = request.args.get("demand_id", type=int)
     job_id = request.args.get("job_id", type=int)
     city = _normalize_city_value(request.args.get("city", "").strip())
     source_channel = request.args.get("source_channel", "").strip()
@@ -312,13 +323,45 @@ def list_candidates():
     page = max(1, request.args.get("page", 1, type=int) or 1)
     per_page = min(max(1, request.args.get("per_page", 20, type=int) or 20), 100)
 
+    scope_demand = None
+    if demand_id or job_id:
+        try:
+            scope_demand = resolve_demand_context(
+                org_id=g.org_id,
+                demand_id=demand_id,
+                job_id=job_id,
+            )
+        except DemandContextError as error:
+            return jsonify(error.as_payload()), error.status_code
+        if not can_read_demand(g.user_id, g.role, g.org_id, scope_demand):
+            return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+        demand_candidates = select(PipelineStage.candidate_id).where(
+            PipelineStage.org_id == g.org_id,
+            PipelineStage.demand_id == scope_demand.id,
+        )
+        query = query.filter(Candidate.id.in_(demand_candidates))
+
     if search:
         keyword = search.casefold()
         matching_ids = [c.id for c in query.all() if keyword in _candidate_search_blob(c)]
         query = query.filter(Candidate.id.in_(matching_ids or [-1]))
 
     if stage and stage in VALID_STAGES:
-        latest = _latest_stage_subquery()
+        if scope_demand is not None:
+            latest = (
+                db.session.query(
+                    PipelineStage.candidate_id.label("candidate_id"),
+                    func.max(PipelineStage.id).label("max_id"),
+                )
+                .filter(
+                    PipelineStage.org_id == g.org_id,
+                    PipelineStage.demand_id == scope_demand.id,
+                )
+                .group_by(PipelineStage.candidate_id)
+                .subquery()
+            )
+        else:
+            latest = _latest_stage_subquery()
         matching_stages = [stage]
         if stage == "interview":
             matching_stages += list(LEGACY_INTERVIEW_STAGES)
@@ -328,15 +371,6 @@ def list_candidates():
             .where(PipelineStage.stage.in_(matching_stages))
         )
         query = query.filter(Candidate.id.in_(stage_subquery))
-
-    if job_id:
-        job = db.session.get(Job, job_id)
-        if job is None or not same_org(job, g.org_id):
-            return jsonify({"error": "岗位不存在"}), 404
-        if not can_read_job(g.user_id, g.role, job):
-            return jsonify({"error": "Forbidden"}), 403
-        job_subquery = select(PipelineStage.candidate_id).where(PipelineStage.job_id == job_id)
-        query = query.filter(Candidate.id.in_(job_subquery))
 
     if source_channel:
         channel_values = resume_source_channel_filter_values(source_channel)
@@ -404,21 +438,45 @@ def candidate_pipelines(candidate_id):
         return jsonify({"error": "候选人不存在"}), 404
     if not can_access_candidate(g.user_id, g.role, candidate_id):
         return jsonify({"error": "Forbidden"}), 403
-    latest = _latest_stage_subquery()
+    latest = (
+        db.session.query(
+            PipelineStage.candidate_id.label("candidate_id"),
+            PipelineStage.demand_id.label("demand_id"),
+            func.max(PipelineStage.id).label("max_id"),
+        )
+        .filter(
+            PipelineStage.org_id == g.org_id,
+            PipelineStage.candidate_id == candidate_id,
+            PipelineStage.demand_id.isnot(None),
+        )
+        .group_by(PipelineStage.candidate_id, PipelineStage.demand_id)
+        .subquery()
+    )
     rows = (
-        db.session.query(PipelineStage, Job)
+        db.session.query(PipelineStage, RecruitmentDemand, Job)
         .join(latest, PipelineStage.id == latest.c.max_id)
+        .join(RecruitmentDemand, RecruitmentDemand.id == PipelineStage.demand_id)
         .join(Job, Job.id == PipelineStage.job_id)
         .filter(PipelineStage.candidate_id == candidate_id)
-        .filter(Job.id.in_(visible_job_query(g.user_id, g.role).with_entities(Job.id)))
+        .filter(
+            RecruitmentDemand.id.in_(
+                visible_demand_query(g.user_id, g.role, g.org_id).with_entities(
+                    RecruitmentDemand.id
+                )
+            )
+        )
         .all()
     )
     items = [{
+        "demand_id": demand.id,
         "job_id": ps.job_id,
-        "job_title": job.title,
+        "job_title": demand.job_title_snapshot or job.title,
+        "department": demand.department or demand.requester_department or "",
+        "city": demand.city or "",
+        "demand_status": demand.status,
         "stage": normalize_pipeline_stage(ps.stage),
         "updated_at": ps.ts.isoformat() if ps.ts else None,
-    } for ps, job in rows]
+    } for ps, demand, job in rows]
     items.sort(key=lambda x: (
         STAGE_ORDER.index(x["stage"]) if x["stage"] in STAGE_ORDER else len(STAGE_ORDER)
     ))
@@ -434,21 +492,36 @@ def candidate_journey(candidate_id):
         return jsonify({"error": "候选人不存在"}), 404
     if not can_access_candidate(g.user_id, g.role, candidate_id):
         return jsonify({"error": "Forbidden"}), 403
+    demand_id = request.args.get("demand_id", type=int)
     job_id = request.args.get("job_id", type=int)
-    if not job_id:
-        return jsonify({"error": "job_id required"}), 400
-    if not can_access_candidate(g.user_id, g.role, candidate_id, job_id):
+    try:
+        demand = resolve_demand_context(
+            org_id=g.org_id,
+            demand_id=demand_id,
+            job_id=job_id,
+        )
+    except DemandContextError as error:
+        return jsonify(error.as_payload()), error.status_code
+    if g.role == "interviewer":
+        assigned = InterviewAssignment.query.filter_by(
+            org_id=g.org_id,
+            interviewer_id=g.user_id,
+            candidate_id=candidate_id,
+            demand_id=demand.id,
+        ).first()
+        if assigned is None:
+            return jsonify({"error": "Forbidden"}), 403
+    elif not can_read_demand(g.user_id, g.role, g.org_id, demand):
         return jsonify({"error": "Forbidden"}), 403
-    job = db.session.get(Job, job_id)
-    if job is not None and not same_org(job, g.org_id):
-        return jsonify({"error": "岗位不存在"}), 404
+    job = demand.job
+    job_id = demand.job_id
 
     # 阶段时间线（含操作人、备注）
     stage_rows = (
         db.session.query(PipelineStage, User)
         .outerjoin(User, User.id == PipelineStage.updated_by)
         .filter(PipelineStage.candidate_id == candidate_id,
-                PipelineStage.job_id == job_id)
+                PipelineStage.demand_id == demand.id)
         .order_by(PipelineStage.id.asc())
         .all()
     )
@@ -461,7 +534,7 @@ def candidate_journey(candidate_id):
 
     # AI 面试得分
     ai_rows = (Interview.query
-               .filter_by(candidate_id=candidate_id, job_id=job_id)
+               .filter_by(candidate_id=candidate_id, demand_id=demand.id)
                .order_by(Interview.id.desc()).all())
     ai_interviews = [{
         "id": iv.id, "score": iv.score, "pass": iv.pass_recommended,
@@ -472,7 +545,7 @@ def candidate_journey(candidate_id):
     fb_rows = (db.session.query(InterviewFeedback, User)
                .outerjoin(User, User.id == InterviewFeedback.interviewer_id)
                .filter(InterviewFeedback.candidate_id == candidate_id,
-                       InterviewFeedback.job_id == job_id)
+                       InterviewFeedback.demand_id == demand.id)
                .order_by(InterviewFeedback.id.desc()).all())
     feedback = [{
         "id": f.id, "round": f.round, "score": f.score, "passed": f.passed,
@@ -486,7 +559,7 @@ def candidate_journey(candidate_id):
     disposition_rows = (db.session.query(CandidateDisposition, User)
                         .outerjoin(User, User.id == CandidateDisposition.created_by)
                         .filter(CandidateDisposition.candidate_id == candidate_id,
-                                CandidateDisposition.job_id == job_id)
+                                CandidateDisposition.demand_id == demand.id)
                         .order_by(CandidateDisposition.id.desc()).all())
     dispositions = [{
         "id": d.id,
@@ -502,6 +575,7 @@ def candidate_journey(candidate_id):
     return jsonify({
         "candidate_id": candidate_id,
         "name_masked": cand.name_masked,
+        "demand_id": demand.id,
         "job_id": job_id,
         "job_title": job.title if job else None,
         "timeline": timeline,
@@ -526,6 +600,20 @@ def reassign_owner(candidate_id):
     cand = db.session.get(Candidate, candidate_id)
     if cand is None or not same_org(cand, g.org_id) or cand.deleted_at is not None:
         return jsonify({"error": "候选人不存在"}), 404
+    active_flow = CandidateDemandFlow.query.filter_by(
+        org_id=g.org_id,
+        candidate_id=candidate_id,
+        status="active",
+    ).order_by(CandidateDemandFlow.id.asc()).first()
+    managed_demand_id = cand.current_demand_id or (
+        active_flow.demand_id if active_flow is not None else None
+    )
+    if managed_demand_id is not None:
+        return jsonify({
+            "error": "进行中候选人的负责人跟随招聘需求，请在需求详情中转派",
+            "code": "owner_managed_by_demand",
+            "demand_id": managed_demand_id,
+        }), 409
     target = db.session.get(User, new_owner)
     if target is None or not same_org(target, g.org_id):
         return jsonify({"error": "目标用户不存在"}), 404

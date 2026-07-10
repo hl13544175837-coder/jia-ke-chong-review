@@ -8,7 +8,7 @@ def _auth(t):
 def _seed_job_candidate(app, owner_id=None):
     with app.app_context():
         from app import db
-        from app.models import Candidate, Job
+        from app.models import Candidate, Job, RecruitmentDemand
 
         job = Job(title="产品经理", jd_text="负责 AI 招聘产品", owner_hr_id=owner_id)
         candidate = Candidate(
@@ -17,6 +17,13 @@ def _seed_job_candidate(app, owner_id=None):
             resume_json={},
         )
         db.session.add_all([job, candidate])
+        db.session.flush()
+        db.session.add(RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no=f"REQ-WORKFLOW-{job.id}",
+            status="active",
+        ))
         db.session.commit()
         return job.id, candidate.id
 
@@ -163,9 +170,12 @@ def test_candidate_owner_options_and_reassignment_reason(client, make_user, app)
         assert event.payload["reason"] == "试点分工调整"
 
 
-def test_successful_upload_with_target_job_enters_pending_pipeline(client, make_user, app, monkeypatch, tmp_path):
+def test_successful_upload_with_target_demand_enters_pending_pipeline(client, make_user, app, monkeypatch, tmp_path):
     uid, token = make_user("upload-pipeline@x.com", role="recruiter")
     jid, _ = _seed_job_candidate(app, owner_id=uid)
+    with app.app_context():
+        from app.models import RecruitmentDemand
+        did = RecruitmentDemand.query.filter_by(job_id=jid).one().id
 
     def fake_parse_and_save(self, fpath, owner_hr_id, upload_batch_id=None):
         from app import db
@@ -194,7 +204,7 @@ def test_successful_upload_with_target_job_enters_pending_pipeline(client, make_
             headers=_auth(token),
             data={
                 "files": (f, "auto-pipeline.pdf"),
-                "target_job_id": str(jid),
+                "target_demand_id": str(did),
             },
             content_type="multipart/form-data",
         )
@@ -202,12 +212,13 @@ def test_successful_upload_with_target_job_enters_pending_pipeline(client, make_
     assert response.status_code == 202
     candidate_id = response.get_json()["results"][0]["candidate_id"]
 
-    board = client.get(f"/api/pipeline/{jid}/board", headers=_auth(token)).get_json()
+    board = client.get(f"/api/pipeline/demands/{did}/board", headers=_auth(token)).get_json()
     row = next(item for item in board["candidates"] if item["candidate_id"] == candidate_id)
     assert row["stage"] == "pending"
 
     pipelines = client.get(f"/api/candidates/{candidate_id}/pipelines", headers=_auth(token)).get_json()
     assert pipelines["pipelines"][0]["job_id"] == jid
+    assert pipelines["pipelines"][0]["demand_id"] == did
     assert pipelines["pipelines"][0]["stage"] == "pending"
 
 
@@ -333,6 +344,7 @@ def test_offer_record_can_be_saved_without_changing_pipeline_shape(client, make_
         "offer",
         "onboarded",
         "rejected",
+        "transferred",
     ]
 
 
@@ -495,20 +507,28 @@ def test_interviewer_scope_is_based_on_real_assignments(client, make_user, app):
     )
     with app.app_context():
         from app import db
-        from app.models import Candidate, Job
+        from app.models import Candidate, Job, RecruitmentDemand
 
         job = Job(title="增长产品经理", jd_text="负责增长策略", owner_hr_id=hr_id)
         candidate_a = Candidate(owner_hr_id=hr_id, name_masked="候选人A", resume_json={})
         candidate_b = Candidate(owner_hr_id=hr_id, name_masked="候选人B", resume_json={})
         db.session.add_all([job, candidate_a, candidate_b])
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=hr_id,
+            request_no="REQ-SCOPE",
+            status="active",
+        )
+        db.session.add(demand)
         db.session.commit()
-        jid, cid_a, cid_b = job.id, candidate_a.id, candidate_b.id
+        jid, did, cid_a, cid_b = job.id, demand.id, candidate_a.id, candidate_b.id
 
     for cid in (cid_a, cid_b):
         client.post(
             "/api/pipeline/move",
             headers=_auth(hr_token),
-            json={"candidate_id": cid, "job_id": jid, "stage": "interview_first"},
+            json={"candidate_id": cid, "demand_id": did, "stage": "interview_first"},
         )
 
     client.post(
@@ -516,7 +536,7 @@ def test_interviewer_scope_is_based_on_real_assignments(client, make_user, app):
         headers=_auth(hr_token),
         json={
             "candidate_id": cid_a,
-            "job_id": jid,
+            "demand_id": did,
             "round": "interview_first",
             "interviewer_id": interviewer_a_id,
         },
@@ -526,7 +546,7 @@ def test_interviewer_scope_is_based_on_real_assignments(client, make_user, app):
         headers=_auth(hr_token),
         json={
             "candidate_id": cid_b,
-            "job_id": jid,
+            "demand_id": did,
             "round": "interview_first",
             "interviewer_id": interviewer_b_id,
         },
@@ -538,7 +558,7 @@ def test_interviewer_scope_is_based_on_real_assignments(client, make_user, app):
     candidates_a = client.get("/api/candidates", headers=_auth(interviewer_a_token)).get_json()
     assert {item["id"] for item in candidates_a} == {cid_a}
 
-    board_a = client.get(f"/api/pipeline/{jid}/board", headers=_auth(interviewer_a_token)).get_json()
+    board_a = client.get(f"/api/pipeline/demands/{did}/board", headers=_auth(interviewer_a_token)).get_json()
     assert {item["candidate_id"] for item in board_a["candidates"]} == {cid_a}
 
     blocked_feedback = client.post(
@@ -546,7 +566,7 @@ def test_interviewer_scope_is_based_on_real_assignments(client, make_user, app):
         headers=_auth(interviewer_b_token),
         json={
             "candidate_id": cid_a,
-            "job_id": jid,
+            "demand_id": did,
             "round": "interview_first",
             "score": 4,
             "passed": True,
@@ -559,7 +579,7 @@ def test_interviewer_scope_is_based_on_real_assignments(client, make_user, app):
         headers=_auth(interviewer_a_token),
         json={
             "candidate_id": cid_a,
-            "job_id": jid,
+            "demand_id": did,
             "round": "interview_first",
             "score": 4,
             "passed": True,

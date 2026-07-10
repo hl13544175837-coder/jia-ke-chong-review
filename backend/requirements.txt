@@ -14,6 +14,7 @@ gunicorn==26.0.0
 
 # ── 数据库 / ORM ──────────────────────────────────────────
 SQLAlchemy==2.0.50
+Alembic==1.16.5
 # 生产 PostgreSQL 驱动（SQLAlchemy URL 使用 postgresql+psycopg://）
 psycopg[binary]==3.3.4
 # 公司试点 MySQL 驱动（SQLAlchemy URL 使用 mysql+pymysql://）

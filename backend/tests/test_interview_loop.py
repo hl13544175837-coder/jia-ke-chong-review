@@ -215,7 +215,7 @@ def _latest_stage(app, cid, jid):
         return ps.stage if ps else None
 
 
-def test_ai_pass_writes_interview_when_new(client, make_user, app, monkeypatch):
+def test_ai_pass_only_saves_recommendation_when_new(client, make_user, app, monkeypatch):
     _, token = make_user("hr@x.com", role="recruiter")
     jid, cid = _seed(app)
     _stub_report(monkeypatch, passed=True)
@@ -223,28 +223,29 @@ def test_ai_pass_writes_interview_when_new(client, make_user, app, monkeypatch):
                     json={"candidate_id": cid, "job_id": jid,
                           "qa_pairs": [{"q": "q", "a": "a"}]})
     assert r.status_code == 200
-    # 未入流程 → 先补 ai_screen 再进 interview；最新阶段应为 interview
-    assert _latest_stage(app, cid, jid) == "interview"
+    assert r.get_json()["pipeline_changed"] is False
+    assert r.get_json()["decision_required"] is True
+    assert _latest_stage(app, cid, jid) is None
 
 
 def test_ai_pass_does_not_move_backward(client, make_user, app, monkeypatch):
-    """R2.1：候选人已在面试中，AI 预筛通过不得重复写入面试阶段。"""
-    _, token = make_user("hr@x.com", role="recruiter")
+    """AI 预筛只给建议，不得新增、回退或重复写流程阶段。"""
+    uid, token = make_user("hr@x.com", role="recruiter")
     jid, cid = _seed(app)
-    # 先推进到面试中
-    for stage in ["pending", "ai_screen", "interview"]:
-        client.post("/api/pipeline/move", headers=_auth(token),
-                    json={"candidate_id": cid, "job_id": jid, "stage": stage})
+    with app.app_context():
+        from app import db
+        from app.models import PipelineStage
+        db.session.add(PipelineStage(candidate_id=cid, job_id=jid, stage="interview", updated_by=uid))
+        db.session.commit()
     _stub_report(monkeypatch, passed=True)
     r = client.post("/api/interview/submit", headers=_auth(token),
                     json={"candidate_id": cid, "job_id": jid,
                           "qa_pairs": [{"q": "q", "a": "a"}]})
     assert r.status_code == 200
-    # 不重复写：最新阶段仍是面试中
     assert _latest_stage(app, cid, jid) == "interview"
 
 
-def test_ai_fail_rejects(client, make_user, app, monkeypatch):
+def test_ai_fail_does_not_reject(client, make_user, app, monkeypatch):
     _, token = make_user("hr@x.com", role="recruiter")
     jid, cid = _seed(app)
     _stub_report(monkeypatch, passed=False)
@@ -252,4 +253,5 @@ def test_ai_fail_rejects(client, make_user, app, monkeypatch):
                     json={"candidate_id": cid, "job_id": jid,
                           "qa_pairs": [{"q": "q", "a": "a"}]})
     assert r.status_code == 200
-    assert _latest_stage(app, cid, jid) == "rejected"
+    assert r.get_json()["pipeline_changed"] is False
+    assert _latest_stage(app, cid, jid) is None

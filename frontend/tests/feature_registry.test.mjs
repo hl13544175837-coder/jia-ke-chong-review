@@ -21,6 +21,16 @@ assert.match(
   /candidatesFeature/,
   'Feature registry should include the candidates feature',
 );
+assert.match(
+  registry,
+  /demandsFeature/,
+  'Feature registry should include the recruitment demand feature',
+);
+assert.doesNotMatch(
+  registry,
+  /bossFeature/,
+  'Pilot feature registry should not expose the unavailable BOSS workspace',
+);
 
 assert.ok(
   existsSync(join(srcRoot, 'features/candidates/index.ts')),

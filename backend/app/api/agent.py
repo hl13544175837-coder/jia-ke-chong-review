@@ -29,7 +29,7 @@ def _get_agent() -> RecruitingAgent:
 @require_auth
 @require_role("recruiter", "manager", "admin")
 def list_tools():
-    """返回智能体可用的工具清单（供前端展示「能力」）。含只读与写操作。"""
+    """返回 AI 的只读工具与用户确认后可运行的匹配工具。"""
     return jsonify({"tools": AGENT_TOOLS, "write_tools": AGENT_WRITE_TOOLS})
 
 
@@ -77,7 +77,7 @@ def get_conversation(conversation_id):
 @require_auth
 @require_role("recruiter", "manager", "admin")
 def execute():
-    """执行 AI 助手提议的写操作（用户确认后调用）。
+    """执行 AI 助手提议的匹配操作（用户确认后调用）。
     在正常请求上下文内运行，g.user_id / g.role 有效，做 RBAC 校验。
     请求体：{"tool": "写工具名", "args": {...}}
     """

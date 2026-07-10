@@ -13,55 +13,13 @@ function readSource(path) {
 const biPage = readSource('pages/BiPage.tsx');
 const types = readSource('types/index.ts');
 
-assert.match(
-  types,
-  /interface BiDemandMetrics/,
-  'BI overview should type the demand health metrics returned by the backend',
-);
-assert.match(
-  types,
-  /interface BiResumeMetrics/,
-  'BI overview should type the resume consumption metrics returned by the backend',
-);
-assert.match(
-  types,
-  /interface BiSourceQuality/,
-  'BI overview should type source quality metrics for HR performance analysis',
-);
-assert.match(
-  types,
-  /interview_passed:\s*number/,
-  'BI staff metrics should expose generic interview pass counts',
-);
-assert.match(
-  types,
-  /interview_to_offer_rate:\s*number/,
-  'BI staff metrics should expose interview-to-offer conversion',
-);
+assert.match(types, /interface BiDemandOperationalMetrics/, 'BI should type the demand read model');
+assert.match(types, /interface BiDemandStageAge/, 'BI should type candidate stage-age facts');
+assert.match(types, /interface BiDemandOutstandingFeedback/, 'BI should type feedback follow-up facts');
 assert.doesNotMatch(
   types,
   /(?:first|second|final)_interview_(?:entries|feedbacks|passed|pass_rate|rate):\s*number/,
   'BI public types should not expose legacy fixed interview rounds',
-);
-assert.match(
-  types,
-  /demands:\s*BiDemandMetrics/,
-  'BiOverview should expose demand health metrics',
-);
-assert.match(
-  types,
-  /resumes:\s*BiResumeMetrics/,
-  'BiOverview should expose resume consumption metrics',
-);
-assert.match(
-  types,
-  /source_quality:\s*BiSourceQuality\[\]/,
-  'BiOverview should expose source quality metrics',
-);
-assert.match(
-  types,
-  /interface BiDataQualityWarning/,
-  'BI overview should type data quality warning rows',
 );
 assert.match(
   types,
@@ -74,104 +32,44 @@ assert.match(
   'BI funnel should expose the all-stage denominator for conversion rates',
 );
 assert.match(
-  types,
-  /scope\?:\s*'all'\s*\|\s*'owned_candidates'/,
-  'Job BI detail should tell the frontend whether a recruiter sees all or owned-candidate scope',
-);
-assert.match(
-  types,
-  /data_quality_warnings:\s*BiDataQualityWarning\[\]/,
-  'BiOverview should expose data quality warnings',
+  biPage,
+  /流程阶段/,
+  'BI should render the selected Demand funnel',
 );
 assert.match(
   biPage,
-  /全流程入职占比/,
-  'BI KPI copy should describe the full-funnel conversion denominator',
+  /阶段停留/,
+  'BI page should surface stage-age blockers from the backend',
 );
 assert.match(
   biPage,
-  /需求健康/,
-  'BI page should surface demand health metrics from the database',
+  /面试反馈跟进/,
+  'BI page should surface outstanding feedback from the backend',
 );
 assert.match(
   biPage,
-  /简历消化/,
-  'BI page should surface resume consumption metrics from the database',
+  /metrics\.hc\.completion_rate/,
+  'BI page should render demand-scoped HC progress',
 );
 assert.match(
   biPage,
-  /data\.demands\.active_total/,
-  'BI page should render active demand counts from the backend',
-);
-assert.match(
-  biPage,
-  /data\.resumes\.pipeline_entry_rate/,
-  'BI page should render resume pipeline entry rate from the backend',
+  /metrics\.current_responsibility/,
+  'BI page should render current collaboration responsibility',
 );
 assert.match(
   biPage,
   /当前流程人数/,
-  'BI should avoid calling current-stage pipeline count resume total',
+  'BI should label current active pipeline stock plainly',
 );
 assert.match(
   biPage,
-  /FunnelDiagram/,
-  'BI page should still render the current-stage funnel as the stock metric',
-);
-assert.match(
-  biPage,
-  /source_quality/,
-  'BI page should still render period-based source quality metrics',
-);
-assert.match(
-  biPage,
-  /数据质量提醒/,
-  'BI page should show data quality warnings from the backend',
-);
-assert.match(
-  biPage,
-  /data\.data_quality_warnings/,
-  'BI page should render backend data quality warnings',
-);
-assert.match(
-  biPage,
-  /data\?\.data_quality_warnings\s*\?\?\s*\[\]/,
-  'Staff drilldown should render staff-level data quality warnings',
-);
-assert.match(
-  biPage,
-  /sumStaff\(staff,\s*'onboarded'\)/,
-  'Team average conversion should be weighted by onboarded count',
-);
-assert.match(
-  biPage,
-  /sumStaff\(staff,\s*'resumes'\)/,
-  'Team average conversion should be weighted by resume count',
-);
-assert.match(
-  biPage,
-  /HR 绩效/,
-  'BI page should expose a recruiter performance section',
-);
-assert.match(
-  biPage,
-  /推荐成功面试/,
-  'BI page should render generic interview entry metrics',
-);
-assert.match(
-  biPage,
-  /面试通过/,
-  'BI page should render generic interview pass metrics',
-);
-assert.match(
-  biPage,
-  /渠道质量/,
-  'BI page should render source quality metrics',
-);
-assert.match(
-  biPage,
-  /data\.funnel\.pipeline_total/,
+  /metrics\.funnel\.pipeline_total/,
   'BI should render the backend current pipeline total',
+);
+assert.doesNotMatch(
+  biPage,
+  /HR 绩效|渠道质量|简历消化/,
+  'Phase-one demand BI should stop using performance and channel-analysis modules',
 );
 
 const biVisuals = readSource('components/bi/BiVisuals.tsx');
@@ -216,6 +114,6 @@ assert.doesNotMatch(
 );
 assert.match(
   candidatesPage,
-  /当前显示 \{filteredCandidates\.length\} \/ \{totalCandidates\} 份/,
-  'Candidate list summary should compare visible rows with backend total',
+  /当前显示 \$\{filteredCandidates\.length\} \/ \$\{resultTotal\} 份/,
+  'Candidate list summary should compare visible rows with the filtered backend total',
 );

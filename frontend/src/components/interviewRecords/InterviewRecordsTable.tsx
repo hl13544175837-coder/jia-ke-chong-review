@@ -48,6 +48,7 @@ export function InterviewRecordsTable({ items, onSelect }: InterviewRecordsTable
             <tr className="border-b border-hairline bg-surface-soft text-left text-xs font-medium uppercase tracking-wide text-muted">
               <th className="px-5 py-3">候选人</th>
               <th className="px-5 py-3">岗位</th>
+              <th className="px-5 py-3">招聘需求</th>
               <th className="px-5 py-3">轮次</th>
               <th className="px-5 py-3">面试官</th>
               <th className="px-5 py-3">评分</th>
@@ -72,6 +73,9 @@ export function InterviewRecordsTable({ items, onSelect }: InterviewRecordsTable
                   </Link>
                 </td>
                 <td className="px-5 py-3 text-muted">{item.job_title ?? `#${item.job_id}`}</td>
+                <td className="px-5 py-3 text-muted">
+                  {item.demand_id ? `#${item.demand_id}` : '历史未归属'}
+                </td>
                 <td className="px-5 py-3">
                   {item.type === 'ai' ? (
                     <Badge tone="brand" className="gap-1">

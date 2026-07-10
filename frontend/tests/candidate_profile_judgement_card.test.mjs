@@ -15,13 +15,19 @@ const candidateProfile = readSource('features/candidates/pages/CandidateProfileP
 assert.match(
   candidateProfile,
   /function CandidateJudgementCard/,
-  'Candidate profile should use a judgement card as the primary left-panel experience',
+  'Candidate profile should retain its evidence-based judgement card inside match analysis',
+);
+
+assert.match(
+  candidateProfile,
+  /<CandidateMatchAnalysis/,
+  'Candidate judgement should live in the explicit match-analysis tab instead of a permanent rail',
 );
 
 assert.match(
   candidateProfile,
   /候选人判断/,
-  'The left panel should be framed around an HR decision, not a raw skill chart',
+  'The match-analysis tab should be framed around an HR decision, not a raw skill chart',
 );
 
 assert.match(

@@ -1,8 +1,10 @@
 # 智聘·招聘管理系统 — 部署文档
 
-> **版本**：2026-06-22
+> **版本**：2026-07-10 demand-scoped P0 draft
 > **适用环境**：Windows 10/11、Linux（Ubuntu 20.04+）、macOS 13+  
-> **架构**：Flask 单进程 + SQLite（开发）/ MySQL（公司试点）/ PostgreSQL（兼容）+ Vite React SPA
+> **架构**：React SPA + Flask/Gunicorn 模块化单体；SQLite（开发）/ MySQL（公司试点）/ PostgreSQL（兼容）
+>
+> **状态**：`demand_id` P0 已完成本地实现并获项目负责人授权替换 SIT 测试验收版。SIT 测试数据允许清空或重建；生产与真实数据仍执行本文完整门禁。实际发布状态以 CFPD、Libra 和测试站证据为准。
 
 ---
 
@@ -36,7 +38,7 @@
     ├── /api/match         候选人-岗位匹配
     ├── /api/interview     AI 面试题生成 + 评估
     ├── /api/pipeline      候选人管道
-    ├── /api/bi            数据看板 (漏斗 + 专员效能 + 权限化岗位 BI)
+    ├── /api/bi            Demand 进度、瓶颈与当前责任协同（不做人员排名/绩效）
     ├── /api/agent         LangGraph AI 助手 (SSE 流式)
     └── /api/boss          BOSS 直聘实验辅助能力：账号导入、收件箱、推荐候选人和简历下载
     │
@@ -179,6 +181,8 @@ python backend/scripts/cleanup_demo_data.py --confirm
 
 应用启动时会对历史试点库做轻量兼容补列。`upload_batches` 表会按当前模型补齐缺失列（如组织、来源链接、内推人、目标岗位、备注、创建时间等），`interview_feedback` 等已存在业务表会先补齐 `org_id` 等组织隔离字段，再执行旧面试反馈原因标签归一化，避免旧库因缺列导致 Flask 启动失败。该补列是幂等操作，列已存在时不会重复修改。
 
+上述机制是已提交基线的早期兼容现状，不适用于 `demand_id` 多表迁移。P0 目标是引入带 revision ledger 的单次 Alembic migration；Gunicorn worker 启动时只校验 schema revision，不执行复杂 DDL、回填或收紧约束。
+
 ---
 
 ## 5. LLM API 配置
@@ -269,6 +273,23 @@ rg -o '/assets/[^" ]+' /tmp/test-zhipin.html | sort -u
 
 前端展示类修复可继续检查对应资产内容；例如右上角中国国旗修复，应在新 JS/CSS 中看到 `🇨🇳`，且不再出现旧的红白双色旗 CSS。
 
+### demand_id 发布与 schema 迁移门禁
+
+`demand_id` 不是只发一个新镜像的普通功能。它使用 Expand → Backfill → Dual-write/Shadow-read → Strict cutover → Contract，详细操作见 [docs/10_demand_id迁移与回滚手册.md](./docs/10_demand_id迁移与回滚手册.md)。
+
+发布顺序必须是：
+
+1. 记录目标环境、引擎、CFPD SHA、当前 schema revision 和负责人。
+2. 停止自动发布，先在同引擎临时库完成数据库 + uploads 备份恢复。
+3. 单次运行 Expand migration；不允许多个 Gunicorn/K8S worker 同时跑 Alembic。
+4. 运行 audit 和 backfill dry-run，对歧义 bundle 取得业务映射，再执行回填。
+5. 运行 verify：核心事实 `demand_id` 无空值，跨组织/孤儿/歧义为 0，每行 `job_id == demand.job_id`。
+6. 部署 dual-write 兼容版并完成 shadow comparison。
+7. 只有新前端、新后端、AI、BI、通知与审计均已 demand-scoped，旧 worker/旧静态资产全部退出，才设置 cutover marker。
+8. 一旦允许同 Job 并行多 Demand，旧代码无法表达新事实；此后不允许只回退镜像，只能向前修复，或停写后整体恢复 cutover 前快照。
+
+当前项目没有已证明可用的 Libra 一次性 migration job。发布前必须由运维确认使用 init job、独立 K8S Job 或受控人工命令，并保证 migration 成功后才启动业务 worker。如果这一步没有 Owner 与证据，只可构建镜像，不可 cutover。
+
 ### 方案 A：Flask 托管前端静态文件（单进程，推荐小团队）
 
 1. 构建前端：
@@ -338,12 +359,14 @@ python run.py
 - 上传只支持 PDF、DOCX 和 ZIP；旧版 `.doc` 因宏风险会被跳过，需转换后再上传。
 - 误导入可按上传批次撤回：候选人会软删除、匿名化并删除原文件，保留审计事件。
 - 候选人导出继续开放，但同一账号 10 分钟内第 6 次起会在审计日志标为 `warning`，管理员页标红。
-- AI 写操作继续可用，仍写入 `agent.write` 审计；试点说明中应写清 AI 只做辅助，最终决定由人确认。
+- demand-scoped P0 中 AI 只保留解析、匹配、总结和建议；自动推进、淘汰、Offer、转派和关闭工具不进入试点工具目录。
 - 管理员重置密码、用户自己修改密码后，旧登录 token 会立刻失效。
 
 ### 备份与恢复演练
 
 上线前至少演练一次“能备份，也能恢复到临时库”。轻量试点不做复杂恢复后台，但必须留出可执行命令。
+
+`demand_id` 发布需要三个独立快照：Expand 前、Strict cutover 前、cutover 验证后。每个快照应记录数据库引擎、schema revision、CFPD SHA、产物校验和、关键表行数与 uploads 包校验结果，不记录密码或带凭据的 URL。
 
 备份：
 
@@ -353,7 +376,16 @@ python scripts/backup_pilot_data.py --dry-run
 python scripts/backup_pilot_data.py
 ```
 
-恢复演练建议恢复到临时库或临时上传目录，不直接覆盖生产环境。脚本支持 PostgreSQL `pg_restore` 与 SQLite 文件恢复；MySQL 备份由 `mysqldump` 产出 SQL 文件，恢复时由 DBA 或部署同事导入临时 MySQL 库；脚本会校验 `uploads.tar.gz` 路径穿越：
+恢复演练建议恢复到临时库和临时上传目录，不直接覆盖生产环境。当前标准脚本只直接支持 PostgreSQL `pg_restore` 与 SQLite 文件恢复；MySQL 备份可由 `mysqldump` 产出 SQL，但自动恢复能力尚未被实施与验收。
+
+如果目标 SIT/试点库是 MySQL，在 demand_id 迁移前必须二选一：
+
+1. 实现并测试 `restore_pilot_data.py` 的 MySQL 临时库恢复；
+2. 由 DBA 将同一 `database.sql` 导入临时库，核对 schema revision、关键表行数、Demand/Flow/Pipeline/Interview/Offer/Event 数据和 uploads 文件，并留下负责人、时间与证据。
+
+仅有 `mysqldump` 文件或只有“备份命令成功”不算恢复证据。MySQL 恢复未通过时，不得进入 Backfill 写入或 Strict cutover。数据库和 uploads 不是跨资源事务，正式恢复必须停写，任一部分失败都不得宣布完成。
+
+以下为当前 PostgreSQL/SQLite 命令示例：
 
 ```bash
 cd backend
@@ -508,7 +540,7 @@ https://ward-mounted-concerning-fans.trycloudflare.com
 | 招聘专员 | hr03@mvp.local | 候选人 / 岗位 / 管道 / 个人数据 |
 | 面试官 | interviewer01@mvp.local | 面试任务 / 候选人查看 |
 
-MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录候选人负责人、流程推进人和面试反馈人；BI 主绩效按候选人负责人归属，流程推进人用于操作留痕和后续动作审计，多人共用账号会导致贡献归属不清。试点审计日志还会记录候选人详情查看、候选人 CSV 导出、越权 403 和 AI 写操作，并附带 request_id、角色、IP、来源、结果和失败原因；同一账号短时间高频导出候选人会在管理员审计页标红。
+MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录 Demand/候选人当前负责人、流程推进人和面试反馈人；前者用于当前责任协同，后两者是不可重写的历史行为留痕。BI 不将这些数据用于人员排名、绩效或奖金；多人共用账号会使当前责任和审计行为者都不可信。试点审计日志还会记录候选人详情查看、候选人 CSV 导出、越权 403 和 Demand-indexed 业务操作，并附带 request_id、角色、IP、来源、结果和失败原因；同一账号短时间高频导出候选人会在管理员审计页标红。
 
 生产多组织隔离依赖 `org_id`：部署初始化时必须为每个组织创建独立管理员，并确认历史用户、岗位、候选人、流程、面试、BI 和 AI 对话均归入正确组织。当前一期没有前端组织管理页面，跨组织开通和迁移由部署脚本或数据库初始化处理。
 
@@ -526,8 +558,8 @@ MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录候选人
 | 候选人匹配 | `/jobs/:id/match` | 按岗位 AI 匹配并排名候选人 |
 | 候选人管道 | `/pipeline` | 阶段管理（待筛选→AI初筛→业务待反馈→面试中→Offer→已入职/淘汰），支持误推进后的“修正阶段”并保留历史流水 |
 | AI 面试 | `/interviews` | 生成定制题目，录入作答，AI 评估报告 |
-| 数据看板 | `/bi` | 团队当前阶段分布 + 专员效能 + 渠道质量 + 数据质量提醒（经理/管理员）+ 责任口径解释；当前流程人数不含已入职/已淘汰，招聘专员不能查看别人岗位 BI，面试官不开放 BI |
-| BOSS 直聘实验辅助 | `/boss` | 招聘端账号 Cookie 导入、收件箱/推荐候选人查看、简历下载和批量导入；不属于 HR 试点主流程必测项，开放前必须确认 `FIELD_ENCRYPTION_KEY`、boss CLI 来源和 Cookie 使用边界 |
+| 数据看板 | `/bi` | 按 Demand 展示当前阶段、停留、待补反馈、HC 和当前责任，所有数字可下钻；不用于人员排名、绩效或奖金，面试官不开放 BI |
+| BOSS 直聘实验辅助 | `/boss` | 代码可保留，但 P0 试点主导航隐藏且写入路径 fail closed；若单独开放，必须确认 `FIELD_ENCRYPTION_KEY`、boss CLI 来源和 Cookie 使用边界 |
 
 ---
 
@@ -607,6 +639,8 @@ npm run build
 # 4. 未登录接口验证
 curl -i http://localhost:5000/api/jobs   # → 401/403 未登录，正常
 ```
+
+demand-scoped P0 额外要求：记录 `alembic current`、audit/backfill/verify 报告、同引擎恢复证据，并使用同一 Job 的两个 Demand 验证流程、面试、Offer、HC、权限和 BI 不串账。旧 job-only 请求在无法唯一解析 Demand 时应返回 409 `demand_id_required`，不能默认选最新 Demand。
 
 ---
 

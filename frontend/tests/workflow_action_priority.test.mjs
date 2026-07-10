@@ -66,6 +66,6 @@ assert.match(
 
 assert.match(
   candidatesPage,
-  /加入所选岗位流程/,
-  'Resume library row action should make it clear the candidate joins the selected job pipeline',
+  /加入所选需求/,
+  'Resume library row action should make it clear the candidate joins the selected demand',
 );

@@ -11,6 +11,7 @@ interface PipelineCandidateListProps {
   stage: StageConfig;
   candidates: PipelineBoardCandidate[];
   counts: Partial<Record<PipelineStage, number>>;
+  demandId: number | null;
   jobId: number | null;
   selectedCandidateId: number | null;
   highlightedCandidateId: number | null;
@@ -23,6 +24,7 @@ export function PipelineCandidateList({
   stage,
   candidates,
   counts,
+  demandId,
   jobId,
   selectedCandidateId,
   highlightedCandidateId,
@@ -66,8 +68,8 @@ export function PipelineCandidateList({
                   去{item.label} {counts[item.key] ?? 0} 人
                 </Button>
               ))}
-              {jobId !== null && (
-                <Link to={`/jobs/${jobId}/match`}>
+              {jobId !== null && demandId !== null && (
+                <Link to={`/jobs/${jobId}/match?demand=${demandId}`}>
                   <Button type="button" size="sm" variant="secondary">
                     去匹配更多候选人
                   </Button>

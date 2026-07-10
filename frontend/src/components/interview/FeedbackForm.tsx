@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { Button, Select } from '../ui';
-import type { EvaluationScores, InterviewRound, PipelineStage } from '../../types';
+import type {
+  EvaluationScores,
+  InterviewFeedbackResponse,
+  InterviewRound,
+  PipelineStage,
+} from '../../types';
 
 const ROUNDS: { key: InterviewRound; label: string }[] = [
-  { key: 'round_1', label: '第 1 轮面试' },
-  { key: 'round_2', label: '第 2 轮面试' },
-  { key: 'round_3', label: '第 3 轮面试' },
+  { key: 'round_1', label: '一面' },
+  { key: 'round_2', label: '二面' },
+  { key: 'round_3', label: '终面' },
   { key: 'additional', label: '加面' },
-  { key: 'technical', label: '技术面' },
-  { key: 'business', label: '业务面' },
-  { key: 'hr', label: 'HR 面' },
 ];
 
 const ROUND_KEYS = new Set(ROUNDS.map((round) => round.key));
@@ -51,21 +53,35 @@ const DEFAULT_EVALUATION = EVALUATION_DIMENSIONS.reduce<EvaluationScores>((acc, 
   return acc;
 }, {});
 
+interface DemandScopedFeedbackProps {
+  candidateId: number;
+  demandId: number;
+  jobId?: number;
+  assignmentId?: number;
+}
+
+interface LegacyFeedbackProps {
+  candidateId: number;
+  demandId?: undefined;
+  jobId: number;
+  assignmentId?: number;
+}
+
+type FeedbackFormProps = (DemandScopedFeedbackProps | LegacyFeedbackProps) & {
+  initialRound?: InterviewRound;
+  /** Legacy caller compatibility only; feedback never invokes this callback. */
+  onMove?: (toStage: PipelineStage, note: string) => void | Promise<void>;
+  onSubmitted?: (result: InterviewFeedbackResponse) => void;
+};
+
 export function FeedbackForm({
   candidateId,
+  demandId,
   jobId,
+  assignmentId,
   initialRound,
-  canMovePipeline = true,
-  onMove,
   onSubmitted,
-}: {
-  candidateId: number;
-  jobId: number;
-  initialRound?: InterviewRound;
-  canMovePipeline?: boolean;
-  onMove?: (toStage: PipelineStage, note: string) => void | Promise<void>;
-  onSubmitted?: () => void;
-}) {
+}: FeedbackFormProps) {
   const defaultRound = useMemo(
     () => (initialRound && ROUND_KEYS.has(initialRound) ? initialRound : 'round_1'),
     [initialRound],
@@ -77,51 +93,41 @@ export function FeedbackForm({
   const [reasonTags, setReasonTags] = useState<string[]>([]);
   const [strengths, setStrengths] = useState('');
   const [concerns, setConcerns] = useState('');
-  const [busyAction, setBusyAction] = useState<'save' | 'advance' | 'reject' | null>(null);
+  const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const advanceStage: PipelineStage = 'offer';
-  const busy = busyAction !== null;
 
   useEffect(() => {
     setRound(defaultRound);
   }, [defaultRound]);
 
-  async function submit(targetStage?: PipelineStage) {
-    const action = targetStage === 'rejected' ? 'reject' : targetStage ? 'advance' : 'save';
-    setBusyAction(action);
+  async function submit() {
+    setSaving(true);
     setMsg(null);
     try {
-      await api.submitFeedback({
+      const context = demandId
+        ? { demand_id: demandId }
+        : { job_id: jobId as number };
+      const result = await api.submitFeedback({
         candidate_id: candidateId,
-        job_id: jobId,
+        ...context,
+        assignment_id: assignmentId,
         round,
-          score,
-          passed,
-          evaluation,
-          reason_tags: reasonTags,
-          strengths,
-          concerns,
-        });
-      if (targetStage) {
-        const roundText = ROUNDS.find((item) => item.key === round)?.label ?? '面试';
-        const note = `${roundText}反馈${passed ? '通过' : '未通过'}，评分 ${score}/5`;
-        if (onMove) {
-          await onMove(targetStage, note);
-        } else {
-          await api.movePipeline({
-            candidate_id: candidateId,
-            job_id: jobId,
-            stage: targetStage,
-            note,
-          });
-        }
-      }
-      setMsg(targetStage ? '已提交评分并更新流程' : '已提交评分');
-      onSubmitted?.();
+        score,
+        passed,
+        evaluation,
+        reason_tags: reasonTags,
+        strengths,
+        concerns,
+      });
+      const nextMessage = result.next_action === 'awaiting_hr_decision'
+        ? '主面试官反馈已提交，本轮完成，待 HR 确认下一步'
+        : '反馈已提交，等待主面试官完成本轮';
+      setMsg(nextMessage);
+      onSubmitted?.(result);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : '提交失败');
     } finally {
-      setBusyAction(null);
+      setSaving(false);
     }
   }
 
@@ -141,6 +147,7 @@ export function FeedbackForm({
           label="轮次"
           value={round}
           onChange={(e) => setRound(e.target.value as InterviewRound)}
+          disabled={Boolean(assignmentId)}
         >
           {ROUNDS.map((r) => (
             <option key={r.key} value={r.key}>
@@ -161,12 +168,12 @@ export function FeedbackForm({
         </Select>
       </div>
       <Select
-        label="是否通过"
+        label="本轮反馈建议"
         value={passed ? 'y' : 'n'}
         onChange={(e) => setPassed(e.target.value === 'y')}
       >
-        <option value="y">通过</option>
-        <option value="n">不通过</option>
+        <option value="y">建议通过</option>
+        <option value="n">建议不通过</option>
       </Select>
       <div className="rounded-md border border-hairline bg-canvas p-3">
         <p className="mb-3 text-sm font-medium text-ink">原因分类</p>
@@ -233,31 +240,12 @@ export function FeedbackForm({
       />
       {msg && <p className="text-sm text-muted">{msg}</p>}
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => submit()} loading={busyAction === 'save'} disabled={busy} size="sm">
-          提交评分
+        <Button onClick={submit} loading={saving} disabled={saving} size="sm">
+          提交反馈
         </Button>
-        {canMovePipeline && (
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => submit(advanceStage)}
-              loading={busyAction === 'advance'}
-              disabled={busy || !passed}
-              size="sm"
-            >
-              提交并推进 Offer
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => submit('rejected')}
-              loading={busyAction === 'reject'}
-              disabled={busy}
-              size="sm"
-            >
-              提交并淘汰
-            </Button>
-          </>
-        )}
+        <p className="self-center text-xs text-muted">
+          反馈只完成本轮面试任务，推进或淘汰由 HR 另行确认。
+        </p>
       </div>
     </div>
   );

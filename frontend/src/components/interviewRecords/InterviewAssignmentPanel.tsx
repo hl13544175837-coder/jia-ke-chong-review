@@ -4,13 +4,13 @@ import { CalendarClock } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { formatDate } from '../../lib/formatDate';
-import { INTERVIEW_ROUNDS, roundLabel } from '../../lib/interviewRecords';
+import { demandOptionLabel, INTERVIEW_ROUNDS, roundLabel } from '../../lib/interviewRecords';
 import type {
-  CandidateListItem,
   InterviewAssignment,
   InterviewRound,
   InterviewerOption,
-  JobListItem,
+  PipelineBoard,
+  RecruitmentDemand,
   Role,
 } from '../../types';
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, EmptyState, Input, Select } from '../ui';
@@ -22,9 +22,16 @@ const ROLE_LABEL: Record<Role, string> = {
   admin: '管理员',
 };
 
+const ROUND_SEQUENCE_BY_ROUND: Partial<Record<InterviewRound, number>> = {
+  round_1: 1,
+  round_2: 2,
+  round_3: 3,
+  additional: 4,
+};
+
 interface InterviewAssignmentPanelProps {
-  candidates: CandidateListItem[];
-  jobs: JobListItem[];
+  demands: RecruitmentDemand[];
+  boards: PipelineBoard[];
   interviewers: InterviewerOption[];
   assignments: InterviewAssignment[];
   open?: boolean;
@@ -33,8 +40,8 @@ interface InterviewAssignmentPanelProps {
 }
 
 export function InterviewAssignmentPanel({
-  candidates,
-  jobs,
+  demands,
+  boards,
   interviewers,
   assignments,
   open: controlledOpen,
@@ -44,8 +51,10 @@ export function InterviewAssignmentPanel({
   const { role } = useAuth();
   const [localOpen, setLocalOpen] = useState(false);
   const [candidateId, setCandidateId] = useState('');
-  const [jobId, setJobId] = useState('');
+  const [demandId, setDemandId] = useState('');
   const [round, setRound] = useState<InterviewRound>('round_1');
+  const [roundSequence, setRoundSequence] = useState('1');
+  const [isPrimary, setIsPrimary] = useState(true);
   const [interviewerId, setInterviewerId] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [location, setLocation] = useState('');
@@ -55,6 +64,9 @@ export function InterviewAssignmentPanel({
 
   const open = controlledOpen ?? localOpen;
   const recentAssignments = useMemo(() => assignments.slice(0, 6), [assignments]);
+  const selectedDemandId = Number(demandId);
+  const selectedBoard = boards.find((board) => board.demand_id === selectedDemandId);
+  const demandCandidates = selectedBoard?.candidates.filter((candidate) => candidate.stage === 'interview') ?? [];
 
   function setOpen(nextOpen: boolean) {
     if (onOpenChange) {
@@ -66,10 +78,15 @@ export function InterviewAssignmentPanel({
 
   async function handleCreate() {
     const cid = Number(candidateId);
-    const jid = Number(jobId);
+    const did = Number(demandId);
     const iid = Number(interviewerId);
-    if (!cid || !jid || !iid) {
-      setMessage('请选择候选人、岗位和面试官');
+    const sequence = Number(roundSequence);
+    if (!cid || !did || !iid) {
+      setMessage('请选择招聘需求、该需求中的候选人和面试官');
+      return;
+    }
+    if (!Number.isInteger(sequence) || sequence < 1) {
+      setMessage('轮次序号必须是大于 0 的整数');
       return;
     }
     setSaving(true);
@@ -77,16 +94,21 @@ export function InterviewAssignmentPanel({
     try {
       await api.createInterviewAssignment({
         candidate_id: cid,
-        job_id: jid,
+        demand_id: did,
         round,
+        round_sequence: sequence,
+        is_primary: isPrimary,
         interviewer_id: iid,
         scheduled_at: scheduledAt || undefined,
         location: location.trim(),
         note: note.trim(),
       });
       setCandidateId('');
-      setJobId('');
+      setDemandId('');
       setInterviewerId('');
+      setRound('round_1');
+      setRoundSequence('1');
+      setIsPrimary(true);
       setScheduledAt('');
       setLocation('');
       setNote('');
@@ -117,21 +139,13 @@ export function InterviewAssignmentPanel({
       <CardBody>
         {open && (
           <div className="mb-5 space-y-3 rounded-lg border border-hairline bg-surface-soft p-4">
-            {(candidates.length === 0 || jobs.length === 0 || interviewers.length === 0) && (
+            {(demands.length === 0 || interviewers.length === 0) && (
               <div className="grid gap-2 md:grid-cols-3">
-                {candidates.length === 0 && (
+                {demands.length === 0 && (
                   <div className="rounded-md border border-hairline bg-canvas px-3 py-2 text-xs text-muted">
-                    <p className="font-semibold text-ink">暂无候选人，请先上传简历。</p>
-                    <Link to="/upload" className="mt-1 inline-flex font-semibold text-ink hover:underline">
-                      上传简历
-                    </Link>
-                  </div>
-                )}
-                {jobs.length === 0 && (
-                  <div className="rounded-md border border-hairline bg-canvas px-3 py-2 text-xs text-muted">
-                    <p className="font-semibold text-ink">暂无可选岗位。</p>
-                    <Link to="/jobs" className="mt-1 inline-flex font-semibold text-ink hover:underline">
-                      没有目标岗位？新建岗位
+                    <p className="font-semibold text-ink">暂无可选招聘需求。</p>
+                    <Link to="/demands" className="mt-1 inline-flex font-semibold text-ink hover:underline">
+                      先创建招聘需求
                     </Link>
                   </div>
                 )}
@@ -151,34 +165,60 @@ export function InterviewAssignmentPanel({
                 )}
               </div>
             )}
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <div>
-                <Select label="候选人" value={candidateId} onChange={(e) => setCandidateId(e.target.value)}>
+                <Select
+                  label="招聘需求"
+                  value={demandId}
+                  onChange={(e) => {
+                    setDemandId(e.target.value);
+                    setCandidateId('');
+                  }}
+                >
+                  <option value="">选择招聘需求</option>
+                  {demands.map((demand) => (
+                    <option key={demand.id} value={demand.id}>
+                      {demandOptionLabel(demand)}
+                    </option>
+                  ))}
+                </Select>
+                <Link to="/demands" className="mt-1 inline-flex text-xs font-semibold text-ink hover:underline">
+                  没有目标需求？创建需求
+                </Link>
+              </div>
+              <div>
+                <Select
+                  label="候选人"
+                  value={candidateId}
+                  disabled={!demandId}
+                  onChange={(e) => setCandidateId(e.target.value)}
+                >
                   <option value="">选择候选人</option>
-                  {candidates.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
+                  {demandCandidates.map((candidate) => (
+                    <option key={candidate.candidate_id} value={candidate.candidate_id}>
                       {candidate.name_masked}
                     </option>
                   ))}
                 </Select>
-                <Link to="/upload" className="mt-1 inline-flex text-xs font-semibold text-ink hover:underline">
-                  没有目标候选人？上传简历
-                </Link>
+                {demandId && demandCandidates.length === 0 && (
+                  <Link
+                    to={`/pipeline?demand=${selectedDemandId}`}
+                    className="mt-1 inline-flex text-xs font-semibold text-ink hover:underline"
+                  >
+                    该需求暂无“面试中”候选人，去候选人流程查看
+                  </Link>
+                )}
               </div>
-              <div>
-                <Select label="岗位" value={jobId} onChange={(e) => setJobId(e.target.value)}>
-                  <option value="">选择岗位</option>
-                  {jobs.map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.title}
-                    </option>
-                  ))}
-                </Select>
-                <Link to="/jobs" className="mt-1 inline-flex text-xs font-semibold text-ink hover:underline">
-                  没有目标岗位？新建岗位
-                </Link>
-              </div>
-              <Select label="轮次" value={round} onChange={(e) => setRound(e.target.value as InterviewRound)}>
+              <Select
+                label="轮次"
+                value={round}
+                onChange={(e) => {
+                  const nextRound = e.target.value as InterviewRound;
+                  setRound(nextRound);
+                  const nextSequence = ROUND_SEQUENCE_BY_ROUND[nextRound];
+                  if (nextSequence) setRoundSequence(String(nextSequence));
+                }}
+              >
                 {INTERVIEW_ROUNDS.map((item) => (
                   <option key={item.key} value={item.key}>
                     {item.label}
@@ -193,8 +233,23 @@ export function InterviewAssignmentPanel({
                   </option>
                 ))}
               </Select>
+              <Select
+                label="面试责任"
+                value={isPrimary ? 'primary' : 'supporting'}
+                onChange={(e) => setIsPrimary(e.target.value === 'primary')}
+              >
+                <option value="primary">主面试官</option>
+                <option value="supporting">辅助面试官</option>
+              </Select>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Input
+                label="轮次序号"
+                type="number"
+                min={1}
+                value={roundSequence}
+                onChange={(e) => setRoundSequence(e.target.value)}
+              />
               <Input
                 label="面试时间"
                 type="datetime-local"
@@ -239,6 +294,11 @@ export function InterviewAssignmentPanel({
                       <Badge tone="warning">{roundLabel(item.round)}</Badge>
                     </div>
                     <p className="mt-1 truncate text-sm text-muted">{item.job_title ?? `岗位 #${item.job_id}`}</p>
+                    <p className="mt-1 text-xs text-muted-soft">
+                      {item.demand_id ? `招聘需求 #${item.demand_id}` : '历史未归属需求'}
+                      {' · '}第 {item.round_sequence} 轮
+                      {' · '}{item.is_primary ? '主面试官' : '辅助面试官'}
+                    </p>
                     <p className="mt-2 text-xs text-muted-soft">
                       {item.scheduled_at ? formatDate(item.scheduled_at) : '未定时间'}
                       {item.interviewer_name ? ` · ${item.interviewer_name}` : ''}

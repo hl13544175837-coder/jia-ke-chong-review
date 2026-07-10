@@ -17,6 +17,7 @@ import {
 } from '../components/ui';
 import { InterviewReport } from '../components/InterviewReport';
 import { Reveal } from '../components/motion';
+import { demandOptionLabel } from '../lib/interviewRecords';
 import type { InterviewReport as InterviewReportType, QaPair } from '../types';
 
 type Phase = 'setup' | 'answer' | 'report';
@@ -24,32 +25,48 @@ type Phase = 'setup' | 'answer' | 'report';
 // ---- Setup phase ----
 
 interface SetupProps {
-  onStart: (candidateId: number, jobId: number, questions: string[]) => void;
+  onStart: (
+    candidateId: number,
+    demandId: number,
+    jobId: number,
+    questions: string[],
+  ) => void;
 }
 
 function SetupPhase({ onStart }: SetupProps) {
-  const candidatesAsync = useAsync(() => api.listCandidates(), []);
-  const jobsAsync = useAsync(() => api.listJobs(), []);
+  const demandsAsync = useAsync(
+    () => api.listDemands({ status: 'all', page: 1, page_size: 100, sort: 'created_at_desc' }),
+    [],
+  );
 
   const [candidateId, setCandidateId] = useState('');
-  const [jobId, setJobId] = useState('');
+  const [demandId, setDemandId] = useState('');
   const [count, setCount] = useState('5');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isLoading = candidatesAsync.loading || jobsAsync.loading;
+  const selectedDemandId = Number(demandId);
+  const boardAsync = useAsync(
+    () => selectedDemandId > 0
+      ? api.getDemandPipelineBoard(selectedDemandId)
+      : Promise.resolve(null),
+    [selectedDemandId],
+  );
+  const demandCandidates = boardAsync.data?.candidates.filter(
+    (candidate) => !['rejected', 'onboarded', 'transferred'].includes(candidate.stage),
+  ) ?? [];
 
   async function handleStart() {
     const cid = Number(candidateId);
-    const jid = Number(jobId);
+    const did = Number(demandId);
     const cnt = Number(count) || 5;
 
     if (!candidateId || Number.isNaN(cid)) {
       setError('请选择候选人');
       return;
     }
-    if (!jobId || Number.isNaN(jid)) {
-      setError('请选择岗位');
+    if (!demandId || Number.isNaN(did)) {
+      setError('请选择具体招聘需求');
       return;
     }
 
@@ -58,10 +75,10 @@ function SetupPhase({ onStart }: SetupProps) {
     try {
       const res = await api.startInterview({
         candidate_id: cid,
-        job_id: jid,
+        demand_id: did,
         count: cnt,
       });
-      onStart(cid, jid, res.questions);
+      onStart(cid, did, res.job_id, res.questions);
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败，请重试');
     } finally {
@@ -69,27 +86,26 @@ function SetupPhase({ onStart }: SetupProps) {
     }
   }
 
-  if (isLoading) {
+  if (demandsAsync.loading) {
     return (
       <Card>
         <CardBody className="flex items-center justify-center gap-3 py-20">
           <Spinner size="lg" />
-          <span className="text-sm text-muted">加载候选人与岗位数据…</span>
+          <span className="text-sm text-muted">加载招聘需求…</span>
         </CardBody>
       </Card>
     );
   }
 
-  const loadError = candidatesAsync.error?.message ?? jobsAsync.error?.message;
+  const loadError = demandsAsync.error?.message;
   if (loadError) {
-    const retryFn = candidatesAsync.error ? candidatesAsync.reload : jobsAsync.reload;
     return (
       <Card>
         <CardBody>
           <p className="text-sm text-danger-600">
             {loadError}
             <button
-              onClick={retryFn}
+              onClick={demandsAsync.reload}
               className="ml-3 font-medium underline hover:no-underline"
             >
               重试
@@ -107,63 +123,67 @@ function SetupPhase({ onStart }: SetupProps) {
       </CardHeader>
       <CardBody>
         <div className="max-w-md space-y-4">
-          {(candidatesAsync.data?.length === 0 || jobsAsync.data?.length === 0) && (
+          {(demandsAsync.data?.items.length ?? 0) === 0 && (
             <div className="space-y-2 rounded-lg border border-hairline bg-surface-soft px-4 py-3 text-xs text-muted">
-              {candidatesAsync.data?.length === 0 && (
-                <p>
-                  暂无候选人，请先
-                  <Link to="/upload" className="font-semibold text-ink hover:underline">
-                    上传简历
-                  </Link>
-                  。
-                </p>
-              )}
-              {jobsAsync.data?.length === 0 && (
-                <p>
-                  没有目标岗位？先去
-                  <Link to="/jobs" className="font-semibold text-ink hover:underline">
-                    新建岗位
-                  </Link>
-                  。
-                </p>
-              )}
+              <p>
+                暂无可选招聘需求，请先去
+                <Link to="/demands" className="font-semibold text-ink hover:underline">
+                  创建招聘需求
+                </Link>
+                。
+              </p>
             </div>
           )}
-          {/* Candidate */}
+
+          <Select
+            label="招聘需求"
+            id="setup-demand"
+            value={demandId}
+            onChange={(e) => {
+              setDemandId(e.target.value);
+              setCandidateId('');
+              setError(null);
+            }}
+          >
+            <option value="">— 请选择具体招聘需求 —</option>
+            {(demandsAsync.data?.items ?? [])
+              .filter((demand) => demand.status === 'pending' || demand.status === 'active')
+              .map((demand) => (
+              <option key={demand.id} value={demand.id}>
+                {demandOptionLabel(demand)}
+              </option>
+            ))}
+          </Select>
+
           <Select
             label="候选人"
             id="setup-candidate"
             value={candidateId}
+            disabled={!demandId || boardAsync.loading}
             onChange={(e) => {
               setCandidateId(e.target.value);
               setError(null);
             }}
           >
-            <option value="">— 请选择候选人 —</option>
-            {(candidatesAsync.data ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name_masked} (ID {c.id})
+            <option value="">— 请选择该需求中的候选人 —</option>
+            {demandCandidates.map((candidate) => (
+              <option key={candidate.candidate_id} value={candidate.candidate_id}>
+                {candidate.name_masked} (ID {candidate.candidate_id})
               </option>
             ))}
           </Select>
-
-          {/* Job */}
-          <Select
-            label="面试岗位"
-            id="setup-job"
-            value={jobId}
-            onChange={(e) => {
-              setJobId(e.target.value);
-              setError(null);
-            }}
-          >
-            <option value="">— 请选择岗位 —</option>
-            {(jobsAsync.data ?? []).map((j) => (
-              <option key={j.id} value={j.id}>
-                {j.title} (ID {j.id})
-              </option>
-            ))}
-          </Select>
+          {boardAsync.error && (
+            <p className="text-sm text-danger-600">{boardAsync.error.message}</p>
+          )}
+          {demandId && !boardAsync.loading && !boardAsync.error && demandCandidates.length === 0 && (
+            <p className="text-xs text-muted">
+              该需求暂无进行中候选人，请先到
+              <Link to={`/pipeline?demand=${selectedDemandId}`} className="font-semibold text-ink hover:underline">
+                候选人流程
+              </Link>
+              加入或查看候选人。
+            </p>
+          )}
 
           {/* Question count */}
           <Input
@@ -288,14 +308,16 @@ export function InterviewsPage() {
   const [questions, setQuestions] = useState<string[]>([]);
   const [answers, setAnswers] = useState<string[]>([]);
   const [candidateId, setCandidateId] = useState<number>(0);
+  const [demandId, setDemandId] = useState<number>(0);
   const [jobId, setJobId] = useState<number>(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [report, setReport] = useState<InterviewReportType | null>(null);
   const [interviewId, setInterviewId] = useState<number | null>(null);
 
-  function handleStart(cid: number, jid: number, qs: string[]) {
+  function handleStart(cid: number, did: number, jid: number, qs: string[]) {
     setCandidateId(cid);
+    setDemandId(did);
     setJobId(jid);
     setQuestions(qs);
     setAnswers(new Array(qs.length).fill(''));
@@ -321,7 +343,7 @@ export function InterviewsPage() {
     try {
       const res = await api.submitInterview({
         candidate_id: candidateId,
-        job_id: jobId,
+        demand_id: demandId,
         qa_pairs: qaPairs,
       });
       setReport(res.report);
@@ -438,6 +460,7 @@ export function InterviewsPage() {
                 ? {
                     interviewId,
                     candidateId,
+                    demandId,
                     jobId,
                     createdAt: new Date().toISOString(),
                   }

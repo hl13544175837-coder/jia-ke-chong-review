@@ -10,7 +10,8 @@ export type PipelineStage =
   | 'interview'
   | 'offer'
   | 'onboarded'
-  | 'rejected';
+  | 'rejected'
+  | 'transferred';
 
 export type InterviewRound =
   | 'round_1'
@@ -62,7 +63,11 @@ export interface ResumeUploadResultItem {
   status: 'ok' | 'skipped' | 'error';
   candidate_id?: number;
   reason?: string;
+  target_demand_id?: number;
   target_job_id?: number;
+  pipeline_joined?: boolean;
+  pipeline_error?: string;
+  pipeline_error_code?: string;
   pipeline_stage?: PipelineStage;
 }
 
@@ -86,6 +91,8 @@ export interface CandidateSourceInfo {
   channel: string;
   source_link: string;
   referrer: string;
+  target_demand_id: number | null;
+  target_demand_request_no: string | null;
   target_job_id: number | null;
   target_job_title: string | null;
   target_job_city: string;
@@ -238,7 +245,7 @@ export interface JobDetail {
 
 // ---- Recruitment demands ----
 export type DemandPriority = 'A' | 'B' | 'C';
-export type DemandStatus = 'pending' | 'active' | 'paused' | 'filled' | 'cancelled';
+export type DemandStatus = 'pending' | 'active' | 'paused' | 'filled' | 'cancelled' | 'closed';
 
 export interface RecruitmentDemandMetrics {
   recommended_count: number;
@@ -246,6 +253,7 @@ export interface RecruitmentDemandMetrics {
   interview_count: number;
   offer_count: number;
   onboarded_count: number;
+  transferred_count: number;
   current_stage_counts: Partial<Record<PipelineStage | string, number>>;
 }
 
@@ -257,6 +265,7 @@ export interface RecruitmentDemand {
   job_department: string;
   job_code: string;
   owner_hr_id: number;
+  owner_hr_name: string;
   request_no: string;
   requester_name: string;
   requester_department: string;
@@ -272,37 +281,69 @@ export interface RecruitmentDemand {
   note: string;
   metrics: RecruitmentDemandMetrics;
   risk_flags: string[];
+  completion_suggested: boolean;
+  jd_text?: string;
   created_at: string | null;
   updated_at: string | null;
 }
 
 export interface RecruitmentDemandInput {
-  job_id: number;
+  job_id?: number;
+  job_title?: string;
+  jd_text?: string;
+  owner_hr_id: number;
+  city: string;
   request_no?: string;
   requester_name?: string;
-  requester_department?: string;
-  hiring_manager_name?: string;
-  requested_at?: string;
+  requester_department: string;
+  hiring_manager_name: string;
+  requested_at: string;
   accepted_at?: string;
-  target_date?: string;
+  target_date: string;
   priority?: DemandPriority;
-  headcount?: number;
+  headcount: number;
   status?: DemandStatus;
   note?: string;
 }
 
+export interface DemandListQuery {
+  status?: DemandStatus | 'all';
+  q?: string;
+  department?: string;
+  city?: string;
+  owner_hr_id?: number;
+  created_from?: string;
+  created_to?: string;
+  page?: number;
+  page_size?: number;
+  sort?: 'created_at_desc' | 'created_at_asc';
+}
+
+export interface DemandListResponse {
+  items: RecruitmentDemand[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface DemandOwnerTransferInput {
+  owner_hr_id: number;
+  reason: string;
+}
+
 export interface DemandCloseInput {
-  status: 'filled' | 'cancelled' | 'paused';
-  close_reason?: string;
+  status: 'filled' | 'cancelled' | 'paused' | 'closed';
+  close_reason: string;
 }
 
 export interface DemandDowngradeInput {
   priority: DemandPriority;
-  downgrade_reason?: string;
+  downgrade_reason: string;
 }
 
 export interface DemandRestoreInput {
-  note?: string;
+  note: string;
 }
 
 // ---- Talent map ----
@@ -411,21 +452,27 @@ export interface MatchResponse {
 }
 
 export interface BatchAddToPipelineResponse {
+  demand_id: number;
   job_id: number;
   added: number;
   skipped_existing: number;
   skipped_missing: number;
+  skipped_conflict: number;
+  failures: Array<{ candidate_id: number; code: string; error: string }>;
 }
 
 // ---- Interview ----
 export interface InterviewStartRequest {
   candidate_id: number;
-  job_id: number;
+  demand_id: number;
+  // Legacy fallback only. New screens always send demand_id.
+  job_id?: number;
   count?: number;
 }
 
 export interface InterviewStartResponse {
   candidate_id: number;
+  demand_id: number | null;
   job_id: number;
   questions: string[];
 }
@@ -437,7 +484,9 @@ export interface QaPair {
 
 export interface InterviewSubmitRequest {
   candidate_id: number;
-  job_id: number;
+  demand_id: number;
+  // Legacy fallback only. New screens always send demand_id.
+  job_id?: number;
   qa_pairs: QaPair[];
 }
 
@@ -456,12 +505,16 @@ export interface InterviewReport {
 
 export interface InterviewSubmitResponse {
   interview_id: number;
+  demand_id: number | null;
   report: InterviewReport;
+  decision_required: boolean;
+  pipeline_changed: false;
 }
 
 export interface InterviewRecord {
   id: number;
   candidate_id: number;
+  demand_id: number | null;
   job_id: number;
   score: number;
   pass_recommended: boolean;
@@ -472,7 +525,8 @@ export interface InterviewRecord {
 // ---- Pipeline ----
 export interface PipelineMoveRequest {
   candidate_id: number;
-  job_id: number;
+  demand_id?: number;
+  job_id?: number;
   stage: PipelineStage;
   note?: string;
   disposition?: CandidateDispositionInput;
@@ -483,7 +537,28 @@ export interface PipelineMoveResponse {
   stage: PipelineStage;
   from: PipelineStage | null;
   candidate_id: number;
+  demand_id: number;
+  job_id: number;
   name_masked: string;
+}
+
+export interface PipelineTransferRequest {
+  candidate_id: number;
+  from_demand_id: number;
+  to_demand_id: number;
+  reason: string;
+}
+
+export interface PipelineTransferResponse {
+  status: string;
+  candidate_id: number;
+  name_masked: string;
+  from_demand_id: number;
+  to_demand_id: number;
+  from_job_id: number;
+  to_job_id: number;
+  source_terminal_stage: 'transferred';
+  to_stage: 'pending';
 }
 
 export interface CandidateDispositionInput {
@@ -497,6 +572,7 @@ export interface CandidateDispositionInput {
 export interface OfferRecord {
   id?: number;
   candidate_id: number;
+  demand_id: number;
   job_id: number;
   salary_range: string;
   onboard_date: string | null;
@@ -520,6 +596,7 @@ export interface PipelineBoardCandidate {
 
 // Full board payload for one job: candidates bucketed by their current stage.
 export interface PipelineBoard {
+  demand_id?: number;
   job_id: number;
   job_title: string;
   stage_order: PipelineStage[];
@@ -550,10 +627,99 @@ export interface BiFunnel {
   offer?: number;
   onboarded?: number;
   rejected?: number;
+  transferred?: number;
   pipeline_total?: number;
   archived_total?: number;
   funnel_total?: number;
   conversion_rate: number;
+}
+
+export interface BiDemandScope {
+  type: 'demand';
+  demand_id: number;
+  job_id: number;
+}
+
+export interface BiDemandSummary {
+  id: number;
+  job_id: number;
+  title: string;
+  department: string;
+  city: string;
+  status: DemandStatus | string;
+  target_date: string | null;
+}
+
+export interface BiDemandStageAge {
+  candidate_id: number;
+  candidate_name: string;
+  stage: PipelineStage | string;
+  stage_label: string;
+  age_days: number;
+  updated_at: string | null;
+  last_actor_id: number | null;
+  last_actor_name: string | null;
+}
+
+export interface BiDemandOutstandingFeedbackItem {
+  assignment_id: number;
+  candidate_id: number;
+  candidate_name: string;
+  round: InterviewRound | string;
+  round_sequence: number;
+  is_primary: boolean;
+  interviewer_id: number;
+  interviewer_name: string | null;
+  scheduled_at: string | null;
+  overdue_days: number;
+}
+
+export interface BiDemandOutstandingFeedback {
+  count: number;
+  items: BiDemandOutstandingFeedbackItem[];
+}
+
+export interface BiDemandOfferItem {
+  id: number;
+  candidate_id: number;
+  approval_status: string;
+  onboard_date: string | null;
+}
+
+export interface BiDemandOffers {
+  total: number;
+  by_status: Record<string, number>;
+  items: BiDemandOfferItem[];
+}
+
+export interface BiDemandHc {
+  headcount: number;
+  onboarded_count: number;
+  remaining: number;
+  completion_rate: number;
+  completion_suggested: boolean;
+}
+
+export interface BiDemandCurrentResponsibility {
+  owner_hr_id: number;
+  owner_name: string | null;
+  label: string;
+  active_candidates: number;
+  outstanding_feedback: number;
+  note: string;
+}
+
+export interface BiDemandOperationalMetrics {
+  scope: BiDemandScope;
+  purpose: 'operational_collaboration';
+  purpose_label: string;
+  demand: BiDemandSummary;
+  funnel: BiFunnel;
+  stage_age: BiDemandStageAge[];
+  outstanding_feedback: BiDemandOutstandingFeedback;
+  offers: BiDemandOffers;
+  hc: BiDemandHc;
+  current_responsibility: BiDemandCurrentResponsibility;
 }
 
 export interface BiStaffMember {
@@ -798,6 +964,7 @@ export interface AuditLogQuery {
 
 export interface NotificationItem {
   id: number;
+  demand_id: number | null;
   type: string;
   title: string;
   body: string | null;
@@ -825,9 +992,12 @@ export interface InterviewAssignment {
   id: number;
   candidate_id: number;
   name_masked: string | null;
+  demand_id: number | null;
   job_id: number;
   job_title: string | null;
   round: InterviewRound;
+  round_sequence: number;
+  is_primary: boolean;
   interviewer_id: number;
   interviewer_name: string | null;
   scheduled_at: string | null;
@@ -842,8 +1012,12 @@ export interface InterviewAssignment {
 
 export interface InterviewAssignmentInput {
   candidate_id: number;
-  job_id: number;
+  demand_id: number;
+  // Kept optional for the unique-Demand legacy bridge; new UI does not send it.
+  job_id?: number;
   round: InterviewRound;
+  round_sequence: number;
+  is_primary: boolean;
   interviewer_id: number;
   scheduled_at?: string;
   location?: string;
@@ -856,6 +1030,8 @@ export interface InterviewListItem {
   type: 'ai' | 'feedback';
   candidate_id: number;
   name_masked: string | null;
+  demand_id: number | null;
+  assignment_id?: number | null;
   job_id: number;
   job_title: string | null;
   score: number | null;
@@ -875,7 +1051,10 @@ export type EvaluationScores = Record<string, number>;
 
 export interface InterviewFeedbackInput {
   candidate_id: number;
-  job_id: number;
+  demand_id: number;
+  assignment_id?: number;
+  // Kept optional for the unique-Demand legacy bridge; new UI does not send it.
+  job_id?: number;
   round: InterviewRound;
   score: number;
   passed: boolean;
@@ -886,8 +1065,33 @@ export interface InterviewFeedbackInput {
   note?: string;
 }
 
+/** Compatibility payload for a legacy entry point when the backend can resolve one unique Demand. */
+export interface LegacyInterviewFeedbackInput {
+  candidate_id: number;
+  job_id: number;
+  demand_id?: never;
+  assignment_id?: number;
+  round: InterviewRound;
+  score: number;
+  passed: boolean;
+  evaluation?: EvaluationScores;
+  reason_tags?: string[];
+  strengths?: string;
+  concerns?: string;
+  note?: string;
+}
+
+export interface InterviewFeedbackResponse {
+  id: number;
+  status: string;
+  deduplicated: boolean;
+  round_completed: boolean;
+  next_action: 'awaiting_hr_decision' | 'awaiting_primary_feedback';
+}
+
 export interface InterviewGuide {
   candidate_id: number;
+  demand_id: number | null;
   job_id: number;
   round: InterviewRound;
   focus: string[];
@@ -898,8 +1102,12 @@ export interface InterviewGuide {
 
 // ---- Candidate pipeline context / journey (M4/M5) ----
 export interface CandidatePipelineItem {
+  demand_id: number;
   job_id: number;
   job_title: string;
+  department: string;
+  city: string;
+  demand_status: DemandStatus;
   stage: PipelineStage;
   updated_at: string | null;
 }
@@ -964,6 +1172,7 @@ export interface DecisionSummary {
 export interface CandidateJourney {
   candidate_id: number;
   name_masked: string;
+  demand_id: number;
   job_id: number;
   job_title: string | null;
   timeline: JourneyTimelineStep[];
@@ -1188,4 +1397,3 @@ export interface CallLogQuery {
   page?: number;
   per_page?: number;
 }
-

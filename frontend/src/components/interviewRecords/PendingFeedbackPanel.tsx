@@ -8,6 +8,7 @@ interface PendingFeedbackPanelProps {
   items: PendingFeedbackItem[];
   activeKey?: string | null;
   onStartFeedback?: (item: PendingFeedbackItem) => void;
+  canStartFeedback?: (item: PendingFeedbackItem) => boolean;
   canOpenPipeline?: boolean;
 }
 
@@ -15,6 +16,7 @@ export function PendingFeedbackPanel({
   items,
   activeKey,
   onStartFeedback,
+  canStartFeedback = () => true,
   canOpenPipeline = true,
 }: PendingFeedbackPanelProps) {
   return (
@@ -37,10 +39,13 @@ export function PendingFeedbackPanel({
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {items.map((item) => {
-              const key = `${item.job_id}-${item.candidate_id}-${item.round}`;
+              const scope = item.demand_id === null ? `job-${item.job_id}` : `demand-${item.demand_id}`;
+              const key = `${scope}-${item.candidate_id}-${item.round}-${item.assignment_id ?? 'unassigned'}`;
               const active = activeKey === key;
               const detailLink = canOpenPipeline
-                ? `/pipeline?job=${item.job_id}&candidate=${item.candidate_id}`
+                ? item.demand_id
+                  ? `/pipeline?demand=${item.demand_id}&candidate=${item.candidate_id}`
+                  : `/pipeline?job=${item.job_id}&candidate=${item.candidate_id}`
                 : `/candidates/${item.candidate_id}`;
               return (
                 <div
@@ -54,15 +59,21 @@ export function PendingFeedbackPanel({
                         <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-warning-700">
                           {roundLabel(item.round)}
                         </span>
+                        <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
+                          第 {item.round_sequence} 轮 · {item.is_primary ? '主面试官' : '辅助面试官'}
+                        </span>
                       </div>
                       <p className="mt-1 truncate text-sm text-muted">{item.job_title}</p>
+                      <p className="mt-1 text-xs text-muted-soft">
+                        {item.demand_id ? `招聘需求 #${item.demand_id}` : '历史未归属需求'}
+                      </p>
                       <p className="mt-2 text-xs text-muted-soft">
                         进入本轮：{item.updated_at ? formatDate(item.updated_at) : '—'}
                         {item.updated_by_name ? ` · ${item.updated_by_name}` : ''}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      {onStartFeedback && (
+                      {onStartFeedback && canStartFeedback(item) && (
                         <button
                           type="button"
                           onClick={() => onStartFeedback(item)}

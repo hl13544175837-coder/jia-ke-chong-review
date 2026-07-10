@@ -11,14 +11,18 @@ import {
   stageAgeLabel,
 } from '../../lib/pipelineInsights';
 import { Button, Card, CardBody, CardHeader, CardTitle, Spinner } from '../ui';
+import { api } from '../../lib/api';
+import { useAsync } from '../../lib/useAsync';
 import { RejectionDispositionForm } from './RejectionDispositionForm';
 import { OfferDrawer } from './OfferDrawer';
 import { cn } from '../../lib/cn';
 
 interface PipelineCandidatePanelProps {
   candidate: PipelineBoardCandidate | null;
+  demandId: number;
   jobId: number;
   busy: boolean;
+  onTransferred: () => void | Promise<void>;
   onMove: (
     candidateId: number,
     toStage: PipelineStage,
@@ -35,28 +39,46 @@ function insightToneClass(tone: 'neutral' | 'warning' | 'success') {
 
 export function PipelineCandidatePanel({
   candidate,
+  demandId,
   jobId,
   busy,
+  onTransferred,
   onMove,
 }: PipelineCandidatePanelProps) {
   const [showDisposition, setShowDisposition] = useState(false);
   const [showOffer, setShowOffer] = useState(false);
   const [showCorrection, setShowCorrection] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [targetDemandId, setTargetDemandId] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferring, setTransferring] = useState(false);
   const [targetStage, setTargetStage] = useState<PipelineStage | ''>('');
   const [moveNote, setMoveNote] = useState('');
   const [correctionReason, setCorrectionReason] = useState('');
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const candidateId = candidate?.candidate_id ?? null;
   const candidateStage = candidate?.stage ?? null;
+  const demandsAsync = useAsync(
+    () => api.listDemands({ status: 'all', page: 1, page_size: 100 }),
+    [],
+  );
+  const transferTargets = (demandsAsync.data?.items ?? []).filter(
+    (demand) => demand.id !== demandId && ['pending', 'active'].includes(demand.status),
+  );
 
   useEffect(() => {
     setShowDisposition(false);
     setShowOffer(false);
     setShowCorrection(false);
+    setShowTransfer(false);
     setMoveNote('');
     setTargetStage('');
     setCorrectionReason('');
     setCorrectionError(null);
+    setTargetDemandId('');
+    setTransferReason('');
+    setTransferError(null);
   }, [candidateId, candidateStage]);
 
   const insight = buildPipelineInsight(candidate);
@@ -105,6 +127,37 @@ export function PipelineCandidatePanel({
     await onMove(currentCandidate.candidate_id, targetStage, `阶段修正：${reason}`);
     setTargetStage('');
     setCorrectionReason('');
+  }
+
+  async function transferDemand() {
+    const targetId = Number(targetDemandId);
+    const reason = transferReason.trim();
+    if (!targetDemandId || Number.isNaN(targetId)) {
+      setTransferError('请选择目标招聘需求');
+      return;
+    }
+    if (!reason) {
+      setTransferError('请填写转需原因');
+      return;
+    }
+    setTransferring(true);
+    setTransferError(null);
+    try {
+      await api.transferPipeline({
+        candidate_id: currentCandidate.candidate_id,
+        from_demand_id: demandId,
+        to_demand_id: targetId,
+        reason,
+      });
+      setShowTransfer(false);
+      setTargetDemandId('');
+      setTransferReason('');
+      await onTransferred();
+    } catch (error) {
+      setTransferError(error instanceof Error ? error.message : '转需失败');
+    } finally {
+      setTransferring(false);
+    }
   }
 
   return (
@@ -172,7 +225,7 @@ export function PipelineCandidatePanel({
             )}
             {isInterviewStage(candidate.stage) && (
               <Link
-                to={`/interviews?job=${jobId}&candidate=${candidate.candidate_id}`}
+                to={`/interviews?demand=${demandId}&candidate=${candidate.candidate_id}`}
                 className="inline-flex h-8 items-center justify-center rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
               >
                 填写面试反馈
@@ -211,11 +264,78 @@ export function PipelineCandidatePanel({
             aria-expanded={showCorrection}
           >
             <MoreHorizontal className="h-4 w-4" />
-            更多操作：修正阶段
+            更多操作：转需 / 修正阶段
           </Button>
 
           {showCorrection && (
-            <div className="mt-3 rounded-md border border-warning-200 bg-warning-50 px-3 py-3">
+            <div className="mt-3 space-y-3">
+              {!terminal && (
+                <div className="rounded-md border border-hairline bg-surface-soft px-3 py-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setShowTransfer((value) => !value)}
+                    disabled={busy || transferring}
+                  >
+                    转到其他需求
+                  </Button>
+                  {showTransfer && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs text-muted">
+                        原需求会记录为「已转出」，目标需求从「待筛选」开始，不计入淘汰。
+                      </p>
+                      <label htmlFor="pipeline-target-demand" className="block text-xs font-semibold text-muted">
+                        目标招聘需求
+                      </label>
+                      <select
+                        id="pipeline-target-demand"
+                        value={targetDemandId}
+                        onChange={(event) => {
+                          setTargetDemandId(event.target.value);
+                          setTransferError(null);
+                        }}
+                        className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 text-sm text-ink"
+                      >
+                        <option value="">选择目标需求</option>
+                        {transferTargets.map((demand) => (
+                          <option key={demand.id} value={demand.id}>
+                            {[demand.request_no, demand.job_title, demand.job_department, demand.job_city].filter(Boolean).join(' · ')}
+                          </option>
+                        ))}
+                      </select>
+                      {!demandsAsync.loading && transferTargets.length === 0 && (
+                        <p className="text-xs text-muted">暂无其他可用需求，请先创建或恢复招聘需求。</p>
+                      )}
+                      <label htmlFor="pipeline-transfer-reason" className="block text-xs font-semibold text-muted">
+                        转需原因（必填）
+                      </label>
+                      <textarea
+                        id="pipeline-transfer-reason"
+                        rows={2}
+                        value={transferReason}
+                        onChange={(event) => {
+                          setTransferReason(event.target.value);
+                          setTransferError(null);
+                        }}
+                        placeholder="例如：更符合宁波产品经理需求"
+                        className="w-full resize-none rounded-md border border-hairline bg-canvas px-2 py-2 text-sm text-ink"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!targetDemandId || !transferReason.trim() || transferring}
+                        loading={transferring}
+                        onClick={() => void transferDemand()}
+                      >
+                        确认转需
+                      </Button>
+                      {transferError && <p className="text-xs text-danger-600">{transferError}</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="rounded-md border border-warning-200 bg-warning-50 px-3 py-3">
               <div className="mb-2">
                 <label htmlFor="pipeline-target-stage" className="text-xs font-semibold text-warning-700">
                   修正阶段
@@ -265,6 +385,7 @@ export function PipelineCandidatePanel({
                 保存修正
               </Button>
               {correctionError && <p className="mt-2 text-xs text-danger-600">{correctionError}</p>}
+              </div>
             </div>
           )}
         </section>
@@ -281,7 +402,7 @@ export function PipelineCandidatePanel({
         )}
 
         {candidate.stage === 'offer' && showOffer && (
-          <OfferDrawer candidateId={candidate.candidate_id} jobId={jobId} />
+          <OfferDrawer candidateId={candidate.candidate_id} demandId={demandId} jobId={jobId} />
         )}
       </CardBody>
     </Card>

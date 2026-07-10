@@ -5,6 +5,7 @@ import { Button, Input, Select, Spinner } from '../ui';
 
 interface OfferDrawerProps {
   candidateId: number;
+  demandId?: number;
   jobId: number;
 }
 
@@ -17,10 +18,12 @@ const APPROVAL_STATUS = [
   { value: 'declined', label: '已拒绝' },
 ];
 
-export function OfferDrawer({ candidateId, jobId }: OfferDrawerProps) {
+export function OfferDrawer({ candidateId, demandId, jobId }: OfferDrawerProps) {
   const { data, loading, error, reload } = useAsync(
-    () => api.getOfferRecord(jobId, candidateId),
-    [jobId, candidateId],
+    () => demandId
+      ? api.getDemandOfferRecord(demandId, candidateId)
+      : api.getOfferRecord(jobId, candidateId),
+    [demandId, jobId, candidateId],
   );
   const [salaryRange, setSalaryRange] = useState('');
   const [onboardDate, setOnboardDate] = useState('');
@@ -41,12 +44,17 @@ export function OfferDrawer({ candidateId, jobId }: OfferDrawerProps) {
     setSaving(true);
     setMessage(null);
     try {
-      await api.saveOfferRecord(jobId, candidateId, {
+      const payload = {
         salary_range: salaryRange.trim(),
         onboard_date: onboardDate || null,
         approval_status: approvalStatus,
         note: note.trim(),
-      });
+      };
+      if (demandId) {
+        await api.saveDemandOfferRecord(demandId, candidateId, payload);
+      } else {
+        await api.saveOfferRecord(jobId, candidateId, payload);
+      }
       setMessage('Offer 信息已保存');
       await reload();
     } catch (err) {

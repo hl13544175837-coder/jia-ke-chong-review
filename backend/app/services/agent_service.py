@@ -37,10 +37,10 @@ from ..models import (  # noqa: E402
     Job,
     Interview,
     PipelineStage,
+    RecruitmentDemand,
     User,
 )
 from .match_service import MatchService  # noqa: E402
-from ..api.bi import _funnel, _safe_rate  # 复用 BI 漏斗逻辑（模块级函数）  # noqa: E402
 from ..api.access import (  # noqa: E402
     actor_org_id,
     can_access_candidate,
@@ -50,7 +50,13 @@ from ..api.access import (  # noqa: E402
     visible_candidate_query,
     visible_job_query,
 )
-from ..time_utils import utc_now  # noqa: E402
+from .demand_context_service import (  # noqa: E402
+    DemandContextError,
+    can_read_demand,
+    resolve_demand_context,
+    visible_demand_query,
+)
+from .pipeline_service import normalize_pipeline_stage, pipeline_counts  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -63,17 +69,50 @@ def _scoped_candidate_query(user_id=None, role=None):
     return Candidate.query
 
 
-def _agent_current_stage_counts(job_id=None, user_id=None, role=None):
-    from ..api.pipeline import _latest_stage_subquery, normalize_pipeline_stage
+def _agent_current_stage_counts(demand_id=None, user_id=None, role=None):
+    """统计当前 Demand 流程的最新阶段。
 
-    latest = _latest_stage_subquery(int(job_id) if job_id else None)
+    不再按 job_id 聚合：同一职位模板可以对应多个独立 Demand，
+    而候选人转需后的历史流程也不应重复计入「当前概览」。
+    """
+    org_id = actor_org_id(user_id)
+    if demand_id is not None:
+        try:
+            demand = resolve_demand_context(org_id=org_id, demand_id=demand_id)
+        except DemandContextError:
+            return {}
+        if not can_read_demand(user_id, role, org_id, demand):
+            return {}
+        return pipeline_counts(demand)
+
+    latest = (
+        db.session.query(
+            PipelineStage.candidate_id.label("candidate_id"),
+            PipelineStage.demand_id.label("demand_id"),
+            db.func.max(PipelineStage.id).label("max_id"),
+        )
+        .filter(
+            PipelineStage.org_id == org_id,
+            PipelineStage.demand_id.isnot(None),
+        )
+        .group_by(PipelineStage.candidate_id, PipelineStage.demand_id)
+        .subquery()
+    )
     rows = (
         db.session.query(PipelineStage.stage, db.func.count(PipelineStage.id))
         .join(latest, PipelineStage.id == latest.c.max_id)
         .join(Candidate, Candidate.id == PipelineStage.candidate_id)
+        .filter(
+            Candidate.org_id == org_id,
+            Candidate.deleted_at.is_(None),
+            Candidate.current_demand_id == PipelineStage.demand_id,
+            PipelineStage.demand_id.in_(
+                visible_demand_query(user_id, role, org_id).with_entities(
+                    RecruitmentDemand.id
+                )
+            ),
+        )
     )
-    if job_id:
-        rows = rows.filter(PipelineStage.job_id == int(job_id))
     rows = rows.filter(Candidate.id.in_(
         _scoped_candidate_query(user_id, role).with_entities(Candidate.id)
     ))
@@ -153,65 +192,45 @@ def _tool_match_candidates_for_job(job_id: int, **_) -> Dict[str, Any]:
     return {"job_id": int(job_id), "job_title": job.title, "ranking": ranked}
 
 
-def _tool_get_pipeline(job_id: int, **_) -> Dict[str, Any]:
-    """某岗位招聘流程看板：按 stage 分组计数。"""
-    job = db.session.get(Job, int(job_id))
-    if not job:
-        return {"error": f"岗位 {job_id} 不存在"}
-    if not can_read_job(_.get("_user_id"), _.get("_role"), job):
-        return {"error": "Forbidden"}
-    by_stage = _agent_current_stage_counts(
-        job_id=job_id,
-        user_id=_.get("_user_id"),
-        role=_.get("_role"),
-    )
-    return {"job_id": int(job_id), "pipeline": by_stage}
-
-
-def _tool_get_bi_overview(days: int = 30, **_) -> Dict[str, Any]:
-    """团队 BI 报表：招聘漏斗（复用 _funnel）+ 专员效能。"""
+def _tool_get_pipeline(demand_id: int = None, job_id: int = None, **_) -> Dict[str, Any]:
+    """某一次招聘需求的流程概览；job_id 仅作唯一 Demand 兼容参数。"""
+    user_id = _.get("_user_id")
     role = _.get("_role")
-    if role not in ("manager", "admin"):
-        return {
-            "error": "Forbidden",
-            "message": "团队 BI 仅经理和管理员可查看；招聘专员请查看工作台里的个人指标或自己的候选人流程。",
-        }
+    org_id = actor_org_id(user_id)
     try:
-        days = int(days) if days else 30
-    except (TypeError, ValueError):
-        days = 30
-    from datetime import timedelta
-    from sqlalchemy import func
-    from ..models import User, Event
-
-    funnel = _funnel(days=days, org_id=actor_org_id(_.get("_user_id")))
-    cutoff = utc_now() - timedelta(days=days)
-    # 专员效能（与 bi.overview() 中相同逻辑）
-    staff_rows = (
-        db.session.query(
-            User.id, User.name,
-            func.count(func.distinct(
-                db.case((Event.action == "resume.uploaded", Event.entity_id))
-            )).label("resumes"),
-            func.count(func.distinct(
-                db.case((Event.action == "interview.started", Event.entity_id))
-            )).label("screens"),
-            func.count(func.distinct(
-                db.case((Event.action == "candidate.onboarded", Event.entity_id))
-            )).label("onboarded"),
+        demand = resolve_demand_context(
+            org_id=org_id,
+            demand_id=demand_id,
+            job_id=job_id,
         )
-        .outerjoin(Event, (Event.actor_id == User.id) & (Event.ts >= cutoff))
-        .filter(User.role == "recruiter", User.is_active.is_(True))
-        .group_by(User.id, User.name)
-        .all()
-    )
-    staff = [{
-        "hr_id": hr_id, "name": name,
-        "resumes": resumes or 0, "screens": screens or 0,
-        "onboarded": onboarded or 0,
-        "conversion_rate": _safe_rate(onboarded or 0, resumes or 0),
-    } for hr_id, name, resumes, screens, onboarded in staff_rows]
-    return {"days": days, "funnel": funnel, "staff": staff}
+    except DemandContextError as error:
+        return error.as_payload()
+    if not can_read_demand(user_id, role, org_id, demand):
+        return {"error": "Forbidden"}
+    return {
+        "demand_id": demand.id,
+        "job_id": demand.job_id,
+        "pipeline": pipeline_counts(demand),
+    }
+
+
+def _tool_get_bi_overview(demand_id: int = None, **_) -> Dict[str, Any]:
+    """单个招聘需求的进度、卡点和当前责任协同视图。"""
+    from .bi_service import build_demand_operational_metrics
+
+    user_id = _.get("_user_id")
+    role = _.get("_role")
+    org_id = actor_org_id(user_id)
+    try:
+        demand = resolve_demand_context(
+            org_id=org_id,
+            demand_id=demand_id,
+        )
+    except DemandContextError as error:
+        return error.as_payload()
+    if not can_read_demand(user_id, role, org_id, demand):
+        return {"error": "Forbidden"}
+    return build_demand_operational_metrics(demand)
 
 
 def _tool_count_summary(**_) -> Dict[str, Any]:
@@ -220,6 +239,11 @@ def _tool_count_summary(**_) -> Dict[str, Any]:
     return {
         "candidate_count": scoped_candidates.count(),
         "job_count": visible_job_query(_.get("_user_id"), _.get("_role")).count(),
+        "demand_count": visible_demand_query(
+            _.get("_user_id"),
+            _.get("_role"),
+            actor_org_id(_.get("_user_id")),
+        ).count(),
         "interview_count": Interview.query.filter(Interview.org_id == actor_org_id(_.get("_user_id"))).count(),
         "stage_counts": _agent_current_stage_counts(
             user_id=_.get("_user_id"),
@@ -363,14 +387,17 @@ _TOOL_DEFS: List[Dict[str, Any]] = [
     },
     {
         "name": "get_pipeline",
-        "description": "查询某岗位招聘流程看板，按阶段（pending/ai_screen/interview/offer/onboarded/rejected）统计人数。",
-        "params": {"job_id": "int，必填，岗位ID"},
+        "description": "查询某一次招聘需求的流程概览，按阶段统计人数；不会混合同职位的其他需求。",
+        "params": {
+            "demand_id": "int，优先，招聘需求ID",
+            "job_id": "int，兼容参数，仅该职位只有一个需求时可用",
+        },
         "execute": _tool_get_pipeline,
     },
     {
         "name": "get_bi_overview",
-        "description": "团队BI报表（仅经理/管理员）：招聘漏斗各阶段人数+转化率，以及各招聘专员效能。",
-        "params": {"days": "int，可选，统计天数，默认30"},
+        "description": "查询某一招聘需求的进度、卡点、待补面试反馈、Offer、HC 和当前协同责任；不用于绩效。",
+        "params": {"demand_id": "int，必填，招聘需求ID"},
         "execute": _tool_get_bi_overview,
     },
     {
@@ -398,95 +425,8 @@ TOOLS: List[Dict[str, Any]] = [
 
 
 # =============================================================================
-# 2b) 写操作工具：AI 只「提议」，经用户确认后由 /api/agent/execute 在请求上下文内执行
+# 2b) 匹配工具：AI 只能提议运行匹配，经用户确认后执行
 # =============================================================================
-def _write_create_job(title: str = "", jd_text: str = "", actor_id: int = None, **_) -> Dict[str, Any]:
-    """创建岗位：LLM 结构化 JD 后落库。"""
-    from ..api.jobs import _extract_jd_structured
-    if not title or not jd_text:
-        return {"error": "缺少岗位名称或 JD 描述"}
-    llm = LLMClient()
-    structured = _extract_jd_structured(llm, jd_text)
-    job = Job(
-        org_id=actor_org_id(actor_id),
-        title=title,
-        jd_text=jd_text,
-        jd_structured=structured,
-        owner_hr_id=actor_id,
-    )
-    db.session.add(job)
-    db.session.flush()  # 先 flush 确保 job.id 可用，但不 commit
-    from ..middleware.events import record_event
-    record_event("job.created", entity_id=job.id, entity_type="job")
-    db.session.commit()  # 原子提交：job + event 一起成功或一起回滚
-    return {"job_id": job.id, "title": job.title, "structured": structured}
-
-
-def _write_move_pipeline(candidate_id: int = None, job_id: int = None,
-                         stage: str = "", actor_id: int = None,
-                         actor_role: str = None, **_) -> Dict[str, Any]:
-    """推进候选人到指定招聘流程阶段。"""
-    from ..models import VALID_STAGES
-    from ..middleware.events import record_event
-    from ..api.pipeline import PIPELINE_STAGE_ORDER, normalize_pipeline_stage
-    if not candidate_id or not job_id or not stage:
-        return {"error": "缺少 candidate_id / job_id / stage"}
-    if stage not in VALID_STAGES:
-        return {"error": f"无效阶段，可选: {PIPELINE_STAGE_ORDER}"}
-    stage = normalize_pipeline_stage(stage)
-    if not db.session.get(Candidate, int(candidate_id)):
-        return {"error": f"候选人 {candidate_id} 不存在"}
-    job = db.session.get(Job, int(job_id))
-    if not job:
-        return {"error": f"岗位 {job_id} 不存在"}
-    if not can_access_candidate(actor_id, actor_role, int(candidate_id), int(job_id)):
-        return {"error": "Forbidden"}
-    if not can_manage_job(actor_id, actor_role, job):
-        return {"error": "Forbidden"}
-    if not job_is_active(job):
-        return {"error": "岗位已关闭，请先恢复在招后再推进流程"}
-    ps = PipelineStage(candidate_id=int(candidate_id), job_id=int(job_id),
-                       org_id=actor_org_id(actor_id),
-                       stage=stage, updated_by=actor_id)
-    db.session.add(ps)
-    db.session.commit()
-    record_event("pipeline.moved", entity_id=int(candidate_id), entity_type="candidate",
-                 payload={"job_id": int(job_id), "to": stage})
-    if stage == "onboarded":
-        record_event("candidate.onboarded", entity_id=int(candidate_id),
-                     entity_type="candidate", payload={"job_id": int(job_id)})
-    return {"candidate_id": int(candidate_id), "job_id": int(job_id), "stage": stage, "status": "ok"}
-
-
-def _write_start_interview(candidate_id: int = None, job_id: int = None,
-                           count: int = 5, actor_id: int = None,
-                           actor_role: str = None, **_) -> Dict[str, Any]:
-    """为候选人发起 AI 面试，生成面试题。"""
-    from ..services.interview_service import PreScreenService
-    from ..middleware.events import record_event
-    if not candidate_id or not job_id:
-        return {"error": "缺少 candidate_id / job_id"}
-    job = db.session.get(Job, int(job_id))
-    if not job:
-        return {"error": f"岗位 {job_id} 不存在"}
-    if not db.session.get(Candidate, int(candidate_id)):
-        return {"error": f"候选人 {candidate_id} 不存在"}
-    if not can_access_candidate(actor_id, actor_role, int(candidate_id), int(job_id)):
-        return {"error": "Forbidden"}
-    if not can_manage_job(actor_id, actor_role, job):
-        return {"error": "Forbidden"}
-    if not job_is_active(job):
-        return {"error": "岗位已关闭，请先恢复在招后再发起 AI 面试"}
-    try:
-        count = int(count) if count else 5
-    except (TypeError, ValueError):
-        count = 5
-    questions = PreScreenService().generate_questions(job.jd_text, count=count)
-    record_event("interview.started", entity_id=int(candidate_id), entity_type="candidate",
-                 payload={"job_id": int(job_id), "actor_id": actor_id})
-    return {"candidate_id": int(candidate_id), "job_id": int(job_id), "questions": questions}
-
-
 def _write_run_match(job_id: int = None, actor_id: int = None,
                      actor_role: str = None, **_) -> Dict[str, Any]:
     """为岗位运行候选人匹配并持久化结果。"""
@@ -510,32 +450,9 @@ def _write_run_match(job_id: int = None, actor_id: int = None,
     return {"job_id": int(job_id), "job_title": job.title, "ranking": ranked}
 
 
-# 写工具注册表：name / description / params / rbac(允许角色) / execute / summary(确认文案模板)
+# 一期唯一允许的可确认写操作是「运行匹配」。
+# 候选人流程、淘汰、Offer、负责人和需求状态均不对 AI 暴露工具。
 _WRITE_TOOL_DEFS: List[Dict[str, Any]] = [
-    {
-        "name": "create_job",
-        "description": "创建一个新岗位。根据用户的自然语言描述，AI 会自动结构化 JD 并提取技能要求。",
-        "params": {"title": "str，必填，岗位名称", "jd_text": "str，必填，岗位描述/JD 原文"},
-        "rbac": ("recruiter", "manager", "admin"),
-        "execute": _write_create_job,
-        "summary": lambda a: f"创建岗位「{a.get('title', '?')}」",
-    },
-    {
-        "name": "move_pipeline",
-        "description": "把候选人推进到指定招聘流程阶段（pending/ai_screen/interview/offer/onboarded/rejected）。",
-        "params": {"candidate_id": "int，必填", "job_id": "int，必填", "stage": "str，必填，目标阶段"},
-        "rbac": ("recruiter", "manager", "admin"),
-        "execute": _write_move_pipeline,
-        "summary": lambda a: f"将候选人 #{a.get('candidate_id', '?')} 在岗位 #{a.get('job_id', '?')} 推进到「{a.get('stage', '?')}」阶段",
-    },
-    {
-        "name": "start_interview",
-        "description": "为候选人针对某岗位发起 AI 面试，生成面试题目。",
-        "params": {"candidate_id": "int，必填", "job_id": "int，必填", "count": "int，可选，题目数，默认5"},
-        "rbac": ("recruiter", "manager", "admin"),
-        "execute": _write_start_interview,
-        "summary": lambda a: f"为候选人 #{a.get('candidate_id', '?')} 发起岗位 #{a.get('job_id', '?')} 的 AI 面试",
-    },
     {
         "name": "run_match",
         "description": "为指定岗位运行候选人智能匹配，计算排名并持久化匹配结果。",
@@ -577,7 +494,7 @@ def get_agent_architecture_dashboard() -> Dict[str, Any]:
             },
             {
                 "name": "智能体编排与工具",
-                "description": "用 ReAct 流程决定调用查询工具、提议写操作，工具内部通过 SQLAlchemy 访问招聘数据库。",
+                "description": "用 ReAct 流程决定调用查询工具、提议运行匹配，工具内部通过 SQLAlchemy 访问招聘数据库。",
                 "files": ["backend/app/services/agent_service.py"],
             },
             {
@@ -597,9 +514,13 @@ def get_agent_architecture_dashboard() -> Dict[str, Any]:
             ),
             "write_requires_confirmation": True,
             "write_scope_note": (
-                "AI 只能提议写操作；用户点击确认后，/api/agent/execute 再按写工具 RBAC 执行。"
+                "AI 仅可提议运行匹配；用户点击确认后，"
+                "/api/agent/execute 再按匹配工具 RBAC 执行。"
             ),
             "cannot_do": [
+                "不能代替 HR 推进或淘汰候选人",
+                "不能自动发放 Offer、转派负责人或关闭招聘需求",
+                "不能创建招聘需求或安排面试任务",
                 "不能修改代码或前端页面",
                 "不能修改数据库表结构",
                 "不能管理用户账号",
@@ -609,8 +530,8 @@ def get_agent_architecture_dashboard() -> Dict[str, Any]:
         },
         "safeguards": [
             "AI 助手入口需要登录 token，并限制为招聘专员、经理、管理员",
-            "写操作先生成确认卡片，用户确认后才执行",
-            "写工具有角色白名单",
+            "运行匹配先生成确认卡片，用户确认后才执行",
+            "匹配工具有角色白名单",
             "ReAct 最多迭代 5 步，避免无限循环调用工具",
             "所有工具固定注册，AI 不能临时创造新工具",
         ],
@@ -658,7 +579,10 @@ def _record_agent_write_event(user_id: int, tool_name: str, args: Dict[str, Any]
 
     target_ids = {
         key: args.get(key)
-        for key in ("candidate_id", "job_id", "interview_id", "feedback_id", "user_id", "owner_id", "org_id")
+        for key in (
+            "candidate_id", "demand_id", "job_id", "interview_id", "feedback_id",
+            "user_id", "owner_id", "org_id",
+        )
         if isinstance(args, dict) and args.get(key) is not None
     }
     error = result.get("error")
@@ -666,7 +590,12 @@ def _record_agent_write_event(user_id: int, tool_name: str, args: Dict[str, Any]
     record_event(
         action="agent.write",
         entity_type="agent_tool",
-        entity_id=target_ids.get("candidate_id") or target_ids.get("job_id"),
+        entity_id=(
+            target_ids.get("candidate_id")
+            or target_ids.get("demand_id")
+            or target_ids.get("job_id")
+        ),
+        demand_id=target_ids.get("demand_id"),
         payload={
             "tool": tool_name,
             "target_ids": target_ids,
@@ -726,20 +655,29 @@ def _build_decision_system_prompt(tool_results: List[Dict[str, Any]]) -> str:
     else:
         results_text = "（暂无，尚未调用任何工具）"
     return (
-        "你是「智聘·招聘管理系统」的 AI 助手，既能查询数据，也能执行招聘操作，"
-        "帮助 HR 和管理者用自然语言完成工作。\n\n"
+        "你是「智聘·招聘管理系统」的 AI 助手。"
+        "你的价值是减少阅读、整理和比较成本，不是替人做招聘决策。\n\n"
+        "业务边界：\n"
+        "- Job 只是可复用的职位 / JD 模板；Demand 才是部门、城市、HC、负责人、流程、面试、Offer、审计和 BI 的业务归属。\n"
+        "- 除职位标准匹配外，先解析 demand_id，再由 Demand 得到 job_id；不得按 job_id 混合多个 Demand，也不得猜测用户指的是哪个 Demand。\n"
+        "- 你只负责解析、匹配、总结和建议；匹配结果是辅助信息，不是录用决定。\n"
+        "- 你不得创建招聘需求，不得推进或淘汰候选人，不得安排面试任务。\n"
+        "- 你不得发放 Offer、转派负责人或更改招聘需求状态。\n"
+        "- 业务事实与 AI 推断必须分开陈述；信息不足时明确说不确定。\n"
+        "- 只能在当前用户的 RBAC 和组织数据范围内工作，不得猜测或绕过权限。\n\n"
         "你采用 ReAct 模式：每一步都必须用 JSON 格式回复，决定下一步动作。\n\n"
         f"【查询工具】（只读，可直接调用）：\n{tools_desc}\n\n"
-        f"【写操作工具】（会修改系统数据，必须经用户确认后才执行，你只能「提议」）：\n{write_desc}\n\n"
+        f"【匹配工具】（会保存匹配结果，必须经用户确认）：\n{write_desc}\n\n"
         f"已获得的工具结果：\n{results_text}\n\n"
         "决策规则：\n"
         "1. 若需要查询数据，输出 action=\"tool\"，tool 填查询工具名，args 填参数。\n"
-        "2. 若用户意图是执行写操作（创建岗位、推进流程、发起面试、运行匹配），"
-        "先用查询工具确认必要的 ID 等信息，然后输出 action=\"propose_write\"，"
-        "在 tool 字段填写操作工具名，args 字段填完整参数对象。系统会向用户展示确认卡片，"
-        "用户确认后才真正执行——你不要假装已经执行成功。\n"
-        "3. 若信息足够直接回答（或写操作已提议），输出 action=\"final\"，answer 给简洁中文回答。\n"
-        "4. 不要重复调用已得到结果的同名同参工具。\n\n"
+        "2. 仅可提议运行匹配：先用查询工具确认岗位 ID，再输出 "
+        "action=\"propose_write\"、tool=\"run_match\"和完整 args。系统展示确认卡片，"
+        "用户确认后才真正执行；你不得假装已执行。\n"
+        "3. 对于匹配以外的业务写操作，说明必须由有权限的人在业务页面完成，"
+        "不得输出 propose_write。\n"
+        "4. 若信息足够直接回答（或匹配已提议），输出 action=\"final\"，answer 给简洁中文回答。\n"
+        "5. 不要重复调用已得到结果的同名同参工具。\n\n"
         "你必须只输出一个 JSON 对象（不要带 markdown 代码块），格式之一：\n"
         '{"thought": "思考", "action": "tool", "tool": "查询工具名", "args": {...}}\n'
         '{"thought": "思考", "action": "propose_write", "tool": "写工具名", "args": {...}}\n'

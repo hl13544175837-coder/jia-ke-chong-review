@@ -13,6 +13,9 @@ function readSource(path) {
 const nav = readSource('lib/nav.ts');
 const candidatesNav = readSource('features/candidates/nav.ts');
 const demandsNav = readSource('features/demands/nav.ts');
+const recruitmentTabs = readSource('components/recruitment/RecruitmentManagementTabs.tsx');
+const demandsFeature = readSource('features/demands/index.ts');
+const app = readSource('App.tsx');
 const shell = readSource('components/AppShell.tsx');
 const dashboard = readSource('pages/DashboardPage.tsx');
 const interviews = readSource('pages/InterviewListPage.tsx');
@@ -27,7 +30,7 @@ assert.ok(
   /label:\s*'简历库'/.test(candidatesNav) &&
     /label:\s*'招聘管理'/.test(demandsNav) &&
     nav.indexOf('...featureNavItems') < nav.indexOf("label: '候选人流程'") &&
-    nav.indexOf("label: '候选人流程'") < nav.indexOf("label: '数据看板'"),
+    nav.indexOf("label: '候选人流程'") < nav.indexOf("label: '进度看板'"),
   'Sidebar should follow the HR workflow without adding interview as a second workbench',
 );
 
@@ -50,8 +53,29 @@ assert.doesNotMatch(
 );
 
 assert.ok(
-  nav.indexOf("label: '数据看板'") < nav.indexOf("label: 'AI 助手'"),
+  nav.indexOf("label: '进度看板'") < nav.indexOf("label: 'AI 助手'"),
   'AI assistant should support the workflow instead of interrupting the main HR path',
+);
+
+assert.match(
+  recruitmentTabs,
+  /to:\s*'\/demands'[\s\S]*label:\s*'用人需求'/,
+  'Recruitment workspace should lead with recruitment demands',
+);
+assert.doesNotMatch(
+  recruitmentTabs,
+  /to:\s*'\/(?:jobs|talent-map)'/,
+  'Job portraits and talent maps should not occupy standalone recruitment tabs in the pilot',
+);
+assert.doesNotMatch(
+  demandsFeature,
+  /topLevelPaths:\s*\[[\s\S]*'\/(?:jobs|talent-map)'[\s\S]*\]/,
+  'Only recruitment demands should be treated as a top-level recruitment workspace',
+);
+assert.match(
+  app,
+  /path="\/jobs"/,
+  'Job portrait maintenance should remain available to contextual demand flows',
 );
 
 assert.match(
@@ -89,6 +113,16 @@ assert.match(
   dashboard,
   /WORKFLOW_ACTIONS/,
   'Dashboard should use explicit role workflow actions',
+);
+assert.match(
+  dashboard,
+  /to:\s*'\/demands'[\s\S]*label:\s*'管理招聘需求'/,
+  'Recruiter dashboard should point to demand work instead of presenting job portraits as a main action',
+);
+assert.doesNotMatch(
+  dashboard,
+  /to:\s*'\/jobs'[\s\S]*label:\s*'匹配候选人'/,
+  'Dashboard should not expose job portraits as a standalone primary entry',
 );
 assert.doesNotMatch(
   dashboard,

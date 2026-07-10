@@ -4,6 +4,15 @@
 > 用途：给产品、研发、部署和 AI/Codex 判断“先读哪份、信哪份”。
 > 状态：当前文档入口。当前开发只看下方真源文档和真实代码，不再追旧计划。
 
+> **当前状态（2026-07-10 发布切换）**：`demand_id` P0 已完成本地实现并获项目负责人授权替换 SIT 测试验收版；覆盖前的 CFPD `test/api` 已保存到 `backup/test-before-local-p0-20260710-1830` 和 `backup/api-before-local-p0-20260710-1830`。实际是否已推送、构建和部署，仍分别以 CFPD refs、Libra CommitID 和测试站资产为准。
+
+| 状态面 | 真源 | 当前可证明什么 |
+|---|---|---|
+| 原始 checkout | `/Users/yenns/Desktop/智聘` 的实际 `git status` / HEAD | 用户原工作区有哪些本地改动；不等于实施分支或发布源 |
+| 隔离实施分支 | `codex/demand-scoped-p0` 工作树的 HEAD、diff 和测试 | P0 开发进度；未推送/未发布时只是本地实现证据 |
+| CFPD `test` | `git ls-remote git@git.ymdd.tech:cfpd/zhipin-mvp.git refs/heads/test` 的 SHA | Libra 应当读到的代码源；不证明构建或部署完成 |
+| 已部署 SIT | Libra CommitID/镜像摘要、后端受控版本/schema revision、测试站 HTML 与前端 asset hash、冒烟证据 | 环境真正运行的版本；不能只凭 pipeline 绿色对勾判定 |
+
 ---
 
 ## 先说结论
@@ -34,12 +43,14 @@
 | 3 | [RUNNING.md](../RUNNING.md) | 本地启动、试用账号、演示数据、LLM Key、试用说明 | 本地运行、内部试用说明 |
 | 4 | [01 PRD](./01_PRD.md) | 产品范围、角色权限、功能模块、验收场景 | 判断产品需求和一期范围 |
 | 5 | [SDD-智聘招聘系统-v1.0](./SDD-智聘招聘系统-v1.0.md) | 当前实现真相、接口、数据模型、模块定位、技术债 | 判断当前代码实际怎么跑、改哪里 |
-| 6 | [03 BI 看板设计](./03_BI看板设计.md) | BI 指标口径、责任归属、分子分母、权限边界 | 改 BI、看板、绩效归属前必读 |
+| 6 | [03 BI 看板设计](./03_BI看板设计.md) | BI 指标口径、当前责任协同、分子分母、权限边界 | 改 BI、看板或责任协同口径前必读 |
 | 7 | [../DEPLOYMENT.md](../DEPLOYMENT.md) | 生产/服务器部署、环境变量、备份恢复、单端口部署 | 部署、上线、环境变量变更 |
 | 8 | [08 Libra / SIT 发布路线](./08_Libra_SIT发布路线.md) | CFPD 仓库、Libra pipeline、SIT 自动部署、测试站资产验收路线 | 发布到 test/SIT、排查 test-zhipin 未变化 |
 | 9 | [06 试点上线检查清单](./06_试点上线检查清单.md) | 真实用户试点前的安全、数据、账号、备份、产品验收门槛 | 判断能否小范围试点 |
-| 10 | [07 上线部署前关键清单](./07_上线部署前关键清单_给AI执行.md) | 部署前 AI 可执行硬门槛（含原 TOP10 与 8.1/8.2 扩展项） | 服务器部署执行前逐项核对 |
-| 11 | [adr/0001-modular-monolith-by-sidebar-feature](./adr/0001-modular-monolith-by-sidebar-feature.md) | 模块化单体架构决策，不拆微服务/微前端 | 涉及架构边界、模块拆分时读 |
+| 10 | [10 demand_id 迁移与回滚手册](./10_demand_id迁移与回滚手册.md) | Expand / Backfill / Cutover、歧义数据、MySQL 恢复与不可逆回滚界限 | 实施、发布或回滚 demand-scoped P0 前必读 |
+| 11 | [07 上线部署前关键清单](./07_上线部署前关键清单_给AI执行.md) | 部署前 AI 可执行硬门槛（含 schema/数据迁移边界） | 服务器部署执行前逐项核对 |
+| 12 | [ADR-0002 demand-scoped recruiting flow](./adr/0002-demand-scoped-recruiting-flow.md) | Job/Demand 分层、demand-scoped 事实、兼容与回滚决策 | 修改需求、流程、面试、Offer、BI 或迁移时必读 |
+| 13 | [adr/0001-modular-monolith-by-sidebar-feature](./adr/0001-modular-monolith-by-sidebar-feature.md) | 模块化单体架构决策，不拆微服务/微前端 | 涉及架构边界、模块拆分时读 |
 
 ---
 
@@ -55,6 +66,12 @@
 
 当前 MVP 已实现招聘闭环、核心权限、核心 `org_id` 组织隔离、试点审计、需求/岗位/候选人/流程/面试/BI/AI 助手等能力。
 
+必须区分已提交基线与已批准目标：
+
+- 基线代码的流程、面试、Offer 和 BI 仍主要用 `job_id` 定位，AI 预筛仍可能改变流程；这是当前实现真相，不是新方向。
+- 已批准的 P0 目标是：`Job` 可被多个 `RecruitmentDemand` 复用；业务事实归 `demand_id`；匹配仍归 `job_id`；AI 不自动改变流程；BI 只做进度、卡点和责任协同。
+- 旧“一个 Job 同时只能有一个未结束 Demand”假设已被 [ADR-0002](./adr/0002-demand-scoped-recruiting-flow.md) 和批准设计取代。历史文件可保留作决策轨迹，但不得再指导新实现或发布验收。
+
 以下是后续规划或生产增强，不是当前必须补齐的开发前提：
 
 - Redis/Celery 异步队列
@@ -64,7 +81,7 @@
 - 企业级不可变审计、导出审批、水印、字段级权限
 - OA 自动承接需求、外部日历、webhook、外部通知真实发送
 
-BOSS 直聘集成目前按实验辅助能力理解：代码中已有 `/api/boss/*` 和 `/boss` 页面，但不属于 HR 试点主流程必测项；如要开放，必须额外确认 Cookie 加密密钥、boss CLI 来源、外部账号使用边界和导入审计。
+BOSS 直聘集成目前按实验辅助能力理解：代码中可保留 `/api/boss/*` 和 `/boss` 页面，但 P0 试点主导航必须隐藏且写入路径 fail closed；如要单独开放，必须额外确认 Cookie 加密密钥、boss CLI 来源、外部账号使用边界和导入审计。
 
 ### 环境快照口径
 
@@ -83,7 +100,7 @@ BOSS 直聘集成目前按实验辅助能力理解：代码中已有 `/api/boss/
 | 技术角色 | 标准中文名 | 可接受旧称/业务别名 | 说明 |
 |---|---|---|---|
 | `admin` | 管理员 | 系统管理员 | 当前组织内账号、审计、AI 边界和管理能力 |
-| `manager` | 招聘经理/负责人 | 招聘主管、HRD、主管、负责人、用人部门负责人（看 BI/协同时） | 当前组织内团队视角；不要拆成第二套 manager/lead 权限 |
+| `manager` | 招聘经理/负责人 | 招聘主管、HRD、主管、负责人 | 当前组织内团队视角；普通用人部门负责人若不应看全组织数据，不能直接授予此角色 |
 | `recruiter` | 招聘专员 | HR 专员、HR | 负责自己的候选人、岗位、需求流程和个人数据 |
 | `interviewer` | 面试官 | 用人部门面试官 | 只处理分配给自己的面试和反馈 |
 
@@ -97,3 +114,4 @@ BOSS 直聘集成目前按实验辅助能力理解：代码中已有 `/api/boss/
 - 涉及产品流程/权限：加读 `01_PRD.md` 和 `SDD-智聘招聘系统-v1.0.md`。
 - 涉及 BI：加读 `03_BI看板设计.md`。
 - 涉及运行/端口/环境变量/部署：加读 `RUNNING.md`、`DEPLOYMENT.md`、`06`、`07`、`08`。
+- 涉及 Demand 并行、流程归属、数据回填或 schema 收紧：加读 ADR-0002 和 `10_demand_id迁移与回滚手册.md`。

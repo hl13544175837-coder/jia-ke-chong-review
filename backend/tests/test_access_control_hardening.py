@@ -5,7 +5,7 @@ def _auth(token):
 def _seed_owned_job_candidate(app, owner_id, title="后端", name="候选人"):
     with app.app_context():
         from app import db
-        from app.models import Candidate, CandidateTag, Job
+        from app.models import Candidate, CandidateTag, Job, RecruitmentDemand
 
         job = Job(
             title=title,
@@ -20,6 +20,12 @@ def _seed_owned_job_candidate(app, owner_id, title="后端", name="候选人"):
         )
         db.session.add_all([job, candidate])
         db.session.flush()
+        db.session.add(RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no=f"REQ-ACCESS-{job.id}",
+            status="active",
+        ))
         db.session.add(CandidateTag(candidate_id=candidate.id, tag="Python", score=5))
         db.session.commit()
         return job.id, candidate.id
@@ -135,18 +141,48 @@ def test_agent_read_tools_are_scoped_to_current_recruiter(app, make_user):
     assert names == {"自有候选人"}
 
 
-def test_agent_team_bi_tool_rejects_recruiter_scope(app, make_user):
+def test_agent_operational_bi_tool_enforces_demand_scope(app, make_user):
     recruiter_id, _ = make_user("agent-bi-recruiter@x.com", role="recruiter", name="招聘专员A")
-    make_user("agent-bi-other@x.com", role="recruiter", name="招聘专员B")
-    _seed_owned_job_candidate(app, recruiter_id, name="只属于专员A的候选人")
+    other_id, _ = make_user("agent-bi-other@x.com", role="recruiter", name="招聘专员B")
 
     with app.app_context():
+        from app import db
+        from app.models import Job, RecruitmentDemand
         from app.services.agent_service import _tool_get_bi_overview
 
-        result = _tool_get_bi_overview(days=30, _user_id=recruiter_id, _role="recruiter")
+        job = Job(title="招聘 BI", jd_text="BI", owner_hr_id=recruiter_id)
+        db.session.add(job)
+        db.session.flush()
+        own = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=recruiter_id,
+            request_no="REQ-BI-OWN",
+            status="active",
+        )
+        other = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=other_id,
+            request_no="REQ-BI-OTHER",
+            status="active",
+        )
+        db.session.add_all([own, other])
+        db.session.commit()
 
-    assert result["error"] == "Forbidden"
-    assert "团队 BI" in result["message"]
+        own_result = _tool_get_bi_overview(
+            demand_id=own.id,
+            _user_id=recruiter_id,
+            _role="recruiter",
+        )
+        forbidden = _tool_get_bi_overview(
+            demand_id=other.id,
+            _user_id=recruiter_id,
+            _role="recruiter",
+        )
+
+    assert own_result["scope"]["demand_id"] == own.id
+    assert own_result["purpose"] == "operational_collaboration"
+    assert "不用于绩效" in own_result["purpose_label"]
+    assert forbidden["error"] == "Forbidden"
 
 
 def test_agent_write_tool_rejects_cross_recruiter_pipeline_move(app, make_user):

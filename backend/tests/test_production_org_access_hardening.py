@@ -8,7 +8,7 @@ def _auth(token):
 def _seed_job_candidate(app, owner_id, *, org_id=1, job_owner_id=None, job_status="active", raw_file_path="/tmp/resume.pdf"):
     with app.app_context():
         from app import db
-        from app.models import Candidate, Job
+        from app.models import Candidate, Job, RecruitmentDemand
 
         job = Job(
             title=f"岗位-{owner_id}-{org_id}",
@@ -27,6 +27,14 @@ def _seed_job_candidate(app, owner_id, *, org_id=1, job_owner_id=None, job_statu
             resume_json={"extracted_info": {"name": "候选人"}},
         )
         db.session.add_all([job, candidate])
+        db.session.flush()
+        db.session.add(RecruitmentDemand(
+            org_id=org_id,
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no=f"REQ-PROD-{org_id}-{job.id}",
+            status="active" if job_status == "active" else "closed",
+        ))
         db.session.commit()
         return job.id, candidate.id
 
@@ -75,14 +83,17 @@ def test_closed_job_rejects_pipeline_offer_assignment_and_upload(client, make_us
     owner_id, owner_token = make_user("closed-owner@x.com", role="recruiter")
     interviewer_id, _ = make_user("closed-interviewer@x.com", role="interviewer")
     closed_job_id, candidate_id = _seed_job_candidate(app, owner_id, job_status="closed")
+    with app.app_context():
+        from app.models import RecruitmentDemand
+        closed_demand_id = RecruitmentDemand.query.filter_by(job_id=closed_job_id).one().id
 
     move = client.post(
         "/api/pipeline/move",
         headers=_auth(owner_token),
-        json={"candidate_id": candidate_id, "job_id": closed_job_id, "stage": "offer"},
+        json={"candidate_id": candidate_id, "demand_id": closed_demand_id, "stage": "offer"},
     )
     offer = client.put(
-        f"/api/pipeline/{closed_job_id}/offer/{candidate_id}",
+        f"/api/pipeline/demands/{closed_demand_id}/offer/{candidate_id}",
         headers=_auth(owner_token),
         json={"salary_range": "30-40k", "approval_status": "approved"},
     )
@@ -91,7 +102,7 @@ def test_closed_job_rejects_pipeline_offer_assignment_and_upload(client, make_us
         headers=_auth(owner_token),
         json={
             "candidate_id": candidate_id,
-            "job_id": closed_job_id,
+            "demand_id": closed_demand_id,
             "round": "round_1",
             "interviewer_id": interviewer_id,
         },
@@ -101,15 +112,15 @@ def test_closed_job_rejects_pipeline_offer_assignment_and_upload(client, make_us
         headers=_auth(owner_token),
         data={
             "files": (io.BytesIO(b"%PDF-1.4\n"), "resume.pdf"),
-            "target_job_id": str(closed_job_id),
+            "target_demand_id": str(closed_demand_id),
         },
         content_type="multipart/form-data",
     )
 
-    assert move.status_code == 400
-    assert offer.status_code == 400
-    assert assignment.status_code == 400
-    assert upload.status_code == 400
+    assert move.status_code == 409
+    assert offer.status_code == 409
+    assert assignment.status_code == 409
+    assert upload.status_code == 409
 
 
 def test_interviewer_cannot_start_or_submit_ai_interview_when_assigned(
@@ -245,3 +256,75 @@ def test_delete_candidate_soft_deletes_anonymizes_and_removes_raw_file(client, m
 
     listed = client.get("/api/candidates", headers=_auth(owner_token))
     assert candidate_id not in {item["id"] for item in listed.get_json()}
+
+
+def test_original_resume_enforces_candidate_visibility_and_org_isolation(
+    client,
+    make_user,
+    app,
+    tmp_path,
+):
+    owner_id, owner_token = make_user("resume-owner@x.com", role="recruiter", org_id=1)
+    _, other_token = make_user("resume-other@x.com", role="recruiter", org_id=1)
+    _, external_token = make_user("resume-external@x.com", role="manager", org_id=2)
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir()
+    raw_file = upload_root / "resume.pdf"
+    raw_file.write_bytes(b"%PDF-1.4\nprivate")
+    app.config["UPLOAD_FOLDER"] = str(upload_root)
+    _, candidate_id = _seed_job_candidate(
+        app,
+        owner_id,
+        org_id=1,
+        raw_file_path=str(raw_file),
+    )
+
+    owner = client.get(
+        f"/api/resume/{candidate_id}/original/preview",
+        headers=_auth(owner_token),
+    )
+    same_org_unauthorized = client.get(
+        f"/api/resume/{candidate_id}/original/preview",
+        headers=_auth(other_token),
+    )
+    cross_org = client.get(
+        f"/api/resume/{candidate_id}/original/preview",
+        headers=_auth(external_token),
+    )
+
+    assert owner.status_code == 200
+    assert same_org_unauthorized.status_code == 403
+    assert cross_org.status_code == 404
+
+
+def test_original_resume_rejects_out_of_upload_root_without_leaking_path(
+    client,
+    make_user,
+    app,
+    tmp_path,
+):
+    owner_id, owner_token = make_user("resume-boundary@x.com", role="recruiter")
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir()
+    outside = tmp_path / "private" / "resume.pdf"
+    outside.parent.mkdir()
+    outside.write_bytes(b"%PDF-1.4\noutside")
+    app.config["UPLOAD_FOLDER"] = str(upload_root)
+    _, candidate_id = _seed_job_candidate(app, owner_id, raw_file_path=str(outside))
+
+    response = client.get(
+        f"/api/resume/{candidate_id}/original/download",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 404
+    assert str(outside) not in response.get_data(as_text=True)
+    with app.app_context():
+        from app.models import Event
+
+        event = Event.query.filter_by(
+            action="resume.original.access_denied",
+            entity_id=candidate_id,
+        ).one()
+        assert event.failure_reason == "out_of_root"
+        assert event.payload == {"reason": "out_of_root"}

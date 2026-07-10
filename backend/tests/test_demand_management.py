@@ -17,6 +17,8 @@ def test_demand_creation_can_create_matching_job_profile(client, make_user, app)
         json={
             "job_title": "Java 后端工程师",
             "jd_text": "负责核心业务系统开发，熟悉 Java、Spring Boot、MySQL，有高并发经验。",
+            "owner_hr_id": hr_id,
+            "city": "上海",
             "request_no": "REQ-DIRECT-001",
             "requester_name": "杨阳",
             "requester_department": "科技部",
@@ -74,6 +76,8 @@ def test_demands_can_be_created_listed_and_closed_with_metrics(client, make_user
         headers=_auth(token),
         json={
             "job_id": job_id,
+            "owner_hr_id": hr_id,
+            "city": "上海",
             "request_no": "REQ-2026-001",
             "requester_name": "宋总",
             "requester_department": "科技部",
@@ -99,7 +103,7 @@ def test_demands_can_be_created_listed_and_closed_with_metrics(client, make_user
 
     listed = client.get("/api/demands", headers=_auth(token))
     assert listed.status_code == 200
-    item = listed.get_json()[0]
+    item = listed.get_json()["items"][0]
     assert item["request_no"] == "REQ-2026-001"
     assert item["job_title"] == "产品经理"
     assert item["metrics"]["recommended_count"] == 3
@@ -115,11 +119,11 @@ def test_demands_can_be_created_listed_and_closed_with_metrics(client, make_user
 
     with app.app_context():
         job = db.session.get(Job, job_id)
-        assert job.status == "closed"
+        assert job.status == "active"
 
 
-def test_closed_demands_can_be_restored_with_linked_job(client, make_user, app):
-    _, token = make_user("demand-restore@example.com", role="recruiter", name="恢复HR")
+def test_closed_demands_can_be_restored_without_mutating_job_template(client, make_user, app):
+    hr_id, token = make_user("demand-restore@example.com", role="recruiter", name="恢复HR")
 
     with app.app_context():
         job = Job(title="运营负责人", city="广州", department="运营部", jd_text="负责运营团队")
@@ -132,7 +136,12 @@ def test_closed_demands_can_be_restored_with_linked_job(client, make_user, app):
         headers=_auth(token),
         json={
             "job_id": job_id,
+            "owner_hr_id": hr_id,
+            "city": "广州",
             "requester_department": "运营部",
+            "hiring_manager_name": "运营负责人",
+            "requested_at": "2026-07-10",
+            "target_date": "2026-08-10",
             "priority": "B",
             "headcount": 1,
             "status": "active",
@@ -190,7 +199,10 @@ def test_demands_can_be_downgraded_and_expose_risk_flags(client, make_user, app)
         headers=_auth(token),
         json={
             "job_id": job_id,
+            "owner_hr_id": hr_id,
+            "city": "深圳",
             "requester_department": "研发部",
+            "hiring_manager_name": "研发负责人",
             "requested_at": (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=45)).date().isoformat(),
             "accepted_at": (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=44)).date().isoformat(),
             "target_date": (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=5)).date().isoformat(),
@@ -232,9 +244,13 @@ def test_demands_flag_hr_side_when_accepted_but_no_candidates(client, make_user,
         headers=_auth(token),
         json={
             "job_id": job_id,
+            "owner_hr_id": hr_id,
+            "city": "杭州",
             "requester_department": "产品部",
+            "hiring_manager_name": "产品负责人",
             "requested_at": (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=10)).date().isoformat(),
             "accepted_at": (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=8)).date().isoformat(),
+            "target_date": (datetime.now(UTC).replace(tzinfo=None) + timedelta(days=20)).date().isoformat(),
             "priority": "A",
             "headcount": 1,
             "status": "active",
@@ -268,17 +284,28 @@ def test_recruiter_demands_are_scoped_to_owned_jobs(client, make_user, app):
 
     listed = client.get("/api/demands", headers=_auth(owner_token))
     assert listed.status_code == 200
-    assert [item["request_no"] for item in listed.get_json()] == ["OWN"]
+    assert [item["request_no"] for item in listed.get_json()["items"]] == ["OWN"]
 
     forbidden_detail = client.get(f"/api/demands/{other_demand_id}", headers=_auth(owner_token))
     assert forbidden_detail.status_code == 403
 
-    forbidden_create = client.post(
+    reusable_template_create = client.post(
         "/api/demands",
         headers=_auth(owner_token),
-        json={"job_id": other_job_id, "request_no": "BAD"},
+        json={
+            "job_id": other_job_id,
+            "owner_hr_id": owner_id,
+            "request_no": "REUSED",
+            "requester_department": "跨部门项目组",
+            "city": "上海",
+            "hiring_manager_name": "项目负责人",
+            "requested_at": "2026-07-10",
+            "target_date": "2026-08-10",
+            "headcount": 1,
+        },
     )
-    assert forbidden_create.status_code == 403
+    assert reusable_template_create.status_code == 201
+    assert reusable_template_create.get_json()["owner_hr_id"] == owner_id
 
     other_detail = client.get(f"/api/demands/{other_demand_id}", headers=_auth(other_token))
     assert other_detail.status_code == 200

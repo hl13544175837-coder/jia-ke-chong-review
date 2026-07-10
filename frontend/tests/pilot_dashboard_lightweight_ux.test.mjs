@@ -22,8 +22,13 @@ assert.match(
 );
 assert.match(
   dashboardPage,
+  /我的招聘进度/,
+  'Recruiter dashboard should frame personal metrics as operational progress',
+);
+assert.doesNotMatch(
+  dashboardPage,
   /我的本月业绩/,
-  'Recruiter dashboard should show a personal monthly performance panel',
+  'Phase-one BI must not present operational data as formal performance',
 );
 assert.match(
   dashboardPage,
@@ -52,8 +57,8 @@ assert.doesNotMatch(
 );
 assert.match(
   biPage,
-  /DAYS_OPTIONS/,
-  'BI page should keep the period selector as the only header-side control',
+  /选择招聘需求/,
+  'BI page should use a concrete demand selector as its primary control',
 );
 assert.match(
   biPage,
@@ -64,6 +69,11 @@ assert.match(
   biPage,
   /已入职/,
   'BI page should still expose onboarded metrics',
+);
+assert.doesNotMatch(
+  biPage,
+  /HR 绩效|团队均转化率/,
+  'BI page should no longer present personal performance comparisons',
 );
 assert.match(
   pipelinePanel,

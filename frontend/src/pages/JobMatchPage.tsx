@@ -1,7 +1,7 @@
 // 岗位匹配页 — 展示与当前岗位匹配的候选人排名及标签分析，并可一键将候选人加入招聘流程。
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
@@ -104,6 +104,7 @@ function MatchRow({
   rank,
   item,
   jobId,
+  demandId,
   joinState,
   onJoin,
   selected,
@@ -113,6 +114,7 @@ function MatchRow({
   rank: number;
   item: MatchResultItem;
   jobId: number;
+  demandId?: number;
   joinState: 'idle' | 'joining' | 'joined' | 'error';
   onJoin: (candidateId: number) => void;
   selected: boolean;
@@ -194,7 +196,9 @@ function MatchRow({
               已加入流程
             </span>
             <Link
-              to={`/pipeline?job=${jobId}&candidate=${item.candidate_id}`}
+              to={demandId
+                ? `/pipeline?demand=${demandId}&candidate=${item.candidate_id}`
+                : `/pipeline?job=${jobId}&candidate=${item.candidate_id}`}
               aria-label="查看候选人流程"
               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft hover:border-surface-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
             >
@@ -222,8 +226,13 @@ function MatchRow({
 
 export function JobMatchPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const jobId = Number(id);
   const isInvalidId = !id || Number.isNaN(jobId);
+  const requestedDemandId = Number(searchParams.get('demand'));
+  const demandId = Number.isInteger(requestedDemandId) && requestedDemandId > 0
+    ? requestedDemandId
+    : undefined;
 
   // useAsync called unconditionally — short-circuits on invalid id, no NaN request fired.
   const { data, loading, error, reload } = useAsync(
@@ -237,8 +246,10 @@ export function JobMatchPage() {
     () =>
       isInvalidId
         ? Promise.resolve(null)
-        : api.getPipelineBoard(jobId),
-    [jobId, isInvalidId],
+        : demandId
+          ? api.getDemandPipelineBoard(demandId)
+          : api.getPipelineBoard(jobId),
+    [jobId, demandId, isInvalidId],
   );
 
   // Per-candidate "join pipeline" state, keyed by candidate id.
@@ -406,6 +417,7 @@ export function JobMatchPage() {
     try {
       await api.movePipeline({
         candidate_id: candidateId,
+        demand_id: demandId,
         job_id: jobId,
         stage: 'pending',
       });
@@ -422,7 +434,7 @@ export function JobMatchPage() {
     setBatchStatus('adding');
     setBatchMessage(null);
     try {
-      const result = await api.batchAddToPipeline(jobId, ids);
+      const result = await api.batchAddToPipeline(jobId, ids, demandId);
       setJoinStates((prev) => {
         const next = { ...prev };
         ids.forEach((candidateId) => {
@@ -473,7 +485,10 @@ export function JobMatchPage() {
             <h1 className="mb-1 font-display text-2xl text-ink">
               岗位匹配结果
             </h1>
-            <p className="text-sm text-muted">岗位 ID：{jobId} · AI 先推荐，也可以人工搜索全库候选人</p>
+            <p className="text-sm text-muted">
+              岗位 ID：{jobId}{demandId ? ` · 招聘需求 #${demandId}` : ''}
+              {' '}· AI 先推荐，也可以人工搜索全库候选人
+            </p>
           </div>
           {!loading && (
             <Button variant="secondary" onClick={reload}>
@@ -496,6 +511,13 @@ export function JobMatchPage() {
       {/* Error state */}
       {!loading && error && (
         <ErrorState message={error.message} onRetry={reload} />
+      )}
+
+      {!loading && !error && pipelineAsync.error && (
+        <div className="rounded-md border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+          {pipelineAsync.error.message}。匹配分析仍可查看，但加入流程前必须从具体招聘需求进入本页。
+          <Link to="/demands" className="ml-2 font-medium underline">选择招聘需求</Link>
+        </div>
       )}
 
       {/* Results */}
@@ -544,7 +566,7 @@ export function JobMatchPage() {
                   <Button
                     variant="primary"
                     size="sm"
-                    disabled={!someSelected || batchStatus === 'adding'}
+                    disabled={!someSelected || batchStatus === 'adding' || Boolean(pipelineAsync.error)}
                     loading={batchStatus === 'adding'}
                     onClick={handleBatchAdd}
                   >
@@ -674,6 +696,7 @@ export function JobMatchPage() {
                       rank={i + 1}
                       item={item}
                       jobId={jobId}
+                      demandId={demandId}
                       joinState={
                         joinStates[item.candidate_id] ??
                         (existingPipelineIds.has(item.candidate_id) ? 'joined' : 'idle')
@@ -681,7 +704,7 @@ export function JobMatchPage() {
                       onJoin={handleJoin}
                       selected={selectedIds.has(item.candidate_id)}
                       onToggleSelect={toggleSelect}
-                      disabled={batchStatus === 'adding'}
+                      disabled={batchStatus === 'adding' || Boolean(pipelineAsync.error)}
                     />
                   ))}
                 </Reveal>
