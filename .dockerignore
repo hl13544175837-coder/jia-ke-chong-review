@@ -1,0 +1,51 @@
+# Version-control and local agent/editor state
+.git
+.workbuddy
+.codex_tmp
+.agents
+.claude
+.idea
+.vscode
+base_agent/.git_disabled_backup
+
+# Secrets and local environment overrides
+**/.env
+**/.env*
+**/*.env
+**/*.env*
+
+# Runtime databases and user uploads
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
+**/uploads
+backups
+**/backups
+
+# Logs, caches, temporary files, and generated output
+**/*.log
+logs
+**/logs
+tmp
+**/tmp
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.cache
+**/.vite
+outputs
+minutes
+
+# Local dependency and build artifacts
+frontend/node_modules
+frontend/dist
+**/.venv
+**/venv
+**/*.egg-info
+
+# Operating-system files
+**/.DS_Store

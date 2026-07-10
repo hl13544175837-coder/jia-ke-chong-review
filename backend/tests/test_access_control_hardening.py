@@ -149,6 +149,72 @@ def test_agent_team_bi_tool_rejects_recruiter_scope(app, make_user):
     assert "团队 BI" in result["message"]
 
 
+def test_agent_team_bi_staff_and_events_are_scoped_to_current_org(app, make_user):
+    manager_id, _ = make_user(
+        "agent-bi-manager-org-1@x.com",
+        role="manager",
+        name="组织一经理",
+        org_id=1,
+    )
+    recruiter_id, _ = make_user(
+        "agent-bi-recruiter-org-1@x.com",
+        role="recruiter",
+        name="组织一专员",
+        org_id=1,
+    )
+    other_recruiter_id, _ = make_user(
+        "agent-bi-recruiter-org-2@x.com",
+        role="recruiter",
+        name="组织二专员",
+        org_id=2,
+    )
+
+    with app.app_context():
+        from app import db
+        from app.models import Event
+        from app.services.agent_service import _tool_get_bi_overview
+
+        db.session.add_all([
+            Event(
+                org_id=1,
+                actor_id=recruiter_id,
+                actor_role="recruiter",
+                action="resume.uploaded",
+                entity_id=101,
+            ),
+            Event(
+                org_id=2,
+                actor_id=recruiter_id,
+                actor_role="recruiter",
+                action="resume.uploaded",
+                entity_id=102,
+            ),
+            Event(
+                org_id=2,
+                actor_id=other_recruiter_id,
+                actor_role="recruiter",
+                action="resume.uploaded",
+                entity_id=103,
+            ),
+        ])
+        db.session.commit()
+
+        result = _tool_get_bi_overview(
+            days=30,
+            _user_id=manager_id,
+            _role="manager",
+        )
+
+    assert result["staff"] == [{
+        "hr_id": recruiter_id,
+        "name": "组织一专员",
+        "resumes": 1,
+        "screens": 0,
+        "onboarded": 0,
+        "conversion_rate": 0,
+    }]
+
+
 def test_agent_write_tool_rejects_cross_recruiter_pipeline_move(app, make_user):
     owner_id, _ = make_user("agent-write-owner@x.com", role="recruiter")
     other_id, _ = make_user("agent-write-other@x.com", role="recruiter")

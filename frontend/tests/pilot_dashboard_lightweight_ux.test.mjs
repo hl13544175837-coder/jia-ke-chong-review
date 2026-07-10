@@ -14,6 +14,7 @@ const dashboardPage = readSource('pages/DashboardPage.tsx');
 const biPage = readSource('pages/BiPage.tsx');
 const types = readSource('types/index.ts');
 const pipelinePanel = readSource('components/pipeline/PipelineCandidatePanel.tsx');
+const uploadPage = readSource('pages/UploadPage.tsx');
 
 assert.match(
   types,
@@ -22,8 +23,13 @@ assert.match(
 );
 assert.match(
   dashboardPage,
+  /近 30 天当前负责盘子/,
+  'Recruiter dashboard should label personal BI as a current ownership view',
+);
+assert.doesNotMatch(
+  dashboardPage,
   /我的本月业绩/,
-  'Recruiter dashboard should show a personal monthly performance panel',
+  'Current-owner aggregation must not be presented as historical monthly performance',
 );
 assert.match(
   dashboardPage,
@@ -69,4 +75,9 @@ assert.match(
   pipelinePanel,
   /主流程状态/,
   'Candidate pipeline panel should remind users that interview details live outside the main stage flow',
+);
+assert.match(
+  uploadPage,
+  /旧版 \.doc 会因宏风险被跳过，请先另存为 \.docx/,
+  'Upload guidance should not claim that legacy DOC files are supported',
 );

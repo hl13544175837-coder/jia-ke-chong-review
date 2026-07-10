@@ -24,6 +24,7 @@ import type {
   CreateJobResponse,
   DemandCloseInput,
   DemandDowngradeInput,
+  DemandOwnerTransferInput,
   DemandRestoreInput,
   InterviewFeedbackInput,
   InterviewAssignment,
@@ -54,6 +55,7 @@ import type {
   RegisterResponse,
   RecruitmentDemand,
   RecruitmentDemandInput,
+  RecruitmentDemandUpdateInput,
   RetryParseResponse,
   ResumeUploadResponse,
   Role,
@@ -338,7 +340,7 @@ export const api = {
   },
   updateDemand(
     demandId: number,
-    payload: Partial<RecruitmentDemandInput>,
+    payload: RecruitmentDemandUpdateInput,
   ): Promise<RecruitmentDemand> {
     return request(`/demands/${demandId}`, { method: 'PATCH', body: payload });
   },
@@ -348,8 +350,14 @@ export const api = {
   downgradeDemand(demandId: number, payload: DemandDowngradeInput): Promise<RecruitmentDemand> {
     return request(`/demands/${demandId}/downgrade`, { method: 'POST', body: payload });
   },
-  restoreDemand(demandId: number, payload: DemandRestoreInput = {}): Promise<RecruitmentDemand> {
+  restoreDemand(demandId: number, payload: DemandRestoreInput): Promise<RecruitmentDemand> {
     return request(`/demands/${demandId}/restore`, { method: 'POST', body: payload });
+  },
+  reassignDemandOwner(
+    demandId: number,
+    payload: DemandOwnerTransferInput,
+  ): Promise<RecruitmentDemand> {
+    return request(`/demands/${demandId}/owner`, { method: 'PATCH', body: payload });
   },
 
   // ---- Talent maps ----

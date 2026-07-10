@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, ClipboardList } from 'lucide-react';
 import { api } from '../../../lib/api';
+import { useAuth } from '../../../lib/auth';
 import { useAsync } from '../../../lib/useAsync';
 import { formatDate } from '../../../lib/formatDate';
 import { stageLabel } from '../../../lib/pipelineStages';
@@ -22,6 +23,7 @@ import { RecruitmentManagementTabs } from '../../../components/recruitment/Recru
 import type {
   DemandPriority,
   DemandStatus,
+  CandidateOwnerOption,
   JobListItem,
   PipelineStage,
   RecruitmentDemand,
@@ -51,7 +53,7 @@ const RISK_LABELS: Record<string, string> = {
 };
 
 type DemandInsightTone = 'success' | 'warning' | 'danger' | 'neutral';
-type DemandActionMode = 'close' | 'restore' | 'priority';
+type DemandActionMode = 'close' | 'restore' | 'priority' | 'owner';
 
 interface DemandFormState {
   job_id: string;
@@ -171,15 +173,19 @@ function demandInsight(demand: RecruitmentDemand): {
 function DemandCard({
   demand,
   busy,
+  canTransferOwner,
   onClose,
   onRestore,
   onAdjustPriority,
+  onTransferOwner,
 }: {
   demand: RecruitmentDemand;
   busy: boolean;
+  canTransferOwner: boolean;
   onClose: (demand: RecruitmentDemand) => void;
   onRestore: (demand: RecruitmentDemand) => void;
   onAdjustPriority: (demand: RecruitmentDemand) => void;
+  onTransferOwner: (demand: RecruitmentDemand) => void;
 }) {
   const insight = demandInsight(demand);
   const stageItems = stageDistributionItems(demand);
@@ -200,6 +206,9 @@ function DemandCard({
               {demand.requester_name ? ` · ${demand.requester_name}` : ''}
               {demand.request_no ? ` · ${demand.request_no}` : ''}
             </p>
+            <p className="mt-1 text-xs text-muted-soft">
+              当前负责人：{demand.owner_hr_name || (demand.owner_hr_id ? `专员 #${demand.owner_hr_id}` : '未设置')}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Link
@@ -217,6 +226,17 @@ function DemandCard({
             >
               调整优先级
             </Button>
+            {canTransferOwner && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => onTransferOwner(demand)}
+              >
+                转派负责人
+              </Button>
+            )}
             {canRestore ? (
               <Button
                 type="button"
@@ -306,18 +326,28 @@ function DemandActionDialog({
   action,
   reason,
   priority,
+  ownerOptions,
+  ownerOptionsLoading,
+  ownerOptionsError,
+  ownerId,
   busy,
   onReasonChange,
   onPriorityChange,
+  onOwnerChange,
   onCancel,
   onConfirm,
 }: {
   action: DemandActionState | null;
   reason: string;
   priority: DemandPriority;
+  ownerOptions: CandidateOwnerOption[];
+  ownerOptionsLoading: boolean;
+  ownerOptionsError: string | null;
+  ownerId: string;
   busy: boolean;
   onReasonChange: (value: string) => void;
   onPriorityChange: (value: DemandPriority) => void;
+  onOwnerChange: (value: string) => void;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -325,27 +355,45 @@ function DemandActionDialog({
 
   const { mode, demand } = action;
   const isPriority = mode === 'priority';
+  const isOwner = mode === 'owner';
+  const availableOwners = ownerOptions.filter((owner) => owner.id !== demand.owner_hr_id);
   const title =
     mode === 'close'
       ? `关闭需求：${demand.job_title}`
       : mode === 'restore'
         ? `恢复需求：${demand.job_title}`
-        : `调整优先级：${demand.job_title}`;
+        : mode === 'owner'
+          ? `转派负责人：${demand.job_title}`
+          : `调整优先级：${demand.job_title}`;
   const confirmLabel =
-    mode === 'close' ? '确认关闭' : mode === 'restore' ? '确认恢复' : '保存优先级';
+    mode === 'close'
+      ? '确认关闭'
+      : mode === 'restore'
+        ? '确认恢复'
+        : mode === 'owner'
+          ? '确认转派'
+          : '保存优先级';
   const impact =
     mode === 'close'
       ? '需求会从活跃列表中移出，历史流程和 BI 留痕仍会保留。'
       : mode === 'restore'
         ? '需求会回到活跃列表，关联岗位也会恢复为在招。'
-        : '新的优先级会写入需求备注，后续复盘能看到调整原因。';
+        : mode === 'owner'
+          ? '需求与关联岗位画像会同步交给新负责人；已有候选人负责人不会自动变化，如需整体交接请另行转派候选人。'
+          : '新的优先级和调整原因会进入审计记录，便于后续复盘。';
   const reasonPlaceholder =
     mode === 'close'
       ? '例如：业务取消、长期无反馈、需求不真实'
       : mode === 'restore'
         ? '例如：业务确认继续招聘、刚才误关闭'
-        : '例如：业务重新确认、误降级后恢复优先级';
-  const canConfirm = reason.trim().length > 0 && (!isPriority || priority !== demand.priority);
+        : mode === 'owner'
+          ? '例如：团队负载调整、原负责人离岗'
+          : '例如：业务重新确认、误降级后恢复优先级';
+  const canConfirm =
+    reason.trim().length > 0
+    && (!isPriority || priority !== demand.priority)
+    && (!isOwner || (ownerId !== '' && Number(ownerId) !== demand.owner_hr_id))
+    && (!isOwner || (!ownerOptionsLoading && !ownerOptionsError));
 
   return (
     <div
@@ -387,6 +435,36 @@ function DemandActionDialog({
             </label>
           )}
 
+          {isOwner && (
+            <div className="space-y-2">
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-ink">新的招聘专员</span>
+                <select
+                  value={ownerId}
+                  disabled={busy || ownerOptionsLoading || availableOwners.length === 0}
+                  onChange={(event) => onOwnerChange(event.target.value)}
+                  className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-sm text-ink focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink disabled:cursor-not-allowed disabled:bg-surface-soft"
+                >
+                  <option value="">请选择招聘专员</option>
+                  {availableOwners.map((owner) => (
+                    <option key={owner.id} value={owner.id}>
+                      {owner.name}（{owner.email}）
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {ownerOptionsLoading && <p className="text-xs text-muted">正在加载可转派账号…</p>}
+              {ownerOptionsError && (
+                <p className="text-xs text-danger-600">账号列表加载失败：{ownerOptionsError}。请关闭弹窗后重试。</p>
+              )}
+              {!ownerOptionsLoading && !ownerOptionsError && availableOwners.length === 0 && (
+                <p className="text-xs text-muted">
+                  暂无其他启用中的招聘专员，请管理员先创建或启用招聘专员账号。
+                </p>
+              )}
+            </div>
+          )}
+
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">原因（必填）</span>
             <textarea
@@ -425,8 +503,14 @@ function DemandActionDialog({
 }
 
 export function DemandsPage() {
+  const { role } = useAuth();
+  const canTransferOwner = role === 'manager' || role === 'admin';
   const demandsAsync = useAsync(() => demandsApi.listDemands(), []);
   const jobsAsync = useAsync(() => api.listJobs(), []);
+  const ownersAsync = useAsync(
+    () => (canTransferOwner ? api.listCandidateOwners() : Promise.resolve([] as CandidateOwnerOption[])),
+    [canTransferOwner],
+  );
   const [form, setForm] = useState<DemandFormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -434,6 +518,7 @@ export function DemandsPage() {
   const [action, setAction] = useState<DemandActionState | null>(null);
   const [actionReason, setActionReason] = useState('');
   const [actionPriority, setActionPriority] = useState<DemandPriority>('B');
+  const [actionOwnerId, setActionOwnerId] = useState('');
 
   const jobs = useMemo(() => jobsAsync.data ?? [], [jobsAsync.data]);
   const demands = useMemo(() => demandsAsync.data ?? [], [demandsAsync.data]);
@@ -487,12 +572,15 @@ export function DemandsPage() {
     setAction({ mode, demand });
     setActionReason('');
     setActionPriority(demand.priority);
+    setActionOwnerId('');
+    if (mode === 'owner') ownersAsync.reload();
   }
 
   function closeDemandAction() {
     if (busyId !== null) return;
     setAction(null);
     setActionReason('');
+    setActionOwnerId('');
   }
 
   async function submitDemandAction() {
@@ -507,6 +595,10 @@ export function DemandsPage() {
       setMessage('请选择不同的优先级');
       return;
     }
+    if (mode === 'owner' && !actionOwnerId) {
+      setMessage('请选择新的招聘专员');
+      return;
+    }
     setBusyId(demand.id);
     setMessage(null);
     try {
@@ -519,21 +611,22 @@ export function DemandsPage() {
       } else if (mode === 'restore') {
         await demandsApi.restoreDemand(demand.id, { note: reason });
         setMessage('需求已恢复，关联岗位也会恢复为在招');
+      } else if (mode === 'owner') {
+        await demandsApi.reassignDemandOwner(demand.id, {
+          owner_hr_id: Number(actionOwnerId),
+          reason,
+        });
+        setMessage('需求与关联岗位画像已同步转派');
       } else {
-        const nextNote = [
-          demand.note,
-          `优先级调整：${PRIORITY_LABELS[demand.priority]} → ${PRIORITY_LABELS[actionPriority]}，${reason}`,
-        ]
-          .filter(Boolean)
-          .join('\n');
-        await demandsApi.updateDemand(demand.id, {
+        await demandsApi.downgradeDemand(demand.id, {
           priority: actionPriority,
-          note: nextNote,
+          downgrade_reason: reason,
         });
         setMessage(`需求优先级已调整为 ${PRIORITY_LABELS[actionPriority]}`);
       }
       setAction(null);
       setActionReason('');
+      setActionOwnerId('');
       demandsAsync.reload();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : '需求操作失败');
@@ -717,9 +810,11 @@ export function DemandsPage() {
                 key={demand.id}
                 demand={demand}
                 busy={busyId === demand.id}
+                canTransferOwner={canTransferOwner}
                 onClose={(item) => openDemandAction('close', item)}
                 onRestore={(item) => openDemandAction('restore', item)}
                 onAdjustPriority={(item) => openDemandAction('priority', item)}
+                onTransferOwner={(item) => openDemandAction('owner', item)}
               />
             ))}
           </div>
@@ -730,9 +825,14 @@ export function DemandsPage() {
         action={action}
         reason={actionReason}
         priority={actionPriority}
+        ownerOptions={ownersAsync.data ?? []}
+        ownerOptionsLoading={ownersAsync.loading}
+        ownerOptionsError={ownersAsync.error?.message ?? null}
+        ownerId={actionOwnerId}
         busy={busyId !== null}
         onReasonChange={setActionReason}
         onPriorityChange={setActionPriority}
+        onOwnerChange={setActionOwnerId}
         onCancel={closeDemandAction}
         onConfirm={submitDemandAction}
       />

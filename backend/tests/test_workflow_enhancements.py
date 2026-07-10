@@ -5,13 +5,19 @@ def _auth(t):
     return {"Authorization": f"Bearer {t}"}
 
 
-def _seed_job_candidate(app, owner_id=None):
+def _seed_job_candidate(app, owner_id=None, org_id=1):
     with app.app_context():
         from app import db
         from app.models import Candidate, Job
 
-        job = Job(title="产品经理", jd_text="负责 AI 招聘产品", owner_hr_id=owner_id)
+        job = Job(
+            org_id=org_id,
+            title="产品经理",
+            jd_text="负责 AI 招聘产品",
+            owner_hr_id=owner_id,
+        )
         candidate = Candidate(
+            org_id=org_id,
             owner_hr_id=owner_id,
             name_masked="候选人A",
             resume_json={},
@@ -338,7 +344,7 @@ def test_offer_record_can_be_saved_without_changing_pipeline_shape(client, make_
 
 def test_interview_assignment_can_be_created_and_listed(client, make_user, app):
     uid, token = make_user("assign-hr@x.com", role="recruiter")
-    interviewer_id, _ = make_user("assign-iv@x.com", role="interviewer", name="李面试官")
+    interviewer_id, interviewer_token = make_user("assign-iv@x.com", role="interviewer", name="李面试官")
     jid, cid = _seed_job_candidate(app, owner_id=uid)
 
     response = client.post(
@@ -365,6 +371,56 @@ def test_interview_assignment_can_be_created_and_listed(client, make_user, app):
 
     interviewers = client.get("/api/interview/interviewers", headers=_auth(token)).get_json()
     assert {"id": interviewer_id, "name": "李面试官", "role": "interviewer"} in interviewers
+
+    notifications = client.get("/api/notifications", headers=_auth(interviewer_token)).get_json()
+    titles = [item["title"] for item in notifications["notifications"]]
+    assert "新的面试安排" in titles
+    first = next(item for item in notifications["notifications"] if item["title"] == "新的面试安排")
+    assert "候选人A" in first["body"]
+    assert first["link"] == "/interviews"
+
+
+def test_interview_assignment_notification_is_visible_in_non_default_org(client, make_user, app):
+    recruiter_id, recruiter_token = make_user(
+        "assign-hr-org-2@x.com",
+        role="recruiter",
+        org_id=2,
+    )
+    interviewer_id, interviewer_token = make_user(
+        "assign-iv-org-2@x.com",
+        role="interviewer",
+        name="组织二面试官",
+        org_id=2,
+    )
+    job_id, candidate_id = _seed_job_candidate(
+        app,
+        owner_id=recruiter_id,
+        org_id=2,
+    )
+
+    response = client.post(
+        "/api/interview/assignments",
+        headers=_auth(recruiter_token),
+        json={
+            "candidate_id": candidate_id,
+            "job_id": job_id,
+            "round": "interview_first",
+            "interviewer_id": interviewer_id,
+        },
+    )
+
+    assert response.status_code == 201
+    notifications = client.get(
+        "/api/notifications",
+        headers=_auth(interviewer_token),
+    ).get_json()
+    assert [item["title"] for item in notifications["notifications"]] == ["新的面试安排"]
+
+    with app.app_context():
+        from app.models import Notification
+
+        notification = Notification.query.filter_by(user_id=interviewer_id).one()
+        assert notification.org_id == 2
 
 
 def test_feedback_persists_structured_evaluation_and_journey_decision_summary(client, make_user, app):

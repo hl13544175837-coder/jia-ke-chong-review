@@ -379,8 +379,8 @@ function RecruiterPerformancePanel({ performance }: { performance: BiStaffMember
     <section>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="font-display text-lg text-ink">我的本月业绩</h2>
-          <p className="mt-1 text-sm text-muted">按当前账号归属统计，经理看板使用同一套口径</p>
+          <h2 className="font-display text-lg text-ink">近 30 天当前负责盘子</h2>
+          <p className="mt-1 text-sm text-muted">按查询时的当前负责人归属统计，不代表事件发生时点的历史绩效</p>
         </div>
         <Badge tone="neutral">近 30 天</Badge>
       </div>

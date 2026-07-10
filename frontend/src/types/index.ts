@@ -238,7 +238,8 @@ export interface JobDetail {
 
 // ---- Recruitment demands ----
 export type DemandPriority = 'A' | 'B' | 'C';
-export type DemandStatus = 'pending' | 'active' | 'paused' | 'filled' | 'cancelled';
+export type OpenDemandStatus = 'pending' | 'active' | 'paused';
+export type DemandStatus = OpenDemandStatus | 'filled' | 'cancelled';
 
 export interface RecruitmentDemandMetrics {
   recommended_count: number;
@@ -256,7 +257,8 @@ export interface RecruitmentDemand {
   job_city: string;
   job_department: string;
   job_code: string;
-  owner_hr_id: number;
+  owner_hr_id: number | null;
+  owner_hr_name: string;
   request_no: string;
   requester_name: string;
   requester_department: string;
@@ -287,22 +289,31 @@ export interface RecruitmentDemandInput {
   target_date?: string;
   priority?: DemandPriority;
   headcount?: number;
-  status?: DemandStatus;
+  status?: OpenDemandStatus;
   note?: string;
 }
 
+export type RecruitmentDemandUpdateInput = Partial<
+  Omit<RecruitmentDemandInput, 'job_id' | 'priority' | 'status'>
+>;
+
 export interface DemandCloseInput {
   status: 'filled' | 'cancelled' | 'paused';
-  close_reason?: string;
+  close_reason: string;
 }
 
 export interface DemandDowngradeInput {
   priority: DemandPriority;
-  downgrade_reason?: string;
+  downgrade_reason: string;
 }
 
 export interface DemandRestoreInput {
-  note?: string;
+  note: string;
+}
+
+export interface DemandOwnerTransferInput {
+  owner_hr_id: number;
+  reason: string;
 }
 
 // ---- Talent map ----
@@ -1188,4 +1199,3 @@ export interface CallLogQuery {
   page?: number;
   per_page?: number;
 }
-

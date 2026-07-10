@@ -309,7 +309,7 @@ export function UploadPage() {
       <div className="mb-6 rounded-lg border border-hairline bg-surface-soft px-4 py-3 text-xs text-muted">
         <ul className="space-y-1">
           <li>· 上传成功后先进入简历库，后续可按城市、技能、来源筛选后再加入岗位流程。</li>
-          <li>· 支持格式：PDF、Word（.doc / .docx）以及 ZIP 压缩包。</li>
+          <li>· 支持格式：PDF、Word（.docx）以及 ZIP 压缩包；旧版 .doc 会因宏风险被跳过，请先另存为 .docx。</li>
           <li>· ZIP 压缩包会自动解压，逐份解析其中的简历（自动跳过非简历文件）。</li>
           <li>· 简历解析由 AI 完成，文件较多或较大时可能需要一些时间，请耐心等待。</li>
           <li>· 个别文件解析失败不影响其他文件，可针对失败项重新上传。</li>

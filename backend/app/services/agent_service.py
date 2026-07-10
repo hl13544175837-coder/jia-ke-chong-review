@@ -184,7 +184,8 @@ def _tool_get_bi_overview(days: int = 30, **_) -> Dict[str, Any]:
     from sqlalchemy import func
     from ..models import User, Event
 
-    funnel = _funnel(days=days, org_id=actor_org_id(_.get("_user_id")))
+    org_id = actor_org_id(_.get("_user_id"))
+    funnel = _funnel(days=days, org_id=org_id)
     cutoff = utc_now() - timedelta(days=days)
     # 专员效能（与 bi.overview() 中相同逻辑）
     staff_rows = (
@@ -200,8 +201,17 @@ def _tool_get_bi_overview(days: int = 30, **_) -> Dict[str, Any]:
                 db.case((Event.action == "candidate.onboarded", Event.entity_id))
             )).label("onboarded"),
         )
-        .outerjoin(Event, (Event.actor_id == User.id) & (Event.ts >= cutoff))
-        .filter(User.role == "recruiter", User.is_active.is_(True))
+        .outerjoin(
+            Event,
+            (Event.actor_id == User.id)
+            & (Event.org_id == org_id)
+            & (Event.ts >= cutoff),
+        )
+        .filter(
+            User.org_id == org_id,
+            User.role == "recruiter",
+            User.is_active.is_(True),
+        )
         .group_by(User.id, User.name)
         .all()
     )
@@ -216,14 +226,23 @@ def _tool_get_bi_overview(days: int = 30, **_) -> Dict[str, Any]:
 
 def _tool_count_summary(**_) -> Dict[str, Any]:
     """系统概览数字：候选人/岗位/面试总数 + 各流程阶段人数。"""
-    scoped_candidates = _scoped_candidate_query(_.get("_user_id"), _.get("_role"))
+    user_id = _.get("_user_id")
+    role = _.get("_role")
+    scoped_candidates = _scoped_candidate_query(user_id, role)
+    scoped_jobs = visible_job_query(user_id, role)
+    interviews = Interview.query.filter(Interview.org_id == actor_org_id(user_id))
+    if role == "recruiter":
+        interviews = interviews.filter(
+            Interview.candidate_id.in_(scoped_candidates.with_entities(Candidate.id)),
+            Interview.job_id.in_(scoped_jobs.with_entities(Job.id)),
+        )
     return {
         "candidate_count": scoped_candidates.count(),
-        "job_count": visible_job_query(_.get("_user_id"), _.get("_role")).count(),
-        "interview_count": Interview.query.filter(Interview.org_id == actor_org_id(_.get("_user_id"))).count(),
+        "job_count": scoped_jobs.count(),
+        "interview_count": interviews.count(),
         "stage_counts": _agent_current_stage_counts(
-            user_id=_.get("_user_id"),
-            role=_.get("_role"),
+            user_id=user_id,
+            role=role,
         ),
     }
 

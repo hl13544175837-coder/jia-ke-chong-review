@@ -21,6 +21,7 @@ if env_file.exists():
     load_dotenv(env_file)
 
 from app import create_app
+from scripts.backup_pilot_data import database_url_summary
 
 app = create_app()
 
@@ -30,6 +31,7 @@ if __name__ == "__main__":
     print(f"\n✓ 智聘 · 招聘管理系统 后端已启动 http://localhost:{port}")
     print(f"  LLM provider : {os.environ.get('LLM_PROVIDER', 'openai')}")
     print(f"  Model        : {os.environ.get('LLM_MODEL', 'gpt-4o-mini')}")
-    print(f"  Database     : {os.environ.get('DATABASE_URL', 'sqlite:///hireinsight.db')}")
+    database_url = os.environ.get("DATABASE_URL", "sqlite:///hireinsight.db")
+    print(f"  Database     : {database_url_summary(database_url)}")
     print(f"  Debug        : {debug}\n")
     app.run(host="0.0.0.0", port=port, debug=debug)

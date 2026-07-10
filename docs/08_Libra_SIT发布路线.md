@@ -1,6 +1,7 @@
 # 08 · Libra / SIT 发布路线
 
 > 适用场景：用户说“发布到 test”“发布到 SIT”“test-zhipin 没变化”“公司服务器 test 没更新”时，先按本文执行，不要重新猜发布链路。
+> 最近文档同步：2026-07-10。最后一次成功样例仅用于说明流程，不代表当前测试站版本。
 
 ## 一句话结论
 
@@ -111,7 +112,7 @@ zhipin-frontend(RC_<时间戳>|test) - 成功
 
 ## 验收方式
 
-只凭 Libra 通知不够，必须用测试站静态资产确认：
+只凭 Libra 通知不够，必须同时验证前端资产和后端服务。前端先确认测试站静态资产：
 
 ```bash
 curl -sS -L -D /tmp/test-zhipin.headers https://test-zhipin.yimidida.com/ -o /tmp/test-zhipin.html
@@ -125,6 +126,15 @@ perl -ne 'while(m#(/assets/[^"<> ]+)#g){print "$1\n"}' /tmp/test-zhipin.html | s
 curl -sS -L https://test-zhipin.yimidida.com/assets/CandidateProfilePage-RlmuqnXF.js -o /tmp/CandidateProfilePage-RlmuqnXF.js
 rg '完整简历|阅读区可独立滚动|当前操作岗位|淘汰原因' /tmp/CandidateProfilePage-RlmuqnXF.js
 ```
+
+后端至少验证健康接口、未登录权限和本次变更对应的受控 API。当前 `/api/health` 只证明进程存活，不单独证明数据库、uploads 或外部依赖可用：
+
+```bash
+curl -sS -i https://test-zhipin.yimidida.com/api/health
+curl -sS -i https://test-zhipin.yimidida.com/api/jobs   # 未登录应为 401/403
+```
+
+最终发布证据必须记录：`CFPD test SHA + Libra pipeline/CommitID + 前端资产哈希 + 后端健康/API 冒烟 + 验证时间与执行人`。缺任一项只能判定为部分验证，不能说 SIT 已同步。
 
 ## 常见坑
 

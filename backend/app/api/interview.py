@@ -535,7 +535,7 @@ def list_assignments():
 @bp.post("/interview/assignments")
 @require_auth
 def create_assignment():
-    from ..models import Candidate, User
+    from ..models import Candidate, Notification, User
 
     if g.role not in ("recruiter", "manager", "admin"):
         return jsonify({"error": "Forbidden"}), 403
@@ -608,6 +608,19 @@ def create_assignment():
         created_by=g.user_id,
     )
     db.session.add(assignment)
+    scheduled_label = assignment.scheduled_at.isoformat() if assignment.scheduled_at else "待确认时间"
+    db.session.add(Notification(
+        org_id=g.org_id,
+        user_id=assignment.interviewer_id,
+        type="interview_assignment",
+        title="新的面试安排",
+        body=(
+            f"{candidate.name_masked or '候选人'} - {job.title}，"
+            f"{assignment.round}，时间：{scheduled_label}。"
+            "请在我的面试中查看材料并准备反馈。"
+        ),
+        link="/interviews",
+    ))
     db.session.commit()
     record_event("interview.assigned", entity_id=assignment.candidate_id,
                  entity_type="candidate",

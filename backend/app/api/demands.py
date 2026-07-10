@@ -1,12 +1,12 @@
 from datetime import date, datetime
 
 from flask import Blueprint, g, jsonify, request
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from .. import db
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
-from ..models import Job, PipelineStage, RecruitmentDemand
+from ..models import Job, PipelineStage, RecruitmentDemand, User
 from .access import can_manage_job, job_is_active, same_org
 from .jobs import _extract_jd_structured
 from .pipeline import _latest_stage_subquery
@@ -14,7 +14,14 @@ from .pipeline import _latest_stage_subquery
 bp = Blueprint("demands", __name__)
 
 PRIORITIES = {"A", "B", "C"}
-DEMAND_STATUSES = {"pending", "active", "paused", "filled", "cancelled"}
+OPEN_DEMAND_STATUSES = {"pending", "active", "paused"}
+COMMAND_ONLY_FIELDS = {
+    "status",
+    "owner_hr_id",
+    "priority",
+    "close_reason",
+    "downgrade_reason",
+}
 INTERVIEW_PROGRESS_STAGES = {
     "interview",
     "interview_first",
@@ -46,11 +53,6 @@ def _clean_priority(value, default="B"):
     return priority if priority in PRIORITIES else default
 
 
-def _clean_status(value, default="active"):
-    status = str(value or default).strip()
-    return status if status in DEMAND_STATUSES else default
-
-
 def _clean_headcount(value):
     try:
         return max(1, int(value or 1))
@@ -79,6 +81,42 @@ def _demand_query_for_current_user():
             )
         )
     return query
+
+
+def _open_demand_statement(org_id, job_id, exclude_demand_id=None):
+    statement = select(RecruitmentDemand).where(
+        RecruitmentDemand.org_id == org_id,
+        RecruitmentDemand.job_id == job_id,
+        RecruitmentDemand.status.in_(OPEN_DEMAND_STATUSES),
+    )
+    if exclude_demand_id is not None:
+        statement = statement.where(RecruitmentDemand.id != exclude_demand_id)
+    return statement.order_by(RecruitmentDemand.id.asc()).limit(1).with_for_update()
+
+
+def _open_demand_for_job(job_id, exclude_demand_id=None):
+    statement = _open_demand_statement(
+        org_id=g.org_id,
+        job_id=job_id,
+        exclude_demand_id=exclude_demand_id,
+    )
+    return db.session.execute(statement).scalar_one_or_none()
+
+
+def _locked_job(job_id):
+    return db.session.execute(
+        select(Job).where(Job.id == job_id).with_for_update()
+    ).scalar_one_or_none()
+
+
+def _open_demand_conflict_response(job_id, exclude_demand_id=None):
+    existing = _open_demand_for_job(job_id, exclude_demand_id=exclude_demand_id)
+    if existing is None:
+        return None
+    return jsonify({
+        "error": "该岗位画像已有未结束需求，请进入已有需求或另建岗位画像",
+        "existing_demand_id": existing.id,
+    }), 409
 
 
 def _distinct_stage_count(job_id, stages):
@@ -146,6 +184,13 @@ def _risk_flags(demand, metrics):
 
 def _demand_payload(demand):
     job = demand.job
+    owner = (
+        User.query
+        .filter(User.id == demand.owner_hr_id, User.org_id == demand.org_id)
+        .first()
+        if demand.owner_hr_id
+        else None
+    )
     metrics = _demand_metrics(demand.job_id)
     return {
         "id": demand.id,
@@ -155,6 +200,7 @@ def _demand_payload(demand):
         "job_department": job.department if job else "",
         "job_code": job.job_code if job else "",
         "owner_hr_id": demand.owner_hr_id,
+        "owner_hr_name": owner.name if owner else "",
         "request_no": demand.request_no or "",
         "requester_name": demand.requester_name or "",
         "requester_department": demand.requester_department or "",
@@ -190,12 +236,8 @@ def _apply_demand_fields(demand, data):
         demand.accepted_at = _parse_date(data.get("accepted_at"))
     if "target_date" in data:
         demand.target_date = _parse_date(data.get("target_date"))
-    if "priority" in data:
-        demand.priority = _clean_priority(data.get("priority"), demand.priority or "B")
     if "headcount" in data:
         demand.headcount = _clean_headcount(data.get("headcount"))
-    if "status" in data:
-        demand.status = _clean_status(data.get("status"), demand.status or "active")
     if "note" in data:
         demand.note = _clean(data.get("note"), 2000)
 
@@ -243,15 +285,21 @@ def list_demands():
 def create_demand():
     data = request.get_json() or {}
     job_id = data.get("job_id")
+    requested_status = str(data.get("status") or "active").strip()
+    if requested_status not in OPEN_DEMAND_STATUSES:
+        return jsonify({"error": "新建需求的 status 必须是 pending、active 或 paused"}), 400
     created_job_profile = False
     if job_id:
-        job = db.session.get(Job, job_id)
+        job = _locked_job(job_id)
         if job is None:
             return jsonify({"error": "岗位不存在"}), 404
         if not same_org(job, g.org_id):
             return jsonify({"error": "岗位不存在"}), 404
         if not can_manage_job(g.user_id, g.role, job):
             return jsonify({"error": "Forbidden"}), 403
+        conflict = _open_demand_conflict_response(job.id)
+        if conflict is not None:
+            return conflict
         if not job_is_active(job):
             return jsonify({"error": "岗位已关闭，请先恢复在招后再创建需求"}), 400
     else:
@@ -266,7 +314,7 @@ def create_demand():
         owner_hr_id=g.user_id,
         priority=_clean_priority(data.get("priority")),
         headcount=_clean_headcount(data.get("headcount")),
-        status=_clean_status(data.get("status")),
+        status=requested_status,
     )
     _apply_demand_fields(demand, data)
     db.session.add(demand)
@@ -298,7 +346,14 @@ def update_demand(demand_id):
         return jsonify({"error": "需求不存在"}), 404
     if not _can_manage_demand(demand):
         return jsonify({"error": "无权编辑该需求"}), 403
-    _apply_demand_fields(demand, request.get_json() or {})
+    data = request.get_json() or {}
+    forbidden = sorted(COMMAND_ONLY_FIELDS.intersection(data))
+    if forbidden:
+        return jsonify({
+            "error": "状态、负责人、优先级及动作原因必须通过专用操作修改",
+            "fields": forbidden,
+        }), 400
+    _apply_demand_fields(demand, data)
     db.session.commit()
     record_event("demand.updated", entity_id=demand.id, entity_type="demand")
     return jsonify(_demand_payload(demand))
@@ -314,15 +369,23 @@ def close_demand(demand_id):
     if not _can_manage_demand(demand):
         return jsonify({"error": "无权关闭该需求"}), 403
     data = request.get_json() or {}
-    status = _clean_status(data.get("status"), "cancelled")
+    status = str(data.get("status") or "cancelled").strip()
     if status not in {"filled", "cancelled", "paused"}:
         return jsonify({"error": "status must be filled, cancelled or paused"}), 400
+    close_reason = _clean(data.get("close_reason"), 1000)
+    if not close_reason:
+        return jsonify({"error": "关闭或暂停原因必填"}), 400
     demand.status = status
-    demand.close_reason = _clean(data.get("close_reason"), 1000)
+    demand.close_reason = close_reason
     if status in {"filled", "cancelled"} and demand.job:
-        demand.job.status = "closed"
-    db.session.commit()
-    record_event("demand.closed", entity_id=demand.id, entity_type="demand", payload={"status": status})
+        if _open_demand_for_job(demand.job_id, exclude_demand_id=demand.id) is None:
+            demand.job.status = "closed"
+    record_event(
+        "demand.closed",
+        entity_id=demand.id,
+        entity_type="demand",
+        payload={"status": status, "reason": close_reason, "job_id": demand.job_id},
+    )
     return jsonify(_demand_payload(demand))
 
 
@@ -337,17 +400,27 @@ def restore_demand(demand_id):
         return jsonify({"error": "无权恢复该需求"}), 403
     data = request.get_json() or {}
     restore_note = _clean(data.get("note"), 1000)
+    if not restore_note:
+        return jsonify({"error": "恢复原因必填"}), 400
+    if demand.job:
+        _locked_job(demand.job_id)
+    conflict = _open_demand_conflict_response(demand.job_id, exclude_demand_id=demand.id)
+    if conflict is not None:
+        return conflict
     demand.status = "active"
     demand.close_reason = ""
-    if restore_note:
-        demand.note = _clean(
-            f"{demand.note or ''}\n恢复说明：{restore_note}".strip(),
-            2000,
-        )
+    demand.note = _clean(
+        f"{demand.note or ''}\n恢复说明：{restore_note}".strip(),
+        2000,
+    )
     if demand.job:
         demand.job.status = "active"
-    db.session.commit()
-    record_event("demand.restored", entity_id=demand.id, entity_type="demand")
+    record_event(
+        "demand.restored",
+        entity_id=demand.id,
+        entity_type="demand",
+        payload={"reason": restore_note, "job_id": demand.job_id},
+    )
     return jsonify(_demand_payload(demand))
 
 
@@ -361,9 +434,64 @@ def downgrade_demand(demand_id):
     if not _can_manage_demand(demand):
         return jsonify({"error": "无权降级该需求"}), 403
     data = request.get_json() or {}
-    demand.priority = _clean_priority(data.get("priority"), "C")
-    demand.downgrade_reason = _clean(data.get("downgrade_reason"), 1000)
-    db.session.commit()
-    record_event("demand.downgraded", entity_id=demand.id, entity_type="demand",
-                 payload={"priority": demand.priority})
+    raw_priority = str(data.get("priority") or "").strip().upper()
+    if raw_priority not in PRIORITIES:
+        return jsonify({"error": "priority must be A, B or C"}), 400
+    downgrade_reason = _clean(data.get("downgrade_reason"), 1000)
+    if not downgrade_reason:
+        return jsonify({"error": "优先级调整原因必填"}), 400
+    demand.priority = raw_priority
+    demand.downgrade_reason = downgrade_reason
+    record_event(
+        "demand.downgraded",
+        entity_id=demand.id,
+        entity_type="demand",
+        payload={"priority": demand.priority, "reason": downgrade_reason, "job_id": demand.job_id},
+    )
+    return jsonify(_demand_payload(demand))
+
+
+@bp.patch("/demands/<int:demand_id>/owner")
+@require_auth
+@require_role("manager", "admin")
+def reassign_demand_owner(demand_id):
+    data = request.get_json(silent=True) or {}
+    new_owner_id = data.get("owner_hr_id")
+    reason = _clean(data.get("reason"), 240)
+    if not new_owner_id:
+        return jsonify({"error": "owner_hr_id required"}), 400
+    if not reason:
+        return jsonify({"error": "转派原因必填"}), 400
+
+    demand = db.session.get(RecruitmentDemand, demand_id, with_for_update=True)
+    if demand is None or not same_org(demand, g.org_id):
+        return jsonify({"error": "需求不存在"}), 404
+    job = _locked_job(demand.job_id)
+    if job is None or not same_org(job, g.org_id):
+        return jsonify({"error": "关联岗位不存在"}), 404
+
+    conflict = _open_demand_conflict_response(demand.job_id, exclude_demand_id=demand.id)
+    if conflict is not None:
+        return conflict
+
+    target = db.session.get(User, new_owner_id)
+    if target is None or not same_org(target, g.org_id):
+        return jsonify({"error": "目标用户不存在"}), 404
+    if target.role != "recruiter" or not target.is_active:
+        return jsonify({"error": "需求负责人必须是启用中的招聘专员"}), 400
+
+    old_owner_id = demand.owner_hr_id
+    demand.owner_hr_id = target.id
+    job.owner_hr_id = target.id
+    record_event(
+        "demand.owner_reassigned",
+        entity_id=demand.id,
+        entity_type="demand",
+        payload={
+            "from": old_owner_id,
+            "to": target.id,
+            "job_id": job.id,
+            "reason": reason,
+        },
+    )
     return jsonify(_demand_payload(demand))

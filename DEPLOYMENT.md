@@ -1,8 +1,8 @@
 # 智聘·招聘管理系统 — 部署文档
 
-> **版本**：2026-06-22
+> **版本**：2026-07-10
 > **适用环境**：Windows 10/11、Linux（Ubuntu 20.04+）、macOS 13+  
-> **架构**：Flask 单进程 + SQLite（开发）/ MySQL（公司试点）/ PostgreSQL（兼容）+ Vite React SPA
+> **架构**：React SPA + Flask/Gunicorn 模块化单体；SQLite（开发）/ MySQL（公司试点）/ PostgreSQL（兼容）
 
 ---
 
@@ -38,6 +38,7 @@
     ├── /api/pipeline      候选人管道
     ├── /api/bi            数据看板 (漏斗 + 专员效能 + 权限化岗位 BI)
     ├── /api/agent         LangGraph AI 助手 (SSE 流式)
+    ├── /api/oa            默认关闭的 OA/Merak 查询代理骨架（通用写代理禁止）
     └── /api/boss          BOSS 直聘实验辅助能力：账号导入、收件箱、推荐候选人和简历下载
     │
     ├── base_agent/        LLM 客户端 / 简历解析 / 匹配算法
@@ -59,9 +60,9 @@
 
 | 组件 | 最低版本 | 备注 |
 |------|---------|------|
-| Python | 3.9+ | 推荐 3.11 |
-| Node.js | 18+ | 推荐 20 LTS |
-| npm | 9+ | 随 Node.js 附带 |
+| Python | 3.11+ | 当前 `pandas 3.x` 的最低要求 |
+| Node.js | 20.19+ 或 22.12+ | 当前 Vite 8 的最低要求 |
+| npm | 10+ | 随受支持的 Node.js 附带 |
 | Git | 任意 | 可选 |
 
 > BOSS 直聘模块是实验辅助能力，不属于 HR 试点主流程必测项。若开放该模块，还需要运行期可用的 `boss` CLI。容器已包含 git，若设置
@@ -173,7 +174,9 @@ python backend/scripts/cleanup_demo_data.py --dry-run
 python backend/scripts/cleanup_demo_data.py --confirm
 ```
 
-脚本会先备份，再删除 `@mvp.local` demo 账号及其关联业务数据，并清空 `backend/uploads/`、`uploads/` 文件；表结构会保留。
+脚本会先冻结命中主键、锁定已命中行并生成与恢复脚本兼容的数据库快照和根目录 `uploads.tar.gz`，再删除冻结集合及这些 demo 候选人明确引用的简历文件；不会清空整个上传目录，表结构、真实/无关文件和备份后新插入的数据会保留。备份与恢复共用 archive 校验；uploads 内存在符号链接、特殊文件或不可移植路径名时会在删除前失败。即使有这些保护，正式清理期间仍必须让应用进入维护/停写状态，避免冻结行在快照后被业务修改。
+
+当前 `restore_pilot_data.py` 只直接支持 PostgreSQL 与 SQLite，因此 MySQL 环境的 `cleanup_demo_data.py --confirm` 会在连接、备份和删除前 fail closed；dry-run 仍可用于核对范围。MySQL 清理必须由 DBA 先把 `database.sql` 恢复到临时库验证，再走审核后的手工清理，或先实现并验证 MySQL 自动恢复，禁止为省事移除脚本保护。
 
 ### 数据库兼容补列
 
@@ -305,9 +308,13 @@ RATE_LIMIT_RESUME_UPLOAD=8
 BACKUP_DIR=/var/backups/zhipin
 ALLOW_PUBLIC_REGISTRATION=false
 FIELD_ENCRYPTION_KEY=PASTE_GENERATED_FERNET_KEY_HERE
+OA_MERAK_PROXY_ENABLED=false
 BOSS_CLI_AUTO_INSTALL=false
 BOSS_CLI_BIN=/usr/local/bin/boss
 ```
+
+如需接公司 OA/Merak 查询代理，先让 OA 负责人确认可用 HTTPS 网关域名、token 获取方式、可信 IP 或白名单；确认后再设置 `OA_MERAK_PROXY_ENABLED=true`、`OA_MERAK_BASE_URL` 和 `OA_MERAK_BEARER_TOKEN`。三项不完整、地址不是 HTTPS、URL 内嵌账号密码或格式异常时，查询代理返回 503 且不出网。通用代理即使启用也只允许查询类接口；会议室预定/取消和日程增删改等写操作会被拒绝，避免把技术插座误当作已授权业务能力。
+
 
 公司 MySQL 试用环境建议使用 InnoDB、`utf8mb4` 字符集、专用库和专用账号。当前代码也兼容 PostgreSQL，连接串可写为 `postgresql://user:pass@host:5432/zhipin`，会自动转为 `postgresql+psycopg://`。
 
@@ -319,10 +326,10 @@ python backend/scripts/check_pilot_readiness.py
 
 开发机上的 `.env` 可能会显示大量 FAIL，这代表服务器必填配置还没填好，不代表脚本本身失败。只有服务器真实 `.env` 填完后，自检通过，才继续启动和开放试点。
 
-4. 启动（Flask 会自动托管 `frontend/dist`）：
+4. 启动（Gunicorn 加载 Flask，并由 Flask 托管 `frontend/dist`）：
 ```bash
 cd backend
-python run.py
+gunicorn -w 2 -b 127.0.0.1:5000 --timeout 120 --keep-alive 5 "run:app"
 ```
 
 访问 `http://your-server:5000` 即为完整系统。
@@ -336,14 +343,18 @@ python run.py
 - 普通 JSON/表单写接口支持 `Idempotency-Key`：同一用户、同一路径、同一请求体和同一个 key 的重试会返回第一次结果；同 key 不同请求体返回 409。
 - 同一面试官同一时间不能被安排两场不同面试；完全相同的重复安排仍返回已有记录。
 - 上传只支持 PDF、DOCX 和 ZIP；旧版 `.doc` 因宏风险会被跳过，需转换后再上传。
-- 误导入可按上传批次撤回：候选人会软删除、匿名化并删除原文件，保留审计事件。
-- 候选人导出继续开放，但同一账号 10 分钟内第 6 次起会在审计日志标为 `warning`，管理员页标红。
+- 误导入可通过受控 API 按上传批次撤回：候选人会软删除、匿名化并删除原文件，保留审计事件；当前前端无整批撤回入口。
+- 候选人导出继续开放，但同一账号 10 分钟内第 6 次起会在审计 API 标为 `warning`；当前管理员页尚未展示完整告警上下文。
 - AI 写操作继续可用，仍写入 `agent.write` 审计；试点说明中应写清 AI 只做辅助，最终决定由人确认。
 - 管理员重置密码、用户自己修改密码后，旧登录 token 会立刻失效。
 
 ### 备份与恢复演练
 
 上线前至少演练一次“能备份，也能恢复到临时库”。轻量试点不做复杂恢复后台，但必须留出可执行命令。
+
+恢复脚本会在覆盖数据库或上传目录前预检快照中的数据库产物和根目录 `uploads.tar.gz`；任一产物缺失或上传包路径不安全时，必须在覆盖前失败。演示数据清理只允许删除数据库中明确属于 demo 候选人的简历文件，不得用“清空整个 uploads 目录”代替按记录清理。
+
+恢复不是数据库与文件系统之间的全局事务：PostgreSQL 依赖单事务 `pg_restore`，SQLite 和上传目录分别使用同盘原子替换，但数据库已经成功恢复后，最后一次上传目录切换仍可能因权限、磁盘或文件系统错误失败。生产恢复前必须先用同一快照恢复到临时库和临时目录；正式恢复期间停止业务写入，失败时按同一快照整体重试或由运维按原快照回滚，并以数据库记录与原简历文件同时核对通过作为完成标准。
 
 备份：
 
@@ -353,7 +364,7 @@ python scripts/backup_pilot_data.py --dry-run
 python scripts/backup_pilot_data.py
 ```
 
-恢复演练建议恢复到临时库或临时上传目录，不直接覆盖生产环境。脚本支持 PostgreSQL `pg_restore` 与 SQLite 文件恢复；MySQL 备份由 `mysqldump` 产出 SQL 文件，恢复时由 DBA 或部署同事导入临时 MySQL 库；脚本会校验 `uploads.tar.gz` 路径穿越：
+恢复演练建议恢复到临时库或临时上传目录，不直接覆盖生产环境。脚本支持 PostgreSQL `pg_restore` 与 SQLite `database.sqlite` 恢复；MySQL 备份由 `mysqldump` 产出 SQL 文件，恢复时由 DBA 或部署同事导入临时 MySQL 库；脚本会校验数据库产物、目标路径重叠和 `uploads.tar.gz` 路径穿越：
 
 ```bash
 cd backend
@@ -401,7 +412,7 @@ Type=simple
 User=www-data
 WorkingDirectory=/path/to/project/backend
 EnvironmentFile=/path/to/project/backend/.env
-ExecStart=/usr/bin/python3 run.py
+ExecStart=/path/to/project/.venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 --timeout 120 --keep-alive 5 run:app
 Restart=always
 RestartSec=5
 
@@ -419,6 +430,8 @@ systemctl start zhipin
 公司 Libra/SIT 流水线会按 `zhipin-frontend` 和 `zhipin-server` 两个模块构建镜像。这是 CI/CD 打包与公司发布平台的模块形态，不改变本项目手工试点/生产推荐路线：前端先 `npm run build`，再由 Flask 同源托管 `frontend/dist`，对外暴露一个应用入口。
 
 除非公司发布平台明确要求排查镜像构建、标签或模块包记录，否则手工试点部署不要按下面示例改成前后端双容器拓扑；优先使用上面的方案 A/B/C。
+
+镜像构建上下文必须受根目录 `.dockerignore` 保护，至少排除 `.env`、数据库、`backend/uploads/`、根 `uploads/`、备份、日志和本地输出。`.gitignore` 不会保护 Docker build context；构建或推送前应先确认这些运行数据没有进入镜像层。
 
 #### 1. 编译镜像
 在具有 Docker 环境的机器上运行：
@@ -508,7 +521,7 @@ https://ward-mounted-concerning-fans.trycloudflare.com
 | 招聘专员 | hr03@mvp.local | 候选人 / 岗位 / 管道 / 个人数据 |
 | 面试官 | interviewer01@mvp.local | 面试任务 / 候选人查看 |
 
-MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录候选人负责人、流程推进人和面试反馈人；BI 主绩效按候选人负责人归属，流程推进人用于操作留痕和后续动作审计，多人共用账号会导致贡献归属不清。试点审计日志还会记录候选人详情查看、候选人 CSV 导出、越权 403 和 AI 写操作，并附带 request_id、角色、IP、来源、结果和失败原因；同一账号短时间高频导出候选人会在管理员审计页标红。
+MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录候选人负责人、流程推进人和面试反馈人；BI 的当前负责盘子按查询时的候选人负责人归属，流程推进人用于操作留痕和后续动作审计，多人共用账号会导致贡献归属不清。负责人转派会把候选人的本期 cohort 统计整体归入新负责人，当前实现不等同事件时点历史绩效。试点审计 API 会记录候选人详情查看、候选人 CSV 导出、越权 403 和 AI 写操作，并附带 request_id、角色、IP、来源、结果、失败原因和 `severity`；当前管理员页只展示基础字段，完整告警上下文需通过管理员审计 API 核查。
 
 生产多组织隔离依赖 `org_id`：部署初始化时必须为每个组织创建独立管理员，并确认历史用户、岗位、候选人、流程、面试、BI 和 AI 对话均归入正确组织。当前一期没有前端组织管理页面，跨组织开通和迁移由部署脚本或数据库初始化处理。
 

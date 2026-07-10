@@ -9,14 +9,16 @@
 |---|---|
 | 系统名称 | 智聘 · 招聘管理系统 |
 | 文档类型 | As-built System Design Document |
-| 代码基准 | 以当前工作区代码和实际测试结果为准；本文初版生成时曾参考 `6a26afe`，后续迭代不再依赖固定旧提交号 |
+| 已提交基线 | CFPD `test` 的 `f2c3ace03a1c`（2026-07-10 本轮开始时） |
+| 本地同步层 | `codex/p0-control-hardening` 工作区；只有提交并部署后才能视为环境能力，状态见 `docs/README.md` 项目控制台 |
 | 本地项目路径 | `/Users/yenns/Desktop/智聘` |
 | 主要用途 | 后续按模块指定改动时，用来快速判断要改哪些文件、影响哪些接口/表/流程 |
-| 文档生成日期 | 2026-06-19 |
+| 初版生成日期 | 2026-06-19 |
+| 最近同步日期 | 2026-07-10 |
 
-### 1.1 本地兼容补丁说明
+### 1.1 兼容能力与基线说明
 
-当前本地代码除云端 `main` 外，还保留了几处运行兼容补丁：
+下列兼容行为属于当前代码能力，但是否已进入某个部署环境必须按环境 commit 复核：
 
 | 文件 | 目的 |
 |---|---|
@@ -27,7 +29,7 @@
 | `base_agent/tests/test_llm_client_secrets.py` | 覆盖钥匙串密钥解析和简历解析器密钥路径 |
 | `backend/migrate_stages.py` | 将历史一面/二面/终面主流程阶段归并为当前 MVP 的 `interview` |
 
-这些补丁是为了让本地演示环境稳定运行。若后续要推到云端，应作为单独 PR 合入，并同步更新 `.env.example` / 部署文档。
+这些兼容行为用于支持历史演示库与本地密钥读取。后续改变行为时必须同步测试、`.env.example` 和部署文档；不能再用“当前工作区”代替可复现的 commit 基线。
 
 ## 2. 系统目标
 
@@ -48,13 +50,15 @@
 | BI 看板 | 已实现 | 团队漏斗、专员效能、岗位漏斗 |
 | AI 助手 | 已实现 | LangGraph ReAct 工具调用，支持读工具与用户确认后的写工具 |
 | 用户管理 | 已实现 | admin 管理用户角色、启停、创建账号与重置密码 |
+| 招聘需求不变量 | 发布候选，SIT 待验 | 同一岗位画像最多一个未结束需求；状态、恢复、优先级和负责人转派走专用服务端动作 |
+| 面试站内通知 | 发布候选，SIT 待验 | 创建面试安排后按当前组织给面试官生成站内通知；不等于 OA/企业微信通知 |
 
 ### 2.2 明确不做或尚未工程化的能力
 
 | 项目 | 当前状态 |
 |---|---|
 | 多组织隔离 | 已实现核心 `org_id` 隔离；一期不提供前端组织管理后台 |
-| 试点审计 | 已实现试点版 | 关键查看、导出、写操作、AI 写操作和越权 403 记录到 `events`；管理员页对越权和高频导出告警标红 |
+| 试点审计 | 后端事件与 API 已实现；页面只展示基础字段，完整上下文和 `warning` 告警需通过 API 核查 |
 | 异步任务队列 | 配置了 Celery eager，但当前上传/AI 多为同步处理 |
 | 搜索索引 | 未实现，主要通过数据库查询 |
 | 大规模批量导入队列 | 未实现，当前批量上传在请求中同步解析 |
@@ -146,7 +150,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `backend/app/config.py` | 环境变量、数据库、上传目录、JWT、Celery 配置 |
 | `backend/app/models.py` | 数据模型定义 |
 | `backend/app/api/*.py` | REST API 层 |
-| `backend/app/services/*.py` | 业务服务层，封装匹配、简历、面试、AI 助手等 |
+| `backend/app/services/*.py` | 业务服务层，封装匹配、简历、面试、AI 助手、OA/Merak 代理和服务注册等 |
 | `backend/app/middleware/auth.py` | JWT 校验与 RBAC 装饰器 |
 | `backend/app/middleware/events.py` | 写操作事件埋点 |
 | `base_agent/llm_client.py` | LLM 请求、模型路由、密钥读取 |
@@ -157,7 +161,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 
 ## 5. 角色与权限模型
 
-中文角色名以 `docs/README.md` 的“角色名口径”为准。代码和权限判断只认 `admin`、`manager`、`recruiter`、`interviewer` 四类技术角色；旧称或业务别名里的“招聘主管 / HRD / 招聘负责人 / 用人部门负责人”在权限上统一按 `manager` 理解，“HR 专员”按 `recruiter` 理解，“系统管理员”按 `admin` 理解。
+中文角色名以 `docs/README.md` 的“角色名口径”为准。代码和权限判断只认 `admin`、`manager`、`recruiter`、`interviewer` 四类技术角色；“招聘主管 / HRD / 招聘负责人”按 `manager` 理解，“HR 专员”按 `recruiter` 理解，“系统管理员”按 `admin` 理解。普通用人部门负责人不自动映射为 `manager`，因为当前没有部门级数据范围，`manager` 能看到本组织全团队数据。
 
 | 角色 | 可见模块 | 主要权限 |
 |---|---|---|
@@ -212,6 +216,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `users` | `User` | `org_id`, `name`, `email`, `role`, `password_hash`, `is_active`, `token_version` | 用户、角色、启停；`org_id` 是多组织隔离边界；改密/重置密码递增 `token_version` 让旧 token 失效 |
 | `candidates` | `Candidate` | `org_id`, `owner_hr_id`, `name_masked`, `resume_json`, `raw_file_path`, `deleted_at`, `deleted_by`, `anonymized_at` | 候选人主档与简历结构化结果；支持软删除与匿名化 |
 | `upload_batches` | `UploadBatch` | `org_id`, `owner_hr_id`, `source_channel`, `target_job_id`, `note` | 批量上传元数据；误导入撤回按批次定位候选人 |
+| `recruitment_demands` | `RecruitmentDemand` | `org_id`, `job_id`, `owner_hr_id`, `status`, `priority`, `close_reason` | 真实用人需求；当前每个岗位画像同时最多一个未结束需求 |
 | `candidate_tags` | `CandidateTag` | `org_id`, `candidate_id`, `tag`, `score` | 简历技能标签及评分 |
 | `jobs` | `Job` | `org_id`, `title`, `jd_text`, `jd_structured`, `owner_hr_id`, `status` | 岗位主档与结构化 JD |
 | `matches` | `Match` | `org_id`, `job_id`, `candidate_id`, `score`, `reason` | 持久化的岗位匹配结果 |
@@ -220,6 +225,8 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `events` | `Event` | `org_id`, `actor_id`, `actor_role`, `action`, `entity_id`, `entity_type`, `payload`, `request_id`, `ip`, `user_agent`, `result`, `failure_reason`, `source`, `severity` | 写操作事件与试点审计基础；`source` 区分页面、AI、安全拦截 |
 | `audit_logs` | `AuditLog` | `org_id`, `actor_id`, `target_table`, `target_id`, `action` | 预留审计表，当前使用较少 |
 | `interview_feedback` | `InterviewFeedback` | `org_id`, `candidate_id`, `job_id`, `round`, `interviewer_id`, `score`, `passed`, `reason_tags`, `note` | 面试官反馈与原因分类 |
+| `interview_assignments` | `InterviewAssignment` | `org_id`, `candidate_id`, `job_id`, `interviewer_id`, `round`, `scheduled_at`, `status` | 真人面试安排、冲突校验和待补反馈事实 |
+| `notifications` | `Notification` | `org_id`, `user_id`, `type`, `title`, `body`, `link`, `is_read` | 同组织站内通知；创建时必须显式传 `org_id` |
 | `idempotency_records` | `IdempotencyRecord` | `scope_key`, `idempotency_key`, `actor_scope`, `method`, `path`, `body_hash`, `status_code`, `response_json` | 普通 JSON/表单写接口的 `Idempotency-Key` 重试保护 |
 
 ### 6.1 招聘阶段枚举
@@ -307,11 +314,12 @@ rejected
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
 | `GET` | `/demands` | recruiter/manager/admin | 查询当前账号可管理的用人需求 |
-| `POST` | `/demands` | recruiter/manager/admin | 创建用人需求；可传 `job_id` 复用已有岗位画像，也可传 `job_title` + `jd_text` 自动创建岗位画像 |
-| `PATCH` | `/demands/<demand_id>` | owner/manager/admin | 更新需求字段，包含优先级调整 |
-| `POST` | `/demands/<demand_id>/close` | owner/manager/admin | 关闭、完成或暂停需求；完成/取消会同步关闭岗位 |
+| `POST` | `/demands` | recruiter/manager/admin | 创建 `pending/active/paused` 用人需求；可复用没有未结束需求的岗位画像，否则返回 409；也可传 `job_title` + `jd_text` 自动创建岗位画像 |
+| `PATCH` | `/demands/<demand_id>` | owner/manager/admin | 更新普通描述字段；拒绝状态、负责人、优先级和动作原因字段 |
+| `POST` | `/demands/<demand_id>/close` | owner/manager/admin | 原因必填；关闭、完成或暂停需求；完成/取消且没有其他未结束需求时同步关闭岗位 |
 | `POST` | `/demands/<demand_id>/restore` | owner/manager/admin | 恢复误关闭/误暂停的需求，并同步恢复岗位画像为在招 |
-| `POST` | `/demands/<demand_id>/downgrade` | owner/manager/admin | 兼容旧降级入口，记录降级原因 |
+| `POST` | `/demands/<demand_id>/downgrade` | owner/manager/admin | 调整 A/B/C 优先级，原因必填并写事件 |
+| `PATCH` | `/demands/<demand_id>/owner` | manager/admin | 选择同组织启用 recruiter 转派需求和岗位画像负责人，原因必填并写事件 |
 
 ### 7.5 Pipeline
 
@@ -334,7 +342,7 @@ rejected
 | `GET` | `/interview/feedback` | 登录 | 查询反馈，返回原因分类 |
 | `GET` | `/interviews` | 登录 | 面试记录列表，按角色过滤 |
 | `GET` | `/interview/interviewers` | 登录 | 返回启用中的面试官/经理/管理员选项 |
-| `POST` | `/interview/assignments` | recruiter/manager/admin + 岗位管理权限 | 创建面试安排；同一安排重复请求返回已有记录；同一面试官同一时间已有其他安排时返回 409 |
+| `POST` | `/interview/assignments` | recruiter/manager/admin + 岗位管理权限 | 创建面试安排；同一安排重复请求返回已有记录；同一面试官同一时间已有其他安排时返回 409；成功后按当前组织生成站内通知 |
 
 ### 7.7 BI / Admin / Agent
 
@@ -353,7 +361,17 @@ rejected
 | `POST` | `/agent/chat` | recruiter/manager/admin | SSE 流式 AI 对话 |
 | `POST` | `/agent/execute` | recruiter/manager/admin + 工具 RBAC | 执行 AI 助手提议的写操作 |
 
-### 7.8 BOSS 直聘实验辅助接口
+### 7.8 健康检查接口
+
+| 方法 | 路径 | 权限 | 作用 |
+|---|---|---|---|
+| `GET` | `/api/health` | 无需登录 | 进程健康检查；只返回服务名和 `ok` 状态，不暴露业务数据 |
+
+### 7.9 OA/Merak 查询代理骨架
+
+`GET /api/oa/merak/endpoints` 只展示白名单目录。`POST /api/oa/merak/proxy/<endpoint_key>` 默认关闭；显式配置后也只允许查询语义接口。会议室预定/取消、日程新建/编辑/删除/回执等写语义由通用代理直接拒绝，直到未来建立有用户身份映射、确认、RBAC、审计、幂等和失败补偿的业务命令。
+
+### 7.10 BOSS 直聘实验辅助接口
 
 BOSS 直聘集成已在代码中注册为 `/api/boss/*` 蓝图，用于内部验证从招聘端账号拉取收件箱/推荐候选人、下载简历并导入候选人库。它是实验辅助能力，不属于当前 HR 试点主流程的必测项；主流程仍以手工上传简历、招聘需求、候选人匹配、流程推进、面试反馈和 BI 为准。
 
@@ -474,7 +492,7 @@ flowchart TD
 - 修改 JD 会重新结构化。
 - 关闭岗位只改 `status=closed`，不物理删除；招聘岗位页可切换查看已关闭岗位，并通过 `/jobs/<id>/restore` 恢复在招。
 - 关闭岗位画像进入冻结态：上传、匹配写入、加入需求流程、推进、Offer、面试安排、面试反馈、AI 预筛写回、AI 助手改状态都会被后端拒绝。
-- 用人需求恢复会把 `recruitment_demands.status` 改回 `active`，清空关闭原因，并同步把岗位画像 `jobs.status` 改回 `active`。
+- 用人需求恢复要求填写原因；后端先锁定岗位画像并检查同岗位没有另一条未结束需求，再把 `recruitment_demands.status` 改回 `active`、清空关闭原因，并同步把岗位画像 `jobs.status` 改回 `active`。
 - 招聘需求是业务主线，岗位/JD 是需求下的匹配画像。`POST /demands` 没有传 `job_id` 时，后端会用 `job_title`、`jd_text`、`requester_department` 自动创建 `jobs` 记录，再创建 `recruitment_demands`。
 - 用人需求、简历上传、候选人流程、面试安排等入口在没有可选岗位画像时引导用户先新建招聘需求或岗位画像，避免下拉框为空时卡住。
 
@@ -520,7 +538,7 @@ flowchart TD
 4. 用户移动阶段，调用 `/pipeline/move`。
 5. 后端向 `pipeline_stages` append 新流水，并写 `pipeline.moved` 事件。
 6. 如果目标为 `onboarded`，额外写 `candidate.onboarded` 事件。
-7. 如果候选人更适合其他招聘需求，右侧详情调用 `/pipeline/transfer`，原需求追加 `rejected` 转出记录，目标需求追加 `pending` 记录，页面切换到目标需求继续推进。
+7. 如果候选人更适合其他招聘需求，后端 `/pipeline/transfer` 可让原需求追加 `rejected` 转出记录、目标需求追加 `pending` 记录；当前右侧详情尚无该页面入口。
 
 重要约束：
 
@@ -530,7 +548,7 @@ flowchart TD
 - 阶段移动由 HR/经理/管理员完成；面试官账号即使被分配了面试，也不能调用 `/pipeline/move` 直接推进 Offer 或淘汰。
 - 前端反馈表通过 `canMovePipeline` 控制按钮显示，后端 `/pipeline/move` 和 `/pipeline/transfer` 也会兜底拦截面试官账号、非岗位负责人、跨组织数据和关闭目标需求。
 - 误推进或误淘汰用前端“修正阶段”处理，本质仍调用 `/pipeline/move` 追加一条新流水，备注以 `阶段修正：` 开头；候选人详情时间线显示“阶段修正”，当前阶段和 BI 当前存量按最新流水计算，历史记录不删除。
-- 需求转入用前端“转入其他招聘需求”处理，必须选择目标需求并填写原因；当前实现不改候选人负责人，只改变该候选人在两个需求流程里的最新阶段流水。
+- 需求转入由后端 `/pipeline/transfer` 强制选择目标需求并填写原因；当前前端尚无入口。接口不改候选人负责人，只改变该候选人在两个需求流程里的最新阶段流水。
 
 ### 8.6 AI 面试与流程回写
 
@@ -582,7 +600,7 @@ BI 主要从两类数据计算：
 | 来源 | 用途 |
 |---|---|
 | `pipeline_stages` 最新阶段 | 漏斗各阶段人数 |
-| `candidates.owner_hr_id` + `pipeline_stages` | 招聘专员有效推荐、推荐成功面试、Offer、入职等个人绩效 |
+| `candidates.owner_hr_id` + `pipeline_stages` | 招聘专员有效推荐、推荐成功面试、Offer、入职等当前负责盘子 |
 | `interview_assignments` | 面试安排、面试官、轮次、待补反馈 |
 | `interview_feedback` | 面试通过/拒绝、评分、面试官反馈 |
 | `jobs.department` | 用人部门协同归属 |
@@ -590,8 +608,8 @@ BI 主要从两类数据计算：
 注意：BI 使用最新阶段去重，不能直接统计所有历史流水。
 所有 BI 查询都先按 `org_id` 隔离；招聘专员只能访问自己负责的岗位和候选人，不再支持通过“协作候选人”查看别人岗位漏斗。
 面试轮次只作为面试事实明细参与 BI 责任归因，不重新拆回候选人主流程。
-招聘专员工作台的“我的本月业绩”和“今日待办”复用 `/bi/staff/<hr_id>` 的 `performance` 字段；主管 BI 的专员列表也使用同一套公开绩效字段。
-前端 BI 页面首屏优先展示业务数字，标题区右侧只保留周期筛选，不再提供“怎么看数据”入口。指标口径与协同归属说明沉淀在 BI 设计文档：HR 负责候选人推进，面试官负责反馈闭环，用人部门负责岗位协同，推进人只看操作留痕。候选人负责人转派后，后续绩效归新负责人；历史推进人和面试反馈人不重写。阶段修正只影响最新阶段和当前存量，不删除历史流水。
+招聘专员工作台的“近 30 天当前负责盘子”和“今日待办”复用 `/bi/staff/<hr_id>` 的 `performance` 字段；主管 BI 的专员列表也使用同一套字段。
+前端 BI 页面首屏优先展示业务数字，标题区右侧只保留周期筛选，不再提供“怎么看数据”入口。指标口径与协同归属说明沉淀在 BI 设计文档：HR 负责候选人推进，面试官负责反馈闭环，用人部门负责岗位协同，推进人只看操作留痕。候选人负责人转派后，该候选人的本期 cohort 统计整体归新负责人；历史推进人和面试反馈人不重写，因此当前实现不是事件发生时点的历史绩效。阶段修正只影响最新阶段和当前存量，不删除历史流水。
 
 ### 8.9 AI 助手
 
@@ -629,7 +647,7 @@ AI 助手分两类工具：
 | AI 助手问答 | `/agent/chat` | 否 | 中 |
 | AI 助手写工具 | `/agent/execute` | 是 | 高 |
 
-AI 助手的只读工具也必须走服务端权限边界，不能只依赖前端入口隐藏。当前团队 BI 工具只允许 `manager` / `admin` 使用；`recruiter` 调用会返回 `Forbidden`，避免通过自然语言绕过 BI 页面权限。候选人、流程、匹配等工具继续按候选人负责人或面试官指派范围收敛。
+AI 助手的只读工具也必须走服务端权限边界，不能只依赖前端入口隐藏。当前团队 BI 工具只允许 `manager` / `admin` 使用，并同时按 `User.org_id` 与 `Event.org_id` 过滤；`recruiter` 调用会返回 `Forbidden`。招聘专员的系统概览面试数也只统计其可见候选人和岗位，避免通过自然语言绕过页面权限。候选人、流程、匹配等工具继续按候选人负责人或面试官指派范围收敛。
 
 ### 9.2 密钥与模型配置
 
@@ -730,17 +748,17 @@ AI_HUMAN_REVIEW_REQUIRED=true
 | 新增只读 AI 建议 | 中 | 是 | 否 | LLM fallback + 前端展示 |
 | AI 自动写库/改流程 | 高 | 是 | 是/间接 | 业务规则测试 + 回滚策略 |
 
-## 12. 数据基线与当前偏差
+## 12. 数据基线与历史环境偏差
 
-### 12.1 文档/seed/本地库现状
+### 12.1 文档/seed/历史本地库观察
 
 | 来源 | 观察 |
 |---|---|
 | `RUNNING.md` | 描述 seed 后应有 7 试用账号、10 候选人、4 岗位（已与脚本对齐） |
 | 当前 `backend/seed_dev.py` 静态定义 | 7 用户、10 候选人、4 岗位 |
-| 当前本地 `backend/hireinsight.db` 快照 | 30 用户、21 候选人、14 岗位，13 active + 1 closed |
+| 2026-06-19 历史本地 `backend/hireinsight.db` 快照 | 30 用户、21 候选人、14 岗位，13 active + 1 closed；不代表当前环境 |
 
-当前 `seed_dev.py` 静态定义与 `RUNNING.md` 描述已对齐，均为 7 用户、10 候选人、4 岗位。本地 `hireinsight.db` 快照数量偏多，是历史恢复与本地使用痕迹，不是 seed 脚本的产物。后续若要让“新克隆仓库直接可用”，需要明确选择一种方案：
+当前 `seed_dev.py` 静态定义与 `RUNNING.md` 描述已对齐，均为 7 用户、10 候选人、4 岗位。下方 `hireinsight.db` 数量只是 2026-06-19 的历史观察，不是当前状态或 seed 脚本产物。后续若要让“新克隆仓库直接可用”，需要明确选择一种方案：
 
 1. 提交标准演示数据库文件。
 2. 或修正 `seed_dev.py`，让它真的生成目标数据。
@@ -748,9 +766,9 @@ AI_HUMAN_REVIEW_REQUIRED=true
 
 不要在未确认的情况下随意运行 `seed_dev.py`，因为它会清空并重建 seeded tables。
 
-### 12.2 当前本地数据库快照
+### 12.2 2026-06-19 历史本地数据库快照
 
-生成本文时，本地库统计为：
+初版生成时，本地库统计为：
 
 | 项 | 数量 |
 |---|---:|
@@ -830,9 +848,9 @@ AI_HUMAN_REVIEW_REQUIRED=true
 
 | 命令 | 用途 |
 |---|---|
-| `cd backend && ../.venv/bin/python -m pytest tests -q` | 后端 API 与业务规则测试 |
-| `cd base_agent && ../.venv/bin/python -m pytest tests -q` | base_agent 算法/密钥相关测试 |
-| `cd frontend && npm run build` | 前端类型与构建验证 |
+| `python3 -m pytest backend/tests -q` | 后端 API 与业务规则测试 |
+| `python3 -m pytest base_agent/tests -q` | base_agent 算法/密钥相关测试 |
+| `cd frontend && npm test && npm run lint && npm run typecheck && npm run build` | 前端行为、静态检查、类型与构建验证 |
 
 ### 15.2 重要已有测试
 
@@ -845,6 +863,11 @@ AI_HUMAN_REVIEW_REQUIRED=true
 | `backend/tests/test_pipeline_rounds.py` | 阶段推进、备注、非法阶段 |
 | `backend/tests/test_interview_loop.py` | AI 面试回写流程、面试官反馈 |
 | `backend/tests/test_security_hardening_next.py` | 试点权限边界、面试官禁止上传/重解析/推进流程 |
+| `backend/tests/test_access_control_hardening.py` | AI 团队 BI 角色与跨组织隔离 |
+| `backend/tests/test_agent_pipeline_stage_contract.py` | AI 概览可见范围与流程阶段契约 |
+| `backend/tests/test_deployment_artifacts.py` | Docker context、日志脱敏、备份/清理/恢复安全 |
+| `backend/tests/test_demand_management.py` | 需求-岗位不变量、原因约束和负责人转派 |
+| `backend/tests/test_oa_merak_integration.py` | OA 查询目录、默认关闭与通用写代理 fail-closed |
 | `frontend/tests/interviewer_role_scope.test.mjs` | 面试官导航、路由、面试任务与反馈按钮边界 |
 | `base_agent/tests/test_job_matcher.py` | 岗位匹配算法 |
 | `base_agent/tests/test_llm_client_secrets.py` | keychain 密钥解析 |
@@ -859,7 +882,7 @@ AI_HUMAN_REVIEW_REQUIRED=true
 | 改候选人/流程 | `pytest tests/test_candidate_journey.py tests/test_pipeline_rounds.py -q` |
 | 改 AI 面试 | `pytest tests/test_interview_loop.py -q` |
 | 改匹配算法 | `pytest ../base_agent/tests/test_job_matcher.py -q` 或在 base_agent 目录跑 |
-| 改密钥/LLMClient | `cd base_agent && ../.venv/bin/python -m pytest tests/test_llm_client_secrets.py -q` |
+| 改密钥/LLMClient | `python3 -m pytest base_agent/tests/test_llm_client_secrets.py -q` |
 | 改部署/静态托管 | `npm run build` + 访问 `/login`、登录、打开核心页面 |
 
 ## 16. 已知风险与技术债
@@ -875,6 +898,15 @@ AI_HUMAN_REVIEW_REQUIRED=true
 | `base_agent` 通过 sys.path 复用 | 包边界不清晰 | 后续可整理为 Python package |
 | 试点审计不是企业合规完整版 | 缺导出审批、水印、字段级权限和不可变日志 | 生产合规版再接入专用审计存储与审批策略 |
 | ZIP 批量导入仍会逐份同步 AI | 大量简历导入慢 | 异步导入、批次 ID、失败重试 |
+| BI 当前按查询时负责人聚合 | 转派会把候选人本期统计整体归入新负责人，不能还原事件时点历史绩效 | 页面明确称“当前负责盘子”；正式绩效前增加负责人历史模型 |
+| 流程仍以 `job_id` 承载 | 同一画像若并行绑定多个需求会串账 | 当前服务端强制每个画像最多一个未结束需求；未来并行需求需迁移到 `demand_id` |
+| 未结束需求唯一性依赖岗位行锁与冲突锁定读 | PostgreSQL/MySQL 使用 `FOR UPDATE` 读取最新冲突记录；SQLite 忽略该锁，且当前没有数据库部分唯一索引，也尚未做真实 MySQL 双事务压力验收 | SQLite 只用于本地单人演示；生产验收补真实 MySQL/PostgreSQL 双事务测试。若要数据库级强证明，增加开放槽位唯一约束与存量迁移 |
+| MySQL demo 自动清理默认关闭 | 标准恢复脚本尚不能自动消费 `database.sql`，无法满足“先可恢复再删除” | dry-run 可核对范围；由 DBA 验证临时库恢复后手工清理，或先补齐 MySQL 自动恢复 |
+| 数据库与 uploads 恢复不是跨资源事务 | 数据库恢复成功后，最终上传目录切换仍可能失败 | 正式恢复前用同一快照在临时库/目录演练；停写后执行，失败时整体重试或由运维回滚 |
+| demo 清理无法替代维护窗口 | 脚本会冻结并锁定命中行，但跨资源备份期间仍可能出现业务并发修改 | 正式清理必须停写；uploads 含符号链接/特殊文件时先失败；删除只使用备份前冻结主键 |
+| OA/Merak 只有查询代理骨架 | 真实身份、写权限和失败补偿尚未形成闭环 | 默认关闭，通用写代理 fail closed；未来另建受控业务命令 |
+| 页面与后端能力未完全闭环 | 批次撤回、跨需求转入只有后端接口；审计页不展示完整上下文和告警；用人需求页不能直接填 JD 自动建画像 | 四角色验收必须把“页面通过”和“仅 API 通过”分开记录，补齐入口前不向普通用户承诺 |
+| 面试误操作缺少补救 | 面试安排不能改期/取消，反馈不能编辑/作废；填错会影响任务与 BI | 试点阶段由管理员人工记录并修正数据；正式放用户前补受控改期、取消和反馈纠错流程 |
 
 ## 17. 后续文档建议
 
@@ -886,7 +918,7 @@ AI_HUMAN_REVIEW_REQUIRED=true
 
 ## 18. 快速结论
 
-这个系统当前已经具备初版完整闭环。后续迭代时，最安全的策略是：
+这个系统当前具备技术主流程闭环，但产品试用仍有上表列出的页面入口和误操作补救缺口。后续迭代时，最安全的策略是：
 
 1. UI 风格改动只动 `frontend/`。
 2. 新增只读展示优先复用现有 API。
