@@ -1,6 +1,6 @@
 # `demand_id` 迁移与回滚手册
 
-> **状态（2026-07-10）：** 本手册是 `codex/demand-scoped-p0` 实现分支的已批准发布契约，不是已执行记录。当前未合入 CFPD `test`，未发布 Libra/SIT。文中 Alembic 与 audit/backfill/verify 命令只能在相应脚本已由实现任务交付、测试通过后执行；脚本不存在时不得用手工 SQL 替代。
+> **状态（2026-07-10）：** demand-scoped P0 已推送至 CFPD `test/api`，当前正在 Libra/SIT 验收发布。首次发布已证明新前端资产在线，但旧 schema 使新后端无法接管；因此 RC/SIT server 镜像新增了“Gunicorn 前单次 `alembic upgrade head`”的 entrypoint。`GA`/生产镜像默认关闭该开关，生产仍严格执行本手册的备份、唯一 migration job 和回滚门禁。
 
 > **当前代码边界：** 仓库现只有 additive Expand revision `20260710_01`，没有 Strict revision；SQLite 已有 upgrade/downgrade 往返用例，MySQL/PostgreSQL 尚无同引擎证据。当前 backfill 只能回填到已存在的 Demand，不自动创建 B 类“历史迁移需求”；当 B 类不为 0 时必须先交付并评审专用创建迁移，不得手填 SQL。在 Strict revision、B 类处理和同引擎验证补齐前，Phase D 结论必须是 NO-GO。
 
@@ -27,7 +27,7 @@
 | Product/Data Owner | 批准 B/C/D 类映射，确认 Demand/HC/负责人与 BI 口径 |
 | Evidence Recorder | 归档命令、版本、时间、报告、校验和、截图、决策人与 cutover marker |
 
-发布前必须预约完整窗口，禁止让 gunicorn/Flask 启动、多 worker 或应用请求执行 Demand 多表 DDL/回填。
+正式发布前必须预约完整窗口，禁止让 gunicorn/Flask worker 或应用请求执行 Demand 多表 DDL/回填。当前数据可丢弃的 SIT 例外是：RC 容器 entrypoint 在 Gunicorn 起 worker 之前运行一次 additive Expand，且发布窗口不并发扩容新副本。
 
 ## 3. 发布前硬门禁
 
@@ -81,7 +81,7 @@ mysql --host=<host> --user=<user> <restore_db> < <backup_id>.sql
 ### 5.1 执行
 
 1. 将应用保持在与旧 schema 兼容的版本，不开启并行 Demand。
-2. 由唯一 release migration job 执行：
+2. 由唯一 release migration job 执行；当前 RC/SIT 则由容器 entrypoint 在 Gunicorn 前执行同一命令：
 
    ```bash
    cd backend

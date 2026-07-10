@@ -20,6 +20,8 @@ PORT=5001 python run.py
 
 开发联调后端固定使用 http://localhost:5001，前端开发服务会代理到这个端口。
 
+Libra/SIT 的 RC server 镜像会在 Gunicorn 启动前执行 `alembic upgrade head`，用于把测试库扩展到当前 demand-scoped schema。Makefile 对 `GA` 镜像传入 `AUTO_MIGRATE_DATABASE=false`，因此这不是生产自动迁移授权。当地直接运行 `python run.py` 不触发该 entrypoint；需要时在 `backend/` 手动执行 `alembic upgrade head`。
+
 ---
 
 ## 公司 MySQL 测试库试用（需现场复核）
@@ -49,7 +51,7 @@ BOSS_CLI_AUTO_INSTALL=true
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-当前已提交基线首次接入空库时会由应用创建业务表。`demand_id` P0 将这条路线改为“发布前单次 Alembic migration + 应用启动只校验 schema revision”；实施脚本和 revision 未完成前，不得对真实库手工模拟这些命令。只有本地演示库需要演示数据时才执行：
+首次接入空库时会由应用创建基础业务表。已有库升级到 `demand_id` P0 必须经过 Alembic Expand：当前 RC/SIT 由容器 entrypoint 在 Gunicorn 前执行，GA/生产由唯一 migration job 执行。任何路线都不能用手工 SQL 代替已测试的 revision。只有本地演示库需要演示数据时才执行：
 
 ```bash
 cd backend

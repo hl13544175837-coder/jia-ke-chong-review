@@ -1,5 +1,7 @@
 FROM registry.ymdd.tech/library/python:3.12-uv
 
+ARG AUTO_MIGRATE_DATABASE=false
+
 WORKDIR /app
 
 # Install curl for utility/healthchecks and git for optional boss-cli runtime install
@@ -25,10 +27,14 @@ COPY base_agent /app/base_agent
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/backend:/app
 ENV PORT=5000
+ENV AUTO_MIGRATE_DATABASE=${AUTO_MIGRATE_DATABASE}
+
+RUN chmod +x /app/backend/docker-entrypoint.sh
 
 EXPOSE 5000
 
 WORKDIR /app/backend
 
 # Run with Gunicorn, setting high timeout (120s+) for SSE (AI agent) compatibility
+ENTRYPOINT ["/app/backend/docker-entrypoint.sh"]
 CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--timeout", "120", "--keep-alive", "5", "run:app"]

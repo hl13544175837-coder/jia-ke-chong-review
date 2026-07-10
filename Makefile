@@ -15,8 +15,10 @@ endif
 # Determine registry based on PKG_TAG
 ifeq ($(PKG_TAG),GA)
 	REGISTRY = registry.ymdd.tech
+	AUTO_MIGRATE_DATABASE = false
 else
 	REGISTRY = registry-sit.uce.cn
+	AUTO_MIGRATE_DATABASE = true
 endif
 
 ZHIPIN_FRONTEND_REPO = system-zhipin-mvp/zhipin-frontend
@@ -49,7 +51,7 @@ cleanfrontend:
 
 buildserver:
 	@echo "Building zhipin-server image: $(ZHIPIN_SERVER_IMAGE)"
-	sudo docker build -t $(ZHIPIN_SERVER_IMAGE) -f backend/Dockerfile .
+	sudo docker build --build-arg AUTO_MIGRATE_DATABASE=$(AUTO_MIGRATE_DATABASE) -t $(ZHIPIN_SERVER_IMAGE) -f backend/Dockerfile .
 
 pushserver:
 	@echo "Pushing zhipin-server image: $(ZHIPIN_SERVER_IMAGE)"

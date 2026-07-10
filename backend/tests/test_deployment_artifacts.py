@@ -12,6 +12,85 @@ from cryptography.fernet import Fernet
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_sit_server_build_enables_startup_migration_but_ga_disables_it():
+    rc = subprocess.run(
+        ["make", "-n", "buildserver", "PKG_TAG=RC", "PKG_VERSION=contract-test"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    ga = subprocess.run(
+        ["make", "-n", "buildserver", "PKG_TAG=GA", "PKG_VERSION=contract-test"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert rc.returncode == 0
+    assert ga.returncode == 0
+    assert "--build-arg AUTO_MIGRATE_DATABASE=true" in rc.stdout
+    assert "--build-arg AUTO_MIGRATE_DATABASE=false" in ga.stdout
+
+
+def test_backend_entrypoint_runs_alembic_only_when_enabled(tmp_path):
+    script = ROOT / "backend" / "docker-entrypoint.sh"
+    assert script.exists()
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log_path = tmp_path / "commands.log"
+    for name, line in {
+        "alembic": 'printf "alembic %s\\n" "$*" >> "$COMMAND_LOG"',
+        "start-app": 'printf "start-app %s\\n" "$*" >> "$COMMAND_LOG"',
+    }.items():
+        executable = bin_dir / name
+        executable.write_text(f"#!/bin/sh\n{line}\n", encoding="utf-8")
+        executable.chmod(0o755)
+
+    env = os.environ.copy()
+    env.update({
+        "PATH": f"{bin_dir}:{env['PATH']}",
+        "COMMAND_LOG": str(log_path),
+        "AUTO_MIGRATE_DATABASE": "true",
+    })
+    enabled = subprocess.run(
+        [str(script), "start-app", "enabled"],
+        cwd=str(ROOT / "backend"),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert enabled.returncode == 0
+    assert log_path.read_text(encoding="utf-8").splitlines() == [
+        "alembic upgrade head",
+        "start-app enabled",
+    ]
+
+    log_path.unlink()
+    env["AUTO_MIGRATE_DATABASE"] = "false"
+    disabled = subprocess.run(
+        [str(script), "start-app", "disabled"],
+        cwd=str(ROOT / "backend"),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert disabled.returncode == 0
+    assert log_path.read_text(encoding="utf-8").splitlines() == ["start-app disabled"]
+
+
+def test_backend_dockerfile_wires_migration_entrypoint():
+    content = (ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "ARG AUTO_MIGRATE_DATABASE=false" in content
+    assert "ENV AUTO_MIGRATE_DATABASE=${AUTO_MIGRATE_DATABASE}" in content
+    assert 'ENTRYPOINT ["/app/backend/docker-entrypoint.sh"]' in content
+
+
 def test_nginx_sample_covers_security_headers_and_hot_path_limits():
     config_path = ROOT / "deploy" / "nginx" / "zhipin.conf.example"
     assert config_path.exists()

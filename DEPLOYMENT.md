@@ -257,6 +257,8 @@ git push git@git.ymdd.tech:cfpd/zhipin-mvp.git HEAD:test
 
 CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 和 Makefile 会兜底使用 `RC` 和当前时间戳，避免生成 `zhipin-frontend:` / `zhipin-server:` 这类空镜像标签导致构建失败；Libra 包记录也会使用同一个 `RC_<时间戳>` 版本号。
 
+为了让当前 SIT 从旧 schema 安全起动 demand-scoped 后端，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 会在 Gunicorn 启动前执行一次 `alembic upgrade head`；`GA` 镜像明确传入 `false`，不允许用这条自动路线改生产库。SIT 扩展迁移发布时不得同时扩容多个新副本，并必须在发布后核对 Alembic revision 和受控 API；正式环境仍按唯一 migration job 门禁执行。
+
 如果点击“发布到SIT”弹出：
 
 ```text
@@ -281,7 +283,7 @@ rg -o '/assets/[^" ]+' /tmp/test-zhipin.html | sort -u
 
 1. 记录目标环境、引擎、CFPD SHA、当前 schema revision 和负责人。
 2. 停止自动发布，先在同引擎临时库完成数据库 + uploads 备份恢复。
-3. 单次运行 Expand migration；不允许多个 Gunicorn/K8S worker 同时跑 Alembic。
+3. 单次运行 Expand migration；当前 RC/SIT 镜像由 entrypoint 在 Gunicorn 前执行，GA/生产由唯一 migration job 执行；两种路线都不允许多个新 K8S 副本并发跑 Alembic。
 4. 运行 audit 和 backfill dry-run，对歧义 bundle 取得业务映射，再执行回填。
 5. 运行 verify：核心事实 `demand_id` 无空值，跨组织/孤儿/歧义为 0，每行 `job_id == demand.job_id`。
 6. 部署 dual-write 兼容版并完成 shadow comparison。
