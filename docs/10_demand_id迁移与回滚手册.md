@@ -1,6 +1,6 @@
 # `demand_id` 迁移与回滚手册
 
-> **状态（2026-07-10）：** demand-scoped P0 已推送至 CFPD `test/api`，当前正在 Libra/SIT 验收发布。首次发布已证明新前端资产在线，但旧 schema 使新后端无法接管；因此 RC/SIT server 镜像新增了“Gunicorn 前单次 `alembic upgrade head`”的 entrypoint。`GA`/生产镜像默认关闭该开关，生产仍严格执行本手册的备份、唯一 migration job 和回滚门禁。
+> **状态（2026-07-10）：** demand-scoped P0 已推送至 CFPD `test/api`，当前正在 Libra/SIT 验收发布。首次发布已证明新前端资产在线，但旧 schema 使新后端无法接管；因此 RC/SIT server 镜像新增了 Gunicorn 前单次迁移 entrypoint，并固定执行 `alembic -c /app/backend/alembic.ini upgrade head`，不依赖 K8S 运行时工作目录。`GA`/生产镜像默认关闭该开关，生产仍严格执行本手册的备份、唯一 migration job 和回滚门禁。
 
 > **当前代码边界：** 仓库现只有 additive Expand revision `20260710_01`，没有 Strict revision；SQLite 已有 upgrade/downgrade 往返用例，MySQL/PostgreSQL 尚无同引擎证据。当前 backfill 只能回填到已存在的 Demand，不自动创建 B 类“历史迁移需求”；当 B 类不为 0 时必须先交付并评审专用创建迁移，不得手填 SQL。在 Strict revision、B 类处理和同引擎验证补齐前，Phase D 结论必须是 NO-GO。
 

@@ -57,7 +57,7 @@ def test_backend_entrypoint_runs_alembic_only_when_enabled(tmp_path):
     })
     enabled = subprocess.run(
         [str(script), "start-app", "enabled"],
-        cwd=str(ROOT / "backend"),
+        cwd=str(tmp_path),
         env=env,
         capture_output=True,
         text=True,
@@ -65,7 +65,7 @@ def test_backend_entrypoint_runs_alembic_only_when_enabled(tmp_path):
     )
     assert enabled.returncode == 0
     assert log_path.read_text(encoding="utf-8").splitlines() == [
-        "alembic upgrade head",
+        "alembic -c /app/backend/alembic.ini upgrade head",
         "start-app enabled",
     ]
 

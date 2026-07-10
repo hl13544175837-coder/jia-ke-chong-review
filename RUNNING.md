@@ -20,7 +20,7 @@ PORT=5001 python run.py
 
 开发联调后端固定使用 http://localhost:5001，前端开发服务会代理到这个端口。
 
-Libra/SIT 的 RC server 镜像会在 Gunicorn 启动前执行 `alembic upgrade head`，用于把测试库扩展到当前 demand-scoped schema。Makefile 对 `GA` 镜像传入 `AUTO_MIGRATE_DATABASE=false`，因此这不是生产自动迁移授权。当地直接运行 `python run.py` 不触发该 entrypoint；需要时在 `backend/` 手动执行 `alembic upgrade head`。
+Libra/SIT 的 RC server 镜像会在 Gunicorn 启动前执行 `alembic -c /app/backend/alembic.ini upgrade head`，用于把测试库扩展到当前 demand-scoped schema，并且不受 K8S 工作目录影响。Makefile 对 `GA` 镜像传入 `AUTO_MIGRATE_DATABASE=false`，因此这不是生产自动迁移授权。当地直接运行 `python run.py` 不触发该 entrypoint；需要时在 `backend/` 手动执行 `alembic upgrade head`。
 
 ---
 

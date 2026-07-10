@@ -99,7 +99,7 @@ https://libra.yimidida.com/#/cicd/ci/pipelineexec/2994/4334,4335
 
 #### demand_id 版本的发布顺序
 
-Libra 构建成功不会自动证明 schema 已迁移。当前 RC/SIT server 镜像通过 Makefile 传入 `AUTO_MIGRATE_DATABASE=true`，容器 entrypoint 在 Gunicorn 启动前执行 `alembic upgrade head`；`GA` 镜像明确关闭此开关。这条路线只用于当前数据可丢弃的 SIT 验收环境，发布时不得并发启动多个新 server 副本；生产仍必须使用唯一 migration job 和完整门禁。
+Libra 构建成功不会自动证明 schema 已迁移。当前 RC/SIT server 镜像通过 Makefile 传入 `AUTO_MIGRATE_DATABASE=true`，容器 entrypoint 在 Gunicorn 启动前执行 `alembic -c /app/backend/alembic.ini upgrade head`；这里必须使用镜像内绝对配置路径，避免 K8S 工作目录不同导致 `script_location` 丢失。`GA` 镜像明确关闭此开关。这条路线只用于当前数据可丢弃的 SIT 验收环境，发布时不得并发启动多个新 server 副本；生产仍必须使用唯一 migration job 和完整门禁。
 
 1. 在 SIT 同引擎临时库验证 pre-cutover 备份恢复；MySQL 必须有真实临时库导入与核对证据。
 2. RC/SIT 容器启动时由 entrypoint 单次运行 Expand migration，发布后仍要记录并核对 schema revision。

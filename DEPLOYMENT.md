@@ -257,7 +257,7 @@ git push git@git.ymdd.tech:cfpd/zhipin-mvp.git HEAD:test
 
 CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 和 Makefile 会兜底使用 `RC` 和当前时间戳，避免生成 `zhipin-frontend:` / `zhipin-server:` 这类空镜像标签导致构建失败；Libra 包记录也会使用同一个 `RC_<时间戳>` 版本号。
 
-为了让当前 SIT 从旧 schema 安全起动 demand-scoped 后端，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 会在 Gunicorn 启动前执行一次 `alembic upgrade head`；`GA` 镜像明确传入 `false`，不允许用这条自动路线改生产库。SIT 扩展迁移发布时不得同时扩容多个新副本，并必须在发布后核对 Alembic revision 和受控 API；正式环境仍按唯一 migration job 门禁执行。
+为了让当前 SIT 从旧 schema 安全起动 demand-scoped 后端，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 会在 Gunicorn 启动前执行一次 `alembic -c /app/backend/alembic.ini upgrade head`；绝对配置路径用于避免 K8S 工作目录不同导致 `No 'script_location' key found in configuration`。`GA` 镜像明确传入 `false`，不允许用这条自动路线改生产库。SIT 扩展迁移发布时不得同时扩容多个新副本，并必须在发布后核对 Alembic revision 和受控 API；正式环境仍按唯一 migration job 门禁执行。
 
 如果点击“发布到SIT”弹出：
 
