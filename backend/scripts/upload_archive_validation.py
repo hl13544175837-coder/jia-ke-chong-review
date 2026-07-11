@@ -6,6 +6,7 @@ files and directories only. Links, devices, FIFOs and non-portable paths are
 rejected before any restore target is changed.
 """
 
+import os
 import shutil
 import tarfile
 from pathlib import Path, PurePosixPath
@@ -82,6 +83,7 @@ def extract_upload_archive(archive_path, destination):
 
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
+    os.chmod(destination, 0o700)
     if any(destination.iterdir()):
         raise UploadArchiveError(f"恢复临时目录必须为空: {destination}")
 
@@ -92,6 +94,7 @@ def extract_upload_archive(archive_path, destination):
                 target = destination if relative.as_posix() == "." else destination.joinpath(*relative.parts)
                 if member.isdir():
                     target.mkdir(parents=True, exist_ok=True)
+                    os.chmod(target, 0o700)
                     continue
 
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -100,6 +103,7 @@ def extract_upload_archive(archive_path, destination):
                     raise UploadArchiveError(f"无法读取备份成员: {member.name}")
                 with source, target.open("xb") as output:
                     shutil.copyfileobj(source, output)
+                os.chmod(target, 0o600)
     except UploadArchiveError:
         raise
     except (tarfile.TarError, OSError) as exc:

@@ -204,6 +204,7 @@ def _replace_file_atomically(source, target):
     staged = target.parent / f".{target.name}.restore-{uuid.uuid4().hex}.tmp"
     rollback = target.parent / f".{target.name}.rollback-{uuid.uuid4().hex}"
     shutil.copy2(source, staged)
+    os.chmod(staged, 0o600)
 
     staged_connection = sqlite3.connect(str(staged))
     try:
