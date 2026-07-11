@@ -200,6 +200,7 @@ def test_pilot_readiness_check_passes_with_production_env(tmp_path):
             "RATE_LIMIT_RESUME_UPLOAD=8",
             "BACKUP_DIR=/var/backups/zhipin",
             "ALLOW_PUBLIC_REGISTRATION=false",
+            "BOSS_CLI_AUTO_INSTALL=false",
             "AI_RECRUITMENT_COMPLIANCE_ACK=true",
             "CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.example.com/privacy",
             "AI_HUMAN_REVIEW_REQUIRED=true",
@@ -238,6 +239,7 @@ def test_pilot_readiness_check_requires_ai_compliance_flags(tmp_path):
             "RATE_LIMIT_RESUME_UPLOAD=8",
             "BACKUP_DIR=/var/backups/zhipin",
             "ALLOW_PUBLIC_REGISTRATION=false",
+            "BOSS_CLI_AUTO_INSTALL=false",
         ])
     )
     (tmp_path / ".gitignore").write_text("backend/.env\n*.env\n")
@@ -520,7 +522,7 @@ def test_cleanup_demo_data_dry_run_does_not_delete_or_create_backup(tmp_path):
     assert not (tmp_path / "backups").exists()
 
 
-def test_cleanup_demo_data_confirm_backs_up_then_deletes_demo_rows_and_uploads(tmp_path):
+def test_cleanup_demo_data_confirm_backs_up_then_deletes_only_referenced_upload(tmp_path):
     script = ROOT / "backend" / "scripts" / "cleanup_demo_data.py"
     db_path = tmp_path / "hireinsight.db"
     backend_uploads = tmp_path / "backend" / "uploads"
@@ -578,5 +580,5 @@ def test_cleanup_demo_data_confirm_backs_up_then_deletes_demo_rows_and_uploads(t
     assert connection.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0] == 1
     connection.close()
     assert list(backend_uploads.glob("*")) == []
-    assert list(root_uploads.glob("*")) == []
+    assert [path.name for path in root_uploads.glob("*")] == ["demo-root.pdf"]
     assert list((tmp_path / "backups").glob("*"))
