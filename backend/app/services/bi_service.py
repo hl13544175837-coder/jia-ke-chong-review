@@ -5,6 +5,7 @@ template projection and is never used to merge sibling Demand workflows.
 """
 
 from collections import Counter
+from datetime import date
 
 from .. import db
 from ..models import (
@@ -13,9 +14,11 @@ from ..models import (
     InterviewFeedback,
     OfferRecord,
     PipelineStage,
+    RecruitmentDemand,
     User,
 )
 from ..time_utils import utc_now
+from .demand_context_service import OPEN_DEMAND_STATUSES
 from .pipeline_service import latest_demand_stage_subquery, normalize_pipeline_stage
 
 
@@ -260,4 +263,233 @@ def build_demand_operational_metrics(demand):
             "outstanding_feedback": outstanding_feedback["count"],
             "note": PURPOSE_LABEL,
         },
+    }
+
+
+def _operational_funnel(metrics):
+    funnel = metrics["funnel"]
+    return {
+        stage: int(funnel.get(stage, 0))
+        for stage in (*FUNNEL_STAGES, "pipeline_total", "archived_total", "funnel_total")
+    }
+
+
+def _demand_summary(metrics):
+    demand = metrics["demand"]
+    responsibility = metrics["current_responsibility"]
+    return {
+        "demand_id": demand["id"],
+        "job_id": demand["job_id"],
+        "title": demand["title"],
+        "department": demand["department"],
+        "city": demand["city"],
+        "status": demand["status"],
+        "target_date": demand["target_date"],
+        "owner_hr_id": responsibility["owner_hr_id"],
+        "owner_name": responsibility["owner_name"],
+        "funnel": _operational_funnel(metrics),
+        "outstanding_feedback": metrics["outstanding_feedback"]["count"],
+        "hc": metrics["hc"],
+    }
+
+
+def _demand_alerts(demand_record, metrics, *, stale_days=7):
+    demand = metrics["demand"]
+    demand_id = demand["id"]
+    job_id = demand["job_id"]
+    title = demand["title"]
+    alerts = []
+
+    for item in metrics["stage_age"]:
+        if item["stage"] not in ACTIVE_STAGES:
+            continue
+        if item["stage"] == "business_review":
+            kind = (
+                "business_feedback_overdue"
+                if item["age_days"] >= stale_days
+                else "business_feedback_pending"
+            )
+        elif item["age_days"] >= stale_days:
+            kind = "stale_pipeline"
+        else:
+            continue
+        alerts.append(
+            {
+                "kind": kind,
+                "priority": "high" if item["age_days"] >= 14 else "medium",
+                "title": (
+                    f"{item['candidate_name']}业务反馈待补"
+                    if item["stage"] == "business_review"
+                    else f"{item['candidate_name']}停留过久"
+                ),
+                "detail": f"{title} · {item['stage_label']} 已 {item['age_days']} 天未推进",
+                "demand_id": demand_id,
+                "job_id": job_id,
+                "candidate_id": item["candidate_id"],
+                "candidate_name": item["candidate_name"],
+                "stage": item["stage"],
+                "stage_label": item["stage_label"],
+                "age_days": item["age_days"],
+                "action_path": f"/pipeline?demand={demand_id}&candidate={item['candidate_id']}",
+            }
+        )
+
+    for item in metrics["outstanding_feedback"]["items"]:
+        alerts.append(
+            {
+                "kind": "pending_interview_feedback",
+                "priority": "high",
+                "title": f"{item['candidate_name']}面试反馈待补",
+                "detail": f"{title} · 第 {item['round_sequence']} 轮面试已超时 {item['overdue_days']} 天",
+                "demand_id": demand_id,
+                "job_id": job_id,
+                "candidate_id": item["candidate_id"],
+                "candidate_name": item["candidate_name"],
+                "assignment_id": item["assignment_id"],
+                "stage": "interview",
+                "stage_label": STAGE_LABELS["interview"],
+                "age_days": item["overdue_days"],
+                "action_path": f"/pipeline?demand={demand_id}&candidate={item['candidate_id']}",
+            }
+        )
+
+    today = date.today()
+    if demand_record.target_date and demand_record.target_date < today:
+        overdue_days = (today - demand_record.target_date).days
+        alerts.append(
+            {
+                "kind": "demand_overdue",
+                "priority": "high",
+                "title": f"{title}已超过目标日期",
+                "detail": f"目标日期已超期 {overdue_days} 天，请协调当前责任人",
+                "demand_id": demand_id,
+                "job_id": job_id,
+                "candidate_id": None,
+                "stage": None,
+                "age_days": overdue_days,
+                "action_path": f"/pipeline?demand={demand_id}",
+            }
+        )
+
+    start_date = demand_record.accepted_at or demand_record.requested_at
+    if (
+        metrics["funnel"]["funnel_total"] == 0
+        and start_date
+        and (today - start_date).days >= stale_days
+    ):
+        waiting_days = (today - start_date).days
+        alerts.append(
+            {
+                "kind": "hr_no_recommendation",
+                "priority": "medium",
+                "title": f"{title}尚未推荐候选人",
+                "detail": f"需求已接收 {waiting_days} 天，尚无候选人进入流程",
+                "demand_id": demand_id,
+                "job_id": job_id,
+                "candidate_id": None,
+                "stage": None,
+                "age_days": waiting_days,
+                "action_path": f"/pipeline?demand={demand_id}",
+            }
+        )
+
+    if metrics["hc"]["completion_suggested"]:
+        alerts.append(
+            {
+                "kind": "hc_completion_suggested",
+                "priority": "low",
+                "title": f"{title} HC 已满足",
+                "detail": "已入职人数达到 HC，建议人工确认是否关闭需求",
+                "demand_id": demand_id,
+                "job_id": job_id,
+                "candidate_id": None,
+                "stage": "onboarded",
+                "age_days": 0,
+                "action_path": f"/pipeline?demand={demand_id}",
+            }
+        )
+
+    responsibility = metrics["current_responsibility"]
+    for alert in alerts:
+        alert["owner_hr_id"] = responsibility["owner_hr_id"]
+        alert["owner_name"] = responsibility["owner_name"]
+
+    return alerts
+
+
+def _aggregate_funnel(metrics_rows):
+    funnel = {
+        stage: 0
+        for stage in (*FUNNEL_STAGES, "pipeline_total", "archived_total", "funnel_total")
+    }
+    for metrics in metrics_rows:
+        demand_funnel = _operational_funnel(metrics)
+        for key in funnel:
+            funnel[key] += demand_funnel[key]
+    return funnel
+
+
+def build_team_operational_overview(org_id):
+    """Build the manager/admin collaboration view from Demand-owned facts."""
+
+    demands = (
+        RecruitmentDemand.query.filter(RecruitmentDemand.org_id == org_id)
+        .order_by(RecruitmentDemand.created_at.desc(), RecruitmentDemand.id.desc())
+        .all()
+    )
+    metrics_rows = [build_demand_operational_metrics(demand) for demand in demands]
+    alerts = []
+    for demand, metrics in zip(demands, metrics_rows):
+        if metrics["demand"]["status"] in OPEN_DEMAND_STATUSES:
+            alerts.extend(_demand_alerts(demand, metrics))
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    alerts.sort(
+        key=lambda item: (
+            priority_order.get(item["priority"], 9),
+            -int(item.get("age_days") or 0),
+            item["demand_id"],
+            item.get("candidate_id") or 0,
+        )
+    )
+    return {
+        "purpose": "operational_collaboration",
+        "purpose_label": PURPOSE_LABEL,
+        "funnel": _aggregate_funnel(metrics_rows),
+        "alerts": alerts,
+        "demands": [_demand_summary(metrics) for metrics in metrics_rows],
+    }
+
+
+def build_staff_operational_workload(org_id, hr_id):
+    """Build one recruiter's current work queue without performance scoring."""
+
+    user = User.query.filter_by(id=hr_id, org_id=org_id).first()
+    demands = (
+        RecruitmentDemand.query.filter(
+            RecruitmentDemand.org_id == org_id,
+            RecruitmentDemand.owner_hr_id == hr_id,
+            RecruitmentDemand.status.in_(OPEN_DEMAND_STATUSES),
+        )
+        .order_by(RecruitmentDemand.created_at.desc(), RecruitmentDemand.id.desc())
+        .all()
+    )
+    metrics_rows = [build_demand_operational_metrics(demand) for demand in demands]
+    funnel = _aggregate_funnel(metrics_rows)
+    return {
+        "purpose": "operational_collaboration",
+        "purpose_label": PURPOSE_LABEL,
+        "hr_id": hr_id,
+        "name": user.name if user else None,
+        "workload": {
+            "active_demands": len(demands),
+            "active_candidates": funnel["pipeline_total"],
+            "business_review": funnel["business_review"],
+            "interview": funnel["interview"],
+            "offer": funnel["offer"],
+            "outstanding_feedback": sum(
+                metrics["outstanding_feedback"]["count"]
+                for metrics in metrics_rows
+            ),
+        },
+        "demands": [_demand_summary(metrics) for metrics in metrics_rows],
     }

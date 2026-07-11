@@ -235,19 +235,34 @@ def _tool_get_bi_overview(demand_id: int = None, **_) -> Dict[str, Any]:
 
 def _tool_count_summary(**_) -> Dict[str, Any]:
     """系统概览数字：候选人/岗位/面试总数 + 各流程阶段人数。"""
-    scoped_candidates = _scoped_candidate_query(_.get("_user_id"), _.get("_role"))
+    user_id = _.get("_user_id")
+    role = _.get("_role")
+    org_id = actor_org_id(user_id)
+    scoped_candidates = _scoped_candidate_query(user_id, role)
+    scoped_interviews = Interview.query.filter(Interview.org_id == org_id)
+    if role not in {"manager", "admin"}:
+        scoped_interviews = scoped_interviews.filter(
+            Interview.demand_id.in_(
+                visible_demand_query(user_id, role, org_id).with_entities(
+                    RecruitmentDemand.id
+                )
+            ),
+            Interview.candidate_id.in_(
+                scoped_candidates.with_entities(Candidate.id)
+            ),
+        )
     return {
         "candidate_count": scoped_candidates.count(),
-        "job_count": visible_job_query(_.get("_user_id"), _.get("_role")).count(),
+        "job_count": visible_job_query(user_id, role).count(),
         "demand_count": visible_demand_query(
-            _.get("_user_id"),
-            _.get("_role"),
-            actor_org_id(_.get("_user_id")),
+            user_id,
+            role,
+            org_id,
         ).count(),
-        "interview_count": Interview.query.filter(Interview.org_id == actor_org_id(_.get("_user_id"))).count(),
+        "interview_count": scoped_interviews.count(),
         "stage_counts": _agent_current_stage_counts(
-            user_id=_.get("_user_id"),
-            role=_.get("_role"),
+            user_id=user_id,
+            role=role,
         ),
     }
 

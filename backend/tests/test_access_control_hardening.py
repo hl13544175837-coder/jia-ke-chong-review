@@ -185,6 +185,112 @@ def test_agent_operational_bi_tool_enforces_demand_scope(app, make_user):
     assert forbidden["error"] == "Forbidden"
 
 
+def test_agent_summary_interview_count_uses_visible_demands_and_candidates(
+    app, make_user
+):
+    owner_id, _ = make_user("agent-count-owner@x.com", role="recruiter")
+    other_id, _ = make_user("agent-count-other@x.com", role="recruiter")
+    manager_id, _ = make_user("agent-count-manager@x.com", role="manager")
+    foreign_id, _ = make_user(
+        "agent-count-foreign@x.com", role="recruiter", org_id=2
+    )
+
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, Interview, Job, RecruitmentDemand
+        from app.services.agent_service import _tool_count_summary
+
+        job = Job(org_id=1, title="AI 概览", jd_text="AI", owner_hr_id=owner_id)
+        foreign_job = Job(
+            org_id=2,
+            title="其他组织",
+            jd_text="Other",
+            owner_hr_id=foreign_id,
+        )
+        db.session.add_all([job, foreign_job])
+        db.session.flush()
+        own_demand = RecruitmentDemand(
+            org_id=1, job_id=job.id, owner_hr_id=owner_id, status="active"
+        )
+        other_demand = RecruitmentDemand(
+            org_id=1, job_id=job.id, owner_hr_id=other_id, status="active"
+        )
+        foreign_demand = RecruitmentDemand(
+            org_id=2,
+            job_id=foreign_job.id,
+            owner_hr_id=foreign_id,
+            status="active",
+        )
+        db.session.add_all([own_demand, other_demand, foreign_demand])
+        db.session.flush()
+        own_candidate = Candidate(
+            org_id=1,
+            owner_hr_id=owner_id,
+            current_demand_id=own_demand.id,
+            name_masked="自有候选人",
+            resume_json={},
+        )
+        other_candidate = Candidate(
+            org_id=1,
+            owner_hr_id=other_id,
+            current_demand_id=other_demand.id,
+            name_masked="他人候选人",
+            resume_json={},
+        )
+        foreign_candidate = Candidate(
+            org_id=2,
+            owner_hr_id=foreign_id,
+            current_demand_id=foreign_demand.id,
+            name_masked="其他组织候选人",
+            resume_json={},
+        )
+        db.session.add_all([own_candidate, other_candidate, foreign_candidate])
+        db.session.flush()
+        db.session.add_all(
+            [
+                Interview(
+                    org_id=1,
+                    candidate_id=own_candidate.id,
+                    job_id=job.id,
+                    demand_id=own_demand.id,
+                    qa_json=[],
+                ),
+                Interview(
+                    org_id=1,
+                    candidate_id=other_candidate.id,
+                    job_id=job.id,
+                    demand_id=other_demand.id,
+                    qa_json=[],
+                ),
+                Interview(
+                    org_id=1,
+                    candidate_id=own_candidate.id,
+                    job_id=job.id,
+                    demand_id=other_demand.id,
+                    qa_json=[],
+                ),
+                Interview(
+                    org_id=2,
+                    candidate_id=foreign_candidate.id,
+                    job_id=foreign_job.id,
+                    demand_id=foreign_demand.id,
+                    qa_json=[],
+                ),
+            ]
+        )
+        db.session.commit()
+
+        recruiter_result = _tool_count_summary(
+            _user_id=owner_id, _role="recruiter"
+        )
+        manager_result = _tool_count_summary(
+            _user_id=manager_id, _role="manager"
+        )
+
+    assert recruiter_result["interview_count"] == 1
+    assert manager_result["interview_count"] == 3
+
+
 def test_agent_write_tool_rejects_cross_recruiter_pipeline_move(app, make_user):
     owner_id, _ = make_user("agent-write-owner@x.com", role="recruiter")
     other_id, _ = make_user("agent-write-other@x.com", role="recruiter")

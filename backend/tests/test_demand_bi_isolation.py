@@ -397,3 +397,25 @@ def test_legacy_job_bi_proxies_when_job_has_exactly_one_demand(
     }
     assert payload["scope"]["demand_id"] == demand_id
     assert payload["funnel"]["pending"] == 1
+
+
+def test_legacy_job_bi_does_not_aggregate_job_without_demand(
+    client, make_user, app
+):
+    _, manager_token = make_user(
+        "bi-no-demand-manager@example.com", role="manager"
+    )
+    with app.app_context():
+        job = Job(
+            org_id=1,
+            title="尚未建需求的职位模板",
+            jd_text="只是模板",
+        )
+        db.session.add(job)
+        db.session.commit()
+        job_id = job.id
+
+    response = client.get(f"/api/bi/job/{job_id}", headers=_auth(manager_token))
+
+    assert response.status_code == 404
+    assert response.get_json()["code"] == "demand_not_found"
