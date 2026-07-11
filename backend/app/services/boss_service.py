@@ -5,8 +5,8 @@
 招聘方可调用的服务层，供 backend/app/api/boss.py 蓝图使用。
 
 设计要点：
-- 强制安装：`boss` 二进制缺失时按 BOSS_CLI_AUTO_INSTALL 自动 `pip install
-  kabi-boss-cli`，仍失败则调用方返回 503 明确提示。
+- `boss` 二进制必须在构建/部署阶段固定安装；请求路径绝不联网安装，
+  缺失时调用方返回 503 明确提示。
 - 子进程调用沿用 agent_service._tool_web_search 的安全范式：argv list（无
   shell）、capture_output、text、显式 timeout、utf-8 env、JSON-then-text 回退。
 - 统一返回 `{"ok": bool, "data": Any, "error": Optional[dict]}`，调用方据此
@@ -33,16 +33,13 @@ logger = logging.getLogger(__name__)
 REQUIRED_COOKIES = ("wt2", "wbg", "zp_at")
 
 BOSS_PYPI_PKG = "kabi-boss-cli"
-# 招聘端 recruiter 子命令只在 GitHub 源码里，PyPI 发布包未收录，
-# 故强制从 GitHub 安装（pip install git+...）。
-BOSS_INSTALL_TARGET = "git+https://github.com/jackwener/boss-cli.git"
 BOSS_BIN_NAME = "boss"
 # recruiter 子命令信封里 data 字段最大保留长度，超长截断避免撑爆 LLM/前端
 MAX_DATA_CHARS = 8000
 
 
 def _auto_install_enabled() -> bool:
-    return os.getenv("BOSS_CLI_AUTO_INSTALL", "true").lower() == "true"
+    return os.getenv("BOSS_CLI_AUTO_INSTALL", "false").lower() == "true"
 
 
 def _candidate_script_dirs() -> List[Path]:
@@ -107,7 +104,7 @@ def _resolve_bin() -> Optional[str]:
 
 
 def _ensure_cli() -> Tuple[bool, str]:
-    """确保 boss CLI 可用。缺失时按配置自动安装。
+    """确保构建期提供的 boss CLI 可用；请求路径始终 fail closed。
 
     返回 (ok, bin_or_message)：成功时 message 即二进制路径；失败时为提示文案。
     """
@@ -115,36 +112,11 @@ def _ensure_cli() -> Tuple[bool, str]:
     if bin_path:
         return True, bin_path
 
-    if not _auto_install_enabled():
-        return False, (
-            f"BOSS 直聘 CLI 未安装：请手动执行 "
-            f"`pip install {BOSS_INSTALL_TARGET}` 后重启服务。"
-        )
-
-    # 运行时自愈：自动安装（从 GitHub 源码，因 recruiter 命令仅源码版含）
-    logger.info("boss CLI 缺失，尝试自动安装 %s ...", BOSS_INSTALL_TARGET)
-    try:
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--quiet", BOSS_INSTALL_TARGET],
-            timeout=300,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="ignore",
-        )
-    except subprocess.TimeoutExpired:
-        return False, f"自动安装超时，请手动执行 `pip install {BOSS_INSTALL_TARGET}`。"
-    except Exception as e:  # noqa: BLE001
-        logger.exception("自动安装 boss CLI 失败")
-        return False, f"自动安装失败：{e}，请手动执行 `pip install {BOSS_INSTALL_TARGET}`。"
-
-    bin_path = _resolve_bin()
-    if bin_path:
-        logger.info("boss CLI 自动安装成功：%s", bin_path)
-        return True, bin_path
+    legacy_flag = _auto_install_enabled()
     return False, (
-        f"boss-cli 安装后仍未找到 `{BOSS_BIN_NAME}`，"
-        f"请确认 pip 安装目录是否在 PATH 中，或设置 BOSS_CLI_BIN 环境变量。"
+        f"BOSS 直聘 CLI 未安装。请在镜像构建阶段固定版本并设置 BOSS_CLI_BIN；"
+        "运行时自动安装已禁用"
+        + ("（检测到旧的 BOSS_CLI_AUTO_INSTALL=true，已安全忽略）。" if legacy_flag else "。")
     )
 
 

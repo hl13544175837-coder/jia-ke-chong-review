@@ -10,6 +10,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from app.config_validation import validate_cors_origins
+
 
 WEAK_SECRETS = {
     "",
@@ -80,6 +86,13 @@ def _database_kind(database_url: str) -> str:
     return "unsupported"
 
 
+def _valid_cors_origins(value: str | None) -> bool:
+    try:
+        return bool(validate_cors_origins(value or ""))
+    except ValueError:
+        return False
+
+
 def _gitignore_patterns(project_root: Path) -> list[str]:
     gitignore = project_root / ".gitignore"
     if not gitignore.exists():
@@ -124,7 +137,11 @@ def run_checks(values: dict[str, str], project_root: Path, env_file: Path) -> li
         CheckResult("JWT_EXPIRY_HOURS", _is_positive_int(values.get("JWT_EXPIRY_HOURS")), "需配置为正整数"),
         CheckResult("FLASK_DEBUG", _is_false(values.get("FLASK_DEBUG")), "生产/试点必须为 false"),
         CheckResult("DATABASE_URL", database_kind in {"mysql", "postgresql"}, f"生产/试点需使用 MySQL 或 PostgreSQL，当前类型：{database_kind}"),
-        CheckResult("CORS_ORIGINS", bool(values.get("CORS_ORIGINS", "").strip()), "生产/试点必须配置公司域名白名单"),
+        CheckResult(
+            "CORS_ORIGINS",
+            _valid_cors_origins(values.get("CORS_ORIGINS")),
+            "生产/试点必须配置合法的 http(s) 公司域名 origin 白名单",
+        ),
         CheckResult("SECURITY_HEADERS_ENABLED", _is_true(values.get("SECURITY_HEADERS_ENABLED")), "必须显式为 true"),
         CheckResult("RATE_LIMIT_ENABLED", _is_true(values.get("RATE_LIMIT_ENABLED")), "必须显式为 true"),
         CheckResult("RATE_LIMIT_LOGIN", _is_positive_int(values.get("RATE_LIMIT_LOGIN")), "必须显式配置正整数"),
@@ -132,6 +149,11 @@ def run_checks(values: dict[str, str], project_root: Path, env_file: Path) -> li
         CheckResult("RATE_LIMIT_RESUME_UPLOAD", _is_positive_int(values.get("RATE_LIMIT_RESUME_UPLOAD")), "必须显式配置正整数"),
         CheckResult("BACKUP_DIR", bool(values.get("BACKUP_DIR", "").strip()), "必须配置服务器备份目录"),
         CheckResult("ALLOW_PUBLIC_REGISTRATION", _is_false(values.get("ALLOW_PUBLIC_REGISTRATION")), "生产/试点必须关闭公开注册"),
+        CheckResult(
+            "BOSS_CLI_AUTO_INSTALL",
+            _is_false(values.get("BOSS_CLI_AUTO_INSTALL")),
+            "必须显式为 false；CLI 只能在镜像构建阶段固定安装",
+        ),
         CheckResult("AI_RECRUITMENT_COMPLIANCE_ACK", _is_true(values.get("AI_RECRUITMENT_COMPLIANCE_ACK")), "真实候选人数据进入 AI 前必须显式确认合规边界"),
         CheckResult("CANDIDATE_PRIVACY_NOTICE_URL", bool(values.get("CANDIDATE_PRIVACY_NOTICE_URL", "").strip()), "必须配置候选人隐私告知/授权说明地址"),
         CheckResult("AI_HUMAN_REVIEW_REQUIRED", _is_true(values.get("AI_HUMAN_REVIEW_REQUIRED")), "AI 结论必须保留人工复核"),

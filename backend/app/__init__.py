@@ -7,6 +7,8 @@ from flask import Flask, g, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 
+from .config_validation import validate_cors_origins
+
 db = SQLAlchemy()
 
 # 前端构建产物目录（npm run build 输出）。可用 FRONTEND_DIST 环境变量覆盖。
@@ -287,8 +289,14 @@ def _enforce_production_security(app):
         problems.append("JWT_SECRET 仍为默认/弱密钥，请设置强随机值")
     elif len(secret) < min_len:
         problems.append(f"JWT_SECRET 长度 {len(secret)} < 生产要求 {min_len}")
-    if not (app.config.get("CORS_ORIGINS") or []):
+    cors_origins = app.config.get("CORS_ORIGINS") or []
+    if not cors_origins:
         problems.append("生产必须设置 CORS_ORIGINS 白名单，禁止全开放")
+    else:
+        try:
+            validate_cors_origins(cors_origins)
+        except ValueError as exc:
+            problems.append(str(exc))
     if not app.config.get("AI_RECRUITMENT_COMPLIANCE_ACK", False):
         problems.append("AI_RECRUITMENT_COMPLIANCE_ACK 必须显式为 true，确认真实候选人数据的 AI 处理边界")
     if not str(app.config.get("CANDIDATE_PRIVACY_NOTICE_URL") or "").strip():

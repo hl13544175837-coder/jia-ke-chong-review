@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Copy package dependency configuration relative to root build context
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm ci
 
 # Copy frontend source code and build
 COPY frontend/ ./

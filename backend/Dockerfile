@@ -5,7 +5,7 @@ ARG ALLOW_EMPTY_DATABASE_BOOTSTRAP=false
 
 WORKDIR /app
 
-# Install curl for utility/healthchecks and git for optional boss-cli runtime install
+# Install curl for utility/healthchecks. Runtime dependency installation is forbidden.
 RUN for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do \
         if [ -f "$f" ]; then \
             sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g' "$f"; \
@@ -14,7 +14,7 @@ RUN for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sourc
             sed -i 's/security.debian.org/mirrors.aliyun.com/g' "$f"; \
         fi; \
     done && \
-    apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+    apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # Copy backend requirements first to leverage Docker cache
 COPY backend/requirements.txt /app/backend/requirements.txt

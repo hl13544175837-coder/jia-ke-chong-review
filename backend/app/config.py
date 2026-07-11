@@ -76,7 +76,7 @@ class Config:
 
     # boss-cli（BOSS 直聘招聘端集成）：二进制路径覆盖与自动安装开关
     BOSS_CLI_BIN = os.environ.get("BOSS_CLI_BIN", "")
-    BOSS_CLI_AUTO_INSTALL = os.environ.get("BOSS_CLI_AUTO_INSTALL", "true").lower() == "true"
+    BOSS_CLI_AUTO_INSTALL = os.environ.get("BOSS_CLI_AUTO_INSTALL", "false").lower() == "true"
 
     # 字段级加密密钥（Fernet），用于加密 BOSS 账号 cookies 等敏感数据
     FIELD_ENCRYPTION_KEY = os.environ.get("FIELD_ENCRYPTION_KEY", "")
