@@ -43,18 +43,28 @@ def create_app(config=None):
     _register_security_headers(app)
     _register_healthcheck(app)
 
-    with app.app_context():
-        db.create_all()
-        _ensure_job_metadata_columns()
-        _ensure_workflow_enhancement_columns()
-        _ensure_org_and_privacy_columns()
-        _ensure_upload_batch_columns()
-        _ensure_user_security_columns()
-        _normalize_legacy_feedback_reason_tags()
+    if _should_run_local_schema_compat(app):
+        with app.app_context():
+            db.create_all()
+            _ensure_job_metadata_columns()
+            _ensure_workflow_enhancement_columns()
+            _ensure_org_and_privacy_columns()
+            _ensure_upload_batch_columns()
+            _ensure_user_security_columns()
+            _normalize_legacy_feedback_reason_tags()
 
     _register_frontend(app)
 
     return app
+
+
+def _should_run_local_schema_compat(app):
+    """Keep legacy auto-DDL strictly inside tests and local SQLite debug runs."""
+    if app.config.get("TESTING"):
+        return True
+
+    database_uri = str(app.config.get("SQLALCHEMY_DATABASE_URI") or "").lower()
+    return bool(app.config.get("FLASK_DEBUG")) and database_uri.startswith("sqlite:")
 
 
 def _register_healthcheck(app):
