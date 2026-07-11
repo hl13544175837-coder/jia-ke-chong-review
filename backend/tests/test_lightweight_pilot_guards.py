@@ -8,7 +8,7 @@ def _auth(token):
 def _seed_job_candidate(app, owner_id):
     with app.app_context():
         from app import db
-        from app.models import Candidate, Job, RecruitmentDemand
+        from app.models import Candidate, CandidateDemandFlow, Job, RecruitmentDemand
 
         job = Job(
             org_id=1,
@@ -16,18 +16,31 @@ def _seed_job_candidate(app, owner_id):
             title="轻量试点岗位",
             jd_text="负责招聘试点",
         )
-        candidate = Candidate(
-            org_id=1,
-            owner_hr_id=owner_id,
-            name_masked="试点候选人",
-            resume_json={"extracted_info": {"name": "试点候选人"}},
-        )
-        db.session.add_all([job, candidate])
+        db.session.add(job)
         db.session.flush()
-        db.session.add(RecruitmentDemand(
+        demand = RecruitmentDemand(
+            org_id=1,
             job_id=job.id,
             owner_hr_id=owner_id,
             request_no=f"REQ-PILOT-{job.id}",
+            status="active",
+        )
+        db.session.add(demand)
+        db.session.flush()
+        candidate = Candidate(
+            org_id=1,
+            owner_hr_id=owner_id,
+            current_demand_id=demand.id,
+            name_masked="试点候选人",
+            resume_json={"extracted_info": {"name": "试点候选人"}},
+        )
+        db.session.add(candidate)
+        db.session.flush()
+        db.session.add(CandidateDemandFlow(
+            org_id=1,
+            candidate_id=candidate.id,
+            demand_id=demand.id,
+            owner_hr_id=owner_id,
             status="active",
         ))
         db.session.commit()

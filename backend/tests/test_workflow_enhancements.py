@@ -8,20 +8,31 @@ def _auth(t):
 def _seed_job_candidate(app, owner_id=None):
     with app.app_context():
         from app import db
-        from app.models import Candidate, Job, RecruitmentDemand
+        from app.models import Candidate, CandidateDemandFlow, Job, RecruitmentDemand
 
         job = Job(title="产品经理", jd_text="负责 AI 招聘产品", owner_hr_id=owner_id)
-        candidate = Candidate(
-            owner_hr_id=owner_id,
-            name_masked="候选人A",
-            resume_json={},
-        )
-        db.session.add_all([job, candidate])
+        db.session.add(job)
         db.session.flush()
-        db.session.add(RecruitmentDemand(
+        demand = RecruitmentDemand(
             job_id=job.id,
             owner_hr_id=owner_id,
             request_no=f"REQ-WORKFLOW-{job.id}",
+            status="active",
+        )
+        db.session.add(demand)
+        db.session.flush()
+        candidate = Candidate(
+            owner_hr_id=owner_id,
+            current_demand_id=demand.id,
+            name_masked="候选人A",
+            resume_json={},
+        )
+        db.session.add(candidate)
+        db.session.flush()
+        db.session.add(CandidateDemandFlow(
+            candidate_id=candidate.id,
+            demand_id=demand.id,
+            owner_hr_id=owner_id,
             status="active",
         ))
         db.session.commit()
