@@ -1,27 +1,28 @@
-# 智聘招聘系统 SDD v1.1（As-built 基线 + Demand 目标态）
+# 智聘招聘系统 SDD v1.1（Demand-scoped As-built 代码候选）
 
 > As-built SDD = 根据当前已实现系统反推的系统设计文档。
 > 本文用于后续迭代开发、模块定位、影响范围评估和交接，不等同于最初立项时的需求文档。
 >
-> **2026-07-10 状态说明：** Demand 维度招聘流已完成本地实现与自动化验证，并已推送到 CFPD `test/api` 进入 Libra/SIT 验收。首次发布已上线新前端，但因测试库仍是旧 schema，新后端尚未接管；当前正通过 RC/SIT 容器启动前单次 Alembic Expand 修复这一发布差异。环境是否已完整具备该能力，仍以后端受控 API、schema revision 和页面现场验收为准。
+> **2026-07-11 状态说明：** Demand 维度招聘流及本轮 P0 硬化已在 `codex/premerge-p0-closeout-20260711` 形成代码候选。Git 推送、Libra 构建、K8S 部署和测试站运行态必须分别取证；本文不声称 SIT 已运行本候选。环境是否完整具备该能力，仍以后端受控 API、schema revision、部署记录和页面现场验收为准。
 
 ## 1. 文档基准
 
 | 项目 | 内容 |
 |---|---|
 | 系统名称 | 智聘 · 招聘管理系统 |
-| 文档类型 | As-built 基线与已批准 Target Design 合并文档 |
-| 代码基准 | 当前已发布基线以环境实际代码为准；Demand 目标态以 `codex/demand-scoped-p0` 实现分支及 ADR-0002 为准，未发布 |
+| 文档类型 | 当前代码候选 As-built 与尚未完成的环境/Strict 门禁合并文档 |
+| 代码基准 | `codex/premerge-p0-closeout-20260711` 与 ADR-0002；环境运行态另以 CFPD/Libra/SIT 证据为准 |
 | 本地项目路径 | `/Users/yenns/Desktop/智聘` |
 | 主要用途 | 后续按模块指定改动时，用来快速判断要改哪些文件、影响哪些接口/表/流程 |
-| 文档生成日期 | 2026-06-19；Demand 目标态更新于 2026-07-10 |
+| 文档生成日期 | 2026-06-19；Demand As-built 更新于 2026-07-11 |
 
 ### 1.1 实现状态分层
 
 | 层级 | 含义 | 对外可宣称范围 |
 |---|---|---|
-| 当前基线 | 现有 Job 维度代码和环境行为 | 只能说“技术主流程可运行”，不能说 Demand P0 已上线 |
-| P0 目标态 | Job 是可复用岗位画像，Demand 是一次具体招聘任务；主流程、面试、负责人与 BI 按 `demand_id` 归属 | 仅可说“已批准/实现中”，需迁移门禁、SIT 验收与发布证据后才可升级状态 |
+| 当前代码候选 | Job 是可复用岗位画像，Demand 是一次具体招聘任务；主流程、面试、负责人与 BI 按 `demand_id` 归属 | 可说“本地实现和自动化验证完成”，不能说已推送、已部署或可生产上线 |
+| CFPD 代码源 | CFPD `test` 实际 SHA | 只证明 Libra 可读取的代码，不证明已构建/部署 |
+| SIT 运行态 | Libra CommitID/镜像、部署日志、schema revision、受控 API、前端资产和四角色冒烟 | 证据齐全后才可说环境已生效 |
 | P1 后续 | 打印、归档及其他非 P0 能力 | 仅作路线图，本轮不实现、不验收 |
 
 ### 1.2 本地兼容补丁说明
@@ -52,11 +53,11 @@
 | 简历上传解析 | 已实现 | PDF / DOCX / ZIP 批量上传，旧版 DOC 因宏风险跳过，AI 解析入库 |
 | 岗位管理 | 已实现 | 创建、编辑、关闭岗位，JD AI 结构化与澄清追问 |
 | 智能匹配 | 已实现 | 岗位找候选人，生成匹配分、命中标签、缺失标签 |
-| 候选人流程 | 基线已实现，P0 改造中 | 主阶段枚举保持稳定；归属键由 `job_id` 切换为 `demand_id`，转需求使用 `transferred` |
-| AI 面试 | 基线已实现，P0 需去除自动回写 | 保留生成题目、评分与建议；AI 不自动推进、淘汰、发 Offer、转派或关闭需求 |
-| 面试官反馈 | 已实现 | 按轮次写反馈，支持固定原因分类，进入候选人 journey |
-| BI 看板 | 基线已实现，P0 改造中 | 目标按 Demand 看进度、瓶颈与当前责任协同；不做人员排名、绩效或奖金依据 |
-| AI 助手 | 基线存在写工具，P0 改造中 | 目标只做解析、匹配、总结与建议，不提供主流程写操作 |
+| 候选人流程 | 代码候选已实现，环境待验收 | 主阶段枚举保持稳定；归属键为 `demand_id`，转需求使用 `transferred` |
+| AI 面试 | 代码候选已实现，环境待验收 | 保留生成题目、评分与建议；AI 不自动推进、淘汰、发 Offer、转派或关闭需求 |
+| 面试官反馈 | 代码候选已实现，环境待验收 | 按 Demand/assignment/轮次写反馈，数据库约束防并发重复，进入候选人 journey |
+| BI 看板 | 代码候选已实现，环境待验收 | 按 Demand 看进度、瓶颈与当前责任协同；不返回人员排名、绩效或奖金依据 |
+| AI 助手 | 代码候选已收缩，环境待验收 | 只做解析、匹配、总结与建议，不提供主流程写操作 |
 | 用户管理 | 已实现 | admin 管理用户角色、启停、创建账号与重置密码 |
 
 ### 2.2 明确不做或尚未工程化的能力
@@ -205,12 +206,12 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 
 后端使用 `require_auth` 解 JWT，再从数据库读取用户，把 `user_id`、`role` 与 `org_id` 写入 Flask `g`。部分接口通过 `require_role(...)` 限制角色。
 
-以下是当前基线需要识别的权限行为；P0 以本文 Demand 服务 Owner 和 AI 目标边界为准：
+以下是当前代码候选的权限行为：
 
 - 前端隐藏菜单不是安全边界，后端 RBAC 才是安全边界。
-- 基线 `recruiter` 在岗位、候选人、流程、面试、BI 和遗留 AI 写工具上受负责人限制；P0 以 `demand_id` 和 Demand owner 校验，并从 AI 工具目录移除主流程写能力。
+- `recruiter` 在候选人、流程、面试和 BI 上以 `demand_id`、Demand owner 和当前组织校验；AI 工具目录不含主流程写能力。
 - `manager`、`admin` 只能看当前组织内数据；一期不提供跨组织管理后台。
-- 基线会因 Job 关闭拒绝流程/面试等操作；P0 已存在 Demand 的写入权限由 Demand 状态和 Demand RBAC 决定，不由 Job 状态反向决定。
+- 已存在 Demand 的流程/面试写入权限由 Demand 状态和 Demand RBAC 决定，不由 Job 状态反向决定；只有 legacy job-only 上下文需要先唯一解析 Demand。
 - `admin` 不能停用或降级自己的账号。
 
 ## 6. 数据模型
@@ -220,28 +221,28 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | 表 | 模型 | 关键字段 | 用途 |
 |---|---|---|---|
 | `users` | `User` | `org_id`, `name`, `email`, `role`, `password_hash`, `is_active`, `token_version` | 用户、角色、启停；`org_id` 是多组织隔离边界；改密/重置密码递增 `token_version` 让旧 token 失效 |
-| `candidates` | `Candidate` | `org_id`, `owner_hr_id`, `name_masked`, `resume_json`, `raw_file_path`, `deleted_at`, `deleted_by`, `anonymized_at` | 候选人主档与简历结构化结果；支持软删除与匿名化 |
-| `upload_batches` | `UploadBatch` | `org_id`, `owner_hr_id`, `source_channel`, `target_job_id`, `note` | 批量上传元数据；误导入撤回按批次定位候选人 |
+| `candidates` | `Candidate` | `org_id`, `owner_hr_id`, `current_demand_id`, `name_masked`, `resume_json`, `raw_file_path`, `deleted_at`, `deleted_by`, `anonymized_at` | 候选人主档与当前唯一活跃 Demand 指针；支持软删除与匿名化 |
+| `upload_batches` | `UploadBatch` | `org_id`, `owner_hr_id`, `target_job_id`, `demand_id`, `source_channel`, `note` | 批量上传元数据；误导入撤回按批次定位候选人 |
 | `candidate_tags` | `CandidateTag` | `org_id`, `candidate_id`, `tag`, `score` | 简历技能标签及评分 |
 | `jobs` | `Job` | `org_id`, `title`, `jd_text`, `jd_structured`, `owner_hr_id`, `status` | 岗位主档与结构化 JD |
 | `matches` | `Match` | `org_id`, `job_id`, `candidate_id`, `score`, `reason` | 持久化的岗位匹配结果 |
-| `interviews` | `Interview` | `org_id`, `candidate_id`, `job_id`, `qa_json`, `ai_report`, `score`, `pass_recommended` | AI 面试记录与评分 |
-| `pipeline_stages` | `PipelineStage` | `org_id`, `candidate_id`, `job_id`, `stage`, `updated_by`, `note`, `ts` | 招聘流程流水，append-only |
+| `interviews` | `Interview` | `org_id`, `candidate_id`, `job_id`, `demand_id`, `qa_json`, `ai_report`, `score`, `pass_recommended` | Demand 下 AI 面试记录与评分；不自动改流程 |
+| `pipeline_stages` | `PipelineStage` | `org_id`, `candidate_id`, `job_id`, `demand_id`, `stage`, `updated_by`, `note`, `ts` | Demand 招聘流程流水，append-only |
 | `events` | `Event` | `org_id`, `actor_id`, `actor_role`, `action`, `entity_id`, `entity_type`, `payload`, `request_id`, `ip`, `user_agent`, `result`, `failure_reason`, `source`, `severity` | 写操作事件与试点审计基础；`source` 区分页面、AI、安全拦截 |
 | `audit_logs` | `AuditLog` | `org_id`, `actor_id`, `target_table`, `target_id`, `action` | 预留审计表，当前使用较少 |
-| `interview_feedback` | `InterviewFeedback` | `org_id`, `candidate_id`, `job_id`, `round`, `interviewer_id`, `score`, `passed`, `reason_tags`, `note` | 面试官反馈与原因分类 |
+| `interview_feedback` | `InterviewFeedback` | `org_id`, `candidate_id`, `job_id`, `demand_id`, `assignment_id`, `round`, `interviewer_id`, `score`, `passed`, `reason_tags`, `note` | 具体 assignment 的面试反馈；`assignment_id` 非空时唯一 |
 | `idempotency_records` | `IdempotencyRecord` | `scope_key`, `idempotency_key`, `actor_scope`, `method`, `path`, `body_hash`, `status_code`, `response_json` | 普通 JSON/表单写接口的 `Idempotency-Key` 重试保护 |
 
-上表是当前基线。P0 不将 Job 继续当作一次招聘任务，而是按下表扩展模型：
+下列 Demand-scoped 模型和约束同样已存在于当前代码候选：
 
 | P0 模型/表 | 关键字段或约束 | 唯一 Owner 语义 |
 |---|---|---|
-| `RecruitmentDemand` / `recruitment_demands` | `org_id`, `job_id`, `title_snapshot`, `jd_text_snapshot`, `jd_structured_snapshot`, `city`, `department`, `hc`, `owner_hr_id`, `created_by`, `planned_start_at`, `planned_end_at`, `status`, `closed_at`, `closed_by`, `close_reason` | 具体招聘任务；同一 Job 允许并行或历史多个 Demand，Demand 状态不反向改写 Job 状态 |
+| `RecruitmentDemand` / `recruitment_demands` | `org_id`, `job_id`, `job_title_snapshot`, `jd_text_snapshot`, `city`, `department`, `headcount`, `owner_hr_id`, `created_by`, `requested_at`, `accepted_at`, `target_date`, `status`, `closed_at`, `closed_by`, `close_reason` | 具体招聘任务；同一 Job 允许并行或历史多个 Demand，Demand 状态不反向改写 Job 状态 |
 | `Candidate` | 新增 `current_demand_id` | 候选人当前唯一活跃招聘流的快速定位指针，不替代历史流水 |
-| `CandidateDemandFlow` / `candidate_demand_flows` | `org_id`, `candidate_id`, `demand_id`, `owner_hr_id`, `current_stage`, `status`, timestamps；唯一约束 `(org_id, candidate_id, demand_id)` | 候选人在某 Demand 下的当前流程投影；P0 仅允许一个 active flow |
+| `CandidateDemandFlow` / `candidate_demand_flows` | `org_id`, `candidate_id`, `demand_id`, `owner_hr_id`, `status`, `started_at`, `ended_at`, `transfer_from_demand_id`, `transfer_reason`；唯一约束 `(org_id, candidate_id, demand_id)` | 候选人在某 Demand 下的应聘关系与活动状态；当前阶段从该 Demand 的最新 `PipelineStage` 取得，P0 仅允许一个 active flow |
 | 主流程与业务事实 | `pipeline_stages`, `interviews`, `interview_assignments`, `interview_feedback`, `offers`, `dispositions`, `events`, `notifications`, `upload_batches` 增加可回填的 `demand_id` | 所有业务事实在严格切换后按 Demand 归属；`job_id` 仅保留画像或兼容语义 |
-| `InterviewAssignment` | `demand_id`, `round_sequence`, `is_primary` | 轮次在 `interview` 主阶段内表达；每轮一名主面试官，只有主面试官反馈可完成该轮 |
-| `InterviewFeedback` | 新增 `assignment_id`, `demand_id` | 反馈归属具体安排，只记录事实和建议，永不自动推进主流程 |
+| `InterviewAssignment` | `demand_id`, `round_sequence`, `is_primary`, `primary_slot`；唯一索引 `(org_id,demand_id,candidate_id,primary_slot)` | 有效 primary 的 `primary_slot=round_sequence`，辅助/取消安排为 NULL；数据库保证每轮最多一个有效主面试官 |
+| `InterviewFeedback` | `assignment_id`, `demand_id`；`assignment_id` 唯一索引 | 反馈归属具体安排，同一 assignment 不产生第二份反馈；legacy NULL 仅为兼容，反馈永不自动推进主流程 |
 | `Match` | 继续使用 `job_id` | 匹配是候选人与岗位画像的可复用计算；“加入哪个招聘任务”由 `demand_id` 决定 |
 
 ### 6.1 招聘阶段枚举
@@ -256,6 +257,7 @@ interview
 offer
 onboarded
 rejected
+transferred
 ```
 
 主流程顺序定义在 `backend/app/api/pipeline.py` 和 `frontend/src/lib/pipelineStages.ts`。新增阶段时必须两边同步。
@@ -264,7 +266,7 @@ rejected
 
 ### 6.2 PipelineStage 的重要设计
 
-`pipeline_stages` 是 append-only 流水表，不是“当前状态表”。候选人每推进一次就新增一行。当前基线按 `(candidate_id, job_id)` 取最新一行；P0 目标态必须按 `(candidate_id, demand_id)` 取最新一行，并与 `candidate_demand_flows.current_stage` 做一致性校验。
+`pipeline_stages` 是 append-only 流水表，不是“当前状态表”。候选人每推进一次就新增一行。当前代码按 `(candidate_id, demand_id)` 取最新一行，并与 active `CandidateDemandFlow`、`Candidate.current_demand_id` 做一致性校验；job-only 只在兼容入口唯一解析 Demand 后代理。
 
 影响点：
 
@@ -326,49 +328,49 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `POST` | `/jobs/<job_id>/match` | owner/manager/admin | 运行岗位候选人匹配并持久化；关闭岗位拒绝 |
 | `POST` | `/match` | owner/manager/admin | 兼容旧入口，按 `job_id` 运行匹配；关闭岗位拒绝 |
 
-### 7.4 Recruitment Demands（当前基线）
-
-> 下表用于识别旧调用链，不是 P0 目标契约。“Demand 关闭/恢复同步改 Job”是待移除的基线行为；P0 中 Job 与 Demand 状态独立。
+### 7.4 Recruitment Demands（当前代码候选）
 
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
 | `GET` | `/demands` | recruiter/manager/admin | 查询当前账号可管理的用人需求 |
 | `POST` | `/demands` | recruiter/manager/admin | 创建用人需求；可传 `job_id` 复用已有岗位画像，也可传 `job_title` + `jd_text` 自动创建岗位画像 |
 | `PATCH` | `/demands/<demand_id>` | owner/manager/admin | 更新需求字段，包含优先级调整 |
-| `POST` | `/demands/<demand_id>/close` | owner/manager/admin | 基线关闭、完成或暂停需求；其中反向改 Job 的逻辑在 P0 必须移除 |
-| `POST` | `/demands/<demand_id>/restore` | owner/manager/admin | 基线恢复逻辑；P0 仅恢复 Demand，不反向改 Job |
+| `POST` | `/demands/<demand_id>/close` | owner/manager/admin | 关闭、完成、暂停或取消 Demand；不反向修改 Job |
+| `POST` | `/demands/<demand_id>/restore` | owner/manager/admin | 仅恢复 Demand，不反向修改 Job |
 | `POST` | `/demands/<demand_id>/downgrade` | owner/manager/admin | 兼容旧降级入口，记录降级原因 |
+| `PATCH` | `/demands/<demand_id>/owner` | manager/admin | 事务内转派 Demand 与 active flow 当前责任，不改 Job owner/历史 actor |
 
-### 7.5 Pipeline（当前基线）
-
-| 方法 | 路径 | 权限 | 作用 |
-|---|---|---|---|
-| `POST` | `/pipeline/move` | recruiter/manager/admin；interviewer 禁止 | 推进候选人到某阶段，写流水与事件；重复推进到同一阶段和备注时返回已有结果，不追加重复流水 |
-| `POST` | `/pipeline/transfer` | recruiter/manager/admin；interviewer 禁止 | 基线转需求入口；其把源流程写成 `rejected` 的逻辑是 P0 必须修复的数据语义缺陷 |
-| `GET` | `/pipeline/<job_id>` | 登录 | 某招聘需求流程当前阶段人数；当前以岗位画像 `job_id` 定位 |
-| `GET` | `/pipeline/<job_id>/board` | 登录 | 某招聘需求流程看板候选人卡片数据；当前以岗位画像 `job_id` 定位 |
-| `GET` | `/pipeline/<job_id>/history/<candidate_id>` | 登录 | 候选人某招聘需求流程历史；当前以岗位画像 `job_id` 定位 |
-
-### 7.6 Interview（当前基线）
+### 7.5 Pipeline（当前代码候选）
 
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
-| `POST` | `/interview/start` | recruiter/manager/admin + 岗位管理权限 | 生成 AI 面试题；面试官禁止；关闭岗位拒绝 |
-| `POST` | `/interview/submit` | recruiter/manager/admin + 岗位管理权限 | 提交回答，AI 评分，报告落库，并可能回写流程；关闭岗位拒绝 |
+| `POST` | `/pipeline/demands/<demand_id>/move`（兼容 `/pipeline/move`） | recruiter/manager/admin；interviewer 禁止 | Demand RBAC 下推进，追加流水、更新 Flow 和审计；重复请求不追加重复事实 |
+| `POST` | `/pipeline/demands/<source_demand_id>/transfer`（兼容 `/pipeline/transfer`） | recruiter/manager/admin；interviewer 禁止 | 单事务将来源写为 `transferred`、目标从 `pending` 承接，失败整体回滚 |
+| `GET` | `/pipeline/demands/<demand_id>` | 登录且有 Demand 权限 | 具体 Demand 当前阶段人数 |
+| `GET` | `/pipeline/demands/<demand_id>/board` | 登录且有 Demand 权限 | 具体 Demand 看板候选人卡片数据 |
+| `GET` | `/pipeline/demands/<demand_id>/history/<candidate_id>` | 登录且有 Demand/候选人权限 | 候选人在具体 Demand 下的 append-only 历史；job-only 变体仅在唯一解析时代理 |
+
+### 7.6 Interview（当前代码候选）
+
+| 方法 | 路径 | 权限 | 作用 |
+|---|---|---|---|
+| `POST` | `/interview/start` | recruiter/manager/admin + Demand 权限 | 在显式/唯一解析的 Demand 上下文生成 AI 面试题；面试官禁止 |
+| `POST` | `/interview/submit` | recruiter/manager/admin + Demand 权限 | 提交回答、保存 AI 评分与建议，不回写流程 |
 | `GET` | `/interview/<interview_id>` | 登录 | AI 面试报告详情 |
-| `POST` | `/interview/feedback` | 登录且有候选人/面试权限 | 面试官提交反馈，可带 `reason_tags` 原因分类；`score` 必须是 1-5；关闭岗位拒绝；同一面试官重复提交同一候选人/岗位/轮次时返回已有反馈 |
+| `POST` | `/interview/feedback` | 登录且有 Demand/assignment 权限 | 提交具体 assignment 反馈；同 assignment 重复返回已有反馈，数据库唯一索引为并发最终防线；任何反馈都不推进流程 |
 | `GET` | `/interview/feedback` | 登录 | 查询反馈，返回原因分类 |
 | `GET` | `/interviews` | 登录 | 面试记录列表，按角色过滤 |
 | `GET` | `/interview/interviewers` | 登录 | 返回启用中的面试官/经理/管理员选项 |
-| `POST` | `/interview/assignments` | recruiter/manager/admin + 岗位管理权限 | 创建面试安排；同一安排重复请求返回已有记录；同一面试官同一时间已有其他安排时返回 409 |
+| `POST` | `/interview/assignments` | recruiter/manager/admin + Demand 权限 | 创建主/辅安排；重复返回已有记录；同轮第二个有效 primary 或时间冲突稳定 409，数据库唯一索引兜底 |
 
-### 7.7 BI / Admin / Agent（当前基线）
+### 7.7 BI / Admin / Agent（当前代码候选）
 
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
-| `GET` | `/bi/overview` | manager/admin | 基线团队漏斗/协同响应；其中“专员效能”语义在 P0 废弃，目标只保留 Demand 进度、瓶颈和当前责任 |
-| `GET` | `/bi/staff/<hr_id>` | 登录，recruiter 仅自己 | 基线兼容路由；`performance` 个人绩效语义不属于 P0 目标契约 |
-| `GET` | `/bi/job/<job_id>` | manager/admin 或岗位负责人 recruiter | 单岗位漏斗；非岗位负责人 recruiter 和 interviewer 禁止 |
+| `GET` | `/bi/overview` | manager/admin | `funnel + alerts + demands` 的 Demand 运营协同响应；不含人员绩效/排名 |
+| `GET` | `/bi/staff/<hr_id>` | recruiter 仅自己；manager/admin 可看组织内用户 | `workload + demands` 当前工作盘子；不含 `performance`、个人通过率、转化率或排名 |
+| `GET` | `/bi/job/<job_id>` | 有唯一 Demand 读取权的登录用户 | 仅在 Job 唯一解析一个 Demand 时兼容代理；多 Demand 返回 409 `demand_id_required` |
+| `GET` | `/bi/demand/<demand_id>` | 有 Demand 读取权的登录用户 | 漏斗、阶段停留、待补反馈、Offer、HC 和当前责任的可解释明细 |
 | `GET` | `/admin/users` | admin | 用户列表 |
 | `POST` | `/admin/users` | admin | 创建试点账号 |
 | `PATCH` | `/admin/users/<user_id>` | admin | 修改角色、启停 |
@@ -377,13 +379,13 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `GET` | `/agent/conversations` | recruiter/manager/admin | 当前用户 AI 对话列表 |
 | `GET` | `/agent/conversations/<conversation_id>` | recruiter/manager/admin，且仅本人会话 | AI 对话详情 |
 | `POST` | `/agent/chat` | recruiter/manager/admin | SSE 流式 AI 对话 |
-| `POST` | `/agent/execute` | recruiter/manager/admin + 工具 RBAC | 基线写工具入口；P0 工具目录不得暴露推进、淘汰、Offer、转派或关闭 Demand |
+| `POST` | `/agent/execute` | recruiter/manager/admin + 工具 RBAC | 保留兼容执行入口，但当前工具目录不含推进、淘汰、Offer、转派或关闭 Demand 的主流程写工具 |
 
-### 7.8 P0 目标 API 契约（实现中，未部署）
+### 7.8 当前 Demand API 契约（代码已实现，环境待验收）
 
 P0 不通过页面猜测 Demand，`demand_id` 必须在路径、请求体或服务层上下文中显式传递。关键契约如下：
 
-| 能力 | P0 目标契约 | 关键错误/约束 |
+| 能力 | 当前代码契约 | 关键错误/约束 |
 |---|---|---|
 | Demand 列表/详情 | `GET /demands` 支持分页及 `status`, `owner_hr_id`, `department`, `city`, `job_id` 筛选；`GET /demands/<demand_id>` 返回快照、HC、负责人与状态 | 后端按 `org_id` 和角色裁剪，前端不自行拼装权限 |
 | Demand 关闭/恢复 | `POST /demands/<demand_id>/close|restore` | 只更改 Demand，不修改 Job；HC 满额只返回 `completion_suggested` |
@@ -418,7 +420,7 @@ BOSS 直聘集成已在代码中注册为 `/api/boss/*` 蓝图，用于内部验
 
 - BOSS Cookie 是外部平台会话凭证，只能按当前智聘用户隔离保存和使用，不进入前端响应。
 - BOSS 不属于 HR 试点主流程必测项，但 `/api/boss/*` 路由已注册；测试/生产配置必须提供固定合法的 `FIELD_ENCRYPTION_KEY`，否则 Cookie 导入会失败，开发临时 key 重启后也无法解密旧账号。
-- 该模块依赖运行期可用的 `boss` CLI。自动安装会访问 GitHub，内网或生产环境应优先由运维预装并配置 `BOSS_CLI_BIN`。
+- 该模块依赖预先准备的 `boss` CLI。运行期自动安装被禁止，旧 `BOSS_CLI_AUTO_INSTALL=true` 会被安全忽略；如单独开放，必须在镜像构建阶段固定并审查版本，再配置 `BOSS_CLI_BIN`。
 - 常见失败状态：未登录智聘返回 401；角色不允许返回 403；无激活 BOSS 账号返回 409 `no_active_account`；CLI 缺失返回 503 `boss_cli_not_installed`；Cookie 失效/缺字段返回 409。
 - P0 已在 API 与服务层同时关闭 BOSS 批量导入自动入池和 AI 初筛写入；仅隐藏前端入口不构成安全边界。若后续单独开放，必须先重新设计显式 `demand_id`、RBAC、人工确认和审计契约。
 
@@ -503,7 +505,7 @@ flowchart TD
 - 后端：`backend/app/api/jobs.py`
 - AI：`base_agent/llm_client.py`
 
-当前基线流程：
+当前岗位画像流程：
 
 1. 用户输入岗位名称与 JD。
 2. 可先调用 `/jobs/clarify` 生成澄清追问，不落库。
@@ -511,9 +513,9 @@ flowchart TD
 4. LLM 输出结构化 JD，写入 `jobs.jd_structured`。
 5. 岗位默认 `status=active`。
 
-当前基线将 Job 状态与业务流程过度绑定，曾在关闭 Job 时拒绝上传、匹配写入、流程、Offer、面试和 AI 写入，也曾在 Demand 恢复时反向改写 Job。这些都是 P0 必须移除的旧耦合，不是目标规则。
+历史基线曾将 Job 状态与业务流程过度绑定。当前代码候选已将已存在 Demand 的流程、Offer、面试和 AI 上下文改由 Demand 状态/RBAC 决定；Demand 恢复不再反向改写 Job。匹配本身仍归 Job 画像。
 
-P0 影响面：
+当前 Demand/Job 边界：
 
 - `jd_structured.skill_tags_raw` 直接影响后续匹配。
 - 修改 JD 会重新结构化。
@@ -557,9 +559,9 @@ P0 影响面：
 - 看板组件：`frontend/src/components/pipeline/*`
 - 后端：`backend/app/api/pipeline.py`
 
-当前基线以 `job_id` 定位看板与流水，且转需求时曾把源流程写成 `rejected`。这是本轮需被取代的旧行为，不得被新服务复用。
+历史基线曾以 `job_id` 定位看板并把转需求写成 `rejected`。当前代码候选已由 `pipeline_service` 按 Demand 承载看板、流水、活动 Flow 与转移事务；job-only 入口只在唯一解析 Demand 时兼容。
 
-P0 目标流程：
+当前代码流程：
 
 1. 用户先选择具体 Demand，看板调用 `/pipeline/demands/<demand_id>` 契约。
 2. `pipeline_service` 在后端解析 Demand 上下文，校验组织、角色、Demand 状态与 active flow，然后按 `(candidate_id, demand_id)` 取当前阶段。
@@ -585,9 +587,9 @@ P0 目标流程：
 - 后端：`backend/app/api/interview.py`
 - 服务：`backend/app/services/interview_service.py`
 
-当前基线的 `/interview/submit` 可根据 AI 评分直接改写主流程，这是 P0 明确要移除的高风险行为。
+历史基线曾让 `/interview/submit` 根据 AI 评分改写主流程；当前代码调用链已移除该高风险行为。
 
-P0 目标流程：
+当前代码流程：
 
 1. `/interview/start` 在显式 Demand 上下文中根据 JD 快照生成题目。
 2. `/interview/submit` 保存问答、评分、摘要与 `pass_recommended`。
@@ -597,7 +599,7 @@ P0 目标流程：
 关键规则：
 
 - 不存在“高分自动过”或“低分自动淘汰”开关。
-- 提示词不是安全边界；写工具从目标工具集和服务调用链中移除，并由测试证明不可达。
+- 提示词不是安全边界；主流程写工具已从当前工具集和服务调用链中移除，并由负向测试证明不可达。
 
 ### 8.7 面试官反馈
 
@@ -608,9 +610,9 @@ P0 目标流程：
 
 面试官反馈写入 `interview_feedback`，候选人详情 journey 按 Demand 聚合流程时间线、AI 记录和面试反馈。面试官只提交反馈；候选人是否进入 Offer 或淘汰，由 HR/经理/管理员人工处理。
 
-P0 使用 `round_sequence` 表达 `interview` 内部轮次，不恢复“一面/二面/终面”主阶段。每轮可有多名面试参与者，但只允许一名 `is_primary=true` 的主面试官；只有主面试官反馈能将该轮标记完成，仍然不会推进主流程。
+当前使用 `round_sequence` 表达 `interview` 内部轮次，不恢复“一面/二面/终面”主阶段。每轮可有多名参与者，但只允许一名有效主面试官；服务锁与稳定 409 提供业务响应，revision `20260711_02` 的 `primary_slot` 唯一索引提供并发最终防线。同一 assignment 的 feedback 也有唯一索引；重复提交返回已有反馈，不产生第二条。只有主面试官反馈能将该轮标记完成，仍不会推进主流程。
 
-面试安排由 HR/经理/管理员创建。后端会兜底校验：目标岗位必须存在且 `status=active`，当前用户必须有岗位管理权限，面试官账号必须存在于当前组织、已启用，且角色为面试官/经理/管理员。这样即使前端下拉数据过期，也不会把新面试分配给已关闭岗位、别人的岗位或停用账号。
+面试安排由 HR/经理/管理员创建。后端会兜底校验 Demand 存在、组织/状态/RBAC、候选人 active flow，以及面试官账号属于当前组织、已启用且角色合法；只有 legacy job-only 上下文先检查并唯一解析 Demand。即使前端下拉数据过期，也不会把新面试分配给无权 Demand 或停用账号。
 
 `reason_tags` 是面试事实和阻塞原因的标准化分类，只用于协同复盘和流程改进，不是对面试官、HR 或部门做绩效定性。
 
@@ -621,17 +623,18 @@ P0 使用 `round_sequence` 表达 `interview` 内部轮次，不恢复“一面/
 - 前端：`frontend/src/pages/BiPage.tsx`
 - 后端：`backend/app/api/bi.py`
 
-P0 BI 主要从以下事实计算：
+当前 `bi_service` 主要从以下事实计算：
 
 | 来源 | 用途 |
 |---|---|
-| `candidate_demand_flows` + `pipeline_stages.demand_id` | Demand 当前存量、漏斗、停留和转出；`transferred` 不计淘汰 |
+| `pipeline_stages.demand_id` 的每候选人最新流水 | Demand 当前存量、漏斗、停留和转出；`transferred` 不计淘汰 |
 | `recruitment_demands.owner_hr_id` + flow owner | 当前责任人和需要协同的待办，不是个人业绩 |
-| `interview_assignments` | 面试安排、面试官、轮次、待补反馈 |
-| `interview_feedback` | 面试通过/拒绝、评分、面试官反馈 |
+| `interview_assignments` + `interview_feedback` | 已到时但尚无有效反馈的 assignment 与责任协同，不输出面试官排名 |
 | `recruitment_demands.department` | 创建时快照下的用人部门协同归属 |
 
-注意：BI 使用 Demand 下的最新阶段去重，不能直接统计所有历史流水。所有查询先按 `org_id` 和 Demand 权限隔离，结果支持下钻到可解释明细。候选人或 Demand 负责人转派只改当前责任投影，历史推进人和反馈人不重写。BI 只用于进度、瓶颈和责任协同，不用于人员排名、绩效考核、奖金分配或自动问责。
+注意：BI 使用 Demand 下的最新阶段去重，不能直接统计所有历史流水。`overview` 返回 `funnel + alerts + demands`，`staff` 只返回当前 `workload + demands`，不返回 `performance`、个人通过率、个人转化率或排名。候选人或 Demand 负责人转派只改当前责任投影，历史推进人和反馈人不重写。
+
+前端必须保真展示数据状态：加载中显示 loading；API 失败显示“数据暂不可用”和重试，KPI 使用 `—`；只有成功且确无事实时显示业务空态。候选人、岗位、BI、面试任务等分区独立失败，不能把异常伪装成 0、“暂无卡点”或成功空列表。
 
 ### 8.9 AI 助手
 
@@ -641,12 +644,12 @@ P0 BI 主要从以下事实计算：
 - 后端 API：`backend/app/api/agent.py`
 - 服务：`backend/app/services/agent_service.py`
 
-AI 助手的当前基线同时含读工具和经确认的写工具；P0 目标工具集收缩为只读/分析型能力：
+AI 助手当前工具集已收缩为只读/分析型能力：
 
 | 类型 | 示例 | 是否直接写库 |
 |---|---|---|
 | 保留工具 | 候选人/Demand 查询、原始简历与结构化结果摘要、Job 匹配、Demand 进展/瓶颈说明 | 否 |
-| P0 移除工具 | 创建/关闭 Demand、推进/淘汰、发 Offer、转派负责人、关闭需求 | 目标工具集中不得存在 |
+| 已移除的主流程工具 | 创建/关闭 Demand、推进/淘汰、发 Offer、转派负责人、关闭需求 | 当前工具集中不存在 |
 
 设计原则：
 
@@ -667,9 +670,9 @@ AI 助手的当前基线同时含读工具和经确认的写工具；P0 目标�
 | AI 面试题生成 | `/interview/start` | 只写 event | 中 |
 | AI 面试评分 | `/interview/submit` | P0 只保存评分/建议，不改主流程 | 中 |
 | AI 助手问答 | `/agent/chat` | 否 | 中 |
-| AI 助手主流程写工具 | 基线存在 `/agent/execute`；P0 从工具集移除 | 不允许 | 禁止 |
+| AI 助手主流程写工具 | `/agent/execute` 兼容入口仍存在，但当前工具目录无对应工具 | 不允许 | 禁止 |
 
-AI 助手的只读工具也必须走服务端权限边界，不能只依赖前端入口隐藏。当前团队 BI 工具只允许 `manager` / `admin` 使用；`recruiter` 调用会返回 `Forbidden`，避免通过自然语言绕过 BI 页面权限。候选人、流程、匹配等工具继续按候选人负责人或面试官指派范围收敛。
+AI 助手的只读工具也必须走服务端权限边界，不能只依赖前端入口隐藏。当前团队 BI 工具只允许 `manager` / `admin` 使用；`recruiter` 调用会返回 `Forbidden`，避免通过自然语言绕过 BI 页面权限。招聘专员概览中的面试数量只统计其可见 Demand 与候选人；候选人、流程、匹配等工具继续按负责人/指派范围收敛。
 
 ### 9.2 密钥与模型配置
 
@@ -785,7 +788,9 @@ API 层只负责参数解析、身份入口和响应映射，不在多个路由�
 
 ### 11.1 Demand 迁移与兼容影响
 
-Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁移，由发布流程中唯一 migration job 执行一次。Flask/gunicorn 启动路径、多 worker 和普通 API 请求不得执行 DDL 或回填。
+Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁移，由发布流程中唯一 migration job 执行。RC/SIT/生产应用工厂不执行 DDL；只有自动化测试或 `debug + SQLite` 的本地兼容路径允许应用侧建表/补列。真正空库用 `bootstrap_database.py --allow-empty` 显式初始化并 stamp 当前 head，部分 schema 会 fail closed；已有库 `alembic upgrade head`。`/api/health` 只证明进程 liveness，不能证明数据库或 schema ready。
+
+当前加性迁移链为 `20260710_01` → `20260711_02`。revision 02 在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复；发现冲突即中止并输出证据，不自动挑选保留行。生产仍由唯一 migration job 执行；RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|
@@ -795,42 +800,19 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 | Strict cutover | 将 `demand_id` 设为业务必填，主读路径切换为 Demand，写入 cutover marker | SIT 四角色、双 Demand、转派、面试、AI 负向、BI 验收全部通过 |
 | Contract | 在稳定窗口后移除旧写路径和旧兼容字段 | 已过回滚窗口，监控无旧客户端流量，数据备份和证据包已归档 |
 
-严格切换前必须用与 SIT/生产相同的数据库引擎完成实际恢复演练。MySQL 环境的硬门禁是产出可审计的 dump/restore 命令、版本、校验和、耗时、恢复后表行数/约束校验和负责人签字；SQLite 备份成功不能代替 MySQL 恢复证据。详细操作见 `docs/10_demand_id迁移与回滚手册.md`。
+严格切换前必须用与 SIT/生产相同的数据库引擎完成实际恢复演练。标准快照包含 manifest/SHA-256；SQLite 使用 online backup API 保证 WAL 一致，uploads 归档在恢复前拒绝路径穿越、链接和特殊文件。MySQL 自动 `--confirm` 恢复/清理 fail closed，必须由 DBA 取得同引擎证据。数据库与 uploads 不是跨资源事务，任何一侧失败都不能宣布恢复完成。详细操作见 `docs/10_demand_id迁移与回滚手册.md`。
 
-## 12. 数据基线与当前偏差
+## 12. 演示数据基线
 
-### 12.1 文档/seed/本地库现状
+### 12.1 文档与 seed 真源
 
 | 来源 | 观察 |
 |---|---|
 | `RUNNING.md` | 描述 seed 后应有 7 试用账号、10 候选人、4 岗位（已与脚本对齐） |
 | 当前 `backend/seed_dev.py` 静态定义 | 7 用户、10 候选人、4 岗位 |
-| 当前本地 `backend/hireinsight.db` 快照 | 30 用户、21 候选人、14 岗位，13 active + 1 closed |
+| 本地 `backend/hireinsight.db` | 运行态文件，不是代码或产品基线，不用个人工作区行数判断 seed |
 
-当前 `seed_dev.py` 静态定义与 `RUNNING.md` 描述已对齐，均为 7 用户、10 候选人、4 岗位。本地 `hireinsight.db` 快照数量偏多，是历史恢复与本地使用痕迹，不是 seed 脚本的产物。后续若要让“新克隆仓库直接可用”，需要明确选择一种方案：
-
-1. 提交标准演示数据库文件。
-2. 或修正 `seed_dev.py`，让它真的生成目标数据。
-3. 或在部署脚本里从固定 artifact 恢复数据库。
-
-不要在未确认的情况下随意运行 `seed_dev.py`，因为它会清空并重建 seeded tables。
-
-### 12.2 当前本地数据库快照
-
-生成本文时，本地库统计为：
-
-| 项 | 数量 |
-|---|---:|
-| users | 30 |
-| candidates | 21 |
-| jobs | 14 |
-| pipeline_stages | 40 |
-| interviews | 4 |
-| interview_feedback | 0 |
-| events | 53 |
-| matches | 59 |
-
-这些数字只是当前本地环境快照，不应被视为产品设计约束。
+当前 `seed_dev.py` 静态定义与 `RUNNING.md` 描述已对齐，均为 7 用户、10 候选人、4 岗位。不要提交个人运行库，也不要用工作区中的历史行数覆盖这条基线。`seed_dev.py` 会清空并重建 seeded tables，只能用于明确可丢弃的本地演示库；真实 HR、公司测试和生产库禁止运行。
 
 ## 13. 非功能需求
 
@@ -894,7 +876,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 | 项 | 内容 |
 |---|---|
-| 状态 | Accepted（实现中，未部署） |
+| 状态 | Accepted；代码候选已实现，环境待验收 |
 | 决策 | Job 为可复用岗位画像，Demand 为具体招聘任务；主流程、面试、负责人与 BI 按 `demand_id` 归属 |
 | 约束 | 单 active flow、原子转 Demand、`transferred != rejected`、AI 不写主流程、BI 只用于进度/瓶颈/责任协同 |
 | 详细记录 | `docs/adr/0002-demand-scoped-recruiting-flow.md` |
@@ -918,9 +900,14 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 | `backend/tests/test_admin_users.py` | 用户管理权限与自我保护 |
 | `backend/tests/test_candidate_journey.py` | 候选人 journey、转派、归属限制 |
 | `backend/tests/test_pipeline_rounds.py` | 阶段推进、备注、非法阶段 |
-| `backend/tests/test_interview_loop.py` | AI 面试回写流程、面试官反馈 |
+| `backend/tests/test_interview_loop.py` | AI 面试报告保存但不自动推进、面试官反馈 |
 | `backend/tests/test_security_hardening_next.py` | 试点权限边界、面试官禁止上传/重解析/推进流程 |
+| `backend/tests/test_schema_lifecycle.py` | 生产应用不 DDL、空库 bootstrap、部分 schema 阻断、RC/GA 开关 |
+| `backend/tests/test_demand_scope_migration.py` | Demand Expand、audit/backfill/verify 与迁移往返 |
+| `backend/tests/test_demand_interview_rounds.py` | Demand 面试轮次、并发 primary 与 assignment feedback 唯一性 |
+| `backend/tests/test_bi_operational_overview.py` | Demand 团队总览、专员 workload、权限与旧 Job 歧义 |
 | `frontend/tests/interviewer_role_scope.test.mjs` | 面试官导航、路由、面试任务与反馈按钮边界 |
+| `frontend/tests/dashboard_data_truth_contract.test.mjs` | Dashboard 分区错误、重试、不可用态与禁止伪造 0/绩效 UI |
 | `base_agent/tests/test_job_matcher.py` | 岗位匹配算法 |
 | `base_agent/tests/test_llm_client_secrets.py` | keychain 密钥解析 |
 
@@ -937,9 +924,9 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 | 改密钥/LLMClient | `cd base_agent && ../.venv/bin/python -m pytest tests/test_llm_client_secrets.py -q` |
 | 改部署/静态托管 | `npm run build` + 访问 `/login`、登录、打开核心页面 |
 
-### 15.4 Demand P0 新增验收面（随实现落地）
+### 15.4 Demand P0 已有自动化验收面
 
-以下是必须新增的测试面，不表示当前基线已有对应用例：
+以下测试面已在当前代码候选落地；SIT 仍需用真实部署版本做四角色现场验收：
 
 - 同一 Job 存在两个 active Demand，列表、详情、流程和 BI 不串数。
 - 旧 `job_id` 在唯一可解析时兼容，有歧义时稳定返回 409 `demand_id_required`。
@@ -959,7 +946,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 | SQLite 用作演示库 | 并发和备份能力有限 | 试点/生产使用 MySQL 或 PostgreSQL |
 | JWT_SECRET 默认值弱 | 生产安全风险 | 生产必须配置强随机密钥 |
 | demo 密码弱 | 公网演示风险 | 公网演示后关闭服务或强制改密 |
-| 基线 AI 面试会自动改流程状态 | 误判会影响主流程 | P0 直接移除该调用链，不使用 prompt 或开关代替代码边界 |
+| 旧环境/旧镜像仍可能保留 AI 自动改流程调用链 | 环境未切换时误判仍会影响主流程 | 当前代码已移除；以部署版本、工具目录和负向受控 API 现场复核 |
 | Demand 回填错误或归属歧义 | 串需求、BI 失真、人员看到错误候选人 | 分阶段迁移、异常审计清单、影子对账、严格切换门禁 |
 | MySQL 备份未实际恢复 | 数据回滚方案在事故时可能无效 | 严格切换前完成同引擎 restore drill 并保留校验和/行数/耗时证据 |
 | `base_agent` 通过 sys.path 复用 | 包边界不清晰 | 后续可整理为 Python package |
@@ -976,7 +963,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 ## 18. 快速结论
 
-当前基线的技术主流程可运行；Demand P0 仍只在实现分支，未经迁移门禁、四角色 SIT 验收和发布证据，不能宣称“已上线”或“可生产使用”。后续迭代必须：
+当前代码候选已完成 Demand P0、schema 生命周期、面试唯一性、运营 BI、Dashboard 数据保真、运行配置与可恢复清理的本地收口。未经 CFPD ref 对齐、目标引擎迁移/恢复门禁、四角色 SIT 验收和发布证据，仍不能宣称“已在 SIT 生效”或“可生产使用”。后续迭代必须：
 
 1. UI 风格改动只动 `frontend/`。
 2. 新增只读展示优先复用现有 API。

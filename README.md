@@ -21,7 +21,7 @@
 
 本 README 里的功能介绍用于了解系统能力，不等于生产上线完成证明。涉及真实 HR 试点、服务器部署、数据清理、LLM 合规或备份恢复时，必须再看 [docs/06_试点上线检查清单.md](docs/06_试点上线检查清单.md) 和 [docs/07_上线部署前关键清单](docs/07_上线部署前关键清单_给AI执行.md)，并由负责人确认后执行。
 
-> **2026-07-10 发布状态口径**：“Job 是可复用职位/JD 模板，Demand 是一次招聘责任单”的 `demand_id` P0 已完成本地实现并获项目负责人授权替换 SIT 测试验收版。实际是否已同步，以 CFPD `test/api`、Libra CommitID 和测试站静态资产现场证据为准；本说明不单独构成已发布证明。
+> **2026-07-11 收口状态口径**：本代码树已完成 `demand_id` P0、数据库生命周期、面试轮次唯一性、Demand 维度 BI、错误态保真、运行配置与可恢复清理的合并前收口，可作为 CFPD `test` 的下一代码候选。Git 推送只改变代码源，不等于 Libra 已构建或 SIT 已部署；环境状态必须分别用 CFPD ref、Libra CommitID/镜像、schema revision、测试站资产和受控 API 证据确认。本轮不引入 OA/Consul、微服务或依赖大版本升级。
 
 ## 📖 项目简介
 
@@ -116,7 +116,7 @@
 ## 🚀 快速开始
 
 ### 环境要求
-- Python 3.11+ · Node.js 20.19+（或 22.12+）· npm 10+
+- Python 3.11–3.13（推荐及容器基线 3.12）· Node.js 20.19–20.x 或 22.12+ · npm 10+
 
 ### 1. 后端
 ```bash
@@ -126,6 +126,8 @@ python -m pip install -r requirements.txt
 cp .env.example .env          # 填入 LLM API Key
 PORT=5001 python run.py       # 开发联调后端：http://localhost:5001
 ```
+
+本地测试或 `debug + SQLite` 可使用应用兼容建表；RC/SIT/生产不会在 Flask worker 启动时执行 DDL。真正空库必须走显式 bootstrap，已有库必须走 Alembic，部分建表的异常库会拒绝自动补齐。详见 [RUNNING.md](RUNNING.md) 和 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 ### 2. 演示数据（可选，无需 LLM Key）
 ```bash
@@ -144,10 +146,12 @@ python backend/scripts/cleanup_demo_data.py --dry-run
 python backend/scripts/cleanup_demo_data.py --confirm
 ```
 
+清理脚本会先生成带 manifest/校验和的可恢复快照，只删除 demo owner 的业务记录和仅被这些记录引用的上传文件；遇到真实 owner、跨范围引用或不支持自动确认的 MySQL 路线会 fail closed，不会把整个上传目录清空。
+
 ### 3. 前端
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev                   # http://localhost:5173，代理到 :5001
 ```
 

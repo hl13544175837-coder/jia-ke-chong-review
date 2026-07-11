@@ -1,10 +1,10 @@
 # 智聘·招聘管理系统 — 部署文档
 
-> **版本**：2026-07-10 demand-scoped P0 draft
+> **版本**：2026-07-11 demand-scoped P0 closeout candidate
 > **适用环境**：Windows 10/11、Linux（Ubuntu 20.04+）、macOS 13+  
 > **架构**：React SPA + Flask/Gunicorn 模块化单体；SQLite（开发）/ MySQL（公司试点）/ PostgreSQL（兼容）
 >
-> **状态**：`demand_id` P0 已完成本地实现并获项目负责人授权替换 SIT 测试验收版。SIT 测试数据允许清空或重建；生产与真实数据仍执行本文完整门禁。实际发布状态以 CFPD、Libra 和测试站证据为准。
+> **状态**：本代码树已完成合并前 P0 收口，可作为 CFPD `test` 的下一代码候选。推送 Git、完成构建、产生部署记录和测试站实际运行是不同状态；生产与真实数据仍执行本文完整门禁。
 
 ---
 
@@ -61,14 +61,12 @@
 
 | 组件 | 最低版本 | 备注 |
 |------|---------|------|
-| Python | 3.9+ | 推荐 3.11 |
-| Node.js | 18+ | 推荐 20 LTS |
-| npm | 9+ | 随 Node.js 附带 |
+| Python | 3.11–3.13 | 推荐及容器基线 3.12 |
+| Node.js | 20.19–20.x 或 22.12+ | 与 `frontend/package.json` engines 一致 |
+| npm | 10+ | 使用 lockfile 和 `npm ci` |
 | Git | 任意 | 可选 |
 
-> BOSS 直聘模块是实验辅助能力，不属于 HR 试点主流程必测项。若开放该模块，还需要运行期可用的 `boss` CLI。容器已包含 git，若设置
-> `BOSS_CLI_AUTO_INSTALL=true`，首次调用会尝试从 GitHub 源码安装；内网无法访问
-> GitHub 时，请由运维预装 CLI 并设置 `BOSS_CLI_BIN`。BOSS Cookie 会用
+> BOSS 直聘模块是实验辅助能力，不属于 HR 试点主流程必测项。若开放该模块，还需要可用的 `boss` CLI。运行期自动安装已被禁止，容器不为该实验能力携带 git；旧的 `BOSS_CLI_AUTO_INSTALL=true` 会被安全忽略。请在镜像构建阶段固定、审查 CLI 版本并设置 `BOSS_CLI_BIN`。BOSS Cookie 会用
 > `FIELD_ENCRYPTION_KEY` 加密落库，测试/生产环境必须配置固定 Fernet 密钥。
 
 ---
@@ -137,14 +135,14 @@ PORT=5001 python run.py
 **Windows PowerShell**（推荐，npm 仅在 PowerShell 可用）：
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
 **Linux / macOS**：
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -175,13 +173,13 @@ python backend/scripts/cleanup_demo_data.py --dry-run
 python backend/scripts/cleanup_demo_data.py --confirm
 ```
 
-脚本会先备份，再删除 `@mvp.local` demo 账号及其关联业务数据，并清空 `backend/uploads/`、`uploads/` 文件；表结构会保留。
+脚本会先生成带 manifest 和 SHA-256 校验和的可恢复快照，再删除 `@mvp.local` demo owner 及其关联业务数据；只删除这些记录独占引用的上传文件，真实 owner、无关文件和跨范围引用不会被顺带清理。发现混合归属会 fail closed；MySQL 暂不支持脚本自动确认清理，必须走同引擎恢复演练和受审计的 DBA 路线。表结构会保留。
 
-### 数据库兼容补列
+### 数据库生命周期
 
-应用启动时会对历史试点库做轻量兼容补列。`upload_batches` 表会按当前模型补齐缺失列（如组织、来源链接、内推人、目标岗位、备注、创建时间等），`interview_feedback` 等已存在业务表会先补齐 `org_id` 等组织隔离字段，再执行旧面试反馈原因标签归一化，避免旧库因缺列导致 Flask 启动失败。该补列是幂等操作，列已存在时不会重复修改。
+RC/SIT/生产的 Flask 应用工厂不会执行 `create_all`、补列或其他 DDL。真正空库只能显式运行 `python backend/scripts/bootstrap_database.py --allow-empty`：脚本验证数据库完全为空后创建 metadata 并写入当前 Alembic head；发现部分业务表或异常 schema 会拒绝继续。已有库统一使用 `alembic upgrade head`，当前收口候选 head 为 `20260711_02`。只有自动化测试或 `debug + SQLite` 本地兼容路径允许应用侧建表。
 
-上述机制是已提交基线的早期兼容现状，不适用于 `demand_id` 多表迁移。P0 目标是引入带 revision ledger 的单次 Alembic migration；Gunicorn worker 启动时只校验 schema revision，不执行复杂 DDL、回填或收紧约束。
+因此 Gunicorn/Flask worker 只消费已准备好的 schema；生产必须由唯一 migration job 执行升级。禁止用手工 SQL、多个 worker 并发迁移或“启动失败后让应用补一补”替代受测试的 revision。
 
 ---
 
@@ -251,13 +249,13 @@ cd /tmp/zhipin-cfpd-<fix-name>
 git push git@git.ymdd.tech:cfpd/zhipin-mvp.git HEAD:test
 ```
 
-当前推荐的 Libra 页面操作路线是：进入执行 pipeline 页，选择 `test` 分支，点击“开始构建”，并勾选“构建完成自动部署到 SIT 环境”。构建成功后必须核对 pipeline 的 `sha` / `CommitID` 等于刚推到 CFPD `test` 的提交，再做测试站资产验收。
+Libra 页面操作先进入执行 pipeline 页，选择 `test` 分支构建 `zhipin-server` 与 `zhipin-frontend`；可以勾选“构建完成自动部署到 SIT 环境”，但勾选不等于部署已发生。构建后先在“部署日志”分别核对本批次两个模块的 RC：已有发布记录就等待结果，不再手工绑定同一版本；pipeline 已结束且刷新后仍只有构建版本、没有部署记录，才进入“持续交付 → 持续发布 → k8s应用管理”核对可绑定版本并发布。任何时候都必须确认 pipeline `sha` / `CommitID` 等于 CFPD `test` 目标提交，再做测试站资产与受控 API 验收。
 
-历史上也可能通过构建成功行的“发布到SIT”按钮完成发布。如果使用这条备选路线，必须先确认该行“提交内容”或 `CommitID` 等于 CFPD `test` 最新提交；不要发布旧行，尤其不要只看“构建成功”绿色对勾。
+历史上也可能通过构建成功行的“发布到SIT”按钮完成发布。只有本批次 pipeline 已结束且部署日志仍无记录时才评估该通道，并先确认“提交内容”或 `CommitID` 等于 CFPD `test` 目标提交；已有部署记录时不得重复发布同一 RC。
 
 CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 和 Makefile 会兜底使用 `RC` 和当前时间戳，避免生成 `zhipin-frontend:` / `zhipin-server:` 这类空镜像标签导致构建失败；Libra 包记录也会使用同一个 `RC_<时间戳>` 版本号。
 
-为了让当前 SIT 从旧 schema 安全起动 demand-scoped 后端，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 会在 Gunicorn 启动前执行一次 `alembic -c /app/backend/alembic.ini upgrade head`；绝对配置路径用于避免 K8S 工作目录不同导致 `No 'script_location' key found in configuration`。`GA` 镜像明确传入 `false`，不允许用这条自动路线改生产库。SIT 扩展迁移发布时不得同时扩容多个新副本，并必须在发布后核对 Alembic revision 和受控 API；正式环境仍按唯一 migration job 门禁执行。
+为了让当前可丢弃数据的 SIT 同时支持空库和旧库，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 与 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 先让 bootstrap 仅在真正空库创建并 stamp 当前 head，再执行一次 `alembic -c /app/backend/alembic.ini upgrade head`；部分建表的库会直接阻断，绝对配置路径避免 K8S 工作目录变化导致 `script_location` 丢失。`GA` 对两个开关都明确传入 `false`。SIT 扩展迁移发布时不得同时扩容多个新副本，并必须在发布后核对 revision（本候选为 `20260711_02`）和受控 API；正式环境仍按唯一 migration job 门禁执行。
 
 如果点击“发布到SIT”弹出：
 
@@ -266,7 +264,7 @@ CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 
 zhipin-frontend该模块在当前环境无主机
 ```
 
-这说明普通发布通道没有可用主机/实例绑定，不代表代码构建失败。优先改走执行 pipeline 页的 `test` 分支自动部署路线；如公司后续仍要求使用普通发布按钮，再让运维确认 Libra 的“应用维护 / k8s应用管理”里是否补齐模块与 SIT 主机/实例绑定。遇到该弹窗时仍需单独验证测试站是否已被构建流程同步静态包：
+这只能说明传统主机发布通道没有主机/实例绑定，不能推导代码构建失败、K8S 不可用或自动部署已发生。回到本批次部署日志核对；如果没有记录，再进入持续发布/K8S 按 `Sit(集成)` / `产品一组` / `zhipin-mvp` / 模块筛选。筛选后仍无数据就停止，不猜入口、不继续点击发布。若日志出现“异常”、`Ready 0/1` 或 `CrashLoopBackOff`，停止重复发布同一 RC 并获取容器日志。部署历史、可绑定版本和 K8S 可回滚版本是三类数据，不得互相替代。遇到该弹窗时仍需单独验证测试站是否已有真实部署证据：
 
 ```bash
 curl -sS -L -D /tmp/test-zhipin.headers https://test-zhipin.yimidida.com/ -o /tmp/test-zhipin.html
@@ -297,7 +295,8 @@ rg -o '/assets/[^" ]+' /tmp/test-zhipin.html | sort -u
 1. 构建前端：
 ```powershell
 cd frontend
-npm run build    # 生成 frontend/dist/
+npm ci
+npm run build    # 生成 frontend/dist/；构建产物不提交
 ```
 
 2. 修改 `.env`。可以从轻量试点模板开始：
@@ -328,9 +327,13 @@ RATE_LIMIT_RESUME_UPLOAD=8
 BACKUP_DIR=/var/backups/zhipin
 ALLOW_PUBLIC_REGISTRATION=false
 FIELD_ENCRYPTION_KEY=PASTE_GENERATED_FERNET_KEY_HERE
+ALLOW_EMPTY_DATABASE_BOOTSTRAP=false
+AUTO_MIGRATE_DATABASE=false
 BOSS_CLI_AUTO_INSTALL=false
 BOSS_CLI_BIN=/usr/local/bin/boss
 ```
+
+`CORS_ORIGINS` 使用与生产启动护栏相同的严格校验，只接受无 path/query/fragment/用户凭据的 HTTP(S) origin，拒绝 `*` 和 `null`。`run.py`、备份、恢复和清理日志只显示数据库 driver/host/database 的脱敏 label，不打印用户名、密码或 query。
 
 公司 MySQL 试用环境建议使用 InnoDB、`utf8mb4` 字符集、专用库和专用账号。当前代码也兼容 PostgreSQL，连接串可写为 `postgresql://user:pass@host:5432/zhipin`，会自动转为 `postgresql+psycopg://`。
 
@@ -368,7 +371,7 @@ python run.py
 
 上线前至少演练一次“能备份，也能恢复到临时库”。轻量试点不做复杂恢复后台，但必须留出可执行命令。
 
-`demand_id` 发布需要三个独立快照：Expand 前、Strict cutover 前、cutover 验证后。每个快照应记录数据库引擎、schema revision、CFPD SHA、产物校验和、关键表行数与 uploads 包校验结果，不记录密码或带凭据的 URL。
+`demand_id` 发布需要三个独立快照：Expand 前、Strict cutover 前、cutover 验证后。每个快照应记录数据库引擎、schema revision、CFPD SHA、manifest、SHA-256、关键表行数与 uploads 包校验结果，不记录密码或带凭据的 URL。SQLite 使用 backup API 取得 WAL 一致快照；备份目录和敏感产物使用 `0700/0600` 权限。
 
 备份：
 
@@ -378,12 +381,9 @@ python scripts/backup_pilot_data.py --dry-run
 python scripts/backup_pilot_data.py
 ```
 
-恢复演练建议恢复到临时库和临时上传目录，不直接覆盖生产环境。当前标准脚本只直接支持 PostgreSQL `pg_restore` 与 SQLite 文件恢复；MySQL 备份可由 `mysqldump` 产出 SQL，但自动恢复能力尚未被实施与验收。
+恢复演练必须恢复到临时库和临时上传目录，不直接覆盖生产环境。恢复脚本会先校验 manifest/校验和、拒绝路径穿越、链接和特殊文件，并在 staging 完成后才原子切换；失败时保留原 uploads。当前标准脚本直接支持 PostgreSQL `pg_restore` 与 SQLite 文件恢复；MySQL 备份可由 `mysqldump` 产出 SQL，但 `restore_pilot_data.py --confirm` 明确 fail closed，只有 `--dry-run` 输出脱敏的人工计划。
 
-如果目标 SIT/试点库是 MySQL，在 demand_id 迁移前必须二选一：
-
-1. 实现并测试 `restore_pilot_data.py` 的 MySQL 临时库恢复；
-2. 由 DBA 将同一 `database.sql` 导入临时库，核对 schema revision、关键表行数、Demand/Flow/Pipeline/Interview/Offer/Event 数据和 uploads 文件，并留下负责人、时间与证据。
+如果目标 SIT/试点库是 MySQL，当前必须由 DBA 将同一 `database.sql` 导入临时库，核对 schema revision、关键表行数、Demand/Flow/Pipeline/Interview/Offer/Event 数据和 uploads 文件，并留下负责人、时间与证据；不得绕过脚本的 confirm 禁令。
 
 仅有 `mysqldump` 文件或只有“备份命令成功”不算恢复证据。MySQL 恢复未通过时，不得进入 Backfill 写入或 Strict cutover。数据库和 uploads 不是跨资源事务，正式恢复必须停写，任一部分失败都不得宣布完成。
 
@@ -588,7 +588,7 @@ A：
 
 ### Q：数据库如何重置？
 
-A：仅本地开发/演示库可以删除 `backend/hireinsight.db`，重启后端（自动重建），再运行 `python seed_dev.py`。真实 HR 试点库、公司测试库和生产库禁止用 `seed_dev.py` 重置；需要清演示数据时，先备份，再按 `cleanup_demo_data.py --dry-run` / `--confirm` 执行。
+A：仅 `debug + SQLite` 本地开发/演示库可以删除 `backend/hireinsight.db`，重启后端走本地兼容建表，再运行 `python seed_dev.py`。RC/SIT/生产空库必须显式 bootstrap，已有库必须 Alembic；真实 HR 试点库、公司测试库和生产库禁止用 `seed_dev.py` 重置。需要清演示数据时，先备份，再按 `cleanup_demo_data.py --dry-run` / `--confirm` 执行。
 
 ### Q：端口冲突怎么办？
 
@@ -633,12 +633,17 @@ python3 backend/scripts/check_pilot_readiness.py
 cd backend
 python -c "from app import create_app; app=create_app(); print('后端 OK')"
 
-# 3. 前端构建验证
+# 3. schema 独立验证（应用可构造不等于数据库 ready）
+alembic current  # 当前代码候选应为 20260711_02
+
+# 4. 前端构建验证
 cd ../frontend
+npm ci
 npm run typecheck
 npm run build
 
-# 4. 未登录接口验证
+# 5. liveness 与未登录接口验证
+curl -i http://localhost:5000/api/health # 仅证明进程存活
 curl -i http://localhost:5000/api/jobs   # → 401/403 未登录，正常
 ```
 

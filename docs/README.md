@@ -4,12 +4,12 @@
 > 用途：给产品、研发、部署和 AI/Codex 判断“先读哪份、信哪份”。
 > 状态：当前文档入口。当前开发只看下方真源文档和真实代码，不再追旧计划。
 
-> **当前状态（2026-07-10 发布切换）**：`demand_id` P0 已完成本地实现并获项目负责人授权替换 SIT 测试验收版；覆盖前的 CFPD `test/api` 已保存到 `backup/test-before-local-p0-20260710-1830` 和 `backup/api-before-local-p0-20260710-1830`。实际是否已推送、构建和部署，仍分别以 CFPD refs、Libra CommitID 和测试站资产为准。
+> **当前状态（2026-07-11 合并前收口）**：`codex/premerge-p0-closeout-20260711` 以 CFPD `test` 当前基线为起点，已完成 P0 代码与文档收口，可作为下一代码候选。是否已推送、构建、部署和在测试站生效，仍分别以 CFPD ref、Libra CommitID/镜像、部署日志、schema revision、测试站资产和受控 API 为准。
 
 | 状态面 | 真源 | 当前可证明什么 |
 |---|---|---|
 | 原始 checkout | `/Users/yenns/Desktop/智聘` 的实际 `git status` / HEAD | 用户原工作区有哪些本地改动；不等于实施分支或发布源 |
-| 隔离实施分支 | `codex/demand-scoped-p0` 工作树的 HEAD、diff 和测试 | P0 开发进度；未推送/未发布时只是本地实现证据 |
+| 隔离实施分支 | `codex/premerge-p0-closeout-20260711` 工作树的 HEAD、diff 和测试 | 当前 P0 收口候选；本地通过仍不等于已推送或已发布 |
 | CFPD `test` | `git ls-remote git@git.ymdd.tech:cfpd/zhipin-mvp.git refs/heads/test` 的 SHA | Libra 应当读到的代码源；不证明构建或部署完成 |
 | 已部署 SIT | Libra CommitID/镜像摘要、后端受控版本/schema revision、测试站 HTML 与前端 asset hash、冒烟证据 | 环境真正运行的版本；不能只凭 pipeline 绿色对勾判定 |
 
@@ -45,7 +45,7 @@
 | 5 | [SDD-智聘招聘系统-v1.0](./SDD-智聘招聘系统-v1.0.md) | 当前实现真相、接口、数据模型、模块定位、技术债 | 判断当前代码实际怎么跑、改哪里 |
 | 6 | [03 BI 看板设计](./03_BI看板设计.md) | BI 指标口径、当前责任协同、分子分母、权限边界 | 改 BI、看板或责任协同口径前必读 |
 | 7 | [../DEPLOYMENT.md](../DEPLOYMENT.md) | 生产/服务器部署、环境变量、备份恢复、单端口部署 | 部署、上线、环境变量变更 |
-| 8 | [08 Libra / SIT 发布路线](./08_Libra_SIT发布路线.md) | CFPD 仓库、Libra pipeline、SIT 自动部署、测试站资产验收路线 | 发布到 test/SIT、排查 test-zhipin 未变化 |
+| 8 | [08 Libra / SIT 发布路线](./08_Libra_SIT发布路线.md) | CFPD 仓库、Libra 构建/部署决策树、测试站资产验收路线 | 发布到 test/SIT、排查 test-zhipin 未变化 |
 | 9 | [06 试点上线检查清单](./06_试点上线检查清单.md) | 真实用户试点前的安全、数据、账号、备份、产品验收门槛 | 判断能否小范围试点 |
 | 10 | [10 demand_id 迁移与回滚手册](./10_demand_id迁移与回滚手册.md) | Expand / Backfill / Cutover、歧义数据、MySQL 恢复与不可逆回滚界限 | 实施、发布或回滚 demand-scoped P0 前必读 |
 | 11 | [07 上线部署前关键清单](./07_上线部署前关键清单_给AI执行.md) | 部署前 AI 可执行硬门槛（含 schema/数据迁移边界） | 服务器部署执行前逐项核对 |
@@ -66,10 +66,11 @@
 
 当前 MVP 已实现招聘闭环、核心权限、核心 `org_id` 组织隔离、试点审计、需求/岗位/候选人/流程/面试/BI/AI 助手等能力。
 
-必须区分已提交基线与已批准目标：
+必须区分代码候选与环境运行态：
 
-- 基线代码的流程、面试、Offer 和 BI 仍主要用 `job_id` 定位，AI 预筛仍可能改变流程；这是当前实现真相，不是新方向。
-- 已批准的 P0 目标是：`Job` 可被多个 `RecruitmentDemand` 复用；业务事实归 `demand_id`；匹配仍归 `job_id`；AI 不自动改变流程；BI 只做进度、卡点和责任协同。
+- 当前代码候选已将流程、面试、Offer、审计关联和 BI 的业务归属收敛到 `demand_id`；匹配继续使用 `job_id`，AI 预筛/面试反馈不自动改变流程。
+- 同一 Demand/候选人/轮次的主面试安排和同一 assignment 的反馈由数据库唯一约束兜底；BI API 只返回 Demand 进度、卡点和当前责任协同，前端将加载失败、真实空态和零值分开展示。
+- 生产应用工厂不执行 DDL；空库显式 bootstrap，已有库 Alembic。当前 Expand head 是 `20260711_02`，Strict cutover、目标引擎恢复证据和 SIT 四角色现场验收仍属于环境发布门禁，不能由本地代码测试替代。
 - 旧“一个 Job 同时只能有一个未结束 Demand”假设已被 [ADR-0002](./adr/0002-demand-scoped-recruiting-flow.md) 和批准设计取代。历史文件可保留作决策轨迹，但不得再指导新实现或发布验收。
 
 以下是后续规划或生产增强，不是当前必须补齐的开发前提：

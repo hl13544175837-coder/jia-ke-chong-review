@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted（SIT 测试验收发布候选）
+Accepted（代码候选已实现，环境待验收）
 
-> 决策日期：2026-07-10。本 ADR 已完成本地实现并获项目负责人授权替换 SIT 测试验收版；是否已发布以 CFPD、Libra 与测试站现场证据为准。生产和真实数据切换仍需单独决策。
+> 决策日期：2026-07-10；代码收口更新：2026-07-11。当前实现已进入 `codex/premerge-p0-closeout-20260711` 代码候选；CFPD ref、Libra 构建、SIT 部署和测试站生效必须分别取证。生产和真实数据切换仍需单独决策。
 
 ## Context
 
@@ -43,6 +43,7 @@ Accepted（SIT 测试验收发布候选）
 
 - 面试轮次在 `interview` 主阶段内使用 `round_sequence` 表达，不重新拆成一面/二面/终面主阶段。
 - 同一 Demand/候选人/轮次只有一名 `is_primary=true` 的主面试官。
+- 有效主面试安排使用 nullable `primary_slot=round_sequence`，数据库唯一约束 `(org_id,demand_id,candidate_id,primary_slot)`；同一 assignment 的 feedback 也唯一。迁移遇到存量重复必须中止，不自动挑选赢家。
 - 只有主面试官反馈能完成该轮；辅助反馈不完成轮次，任何反馈都不推进主流程。
 
 ### 5. AI 和原始简历边界

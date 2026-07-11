@@ -2,14 +2,14 @@
 
 本包是智聘招聘管理系统的完整可运行源码包，已排除所有运行态文件（数据库、密钥、上传文件、依赖、日志），拿到后按下方步骤即可在本地或服务器跑起来。
 
-> 详细文档：项目总览看 `README.md`；本地运行/试用账号看 `RUNNING.md`；服务器部署看 `DEPLOYMENT.md`；能否试点上线看 `docs/06_试点上线检查清单.md` 和 `docs/07_上线部署前TOP10清单_给AI执行.md`。
+> 详细文档：项目总览看 `README.md`；本地运行/试用账号看 `RUNNING.md`；服务器部署看 `DEPLOYMENT.md`；能否试点上线看 `docs/06_试点上线检查清单.md` 和 `docs/07_上线部署前关键清单_给AI执行.md`。
 
 ---
 
 ## 一、环境要求
 
-- Python 3.9+（推荐 3.11）
-- Node.js 18+（推荐 20 LTS）+ npm 9+
+- Python 3.11–3.13（推荐及容器基线 3.12）
+- Node.js 20.19–20.x 或 22.12+，npm 10+
 - Windows 需用 PowerShell 运行 npm 命令（不要用 Git Bash）
 
 ---
@@ -37,7 +37,7 @@ python seed_dev.py            # 写入 7 个试用账号、10 个候选人、4 �
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev                   # http://localhost:5173，自动代理到 :5001
 ```
 
@@ -74,11 +74,12 @@ OPENAI_API_KEY=sk-你的key
 
 完整步骤见 `DEPLOYMENT.md` §6，关键点：
 
-1. 构建前端：`cd frontend && npm run build`（生成 `frontend/dist/`，由 Flask 同源托管）
+1. 构建前端：`cd frontend && npm ci && npm run build`（生成但不提交 `frontend/dist/`，由 Flask 同源托管）
 2. 配置生产 `.env`：可从 `backend/lightweight-pilot.env.example` 复制起步，替换 JWT_SECRET（≥32字符强随机）、DATABASE_URL（MySQL 或 PostgreSQL；公司试用库当前按 MySQL 配置）、CORS_ORIGINS、LLM Key
 3. 启动前自检（只读，不打印密钥）：`python backend/scripts/check_pilot_readiness.py`
-4. 启动：`cd backend && gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 "run:app"`，访问 `http://服务器:5000`
-5. 上线前必读：`docs/06_试点上线检查清单.md`（C1–C12）和 `docs/07_上线部署前TOP10清单_给AI执行.md`
+4. 准备 schema：真正空库显式执行 `python backend/scripts/bootstrap_database.py --allow-empty`，已有库由唯一 migration job 在 `backend/` 执行 `alembic upgrade head`；本候选应核对到 `20260711_02`。
+5. 启动：`cd backend && gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 "run:app"`，访问 `http://服务器:5000`。`/api/health` 只证明进程存活，不替代 schema 检查。
+6. 上线前必读：`docs/06_试点上线检查清单.md`（C1–C13）和 `docs/07_上线部署前关键清单_给AI执行.md`
 
 > 真实候选人数据进 LLM 前必须经公司合规确认（见 06 清单 C5）。
 
@@ -89,8 +90,8 @@ OPENAI_API_KEY=sk-你的key
 | 排除项 | 原因 | 如何获得 |
 |---|---|---|
 | `backend/.env` | 含密钥，绝不打包 | `cp backend/.env.example backend/.env` 后填值 |
-| `backend/hireinsight.db` | 运行态数据库 | 启动后端自动建表；演示数据跑 `python seed_dev.py` |
-| `node_modules/` | 依赖体积大 | `cd frontend && npm install` |
+| `backend/hireinsight.db` | 运行态数据库 | 本地 `debug + SQLite` 可走兼容建表；RC/SIT/生产空库必须显式 bootstrap，演示数据再跑 `python seed_dev.py` |
+| `node_modules/` | 依赖体积大 | `cd frontend && npm ci` |
 | `frontend/dist/` | 构建产物 | `cd frontend && npm run build`（仅部署需要） |
 | `backend/uploads/` | 用户上传的简历文件 | 运行时自动创建 |
 

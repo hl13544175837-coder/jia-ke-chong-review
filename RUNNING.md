@@ -1,11 +1,11 @@
 # 智聘 · 快速启动
 
-> **状态声明（2026-07-10）**：`demand_id` P0 已完成本地实现并获项目负责人授权替换 SIT 测试验收版；SIT 测试数据允许清空或重建。实际发布状态以 CFPD `test/api`、Libra CommitID 和测试站静态资产现场证据为准，不得只凭本说明判断。
+> **状态声明（2026-07-11）**：本代码树是完成合并前 P0 收口的 CFPD `test` 候选。Git ref、Libra 构建、K8S 部署和测试站运行态是四类证据，不能相互替代；本说明不单独构成 SIT 已发布证明。
 
 ## 前置条件
 
-- Python 3.11+
-- Node.js 20.19+（或 22.12+）与 npm 10+
+- Python 3.11–3.13（推荐及容器基线 3.12）
+- Node.js 20.19–20.x 或 22.12+，npm 10+
 - pip 安装依赖前先升级安装器：`python -m pip install --upgrade pip`
 - 安装后端依赖：`python -m pip install -r backend/requirements.txt`
 
@@ -20,7 +20,9 @@ PORT=5001 python run.py
 
 开发联调后端固定使用 http://localhost:5001，前端开发服务会代理到这个端口。
 
-Libra/SIT 的 RC server 镜像会在 Gunicorn 启动前执行 `alembic -c /app/backend/alembic.ini upgrade head`，用于把测试库扩展到当前 demand-scoped schema，并且不受 K8S 工作目录影响。Makefile 对 `GA` 镜像传入 `AUTO_MIGRATE_DATABASE=false`，因此这不是生产自动迁移授权。当地直接运行 `python run.py` 不触发该 entrypoint；需要时在 `backend/` 手动执行 `alembic upgrade head`。
+启动日志只显示脱敏后的数据库 driver/host/database label，不打印用户名、密码或 query。`GET /api/health` 只用于进程 liveness；它返回 200 不能证明数据库连接、schema revision、backfill、uploads 或外部依赖 ready。
+
+Libra/SIT 的 RC server 镜像在 Gunicorn 启动前依次执行受控空库 bootstrap 和 `alembic -c /app/backend/alembic.ini upgrade head`。`ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 只会初始化“真正为空”的数据库并写入当前 Alembic head；发现部分业务表或不完整 schema 会拒绝继续。`AUTO_MIGRATE_DATABASE=true` 再负责已有库的加性升级。Makefile 对 `GA` 同时关闭这两个开关，因此这不是生产自动建表/迁移授权。直接运行 `python run.py` 不触发容器 entrypoint；需要时在 `backend/` 显式执行 bootstrap 或 Alembic。
 
 ---
 
@@ -42,8 +44,12 @@ AI_RECRUITMENT_COMPLIANCE_ACK=true
 CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.内网域名/privacy
 AI_HUMAN_REVIEW_REQUIRED=true
 FIELD_ENCRYPTION_KEY=PASTE_GENERATED_FERNET_KEY_HERE
-BOSS_CLI_AUTO_INSTALL=true
+BOSS_CLI_AUTO_INSTALL=false
+ALLOW_EMPTY_DATABASE_BOOTSTRAP=false
+AUTO_MIGRATE_DATABASE=false
 ```
+
+`CORS_ORIGINS` 每一项必须是无路径的完整 HTTP(S) origin；`*`、`null`、带用户名/密码、path、query、fragment、空格或非 HTTP(S) scheme 都会被自检和生产启动护栏拒绝。
 
 `FIELD_ENCRYPTION_KEY` 不能复制占位值。启用 BOSS 或进入测试/生产前，先生成固定 Fernet 密钥：
 
@@ -51,7 +57,7 @@ BOSS_CLI_AUTO_INSTALL=true
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-首次接入空库时会由应用创建基础业务表。已有库升级到 `demand_id` P0 必须经过 Alembic Expand：当前 RC/SIT 由容器 entrypoint 在 Gunicorn 前执行，GA/生产由唯一 migration job 执行。任何路线都不能用手工 SQL 代替已测试的 revision。只有本地演示库需要演示数据时才执行：
+Flask 应用工厂在 RC/SIT/生产模式下不会创建或修改表。真正空库需从项目根目录显式执行 `python backend/scripts/bootstrap_database.py --allow-empty`；脚本只接受空库，发现部分建表会 fail closed。已有库升级到 `demand_id` P0 必须经过 Alembic Expand：当前 RC/SIT 由容器 entrypoint 在 Gunicorn 前执行，GA/生产由唯一 migration job 执行。只有自动化测试或 `debug + SQLite` 的本地兼容路径允许应用侧建表。任何路线都不能用手工 SQL 代替已测试的 revision。只有本地演示库需要演示数据时才执行：
 
 ```bash
 cd backend
@@ -60,13 +66,14 @@ python seed_dev.py
 
 真实 HR 试点库不要运行 `seed_dev.py`。
 
-### demand_id 实施分支的迁移顺序（目标契约）
+### demand_id 当前迁移与核验顺序
 
-正式脚本由 Phase 1 提供后，本地文件库只按以下顺序验证，不跳过 audit 或 verify：
+当前 audit/backfill/verify 脚本和 migrations 已存在。本地文件库按以下顺序验证，不跳过审批、audit 或 verify：
 
 ```bash
 cd backend
-alembic upgrade 20260710_01
+alembic upgrade head
+alembic current  # 当前收口候选应为 20260711_02
 python scripts/audit_demand_scope.py --database <local-sqlite-fixture> \
   --output <audit-report.json> --manifest-output <mapping-to-review.json>
 # 必须由 Product/Data Owner 将审批后的条目标记 approved=true
@@ -78,7 +85,7 @@ python scripts/verify_demand_scope.py --database <local-sqlite-fixture> \
   --output <verify-report.json>
 ```
 
-这些命令在相应脚本真实存在、专项测试通过后才是可执行操作。MySQL/PostgreSQL 不用本地 SQLite 结果代替同引擎验证；其发布与回滚门禁见 [docs/10_demand_id迁移与回滚手册.md](docs/10_demand_id迁移与回滚手册.md)。
+上述命令的具体参数以各脚本 `--help` 为准。MySQL/PostgreSQL 不用本地 SQLite 结果代替同引擎验证；其发布与回滚门禁见 [docs/10_demand_id迁移与回滚手册.md](docs/10_demand_id迁移与回滚手册.md)。
 
 ### BOSS 直聘后端接口（实验辅助能力）
 
@@ -91,9 +98,7 @@ BOSS 直聘集成用于内部验证从招聘端账号拉取收件箱/推荐候�
 BOSS 账号通过浏览器 Cookie 导入，Cookie 会写入 `boss_accounts` 表并用
 `FIELD_ENCRYPTION_KEY` 加密。测试/生产环境必须使用固定 Fernet 密钥，避免后端
 重启后已导入账号无法解密。涉及拉取收件箱、推荐候选人、下载简历等能力时，
-后端还需要可用的 `boss` CLI；容器内已安装 git，可在
-`BOSS_CLI_AUTO_INSTALL=true` 时首次调用自动安装，或由运维预装后用
-`BOSS_CLI_BIN` 指定路径。
+后端还需要可用的 `boss` CLI。运行期依赖安装已被禁止，容器也不再为了该实验能力携带 git；旧的 `BOSS_CLI_AUTO_INSTALL=true` 会被安全忽略。若独立验证确实需要 BOSS，必须在镜像构建阶段固定并审查 CLI 版本，再用 `BOSS_CLI_BIN` 指向可执行文件。
 
 P0 HR 主流程试点必须从主导航隐藏 `/boss` 页面，并让未单独授权的写入路径 fail closed；若要在独立验证中开放，必须先确认 BOSS Cookie 使用边界、`FIELD_ENCRYPTION_KEY`、boss CLI 安装来源和账号权限。
 
@@ -196,7 +201,7 @@ python backend/scripts/cleanup_demo_data.py --dry-run
 python backend/scripts/cleanup_demo_data.py --confirm
 ```
 
-该脚本会先备份，再删除 `@mvp.local` demo 账号及其关联业务数据，并清空 `backend/uploads/`、`uploads/` 文件。
+该脚本会先生成带 manifest 和 SHA-256 校验和的可恢复快照，再删除 `@mvp.local` demo owner 的账号及关联业务数据，并且只删除这些记录独占引用的上传文件。真实 owner、无关文件和跨范围引用不会被顺带清理；检测到混合归属会 fail closed。MySQL 暂不支持脚本自动确认清理，必须走同引擎备份恢复与受审计的 DBA 路线。
 
 ---
 
@@ -228,9 +233,9 @@ LLM_API_KEY=sk-你的key
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev      # http://localhost:5173，代理到 :5001
-npm run build    # 重新构建后提交 frontend/dist/
+npm run build    # 验证生产构建；frontend/dist/ 是生成物，不提交
 ```
 
 开发时只保留一个前端地址：`http://localhost:5173`。如果 5173 被占用，Vite 会直接报错，不会自动跳到 5174/5175。
