@@ -45,7 +45,7 @@ assert.match(
 );
 assert.match(
   dashboard,
-  /仅用于进度协同，不作为正式绩效依据/,
+  /不用于历史绩效、排名或奖金/,
   'Recruiter BI copy should state the phase-one non-performance boundary',
 );
 assert.doesNotMatch(

@@ -17,18 +17,18 @@ const pipelinePanel = readSource('components/pipeline/PipelineCandidatePanel.tsx
 
 assert.match(
   types,
-  /performance\??:\s*BiStaffMember/,
-  'Personal BI detail should expose the same public performance row used by manager BI',
+  /workload:\s*BiOperationalWorkload/,
+  'Personal BI detail should expose the current operational workload',
 );
 assert.match(
   dashboardPage,
-  /我的招聘进度/,
-  'Recruiter dashboard should frame personal metrics as operational progress',
+  /我的当前工作盘子/,
+  'Recruiter dashboard should frame metrics as the current workload',
 );
 assert.doesNotMatch(
   dashboardPage,
-  /我的本月业绩/,
-  'Phase-one BI must not present operational data as formal performance',
+  /我的本月业绩|RecruiterPerformancePanel|stats\.performance/,
+  'Phase-one BI must not present operational data as personal performance',
 );
 assert.match(
   dashboardPage,
@@ -37,18 +37,18 @@ assert.match(
 );
 assert.match(
   dashboardPage,
-  /stats\.performance/,
-  'Recruiter dashboard should consume the personal BI performance payload',
+  /stats\.activeDemands/,
+  'Recruiter dashboard should consume the active Demand workload',
 );
 assert.match(
   dashboardPage,
-  /feedback_pending/,
+  /stats\.outstandingFeedback/,
   'Recruiter dashboard should surface pending interview feedback as an urgent follow-up',
 );
 assert.match(
   dashboardPage,
-  /推荐成功面试/,
-  'Recruiter dashboard should use the generic interview-entry metric',
+  /当前流程人数/,
+  'Recruiter dashboard should show the current active candidate stock',
 );
 assert.doesNotMatch(
   biPage,

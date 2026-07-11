@@ -722,145 +722,77 @@ export interface BiDemandOperationalMetrics {
   current_responsibility: BiDemandCurrentResponsibility;
 }
 
-export interface BiStaffMember {
-  hr_id: number;
-  name: string;
-  resumes: number;
-  parsed_ok: number;
-  parse_failed: number;
-  parse_pending: number;
-  screens: number;
-  effective_recommendations: number;
-  business_review_entries: number;
-  interview_entries: number;
-  interview_feedbacks: number;
-  interview_passed: number;
-  interview_pass_rate: number;
-  interview_to_offer_rate: number;
-  offer_entries: number;
+export interface BiOperationalFunnel {
+  pending: number;
+  ai_screen: number;
+  business_review: number;
+  interview: number;
+  offer: number;
   onboarded: number;
-  conversion_rate: number;
-  recommendation_to_onboard_rate: number;
-  feedback_pending: number;
-  feedback_overdue: number;
+  rejected: number;
+  transferred: number;
+  pipeline_total: number;
+  archived_total: number;
+  funnel_total: number;
 }
 
-export interface BiSourceQuality {
-  channel: string;
-  resumes: number;
-  parsed_ok: number;
-  parse_failed: number;
-  effective_recommendations: number;
-  interview_entries: number;
-  interview_passed: number;
-  interview_pass_rate: number;
-  interview_to_offer_rate: number;
-  offer_entries: number;
-  onboarded: number;
-  onboard_rate: number;
-}
-
-export interface BiInterviewRoundAccountability {
-  round: InterviewRound | string;
-  round_label: string;
-  assigned_count: number;
-  feedback_submitted: number;
-  passed_count: number;
-  rejected_count: number;
-  pending_feedback: number;
-  overdue_feedback: number;
-  pass_rate: number;
-  reject_rate: number;
-}
-
-export interface BiInterviewerAccountability {
-  interviewer_id: number | null;
-  interviewer_name: string;
-  assigned_count: number;
-  feedback_submitted: number;
-  passed_count: number;
-  rejected_count: number;
-  pending_feedback: number;
-  overdue_feedback: number;
-  pass_rate: number;
-  reject_rate: number;
-}
-
-export interface BiDepartmentAccountability {
+export interface BiOverviewDemandSummary {
+  demand_id: number;
+  job_id: number;
+  title: string;
   department: string;
-  jobs_count: number;
-  interviewers_count: number;
-  assigned_count: number;
-  feedback_submitted: number;
-  passed_count: number;
-  rejected_count: number;
-  pending_feedback: number;
-  overdue_feedback: number;
-  pass_rate: number;
-  reject_rate: number;
-  rounds: BiInterviewRoundAccountability[];
+  city: string;
+  status: DemandStatus | string;
+  target_date: string | null;
+  owner_hr_id: number | null;
+  owner_name: string | null;
+  funnel: BiOperationalFunnel;
+  outstanding_feedback: number;
+  hc: BiDemandHc;
 }
 
-export interface BiDemandMetrics {
-  active_total: number;
-  priority_counts: Record<DemandPriority, number>;
-  overdue: number;
-  hr_no_recommendation: number;
-  business_feedback_pending: number;
-}
-
-export interface BiResumeMetrics {
-  total_candidates: number;
-  linked_to_job: number;
-  unassigned: number;
-  matched_candidates: number;
-  in_pipeline: number;
-  not_in_pipeline: number;
-  match_rate: number;
-  pipeline_entry_rate: number;
-}
-
-export interface BiDataQualityWarning {
-  kind: string;
-  metric: string;
-  label: string;
-  numerator: number;
-  denominator: number;
-  detail: string;
+export interface BiOperationalWorkload {
+  active_demands: number;
+  active_candidates: number;
+  business_review: number;
+  interview: number;
+  offer: number;
+  outstanding_feedback: number;
 }
 
 export interface BiManagerAlert {
-  kind: 'stale_pipeline' | 'pending_interview_feedback' | 'business_feedback_overdue' | string;
+  kind: string;
   priority: 'high' | 'medium' | 'low' | string;
   title: string;
   detail: string;
-  candidate_id: number;
-  candidate_name: string;
+  demand_id: number;
   job_id: number;
-  job_title: string;
-  stage: PipelineStage | string;
-  stage_label: string;
+  candidate_id: number | null;
+  candidate_name?: string;
+  assignment_id?: number;
+  stage: PipelineStage | string | null;
+  stage_label?: string;
   age_days: number;
+  owner_hr_id: number | null;
+  owner_name: string | null;
   action_path: string;
 }
 
 export interface BiOverview {
-  funnel: BiFunnel;
-  staff: BiStaffMember[];
-  source_quality: BiSourceQuality[];
-  interviewer_accountability: BiInterviewerAccountability[];
-  department_accountability: BiDepartmentAccountability[];
+  purpose: 'operational_collaboration';
+  purpose_label: string;
+  funnel: BiOperationalFunnel;
   alerts: BiManagerAlert[];
-  demands: BiDemandMetrics;
-  resumes: BiResumeMetrics;
-  data_quality_warnings: BiDataQualityWarning[];
+  demands: BiOverviewDemandSummary[];
 }
 
 export interface BiStaffDetail {
+  purpose: 'operational_collaboration';
+  purpose_label: string;
   hr_id: number;
-  funnel: BiFunnel;
-  performance?: BiStaffMember;
-  data_quality_warnings?: BiDataQualityWarning[];
+  name: string | null;
+  workload: BiOperationalWorkload;
+  demands: BiOverviewDemandSummary[];
 }
 
 // Single-job funnel detail.

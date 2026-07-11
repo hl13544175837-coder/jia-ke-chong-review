@@ -539,11 +539,11 @@ export const api = {
   },
 
   // ---- BI (manager/admin only) ----
-  biOverview(days = 30): Promise<BiOverview> {
-    return request(`/bi/overview?days=${days}`);
+  biOverview(): Promise<BiOverview> {
+    return request('/bi/overview');
   },
-  biStaff(hrId: number, days = 30): Promise<BiStaffDetail> {
-    return request(`/bi/staff/${hrId}?days=${days}`);
+  biStaff(hrId: number): Promise<BiStaffDetail> {
+    return request(`/bi/staff/${hrId}`);
   },
   // Single-job funnel — all roles.
   biJob(jobId: number, days = 90): Promise<BiJobDetail> {
