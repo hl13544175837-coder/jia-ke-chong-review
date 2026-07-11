@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, g
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from ..middleware.auth import require_auth
 from ..middleware.events import record_event
 from ..services.interview_service import PreScreenService
@@ -417,18 +419,26 @@ def submit_feedback():
         demand_id=context.demand_id,
         job_id=context.job.id,
         round_name=data["round"],
+        lock=True,
     )
     if data.get("assignment_id") and assignment is None:
         return jsonify({"error": "面试任务不存在或不属于当前面试官",
                         "code": "assignment_not_found"}), 404
-    existing = InterviewFeedback.query.filter_by(
-        org_id=g.org_id,
-        candidate_id=data["candidate_id"],
-        demand_id=context.demand_id,
-        job_id=context.job.id,
-        round=data["round"],
-        interviewer_id=g.user_id,
-    ).first()
+    if assignment is not None:
+        existing = InterviewFeedback.query.filter_by(
+            org_id=g.org_id,
+            assignment_id=assignment.id,
+        ).first()
+    else:
+        existing = InterviewFeedback.query.filter_by(
+            org_id=g.org_id,
+            candidate_id=data["candidate_id"],
+            demand_id=context.demand_id,
+            job_id=context.job.id,
+            round=data["round"],
+            interviewer_id=g.user_id,
+            assignment_id=None,
+        ).first()
     if existing is not None:
         completed = bool(assignment and assignment.is_primary)
         return jsonify({"id": existing.id, "status": "ok", "deduplicated": True,
@@ -471,7 +481,32 @@ def submit_feedback():
                     f"&candidate={context.candidate.id}"
                 ),
             ))
-    db.session.commit()
+    assignment_id = assignment.id if assignment else None
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        if assignment_id is not None:
+            existing = InterviewFeedback.query.filter_by(
+                org_id=g.org_id,
+                assignment_id=assignment_id,
+            ).first()
+            if existing is not None:
+                return jsonify({
+                    "id": existing.id,
+                    "status": "ok",
+                    "deduplicated": True,
+                    "round_completed": round_completed,
+                    "next_action": (
+                        "awaiting_hr_decision"
+                        if round_completed
+                        else "awaiting_primary_feedback"
+                    ),
+                }), 200
+        return jsonify({
+            "error": "反馈写入冲突，请刷新后重试",
+            "code": "feedback_conflict",
+        }), 409
     record_event("interview.feedback", entity_id=data["candidate_id"],
                  entity_type="candidate",
                  demand_id=context.demand_id,
@@ -642,7 +677,8 @@ def create_assignment():
             demand_id=data.get("demand_id"),
             job_id=data.get("job_id"),
             open_only=True,
-            require_current=bool(data.get("demand_id")),
+            require_current=True,
+            lock=True,
         )
     except DemandContextError as exc:
         return _context_error_response(exc)
@@ -650,7 +686,11 @@ def create_assignment():
         return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
     if context.demand is None and not job_is_active(context.job):
         return jsonify({"error": "岗位已关闭，请先恢复在招后再安排面试"}), 400
-    interviewer = db.session.get(User, data["interviewer_id"])
+    interviewer = db.session.execute(
+        select(User)
+        .where(User.id == data["interviewer_id"], User.org_id == g.org_id)
+        .with_for_update()
+    ).scalar_one_or_none()
     if (
         interviewer is None
         or not same_org(interviewer, g.org_id)
@@ -665,7 +705,17 @@ def create_assignment():
     except (TypeError, ValueError):
         return jsonify({"error": "round_sequence 必须是正整数"}), 400
     is_primary = bool(data.get("is_primary", True))
-    if is_primary and context.demand_id:
+    assignment_status = str(data.get("status") or "scheduled")[:40]
+    primary_slot = (
+        round_sequence
+        if (
+            is_primary
+            and context.demand_id is not None
+            and assignment_status.lower() not in {"cancelled", "canceled"}
+        )
+        else None
+    )
+    if primary_slot is not None:
         existing_primary = active_primary_assignment(
             org_id=g.org_id,
             demand_id=context.demand_id,
@@ -716,11 +766,12 @@ def create_assignment():
         round=data["round"],
         round_sequence=round_sequence,
         is_primary=is_primary,
+        primary_slot=primary_slot,
         interviewer_id=data["interviewer_id"],
         scheduled_at=scheduled_at,
         location=str(data.get("location") or "")[:240],
         note=str(data.get("note") or ""),
-        status=str(data.get("status") or "scheduled")[:40],
+        status=assignment_status,
         created_by=g.user_id,
     )
     db.session.add(assignment)
@@ -740,7 +791,27 @@ def create_assignment():
             f"&candidate={context.candidate.id}"
         ),
     ))
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        if primary_slot is not None:
+            existing_primary = active_primary_assignment(
+                org_id=g.org_id,
+                demand_id=context.demand_id,
+                candidate_id=data["candidate_id"],
+                round_sequence=round_sequence,
+            )
+            if existing_primary is not None:
+                return jsonify({
+                    "error": "该轮次已有主面试官，如需更换请先取消原任务",
+                    "code": "primary_interviewer_exists",
+                    "assignment_id": existing_primary.id,
+                }), 409
+        return jsonify({
+            "error": "面试任务写入冲突，请刷新后重试",
+            "code": "interview_assignment_conflict",
+        }), 409
     record_event("interview.assigned", entity_id=assignment.candidate_id,
                  entity_type="candidate",
                  demand_id=context.demand_id,
@@ -752,5 +823,3 @@ def create_assignment():
     payload = _assignment_payload(assignment)
     payload["deduplicated"] = False
     return jsonify(payload), 201
-    if demand_id:
-        q = q.filter(InterviewAssignment.demand_id == demand_id)

@@ -354,6 +354,14 @@ class InterviewAssignment(db.Model):
             "candidate_id",
             "round_sequence",
         ),
+        db.Index(
+            "uq_interview_assignment_primary_slot",
+            "org_id",
+            "demand_id",
+            "candidate_id",
+            "primary_slot",
+            unique=True,
+        ),
     )
 
     __tablename__ = "interview_assignments"
@@ -365,6 +373,7 @@ class InterviewAssignment(db.Model):
     round = db.Column(db.String(30), nullable=False)
     round_sequence = db.Column(db.Integer, default=1, nullable=False)
     is_primary = db.Column(db.Boolean, default=False, nullable=False)
+    primary_slot = db.Column(db.Integer)
     interviewer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     scheduled_at = db.Column(db.DateTime)
     location = db.Column(db.String(240), default="")
@@ -482,6 +491,11 @@ class InterviewFeedback(db.Model):
             "demand_id",
             "candidate_id",
             "round",
+        ),
+        db.Index(
+            "uq_interview_feedback_assignment_id",
+            "assignment_id",
+            unique=True,
         ),
     )
 

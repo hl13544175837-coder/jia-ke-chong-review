@@ -99,10 +99,29 @@ def test_interview_round_columns_link_feedback_to_assignment():
     assert assignment["round_sequence"].default.arg == 1
     assert assignment["is_primary"].nullable is False
     assert assignment["is_primary"].default.arg is False
+    assert assignment["primary_slot"].nullable is True
     assert feedback["assignment_id"].nullable is True
     assert {fk.target_fullname for fk in feedback["assignment_id"].foreign_keys} == {
         "interview_assignments.id"
     }
+    assignment_indexes = {
+        index.name: index for index in models.InterviewAssignment.__table__.indexes
+    }
+    feedback_indexes = {
+        index.name: index for index in models.InterviewFeedback.__table__.indexes
+    }
+    assert tuple(
+        column.name
+        for column in assignment_indexes[
+            "uq_interview_assignment_primary_slot"
+        ].columns
+    ) == ("org_id", "demand_id", "candidate_id", "primary_slot")
+    assert assignment_indexes["uq_interview_assignment_primary_slot"].unique is True
+    assert tuple(
+        column.name
+        for column in feedback_indexes["uq_interview_feedback_assignment_id"].columns
+    ) == ("assignment_id",)
+    assert feedback_indexes["uq_interview_feedback_assignment_id"].unique is True
 
 
 def test_transferred_is_terminal_semantics_distinct_from_rejected():

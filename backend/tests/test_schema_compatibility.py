@@ -89,7 +89,12 @@ def test_fresh_schema_contains_demand_scope_expand_columns(app):
     expected_columns = {
         "pipeline_stages": {"demand_id"},
         "interviews": {"demand_id"},
-        "interview_assignments": {"demand_id", "round_sequence", "is_primary"},
+        "interview_assignments": {
+            "demand_id",
+            "round_sequence",
+            "is_primary",
+            "primary_slot",
+        },
         "interview_feedback": {"demand_id", "assignment_id"},
         "offer_records": {"demand_id"},
         "candidate_dispositions": {"demand_id"},

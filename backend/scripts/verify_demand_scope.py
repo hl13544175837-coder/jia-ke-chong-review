@@ -14,7 +14,7 @@ except ImportError:  # Direct execution: python backend/scripts/verify_demand_sc
     from audit_demand_scope import FACT_SPECS, fact_context
 
 
-EXPECTED_REVISION = "20260710_01"
+EXPECTED_REVISION = "20260711_02"
 EXPECTED_COLUMNS = {
     "recruitment_demands": {
         "city",
@@ -28,13 +28,31 @@ EXPECTED_COLUMNS = {
     "candidates": {"current_demand_id"},
     "pipeline_stages": {"demand_id"},
     "interviews": {"demand_id"},
-    "interview_assignments": {"demand_id", "round_sequence", "is_primary"},
+    "interview_assignments": {
+        "demand_id",
+        "round_sequence",
+        "is_primary",
+        "primary_slot",
+    },
     "interview_feedback": {"demand_id", "assignment_id"},
     "offer_records": {"demand_id"},
     "candidate_dispositions": {"demand_id"},
     "events": {"demand_id"},
     "notifications": {"demand_id"},
     "upload_batches": {"demand_id"},
+}
+EXPECTED_UNIQUE_INDEXES = {
+    "interview_assignments": {
+        "uq_interview_assignment_primary_slot": (
+            "org_id",
+            "demand_id",
+            "candidate_id",
+            "primary_slot",
+        ),
+    },
+    "interview_feedback": {
+        "uq_interview_feedback_assignment_id": ("assignment_id",),
+    },
 }
 
 
@@ -80,6 +98,27 @@ def verify_database(database_url):
             schema_errors.extend(
                 f"missing_column:{table_name}.{column}" for column in missing_columns
             )
+        for table_name, expected_indexes in EXPECTED_UNIQUE_INDEXES.items():
+            table = metadata.tables.get(table_name)
+            if table is None:
+                continue
+            actual_indexes = {index.name: index for index in table.indexes}
+            for index_name, expected_columns in expected_indexes.items():
+                index = actual_indexes.get(index_name)
+                if index is None:
+                    schema_errors.append(
+                        f"missing_unique_index:{table_name}.{index_name}"
+                    )
+                    continue
+                if not index.unique:
+                    schema_errors.append(
+                        f"non_unique_index:{table_name}.{index_name}"
+                    )
+                actual_columns = tuple(column.name for column in index.columns)
+                if actual_columns != expected_columns:
+                    schema_errors.append(
+                        f"index_columns_mismatch:{table_name}.{index_name}"
+                    )
         if "candidate_demand_flows" not in metadata.tables:
             schema_errors.append("missing_table:candidate_demand_flows")
 

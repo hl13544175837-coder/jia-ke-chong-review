@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from sqlalchemy import select
+
 from .. import db
 from ..models import (
     Candidate,
@@ -38,8 +40,12 @@ def resolve_interview_context(
     job_id=None,
     open_only=False,
     require_current=False,
+    lock=False,
 ):
-    candidate = db.session.get(Candidate, candidate_id)
+    candidate_statement = select(Candidate).where(Candidate.id == candidate_id)
+    if lock:
+        candidate_statement = candidate_statement.with_for_update()
+    candidate = db.session.execute(candidate_statement).scalar_one_or_none()
     if (
         candidate is None
         or candidate.org_id != org_id
@@ -54,6 +60,7 @@ def resolve_interview_context(
             demand_id=demand_id,
             job_id=job_id,
             open_only=open_only,
+            lock=lock,
         )
         job = demand.job
     elif job_id is not None:
@@ -80,12 +87,15 @@ def resolve_interview_context(
     if job is None or job.org_id != org_id:
         raise DemandContextError("职位模板不存在", 404, "job_not_found")
     if demand is not None and require_current:
-        flow = CandidateDemandFlow.query.filter_by(
-            org_id=org_id,
-            candidate_id=candidate.id,
-            demand_id=demand.id,
-            status="active",
-        ).first()
+        flow_statement = select(CandidateDemandFlow).where(
+            CandidateDemandFlow.org_id == org_id,
+            CandidateDemandFlow.candidate_id == candidate.id,
+            CandidateDemandFlow.demand_id == demand.id,
+            CandidateDemandFlow.status == "active",
+        )
+        if lock:
+            flow_statement = flow_statement.with_for_update()
+        flow = db.session.execute(flow_statement).scalar_one_or_none()
         if candidate.current_demand_id != demand.id or flow is None:
             raise DemandContextError(
                 "候选人当前不在该招聘需求流程中",
@@ -149,9 +159,15 @@ def feedback_assignment(
     demand_id=None,
     job_id=None,
     round_name=None,
+    lock=False,
 ):
     if assignment_id:
-        assignment = db.session.get(InterviewAssignment, assignment_id)
+        statement = select(InterviewAssignment).where(
+            InterviewAssignment.id == assignment_id
+        )
+        if lock:
+            statement = statement.with_for_update()
+        assignment = db.session.execute(statement).scalar_one_or_none()
         if assignment is None or assignment.org_id != org_id:
             return None
         if assignment.interviewer_id != interviewer_id:
@@ -176,4 +192,6 @@ def feedback_assignment(
         query = query.filter_by(demand_id=demand_id)
     elif job_id is not None:
         query = query.filter_by(job_id=job_id)
+    if lock:
+        query = query.with_for_update()
     return query.order_by(InterviewAssignment.id.desc()).first()

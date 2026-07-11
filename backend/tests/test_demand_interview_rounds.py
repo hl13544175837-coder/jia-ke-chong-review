@@ -1,3 +1,6 @@
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 from app import db
 from app.models import (
     Candidate,
@@ -265,6 +268,135 @@ def test_only_one_active_primary_interviewer_per_round_sequence(
     assert first.status_code == 201
     assert second.status_code == 409
     assert second.get_json()["code"] == "primary_interviewer_exists"
+
+
+def test_database_rejects_duplicate_primary_slot_for_same_demand_round(
+    make_user, app
+):
+    owner_id, _ = make_user("iv-db-owner@example.com", role="recruiter")
+    first_id, _ = make_user("iv-db-first@example.com", role="interviewer")
+    second_id, _ = make_user("iv-db-second@example.com", role="interviewer")
+    job_id, demand_id, candidate_id = _seed_demand_flow(app, owner_id, "DB-PRIMARY")
+
+    with app.app_context():
+        db.session.add(
+            InterviewAssignment(
+                org_id=1,
+                candidate_id=candidate_id,
+                job_id=job_id,
+                demand_id=demand_id,
+                round="round_1",
+                round_sequence=1,
+                is_primary=True,
+                primary_slot=1,
+                interviewer_id=first_id,
+                status="scheduled",
+                created_by=owner_id,
+            )
+        )
+        db.session.commit()
+        db.session.add(
+            InterviewAssignment(
+                org_id=1,
+                candidate_id=candidate_id,
+                job_id=job_id,
+                demand_id=demand_id,
+                round="round_1",
+                round_sequence=1,
+                is_primary=True,
+                primary_slot=1,
+                interviewer_id=second_id,
+                status="scheduled",
+                created_by=owner_id,
+            )
+        )
+        with pytest.raises(IntegrityError):
+            db.session.commit()
+        db.session.rollback()
+
+
+def test_database_rejects_duplicate_feedback_for_one_assignment(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user("iv-fb-owner@example.com", role="recruiter")
+    interviewer_id, _ = make_user("iv-fb-reviewer@example.com", role="interviewer")
+    job_id, demand_id, candidate_id = _seed_demand_flow(app, owner_id, "DB-FEEDBACK")
+    assignment = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": candidate_id,
+            "demand_id": demand_id,
+            "round": "round_1",
+            "round_sequence": 1,
+            "is_primary": True,
+            "interviewer_id": interviewer_id,
+        },
+    )
+    assert assignment.status_code == 201
+
+    with app.app_context():
+        common = {
+            "org_id": 1,
+            "candidate_id": candidate_id,
+            "job_id": job_id,
+            "demand_id": demand_id,
+            "assignment_id": assignment.get_json()["id"],
+            "round": "round_1",
+            "interviewer_id": interviewer_id,
+        }
+        db.session.add(InterviewFeedback(**common, score=4))
+        db.session.commit()
+        db.session.add(InterviewFeedback(**common, score=5))
+        with pytest.raises(IntegrityError):
+            db.session.commit()
+        db.session.rollback()
+
+
+def test_feedback_retry_by_assignment_returns_original_row(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user("iv-retry-owner@example.com", role="recruiter")
+    interviewer_id, interviewer_token = make_user(
+        "iv-retry-reviewer@example.com", role="interviewer"
+    )
+    _, demand_id, candidate_id = _seed_demand_flow(app, owner_id, "FB-RETRY")
+    assignment = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": candidate_id,
+            "demand_id": demand_id,
+            "round": "round_1",
+            "round_sequence": 1,
+            "is_primary": True,
+            "interviewer_id": interviewer_id,
+        },
+    )
+    payload = {
+        "assignment_id": assignment.get_json()["id"],
+        "candidate_id": candidate_id,
+        "demand_id": demand_id,
+        "round": "round_1",
+        "score": 4,
+        "passed": True,
+    }
+
+    first = client.post(
+        "/api/interview/feedback", headers=_auth(interviewer_token), json=payload
+    )
+    retry = client.post(
+        "/api/interview/feedback", headers=_auth(interviewer_token), json=payload
+    )
+
+    assert first.status_code == 201
+    assert retry.status_code == 200
+    assert retry.get_json()["id"] == first.get_json()["id"]
+    assert retry.get_json()["deduplicated"] is True
+    with app.app_context():
+        assert InterviewFeedback.query.filter_by(
+            assignment_id=assignment.get_json()["id"]
+        ).count() == 1
 
 
 def test_ai_screen_is_demand_scoped_and_read_only_for_pipeline(

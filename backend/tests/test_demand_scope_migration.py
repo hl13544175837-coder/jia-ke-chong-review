@@ -261,8 +261,118 @@ def test_alembic_expand_is_additive_revisioned_and_idempotent(tmp_path):
     )
     with engine.connect() as connection:
         assert connection.execute(text("SELECT COUNT(*) FROM pipeline_stages")).scalar_one() == 1
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260710_01"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260711_02"
     engine.dispose()
+
+
+def test_interview_uniqueness_revision_adds_primary_slot_and_unique_indexes(tmp_path):
+    path = tmp_path / "interview-uniqueness.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+
+    _upgrade(path)
+
+    engine = create_engine(_database_url(path))
+    inspector = inspect(engine)
+    assignment_columns = {
+        column["name"] for column in inspector.get_columns("interview_assignments")
+    }
+    assignment_indexes = {
+        index["name"]: index
+        for index in inspector.get_indexes("interview_assignments")
+    }
+    feedback_indexes = {
+        index["name"]: index
+        for index in inspector.get_indexes("interview_feedback")
+    }
+    assert "primary_slot" in assignment_columns
+    assert bool(assignment_indexes["uq_interview_assignment_primary_slot"]["unique"])
+    assert bool(feedback_indexes["uq_interview_feedback_assignment_id"]["unique"])
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one() == "20260711_02"
+    engine.dispose()
+
+
+def test_interview_uniqueness_migration_stops_on_duplicate_active_primary(tmp_path):
+    path = tmp_path / "duplicate-primary.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("sqlalchemy.url", _database_url(path))
+    command.upgrade(config, "20260710_01")
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "UPDATE interview_assignments "
+        "SET demand_id = 10, round_sequence = 1, is_primary = 1, status = 'scheduled' "
+        "WHERE id = 1"
+    )
+    connection.execute(
+        "INSERT INTO interview_assignments "
+        "(id, org_id, candidate_id, job_id, demand_id, round, round_sequence, "
+        "is_primary, interviewer_id, status, created_at) "
+        "VALUES (2, 1, 1, 1, 10, 'round_1', 1, 1, 1, 'scheduled', '2026-01-16')"
+    )
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(RuntimeError, match="duplicate active primary"):
+        command.upgrade(config, "head")
+
+
+def test_interview_uniqueness_migration_stops_on_duplicate_assignment_feedback(tmp_path):
+    path = tmp_path / "duplicate-feedback.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("sqlalchemy.url", _database_url(path))
+    command.upgrade(config, "20260710_01")
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "UPDATE interview_feedback SET assignment_id = 1 WHERE id = 1"
+    )
+    connection.execute(
+        "INSERT INTO interview_feedback "
+        "(id, org_id, candidate_id, job_id, demand_id, assignment_id, round, "
+        "interviewer_id, created_at) "
+        "VALUES (2, 1, 1, 1, 10, 1, 'round_1', 1, '2026-01-16')"
+    )
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(RuntimeError, match="duplicate interview feedback"):
+        command.upgrade(config, "head")
+
+
+def test_interview_uniqueness_migration_backfills_only_active_primary_slots(tmp_path):
+    path = tmp_path / "primary-slot-backfill.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("sqlalchemy.url", _database_url(path))
+    command.upgrade(config, "20260710_01")
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "UPDATE interview_assignments "
+        "SET demand_id = 10, round_sequence = 2, is_primary = 1, status = 'scheduled' "
+        "WHERE id = 1"
+    )
+    connection.execute(
+        "INSERT INTO interview_assignments "
+        "(id, org_id, candidate_id, job_id, demand_id, round, round_sequence, "
+        "is_primary, interviewer_id, status, created_at) "
+        "VALUES (2, 1, 1, 1, 10, 'round_1', 1, 1, 1, 'cancelled', '2026-01-16')"
+    )
+    connection.commit()
+    connection.close()
+
+    command.upgrade(config, "head")
+
+    connection = sqlite3.connect(path)
+    assert connection.execute(
+        "SELECT primary_slot FROM interview_assignments WHERE id = 1"
+    ).fetchone()[0] == 2
+    assert connection.execute(
+        "SELECT primary_slot FROM interview_assignments WHERE id = 2"
+    ).fetchone()[0] is None
+    connection.close()
 
 
 def test_alembic_expand_can_downgrade_and_upgrade_again_on_sqlite(tmp_path):
@@ -488,12 +598,31 @@ def test_verify_checks_revision_completeness_and_job_consistency(tmp_path):
     verified = verify.verify_database(url)
     assert verified["ok"] is True
     assert verified["schema_revision"] == {
-        "current": "20260710_01",
-        "expected": "20260710_01",
+        "current": "20260711_02",
+        "expected": "20260711_02",
         "ok": True,
     }
     assert verified["unmapped_total"] == 0
     assert verified["mismatch_total"] == 0
+
+
+def test_verify_reports_missing_interview_uniqueness_index(tmp_path):
+    path = tmp_path / "missing-interview-index.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    connection = sqlite3.connect(path)
+    connection.execute("DROP INDEX uq_interview_assignment_primary_slot")
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(
+        _database_url(path)
+    )
+
+    assert (
+        "missing_unique_index:interview_assignments."
+        "uq_interview_assignment_primary_slot"
+    ) in report["schema_errors"]
 
 
 def test_backfill_rejects_a_job_owned_by_another_organization(tmp_path):
