@@ -3,7 +3,6 @@ from sqlalchemy import func
 
 from .. import db
 from ..middleware.auth import require_auth
-from ..middleware.events import record_event
 from ..models import Candidate, InterviewAssignment, PipelineStage, RecruitmentDemand
 from ..services.demand_context_service import (
     DemandContextError,
@@ -27,6 +26,7 @@ from ..services.pipeline_service import (
     stage_sort_index,
     transfer_candidate as transfer_candidate_service,
 )
+from ..services.interview_workflow_service import active_assignment_filter
 from .access import visible_candidate_query
 
 
@@ -81,6 +81,7 @@ def _read_scope(demand):
                 interviewer_id=g.user_id,
                 demand_id=demand.id,
             )
+            .filter(active_assignment_filter())
             .distinct()
             .all()
         )
@@ -101,6 +102,7 @@ def _read_scope(demand):
                         demand_id=None,
                         job_id=demand.job_id,
                     )
+                    .filter(active_assignment_filter())
                     .distinct()
                     .all()
                 )
@@ -163,40 +165,6 @@ def move_stage(demand_id=None):
     except (DemandContextError, PipelineServiceError) as error:
         return _error_response(error)
 
-    if not result["deduplicated"]:
-        record_event(
-            "pipeline.moved",
-            entity_id=candidate_id,
-            entity_type="candidate",
-            demand_id=demand.id,
-            payload={
-                "demand_id": demand.id,
-                "job_id": demand.job_id,
-                "from": result["from"],
-                "to": result["stage"],
-                "note": data.get("note"),
-            },
-        )
-        if result["stage"] == "onboarded":
-            record_event(
-                "candidate.onboarded",
-                entity_id=candidate_id,
-                entity_type="candidate",
-                demand_id=demand.id,
-                payload={"demand_id": demand.id, "job_id": demand.job_id},
-            )
-        if result["stage"] == "rejected" and isinstance(data.get("disposition"), dict):
-            record_event(
-                "candidate.disposition",
-                entity_id=candidate_id,
-                entity_type="candidate",
-                demand_id=demand.id,
-                payload={
-                    "demand_id": demand.id,
-                    "job_id": demand.job_id,
-                    "reason": str(data["disposition"].get("reason") or "")[:240],
-                },
-            )
     return jsonify(result)
 
 
@@ -238,13 +206,6 @@ def transfer_candidate(from_demand_id=None):
     except (DemandContextError, PipelineServiceError) as error:
         return _error_response(error)
 
-    record_event(
-        "pipeline.transferred",
-        entity_id=candidate_id,
-        entity_type="candidate",
-        demand_id=target.id,
-        payload={**result, "reason": reason[:240]},
-    )
     return jsonify(result)
 
 
@@ -337,15 +298,4 @@ def save_offer(candidate_id, job_id=None, demand_id=None):
         )
     except (DemandContextError, PipelineServiceError) as error:
         return _error_response(error)
-    record_event(
-        "offer.saved",
-        entity_id=candidate_id,
-        entity_type="candidate",
-        demand_id=demand.id,
-        payload={
-            "demand_id": demand.id,
-            "job_id": demand.job_id,
-            "approval_status": payload["approval_status"],
-        },
-    )
     return jsonify(payload)

@@ -10,6 +10,7 @@ from datetime import date
 from sqlalchemy import func, select
 
 from .. import db
+from ..middleware.events import record_event
 from ..models import (
     Candidate,
     CandidateDemandFlow,
@@ -227,8 +228,13 @@ def move_candidate(
     stage,
     note=None,
     disposition_data=None,
+    commit=True,
 ):
-    """Join or move one candidate inside exactly one current Demand."""
+    """Join or move one candidate inside exactly one current Demand.
+
+    ``commit=False`` is reserved for callers that own a wider transaction. Such
+    callers must commit or roll back the session themselves.
+    """
 
     if stage not in VALID_STAGES:
         raise PipelineServiceError(
@@ -312,7 +318,46 @@ def move_candidate(
                     data=disposition_data,
                 )
 
-        db.session.commit()
+        record_event(
+            "pipeline.moved",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            demand_id=demand.id,
+            payload={
+                "demand_id": demand.id,
+                "job_id": demand.job_id,
+                "from": from_stage,
+                "to": to_stage,
+                "note": note,
+            },
+            commit=False,
+        )
+        if to_stage == "onboarded":
+            record_event(
+                "candidate.onboarded",
+                entity_id=candidate.id,
+                entity_type="candidate",
+                demand_id=demand.id,
+                payload={"demand_id": demand.id, "job_id": demand.job_id},
+                commit=False,
+            )
+        if to_stage == "rejected" and isinstance(disposition_data, dict):
+            record_event(
+                "candidate.disposition",
+                entity_id=candidate.id,
+                entity_type="candidate",
+                demand_id=demand.id,
+                payload={
+                    "demand_id": demand.id,
+                    "job_id": demand.job_id,
+                    "reason": str(disposition_data.get("reason") or "")[:240],
+                },
+                commit=False,
+            )
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return {
             "status": "ok",
             "stage": to_stage,
@@ -325,7 +370,8 @@ def move_candidate(
             **_completion_state(demand),
         }
     except Exception:
-        db.session.rollback()
+        if commit:
+            db.session.rollback()
         raise
 
 
@@ -337,6 +383,7 @@ def transfer_candidate(
     org_id,
     actor_id,
     reason,
+    commit=True,
 ):
     """Atomically transfer a candidate between two Demand aggregates."""
 
@@ -425,8 +472,7 @@ def transfer_candidate(
             transfer_from_demand_id=source.id,
             transfer_reason=transfer_reason,
         )
-        db.session.commit()
-        return {
+        result = {
             "status": "ok",
             "candidate_id": candidate.id,
             "name_masked": candidate.name_masked,
@@ -438,8 +484,22 @@ def transfer_candidate(
             "source_terminal_stage": "transferred",
             "to_stage": "pending",
         }
+        record_event(
+            "pipeline.transferred",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            demand_id=target.id,
+            payload={**result, "reason": transfer_reason},
+            commit=False,
+        )
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
+        return result
     except Exception:
-        db.session.rollback()
+        if commit:
+            db.session.rollback()
         raise
 
 
@@ -577,7 +637,7 @@ def join_candidate(*, candidate_id, demand_id, org_id, actor_id, note=None):
     )
 
 
-def save_offer_record(*, demand_id, candidate_id, org_id, actor_id, data):
+def save_offer_record(*, demand_id, candidate_id, org_id, actor_id, data, commit=True):
     try:
         demand = _require_demand(demand_id, org_id)
         _require_writable_demand(demand)
@@ -614,8 +674,24 @@ def save_offer_record(*, demand_id, candidate_id, org_id, actor_id, data):
         offer.onboard_date = parse_date(data.get("onboard_date"))
         offer.approval_status = str(data.get("approval_status") or "draft")[:40]
         offer.note = str(data.get("note") or "")
-        db.session.commit()
+        record_event(
+            "offer.saved",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            demand_id=demand.id,
+            payload={
+                "demand_id": demand.id,
+                "job_id": demand.job_id,
+                "approval_status": offer.approval_status,
+            },
+            commit=False,
+        )
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return offer_payload(offer, demand=demand, candidate_id=candidate.id)
     except Exception:
-        db.session.rollback()
+        if commit:
+            db.session.rollback()
         raise

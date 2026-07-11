@@ -42,6 +42,7 @@ def record_event(
     failure_reason: str = None,
     source: str = None,
     severity: str = "info",
+    commit: bool = True,
 ):
     """写操作和试点审计事件埋点到 events 表。"""
     actor_id = getattr(g, "user_id", None)
@@ -63,5 +64,6 @@ def record_event(
         severity=severity or "info",
     )
     db.session.add(ev)
-    db.session.commit()
+    if commit:
+        db.session.commit()
     return ev

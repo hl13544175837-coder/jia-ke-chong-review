@@ -19,4 +19,6 @@ assert.match(panel, /转到其他需求/, 'Candidate actions should expose the t
 assert.match(panel, /转需原因（必填）/, 'Demand transfer should require a business reason');
 assert.match(panel, /from_demand_id:\s*demandId/, 'Transfer should preserve the source demand id');
 assert.match(panel, /to_demand_id:/, 'Transfer should select an explicit target demand id');
+assert.match(panel, /demandsAsync\.error[\s\S]*demandsAsync\.reload/, 'Transfer target load failures should show an error and retry action');
+assert.match(panel, /!demandsAsync\.error[\s\S]*transferTargets\.length === 0/, 'Transfer target errors must not be disguised as an empty demand list');
 assert.match(page, /onTransferred/, 'Pipeline page should refresh after a successful transfer');

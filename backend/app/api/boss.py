@@ -8,11 +8,10 @@ CLI 未安装时统一返回 503 + code=boss_cli_not_installed，前端据此引
 """
 from flask import Blueprint, request, jsonify, Response, current_app, g, send_file
 import io
-import jwt
 import zipfile
 from pathlib import Path
 
-from ..middleware.auth import require_auth, require_role
+from ..middleware.auth import authenticate_token, require_auth, require_role
 from ..middleware.events import record_event
 from ..services.boss_service import BossService
 from ..models import User
@@ -34,17 +33,14 @@ def _require_query_token():
     token = request.args.get("token", "")
     if not token:
         return jsonify({"error": "Missing token"}), 401
-    try:
-        payload = jwt.decode(token, current_app.config["JWT_SECRET"], algorithms=["HS256"])
-        user = db.session.get(User, payload["user_id"])
-        if not user or not user.is_active:
-            return jsonify({"error": "Invalid token"}), 401
-        if user.role not in _RECRUITER_ROLES:
-            return jsonify({"error": "Forbidden"}), 403
-        g.user_id = user.id
-        g.role = user.role
-    except jwt.PyJWTError:
-        return jsonify({"error": "Invalid token"}), 401
+    user, error = authenticate_token(token)
+    if error is not None:
+        return error
+    if user.role not in _RECRUITER_ROLES:
+        return jsonify({"error": "Forbidden"}), 403
+    g.user_id = user.id
+    g.role = user.role
+    g.org_id = user.org_id or 1
     return None
 
 

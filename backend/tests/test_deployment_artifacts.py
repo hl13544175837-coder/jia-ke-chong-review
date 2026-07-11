@@ -88,6 +88,8 @@ def test_backend_dockerfile_wires_migration_entrypoint():
 
     assert "ARG AUTO_MIGRATE_DATABASE=false" in content
     assert "ENV AUTO_MIGRATE_DATABASE=${AUTO_MIGRATE_DATABASE}" in content
+    assert "ENV FLASK_DEBUG=false" in content
+    assert "ENV LOCAL_SCHEMA_COMPAT=false" in content
     assert 'ENTRYPOINT ["/app/backend/docker-entrypoint.sh"]' in content
 
 
@@ -179,6 +181,7 @@ def test_pilot_readiness_check_fails_without_required_production_env(tmp_path):
     assert "FLASK_DEBUG" in result.stdout
     assert "DATABASE_URL" in result.stdout
     assert "CORS_ORIGINS" in result.stdout
+    assert "UPLOAD_FOLDER" in result.stdout
     assert "short-secret" not in result.stdout
 
 
@@ -199,6 +202,8 @@ def test_pilot_readiness_check_passes_with_production_env(tmp_path):
             "RATE_LIMIT_AGENT_CHAT=20",
             "RATE_LIMIT_RESUME_UPLOAD=8",
             "BACKUP_DIR=/var/backups/zhipin",
+            "UPLOAD_FOLDER=/var/lib/zhipin/uploads",
+            "LOCAL_SCHEMA_COMPAT=false",
             "ALLOW_PUBLIC_REGISTRATION=false",
             "BOSS_CLI_AUTO_INSTALL=false",
             "AI_RECRUITMENT_COMPLIANCE_ACK=true",
@@ -238,6 +243,8 @@ def test_pilot_readiness_check_requires_ai_compliance_flags(tmp_path):
             "RATE_LIMIT_AGENT_CHAT=20",
             "RATE_LIMIT_RESUME_UPLOAD=8",
             "BACKUP_DIR=/var/backups/zhipin",
+            "UPLOAD_FOLDER=/var/lib/zhipin/uploads",
+            "LOCAL_SCHEMA_COMPAT=false",
             "ALLOW_PUBLIC_REGISTRATION=false",
             "BOSS_CLI_AUTO_INSTALL=false",
         ])
@@ -495,6 +502,7 @@ def test_cleanup_demo_data_dry_run_does_not_delete_or_create_backup(tmp_path):
     env = os.environ.copy()
     env.update({
         "DATABASE_URL": "sqlite:///" + str(db_path),
+        "UPLOAD_FOLDER": str(backend_uploads),
         "BACKUP_DIR": str(tmp_path / "backups"),
     })
     result = subprocess.run(
@@ -536,6 +544,7 @@ def test_cleanup_demo_data_confirm_backs_up_then_deletes_only_referenced_upload(
     env = os.environ.copy()
     env.update({
         "DATABASE_URL": "sqlite:///" + str(db_path),
+        "UPLOAD_FOLDER": str(backend_uploads),
         "BACKUP_DIR": str(tmp_path / "backups"),
     })
     command = [

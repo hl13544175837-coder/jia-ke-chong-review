@@ -28,8 +28,8 @@ assert.match(
 );
 assert.match(
   types,
-  /interface InterviewFeedbackInput[\s\S]*?demand_id:\s*number;[\s\S]*?assignment_id\?:\s*number;/,
-  'New feedback writes should require a demand and may bind to the exact assignment',
+  /interface InterviewFeedbackInput[\s\S]*?demand_id:\s*number;[\s\S]*?assignment_id:\s*number;/,
+  'New feedback writes should require a demand and the exact assignment',
 );
 assert.match(
   api,
@@ -44,6 +44,11 @@ assert.match(
 
 assert.match(page, /searchParams\.get\('demand'\)/, 'The interview inbox should consume demand deep links');
 assert.match(page, /api\.getDemandPipelineBoard/, 'Pending work should be derived from demand-scoped boards');
+assert.doesNotMatch(
+  page,
+  /getDemandPipelineBoard[\s\S]*?catch\s*\{[\s\S]*?return null/,
+  'A failed demand board must surface as an error instead of being disguised as an empty board',
+);
 assert.doesNotMatch(page, /api\.getPipelineBoard\(/, 'The new interview workspace must not aggregate sibling demands by job');
 assert.match(page, /demandId=\{selectedPending\.demand_id\}/, 'Guide and feedback actions should receive the selected demand');
 

@@ -494,6 +494,12 @@ export const api = {
   createInterviewAssignment(payload: InterviewAssignmentInput): Promise<InterviewAssignment> {
     return request('/interview/assignments', { method: 'POST', body: payload });
   },
+  cancelInterviewAssignment(assignmentId: number, reason: string): Promise<InterviewAssignment> {
+    return request(`/interview/assignments/${assignmentId}/cancel`, {
+      method: 'PATCH',
+      body: { reason },
+    });
+  },
   getInterviewGuide(candidateId: number, demandId: number, round: string): Promise<InterviewGuide> {
     return request(`/interview/guide?candidate_id=${candidateId}&demand_id=${demandId}&round=${round}`);
   },

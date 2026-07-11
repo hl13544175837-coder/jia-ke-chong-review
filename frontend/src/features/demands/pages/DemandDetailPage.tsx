@@ -9,6 +9,19 @@ import { useAuth } from '../../../lib/auth';
 import { demandsApi } from '../api';
 import { DemandActionDialog, type DemandActionMode, type DemandActionValues } from '../components/DemandActionDialog';
 
+const RISK_LABELS: Record<string, string> = {
+  overdue: '已超过期望完成日期',
+  business_feedback_pending: '有候选人等待业务反馈',
+  low_interview_conversion: '推荐较多但尚未进入面试',
+  open_too_long: '需求开放时间较长',
+  hr_no_recommendation: '需求接收后尚未推荐候选人',
+  no_active_candidates: '当前没有仍在推进的候选人',
+};
+
+function riskLabel(code: string) {
+  return RISK_LABELS[code] ?? '存在待核实的招聘卡点';
+}
+
 export function DemandDetailPage() {
   const { id } = useParams();
   const demandId = Number(id);
@@ -97,10 +110,10 @@ export function DemandDetailPage() {
           <CardHeader><CardTitle>招聘进度</CardTitle></CardHeader>
           <CardBody className="grid grid-cols-2 gap-3">
             {[
-              ['已推简历', demand.metrics.recommended_count, 'all'],
+              ['全部候选人', demand.metrics.recommended_count, 'all'],
               ['业务待反馈', demand.metrics.business_review_count, 'business_review'],
-              ['进入面试', demand.metrics.interview_count, 'interview'],
-              ['Offer', demand.metrics.offer_count, 'offer'],
+              ['面试中', demand.metrics.interview_count, 'interview'],
+              ['Offer 中', demand.metrics.offer_count, 'offer'],
               ['已入职', demand.metrics.onboarded_count, 'onboarded'],
               ['已转出', demand.metrics.transferred_count, 'transferred'],
             ].map(([label, value, stage]) => (
@@ -119,7 +132,7 @@ export function DemandDetailPage() {
             {demand.risk_flags.length > 0 ? (
               <div className="flex items-start gap-2 rounded-md bg-warning-50 p-3 text-warning-800">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{demand.risk_flags.join('、')}</span>
+                <span>{demand.risk_flags.map(riskLabel).join('、')}</span>
               </div>
             ) : <p className="text-muted">当前没有系统识别出的卡点。</p>}
           </CardBody>

@@ -52,6 +52,23 @@ def test_cors_validator_accepts_plain_http_origins():
     ) == ["https://zhipin.example.com", "http://localhost:5173"]
 
 
+def test_cors_validation_errors_redact_credentials_and_query_secrets():
+    unsafe = "https://private-user:password-123@zhipin.example.com?token=query-secret"
+
+    with pytest.raises(ValueError) as validation_error:
+        validate_cors_origins([unsafe])
+    with pytest.raises(RuntimeError) as startup_error:
+        _enforce_production_security(_ProductionApp([unsafe]))
+
+    for message in (str(validation_error.value), str(startup_error.value)):
+        assert "CORS_ORIGINS" in message
+        assert "#1" in message
+        assert "https://zhipin.example.com" in message
+        assert "private-user" not in message
+        assert "password-123" not in message
+        assert "query-secret" not in message
+
+
 def test_pilot_readiness_reuses_strict_cors_validation(tmp_path):
     values = {"CORS_ORIGINS": "*,https://zhipin.example.com"}
 
@@ -71,6 +88,36 @@ def test_pilot_readiness_requires_boss_runtime_install_to_stay_disabled(tmp_path
     boss = next(check for check in checks if check.name == "BOSS_CLI_AUTO_INSTALL")
 
     assert boss.ok is False
+
+
+@pytest.mark.parametrize("upload_folder", ["", "backend/uploads", "/tmp/zhipin/uploads"])
+def test_pilot_readiness_requires_absolute_persistent_upload_folder(
+    tmp_path,
+    upload_folder,
+):
+    values = {
+        "UPLOAD_FOLDER": upload_folder,
+        "LOCAL_SCHEMA_COMPAT": "false",
+    }
+
+    checks = run_checks(values, ROOT, tmp_path / ".env")
+    uploads = next(check for check in checks if check.name == "UPLOAD_FOLDER")
+
+    assert uploads.ok is False
+
+
+def test_pilot_readiness_requires_local_schema_compat_disabled(tmp_path):
+    checks = run_checks(
+        {
+            "UPLOAD_FOLDER": "/var/lib/zhipin/uploads",
+            "LOCAL_SCHEMA_COMPAT": "true",
+        },
+        ROOT,
+        tmp_path / ".env",
+    )
+
+    compat = next(check for check in checks if check.name == "LOCAL_SCHEMA_COMPAT")
+    assert compat.ok is False
 
 
 @pytest.mark.parametrize(

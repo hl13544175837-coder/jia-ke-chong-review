@@ -1,5 +1,6 @@
 from .. import db
 from ..models import Candidate, InterviewAssignment, Job, User
+from ..services.interview_workflow_service import active_assignment_filter
 
 
 def actor_org_id(user_id):
@@ -20,6 +21,7 @@ def assigned_candidate_ids_for_interviewer(user_id):
     rows = (
         db.session.query(InterviewAssignment.candidate_id)
         .filter_by(interviewer_id=user_id, org_id=org_id)
+        .filter(active_assignment_filter())
         .distinct()
         .all()
     )
@@ -31,6 +33,7 @@ def assigned_job_ids_for_interviewer(user_id):
     rows = (
         db.session.query(InterviewAssignment.job_id)
         .filter_by(interviewer_id=user_id, org_id=org_id)
+        .filter(active_assignment_filter())
         .distinct()
         .all()
     )
@@ -43,7 +46,7 @@ def interviewer_has_assignment(user_id, candidate_id, job_id=None, round_name=No
         interviewer_id=user_id,
         candidate_id=candidate_id,
         org_id=org_id,
-    )
+    ).filter(active_assignment_filter())
     if job_id is not None:
         q = q.filter_by(job_id=job_id)
     if round_name:

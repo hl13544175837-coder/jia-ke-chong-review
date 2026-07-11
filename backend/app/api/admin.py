@@ -61,10 +61,15 @@ def create_user():
         password_hash=_hash_password(password),
         is_active=True,
     )
-    db.session.add(user)
-    db.session.commit()
-    record_event("user.created", entity_id=user.id, entity_type="user",
-                 payload={"role": user.role})
+    try:
+        db.session.add(user)
+        db.session.flush()
+        record_event("user.created", entity_id=user.id, entity_type="user",
+                     payload={"role": user.role}, commit=False)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return jsonify({
         "id": user.id, "name": user.name, "email": user.email, "role": user.role,
         "org_id": user.org_id,
@@ -181,21 +186,28 @@ def update_user(user_id):
     user = db.session.get(User, user_id)
     if user is None or user.org_id != g.org_id:
         return jsonify({"error": "用户不存在"}), 404
+    new_role = data.get("role", user.role)
+    new_is_active = data.get("is_active", user.is_active)
+    if "role" in data and new_role not in VALID_ROLES:
+        return jsonify({"error": f"无效角色。可选：{sorted(VALID_ROLES)}"}), 400
+    if "is_active" in data and not isinstance(new_is_active, bool):
+        return jsonify({"error": "is_active 必须是布尔值"}), 400
     if user_id == g.user_id:
-        if data.get("is_active") is False or ("role" in data and data["role"] != "admin"):
+        if new_is_active is False or new_role != "admin":
             return jsonify({"error": "不能停用或降级自己的账号"}), 400
-    if "role" in data:
-        if data["role"] not in VALID_ROLES:
-            return jsonify({"error": f"无效角色。可选：{sorted(VALID_ROLES)}"}), 400
-        user.role = data["role"]
+
+    role_changed = new_role != user.role
+    active_changed = new_is_active != user.is_active
+    if role_changed or active_changed:
+        user.token_version = (user.token_version or 0) + 1
+    if role_changed:
+        user.role = new_role
         record_event("user.role_changed", entity_id=user_id, entity_type="user",
-                     payload={"role": data["role"]})
-    if "is_active" in data:
-        if not isinstance(data["is_active"], bool):
-            return jsonify({"error": "is_active 必须是布尔值"}), 400
-        user.is_active = data["is_active"]
+                     payload={"role": new_role}, commit=False)
+    if active_changed:
+        user.is_active = new_is_active
         record_event("user.active_changed", entity_id=user_id, entity_type="user",
-                     payload={"is_active": user.is_active})
+                     payload={"is_active": user.is_active}, commit=False)
     db.session.commit()
     return jsonify({"id": user.id, "name": user.name, "email": user.email,
                     "role": user.role, "org_id": user.org_id, "is_active": user.is_active})
@@ -212,8 +224,14 @@ def reset_user_password(user_id):
     user = db.session.get(User, user_id)
     if user is None or user.org_id != g.org_id:
         return jsonify({"error": "用户不存在"}), 404
-    user.password_hash = _hash_password(password)
-    user.token_version = (user.token_version or 0) + 1
-    db.session.commit()
-    record_event("user.password_reset", entity_id=user_id, entity_type="user")
+    try:
+        user.password_hash = _hash_password(password)
+        user.token_version = (user.token_version or 0) + 1
+        db.session.flush()
+        record_event("user.password_reset", entity_id=user_id, entity_type="user",
+                     commit=False)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return jsonify({"status": "ok", "id": user.id})

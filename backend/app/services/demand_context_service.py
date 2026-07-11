@@ -123,10 +123,6 @@ def resolve_demand_context(
         RecruitmentDemand.org_id == org_id,
         RecruitmentDemand.job_id == normalized_job_id,
     )
-    if open_only:
-        statement = statement.where(
-            RecruitmentDemand.status.in_(OPEN_DEMAND_STATUSES)
-        )
     statement = statement.order_by(RecruitmentDemand.id.asc()).limit(2)
     if lock:
         statement = statement.with_for_update()
@@ -144,4 +140,7 @@ def resolve_demand_context(
             409,
             "demand_id_required",
         )
-    return candidates[0]
+    demand = candidates[0]
+    if open_only and demand.status not in OPEN_DEMAND_STATUSES:
+        raise DemandContextError("需求当前不可推进", 409, "demand_not_open")
+    return demand

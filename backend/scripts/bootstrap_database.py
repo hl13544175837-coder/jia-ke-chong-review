@@ -20,6 +20,8 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from database_urls import normalize_database_url
+
 ALEMBIC_INI = BACKEND_DIR / "alembic.ini"
 
 # The first Alembic expand revision requires these legacy owner/fact tables.
@@ -30,14 +32,24 @@ LEGACY_SCHEMA_TABLES = {
     "recruitment_demands",
     "candidates",
     "upload_batches",
+    "candidate_tags",
+    "talent_maps",
+    "talent_map_companies",
+    "talent_map_people",
+    "matches",
     "pipeline_stages",
     "interviews",
     "candidate_dispositions",
     "offer_records",
     "interview_assignments",
     "events",
+    "audit_logs",
     "notifications",
+    "idempotency_records",
+    "conversations",
+    "conversation_messages",
     "interview_feedback",
+    "boss_accounts",
 }
 
 
@@ -53,6 +65,7 @@ class BootstrapResult:
 
 def _alembic_config(database_url: str) -> Config:
     config = Config(str(ALEMBIC_INI))
+    database_url = normalize_database_url(database_url)
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
     return config
 
@@ -76,6 +89,7 @@ def _database_revision(engine) -> str | None:
 
 def bootstrap_database(database_url: str, *, allow_empty: bool) -> BootstrapResult:
     """Bootstrap a truly empty database; leave complete legacy schemas to Alembic."""
+    database_url = normalize_database_url(database_url)
     if not allow_empty:
         raise BootstrapError(
             "empty database bootstrap requires the explicit --allow-empty flag"

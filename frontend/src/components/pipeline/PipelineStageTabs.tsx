@@ -5,21 +5,46 @@ import { cn } from '../../lib/cn';
 interface PipelineStageTabsProps {
   stages: StageConfig[];
   activeStage: PipelineStage;
+  showAll: boolean;
+  total: number;
   counts: Partial<Record<PipelineStage, number>>;
+  onSelectAll: () => void;
   onSelect: (stage: PipelineStage) => void;
 }
 
 export function PipelineStageTabs({
   stages,
   activeStage,
+  showAll,
+  total,
   counts,
+  onSelectAll,
   onSelect,
 }: PipelineStageTabsProps) {
   return (
     <nav aria-label="候选人流程阶段" className="overflow-x-auto rounded-md border border-hairline bg-canvas p-2">
       <div className="flex min-w-max gap-2">
+        <button
+          type="button"
+          aria-pressed={showAll}
+          onClick={onSelectAll}
+          className={cn(
+            'inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors',
+            showAll
+              ? 'border-ink bg-ink text-on-primary shadow-apple-xs'
+              : 'border-hairline bg-surface-soft text-body hover:border-surface-strong hover:bg-surface-card',
+          )}
+        >
+          <span>全部</span>
+          <span className={cn(
+            'inline-flex min-w-6 items-center justify-center rounded-full px-1.5 text-xs tabular-nums',
+            showAll ? 'bg-white/15 text-white' : 'bg-surface-strong text-body',
+          )}>
+            {total}
+          </span>
+        </button>
         {stages.map((stage) => {
-          const active = stage.key === activeStage;
+          const active = !showAll && stage.key === activeStage;
           const count = counts[stage.key] ?? 0;
           return (
             <button

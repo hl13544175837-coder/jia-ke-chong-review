@@ -66,8 +66,8 @@ assert.match(
 
 assert.match(
   interviewLoop,
-  /test_create_assignment_rejects_inactive_interviewer[\s\S]*test_create_assignment_rejects_closed_job/,
-  'Interview assignment tests should cover stale dropdown targets: inactive interviewers and closed jobs',
+  /test_create_assignment_rejects_inactive_interviewer[\s\S]*test_create_assignment_rejects_paused_demand/,
+  'Interview assignment tests should cover stale dropdown targets: inactive interviewers and paused demands',
 );
 
 assert.match(

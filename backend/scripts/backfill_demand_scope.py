@@ -9,8 +9,16 @@ import argparse
 from datetime import date, datetime, timezone
 import json
 from pathlib import Path
+import sys
 
 from sqlalchemy import MetaData, and_, create_engine, select, update
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from database_urls import normalize_database_url
 
 try:
     from scripts.audit_demand_scope import FACT_SPECS, SCHEMA_VERSION, fact_context
@@ -340,7 +348,7 @@ def _execute(connection, metadata, prepared):
 
 
 def backfill_database(database_url, manifest, apply=False):
-    engine = create_engine(database_url)
+    engine = create_engine(normalize_database_url(database_url))
     try:
         if apply:
             with engine.begin() as connection:

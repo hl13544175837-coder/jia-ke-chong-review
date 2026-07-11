@@ -295,6 +295,7 @@ export function PipelineCandidatePanel({
                           setTargetDemandId(event.target.value);
                           setTransferError(null);
                         }}
+                        disabled={demandsAsync.loading || Boolean(demandsAsync.error)}
                         className="h-9 w-full rounded-md border border-hairline bg-canvas px-2 text-sm text-ink"
                       >
                         <option value="">选择目标需求</option>
@@ -304,7 +305,15 @@ export function PipelineCandidatePanel({
                           </option>
                         ))}
                       </select>
-                      {!demandsAsync.loading && transferTargets.length === 0 && (
+                      {demandsAsync.error && (
+                        <div className="flex items-center justify-between gap-2 rounded-md border border-danger-200 bg-danger-50 px-3 py-2 text-xs text-danger-700">
+                          <span>{demandsAsync.error.message || '加载可转入需求失败'}</span>
+                          <Button type="button" size="sm" variant="ghost" onClick={demandsAsync.reload}>
+                            重试
+                          </Button>
+                        </div>
+                      )}
+                      {!demandsAsync.loading && !demandsAsync.error && transferTargets.length === 0 && (
                         <p className="text-xs text-muted">暂无其他可用需求，请先创建或恢复招聘需求。</p>
                       )}
                       <label htmlFor="pipeline-transfer-reason" className="block text-xs font-semibold text-muted">

@@ -34,7 +34,7 @@ const FEEDBACK_REASON_OPTIONS = [
   '面试时间无法协调',
   '简历信息存疑',
   '背景匹配度不足',
-  '岗位画像变化',
+  '岗位要求变化',
   '部门内部意见不一致',
   '面试标准变化',
   'HC暂缓或冻结',
@@ -57,14 +57,14 @@ interface DemandScopedFeedbackProps {
   candidateId: number;
   demandId: number;
   jobId?: number;
-  assignmentId?: number;
+  assignmentId: number;
 }
 
 interface LegacyFeedbackProps {
   candidateId: number;
   demandId?: undefined;
   jobId: number;
-  assignmentId?: number;
+  assignmentId: number;
 }
 
 type FeedbackFormProps = (DemandScopedFeedbackProps | LegacyFeedbackProps) & {

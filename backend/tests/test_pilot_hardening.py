@@ -5,6 +5,7 @@ import pytest
 
 from app import create_app, _enforce_production_security, db
 from app.config import Config, TestingConfig, _normalize_database_url, _upload_folder
+from runtime_paths import PROJECT_ROOT
 
 
 class _ProdLike(Config):
@@ -13,6 +14,8 @@ class _ProdLike(Config):
     FLASK_DEBUG = False
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     CELERY_TASK_ALWAYS_EAGER = True
+    UPLOAD_FOLDER = "/var/lib/zhipin/uploads"
+    UPLOAD_FOLDER_SOURCE = "/var/lib/zhipin/uploads"
 
 
 def _mk(**over):
@@ -114,6 +117,35 @@ def test_mysql_url_uses_pymysql_driver():
 def test_upload_folder_defaults_to_container_writable_tmp(monkeypatch):
     monkeypatch.delenv("UPLOAD_FOLDER", raising=False)
     assert _upload_folder() == "/tmp/zhipin_uploads"
+
+
+def test_local_relative_upload_folder_is_anchored_at_project_root(monkeypatch):
+    monkeypatch.setenv("UPLOAD_FOLDER", "backend/uploads")
+
+    assert _upload_folder() == str((PROJECT_ROOT / "backend" / "uploads").absolute())
+
+
+@pytest.mark.parametrize(
+    ("source", "folder"),
+    [
+        ("", "/tmp/zhipin_uploads"),
+        ("backend/uploads", "/workspace/zhipin/backend/uploads"),
+        ("/tmp/zhipin-uploads", "/tmp/zhipin-uploads"),
+    ],
+)
+def test_prod_requires_explicit_absolute_persistent_upload_folder(source, folder):
+    app = _mk(
+        JWT_SECRET="x" * 40,
+        CORS_ORIGINS=["https://x.com"],
+        AI_RECRUITMENT_COMPLIANCE_ACK=True,
+        CANDIDATE_PRIVACY_NOTICE_URL="https://x.com/privacy",
+        AI_HUMAN_REVIEW_REQUIRED=True,
+        UPLOAD_FOLDER_SOURCE=source,
+        UPLOAD_FOLDER=folder,
+    )
+
+    with pytest.raises(RuntimeError, match="UPLOAD_FOLDER"):
+        _enforce_production_security(app)
 
 
 def test_dev_mode_skips_enforcement():

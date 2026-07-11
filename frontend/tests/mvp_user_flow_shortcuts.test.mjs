@@ -59,8 +59,8 @@ assert.match(
 );
 assert.match(
   pipelinePage,
-  /setSearchParams\(\{ demand: String\(demandId\), stage: activeStage \}\)/,
-  'Pipeline demand switching should preserve the active stage in the URL',
+  /setSearchParams\(\{ demand: String\(demandId\), stage: showAllStages \? 'all' : activeStage \}\)/,
+  'Pipeline demand switching should preserve the active stage or all-stage view in the URL',
 );
 assert.match(
   pipelineList,

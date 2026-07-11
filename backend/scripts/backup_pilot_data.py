@@ -13,6 +13,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,13 +21,23 @@ from urllib.parse import unquote, urlparse
 
 from dotenv import load_dotenv
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from runtime_paths import (
+    RuntimePathError,
+    requires_persistent_uploads,
+    resolve_upload_folder,
+)
+
 try:
     from scripts.upload_archive_validation import validate_upload_archive
 except ModuleNotFoundError:  # Direct execution adds backend/scripts to sys.path.
     from upload_archive_validation import validate_upload_archive
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = BACKEND_DIR.parent
 load_dotenv(ROOT / "backend" / ".env")
 
 
@@ -43,9 +54,16 @@ def _backup_dir():
 
 
 def _upload_folder():
-    return Path(
-        os.environ.get("UPLOAD_FOLDER", str(ROOT / "backend" / "uploads"))
-    ).expanduser().absolute()
+    try:
+        return resolve_upload_folder(
+            os.environ.get("UPLOAD_FOLDER"),
+            project_root=ROOT,
+            require_persistent=requires_persistent_uploads(
+                os.environ.get("FLASK_DEBUG")
+            ),
+        )
+    except RuntimePathError as exc:
+        raise SystemExit(str(exc)) from None
 
 
 def _timestamp():
@@ -330,13 +348,23 @@ def _artifact_manifest(path):
     return {"artifact": path.name, "size": path.stat().st_size, "sha256": _sha256(path)}
 
 
-def _write_manifest(target_dir, database_url, database_artifact, uploads_artifact, metadata=None):
+def _write_manifest(
+    target_dir,
+    database_url,
+    database_artifact,
+    uploads_artifact,
+    upload_folder,
+    metadata=None,
+):
     manifest = {
         "format_version": 1,
         "status": "complete",
         "created_at": datetime.now(UTC).isoformat(),
         "database": {"kind": _database_kind(database_url), **_artifact_manifest(database_artifact)},
-        "uploads": _artifact_manifest(uploads_artifact),
+        "uploads": {
+            **_artifact_manifest(uploads_artifact),
+            "source_root": str(Path(upload_folder).resolve()),
+        },
     }
     if metadata:
         manifest["metadata"] = dict(metadata)
@@ -354,7 +382,14 @@ def create_backup_snapshot(database_url, upload_folder, backup_root, *, label=No
     try:
         database_artifact = _backup_database(database_url, target_dir, dry_run=False)
         uploads_artifact = _backup_uploads(upload_folder, target_dir, dry_run=False)
-        _write_manifest(target_dir, database_url, database_artifact, uploads_artifact, metadata=metadata)
+        _write_manifest(
+            target_dir,
+            database_url,
+            database_artifact,
+            uploads_artifact,
+            upload_folder,
+            metadata=metadata,
+        )
     except BaseException:
         shutil.rmtree(target_dir, ignore_errors=True)
         raise

@@ -11,7 +11,7 @@ from uuid import uuid4
 from sqlalchemy import and_, func, or_
 
 from .. import db
-from ..models import Job, PipelineStage, RecruitmentDemand, User
+from ..models import Candidate, Job, PipelineStage, RecruitmentDemand, User
 from .demand_context_service import validate_recruiter_owner
 
 
@@ -228,9 +228,16 @@ def _stage_scope_condition(demand):
 
 def demand_metrics(demand):
     scope = _stage_scope_condition(demand)
-    base = PipelineStage.query.filter(
-        PipelineStage.org_id == demand.org_id,
-        scope,
+    base = (
+        PipelineStage.query.join(
+            Candidate,
+            Candidate.id == PipelineStage.candidate_id,
+        ).filter(
+            PipelineStage.org_id == demand.org_id,
+            Candidate.org_id == demand.org_id,
+            Candidate.deleted_at.is_(None),
+            scope,
+        )
     )
     recommended_count = (
         base.with_entities(func.count(func.distinct(PipelineStage.candidate_id))).scalar()
@@ -259,21 +266,13 @@ def demand_metrics(demand):
         )
         current_counts[normalized] = current_counts.get(normalized, 0) + count
 
-    def distinct_ever(stages):
-        return (
-            base.filter(PipelineStage.stage.in_(stages))
-            .with_entities(func.count(func.distinct(PipelineStage.candidate_id)))
-            .scalar()
-            or 0
-        )
-
     return {
         "recommended_count": recommended_count,
         "business_review_count": current_counts.get("business_review", 0),
-        "interview_count": distinct_ever(INTERVIEW_PROGRESS_STAGES),
-        "offer_count": distinct_ever(OFFER_STAGES),
-        "onboarded_count": distinct_ever({"onboarded"}),
-        "transferred_count": distinct_ever({"transferred"}),
+        "interview_count": current_counts.get("interview", 0),
+        "offer_count": current_counts.get("offer", 0),
+        "onboarded_count": current_counts.get("onboarded", 0),
+        "transferred_count": current_counts.get("transferred", 0),
         "current_stage_counts": current_counts,
     }
 
@@ -285,8 +284,24 @@ def risk_flags(demand, metrics):
         flags.append("overdue")
     if metrics["business_review_count"] > 0:
         flags.append("business_feedback_pending")
-    if metrics["recommended_count"] >= 20 and metrics["interview_count"] == 0:
-        flags.append("low_interview_conversion")
+    if metrics["recommended_count"] >= 20:
+        historical_interviews = (
+            PipelineStage.query.join(
+                Candidate,
+                Candidate.id == PipelineStage.candidate_id,
+            ).filter(
+                PipelineStage.org_id == demand.org_id,
+                Candidate.org_id == demand.org_id,
+                Candidate.deleted_at.is_(None),
+                _stage_scope_condition(demand),
+                PipelineStage.stage.in_(INTERVIEW_PROGRESS_STAGES),
+            )
+            .with_entities(func.count(func.distinct(PipelineStage.candidate_id)))
+            .scalar()
+            or 0
+        )
+        if historical_interviews == 0:
+            flags.append("low_interview_conversion")
     if demand.requested_at and demand.status in OPEN_STATUSES:
         age_days = (today - demand.requested_at).days
         if age_days >= 60:

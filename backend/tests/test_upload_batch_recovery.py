@@ -4,6 +4,7 @@ def _auth(token):
 
 def test_upload_batch_rollback_soft_deletes_candidates_and_audits(client, make_user, app, tmp_path):
     owner_id, token = make_user("rollback-owner@example.com", role="recruiter")
+    app.config["UPLOAD_FOLDER"] = str(tmp_path)
     first_file = tmp_path / "first.pdf"
     second_file = tmp_path / "second.pdf"
     first_file.write_bytes(b"%PDF-1.4 first")

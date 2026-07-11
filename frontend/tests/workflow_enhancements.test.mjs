@@ -44,6 +44,7 @@ const api = readSource('lib/api.ts');
 assert.match(api, /saveOfferRecord/);
 assert.match(api, /getOfferRecord/);
 assert.match(api, /createInterviewAssignment/);
+assert.match(api, /cancelInterviewAssignment/);
 assert.match(api, /listInterviewAssignments/);
 assert.match(api, /listInterviewers/);
 assert.match(api, /getInterviewGuide/);
@@ -58,6 +59,8 @@ const assignmentPanel = readSource('components/interviewRecords/InterviewAssignm
 assert.match(assignmentPanel, /安排面试/);
 assert.match(assignmentPanel, /面试官/);
 assert.match(assignmentPanel, /会议链接/);
+assert.match(assignmentPanel, /取消安排/);
+assert.match(assignmentPanel, /api\.cancelInterviewAssignment/);
 
 const myInterviewsPanel = readSource('components/interviewRecords/MyInterviewsPanel.tsx');
 assert.match(myInterviewsPanel, /我的面试/);

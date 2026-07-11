@@ -1,20 +1,47 @@
 def _auth(t): return {"Authorization": f"Bearer {t}"}
 
-def _seed(app):
+def _seed(app, owner_id=None):
     with app.app_context():
         from app import db
-        from app.models import Job, Candidate
-        j = Job(title="后端", jd_text="x"); c = Candidate(name_masked="候选人A", resume_json={})
-        db.session.add_all([j, c]); db.session.commit()
+        from app.models import Candidate, CandidateDemandFlow, Job, RecruitmentDemand
+        j = Job(title="后端", jd_text="x", owner_hr_id=owner_id)
+        db.session.add(j)
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=j.id,
+            owner_hr_id=owner_id,
+            created_by=owner_id,
+            request_no=f"REQ-IV-LOOP-{j.id}",
+            status="active",
+        )
+        db.session.add(demand)
+        db.session.flush()
+        c = Candidate(
+            name_masked="候选人A",
+            resume_json={},
+            owner_hr_id=owner_id,
+            current_demand_id=demand.id,
+        )
+        db.session.add(c)
+        db.session.flush()
+        db.session.add(CandidateDemandFlow(
+            candidate_id=c.id,
+            demand_id=demand.id,
+            owner_hr_id=owner_id,
+            status="active",
+        ))
+        db.session.commit()
         return j.id, c.id
 
 def _assign(app, cid, jid, interviewer_id, round_name="interview_first"):
     with app.app_context():
         from app import db
-        from app.models import InterviewAssignment
+        from app.models import InterviewAssignment, RecruitmentDemand
+        demand = RecruitmentDemand.query.filter_by(job_id=jid).one()
         db.session.add(InterviewAssignment(
             candidate_id=cid,
             job_id=jid,
+            demand_id=demand.id,
             round=round_name,
             interviewer_id=interviewer_id,
         ))
@@ -155,13 +182,13 @@ def test_feedback_requires_core_fields(client, make_user, app):
 
 
 def test_create_assignment_rejects_inactive_interviewer(client, make_user, app):
-    _, hr_token = make_user("assign-hr@x.com", role="recruiter")
+    owner_id, hr_token = make_user("assign-hr@x.com", role="recruiter")
     inactive_id, _ = make_user(
         "inactive-interviewer@x.com",
         role="interviewer",
         is_active=False,
     )
-    jid, cid = _seed(app)
+    jid, cid = _seed(app, owner_id)
 
     response = client.post("/api/interview/assignments", headers=_auth(hr_token), json={
         "candidate_id": cid,
@@ -174,16 +201,16 @@ def test_create_assignment_rejects_inactive_interviewer(client, make_user, app):
     assert "启用" in response.get_json()["error"]
 
 
-def test_create_assignment_rejects_closed_job(client, make_user, app):
+def test_create_assignment_rejects_paused_demand(client, make_user, app):
     _, manager_token = make_user("assign-manager@x.com", role="manager")
     active_interviewer_id, _ = make_user("active-interviewer@x.com", role="interviewer")
     jid, cid = _seed(app)
     with app.app_context():
         from app import db
-        from app.models import Job
+        from app.models import RecruitmentDemand
 
-        job = db.session.get(Job, jid)
-        job.status = "closed"
+        demand = RecruitmentDemand.query.filter_by(job_id=jid).one()
+        demand.status = "paused"
         db.session.commit()
 
     response = client.post("/api/interview/assignments", headers=_auth(manager_token), json={
@@ -193,8 +220,8 @@ def test_create_assignment_rejects_closed_job(client, make_user, app):
         "interviewer_id": active_interviewer_id,
     })
 
-    assert response.status_code == 400
-    assert "已关闭" in response.get_json()["error"]
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "demand_not_open"
 
 
 def _stub_report(monkeypatch, passed):
@@ -216,8 +243,8 @@ def _latest_stage(app, cid, jid):
 
 
 def test_ai_pass_only_saves_recommendation_when_new(client, make_user, app, monkeypatch):
-    _, token = make_user("hr@x.com", role="recruiter")
-    jid, cid = _seed(app)
+    owner_id, token = make_user("hr@x.com", role="recruiter")
+    jid, cid = _seed(app, owner_id)
     _stub_report(monkeypatch, passed=True)
     r = client.post("/api/interview/submit", headers=_auth(token),
                     json={"candidate_id": cid, "job_id": jid,
@@ -231,7 +258,7 @@ def test_ai_pass_only_saves_recommendation_when_new(client, make_user, app, monk
 def test_ai_pass_does_not_move_backward(client, make_user, app, monkeypatch):
     """AI 预筛只给建议，不得新增、回退或重复写流程阶段。"""
     uid, token = make_user("hr@x.com", role="recruiter")
-    jid, cid = _seed(app)
+    jid, cid = _seed(app, uid)
     with app.app_context():
         from app import db
         from app.models import PipelineStage
@@ -246,8 +273,8 @@ def test_ai_pass_does_not_move_backward(client, make_user, app, monkeypatch):
 
 
 def test_ai_fail_does_not_reject(client, make_user, app, monkeypatch):
-    _, token = make_user("hr@x.com", role="recruiter")
-    jid, cid = _seed(app)
+    owner_id, token = make_user("hr@x.com", role="recruiter")
+    jid, cid = _seed(app, owner_id)
     _stub_report(monkeypatch, passed=False)
     r = client.post("/api/interview/submit", headers=_auth(token),
                     json={"candidate_id": cid, "job_id": jid,

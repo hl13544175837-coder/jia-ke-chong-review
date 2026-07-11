@@ -60,6 +60,7 @@ export function InterviewAssignmentPanel({
   const [location, setLocation] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const open = controlledOpen ?? localOpen;
@@ -119,6 +120,32 @@ export function InterviewAssignmentPanel({
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleCancel(item: InterviewAssignment) {
+    const reason = window.prompt('请输入取消面试安排的原因');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      setMessage('取消面试安排需要填写原因');
+      return;
+    }
+    setCancellingId(item.id);
+    setMessage(null);
+    try {
+      await api.cancelInterviewAssignment(item.id, reason.trim());
+      setMessage('面试安排已取消，可重新安排该轮主面试官');
+      onCreated();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : '取消失败');
+    } finally {
+      setCancellingId(null);
+    }
+  }
+
+  function canCancel(item: InterviewAssignment) {
+    const status = (item.status || 'scheduled').toLowerCase();
+    return role !== 'interviewer'
+      && !['cancelled', 'canceled', 'completed', 'feedback_submitted'].includes(status);
   }
 
   return (
@@ -305,7 +332,21 @@ export function InterviewAssignmentPanel({
                     </p>
                     {item.location && <p className="mt-1 text-xs text-body">{item.location}</p>}
                   </div>
-                  <Badge tone="brand">{item.status || 'scheduled'}</Badge>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <Badge tone="brand">{item.status || 'scheduled'}</Badge>
+                    {canCancel(item) && (
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        loading={cancellingId === item.id}
+                        disabled={cancellingId !== null}
+                        onClick={() => handleCancel(item)}
+                      >
+                        取消安排
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

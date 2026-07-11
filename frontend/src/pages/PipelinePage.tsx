@@ -64,6 +64,7 @@ export function PipelinePage() {
   const jobParam = Number(searchParams.get('job'));
   const candidateParam = Number(searchParams.get('candidate'));
   const requestedStage = parseStageParam(searchParams.get('stage'));
+  const requestedAllStages = searchParams.get('stage') === 'all';
   const requestedDemandId = Number.isFinite(demandParam) && demandParam > 0 ? demandParam : null;
   const requestedJobId = Number.isFinite(jobParam) && jobParam > 0 ? jobParam : null;
   const highlightedCandidateId =
@@ -121,6 +122,7 @@ export function PipelinePage() {
   const toast = useToast();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [activeStage, setActiveStage] = useState<PipelineStage>(requestedStage ?? 'pending');
+  const [showAllStages, setShowAllStages] = useState(requestedAllStages);
   const [selectedCandidateId, setSelectedCandidateId] = useState<number | null>(
     highlightedCandidateId,
   );
@@ -143,9 +145,10 @@ export function PipelinePage() {
     setPendingMove(null);
     setRecentlyMovedCandidateId(null);
     setActiveStage(requestedStage ?? 'pending');
+    setShowAllStages(requestedAllStages);
     setSelectedCandidateId(highlightedCandidateId);
     setShowAddToPipeline(false);
-  }, [highlightedCandidateId, requestedDemandId, requestedStage]);
+  }, [highlightedCandidateId, requestedAllStages, requestedDemandId, requestedStage]);
 
   // 已在本招聘需求流程中的候选人 id 集合（供"加入流程"排除）。
   const existingIds = useMemo(
@@ -173,21 +176,22 @@ export function PipelinePage() {
   );
   const activeStageConfig = STAGES.find((stage) => stage.key === activeStage) ?? STAGES[0];
   const activeCandidates = useMemo(
-    () => byStage[activeStage] ?? [],
-    [activeStage, byStage],
+    () => showAllStages ? candidates : (byStage[activeStage] ?? []),
+    [activeStage, byStage, candidates, showAllStages],
   );
   const selectedCandidate =
     candidates.find((candidate) => candidate.candidate_id === selectedCandidateId) ?? null;
 
   useEffect(() => {
     if (highlightedCandidate) {
+      setShowAllStages(false);
       setActiveStage(highlightedCandidate.stage);
       setSelectedCandidateId(highlightedCandidate.candidate_id);
     }
   }, [highlightedCandidate]);
 
   useEffect(() => {
-    if (pendingMove || highlightedCandidate || boardAsync.loading || boardAsync.error) return;
+    if (showAllStages || pendingMove || highlightedCandidate || boardAsync.loading || boardAsync.error) return;
     if (effectiveDemandId === null || candidates.length === 0) return;
 
     const autoStageKey = [
@@ -228,6 +232,7 @@ export function PipelinePage() {
     highlightedCandidate,
     pendingMove,
     requestedStage,
+    showAllStages,
     selectedCandidateId,
     setSearchParams,
     stageCounts,
@@ -241,6 +246,7 @@ export function PipelinePage() {
         candidate.stage === pendingMove.toStage,
     );
     if (!movedCandidate) return;
+    setShowAllStages(false);
     setActiveStage(pendingMove.toStage);
     setSelectedCandidateId(pendingMove.candidateId);
     setRecentlyMovedCandidateId(pendingMove.candidateId);
@@ -313,17 +319,18 @@ export function PipelinePage() {
   const handleDemandChange = useCallback(
     (demandId: number) => {
       setSelectedDemandId(demandId);
-      setSearchParams({ demand: String(demandId), stage: activeStage });
+      setSearchParams({ demand: String(demandId), stage: showAllStages ? 'all' : activeStage });
       setPendingMove(null);
       setRecentlyMovedCandidateId(null);
       setSelectedCandidateId(null);
       setShowAddToPipeline(false);
     },
-    [activeStage, setSearchParams],
+    [activeStage, setSearchParams, showAllStages],
   );
 
   const handleStageSelect = useCallback(
     (stage: PipelineStage) => {
+      setShowAllStages(false);
       setActiveStage(stage);
       setSelectedCandidateId(byStage[stage]?.[0]?.candidate_id ?? null);
       if (effectiveDemandId !== null) {
@@ -334,6 +341,16 @@ export function PipelinePage() {
     },
     [byStage, effectiveDemandId, setSearchParams],
   );
+
+  const handleAllStagesSelect = useCallback(() => {
+    setShowAllStages(true);
+    setSelectedCandidateId(candidates[0]?.candidate_id ?? null);
+    if (effectiveDemandId !== null) {
+      setSearchParams({ demand: String(effectiveDemandId), stage: 'all' });
+    } else {
+      setSearchParams({ stage: 'all' });
+    }
+  }, [candidates, effectiveDemandId, setSearchParams]);
 
   return (
     <div className="space-y-6">
@@ -473,12 +490,16 @@ export function PipelinePage() {
               <PipelineStageTabs
                 stages={STAGES}
                 activeStage={activeStage}
+                showAll={showAllStages}
+                total={candidates.length}
                 counts={stageCounts}
+                onSelectAll={handleAllStagesSelect}
                 onSelect={handleStageSelect}
               />
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <PipelineCandidateList
                   stage={activeStageConfig}
+                  showAll={showAllStages}
                   candidates={activeCandidates}
                   counts={stageCounts}
                   demandId={effectiveDemandId}

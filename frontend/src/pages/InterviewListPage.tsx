@@ -57,6 +57,8 @@ interface InterviewWorkspaceData {
   interviewers: InterviewerOption[];
 }
 
+type AssignedPendingFeedbackItem = PendingFeedbackItem & { assignment_id: number };
+
 function pendingFeedbackKey(item: PendingFeedbackItem | null): string | null {
   if (!item) return null;
   const scope = item.demand_id === null ? `job-${item.job_id}` : `demand-${item.demand_id}`;
@@ -82,7 +84,7 @@ export function InterviewListPage() {
   const [focus, setFocus] = useState<RecordFocus>(() => requestedFocus ?? defaultFocusForRole(role));
   const [filters, setFilters] = useState<InterviewFiltersState>(DEFAULT_INTERVIEW_FILTERS);
   const [selectedRecord, setSelectedRecord] = useState<InterviewListItem | null>(null);
-  const [selectedPending, setSelectedPending] = useState<PendingFeedbackItem | null>(null);
+  const [selectedPending, setSelectedPending] = useState<AssignedPendingFeedbackItem | null>(null);
   const [submissionNotice, setSubmissionNotice] = useState<string | null>(null);
   const [assignmentPanelOpen, setAssignmentPanelOpen] = useState(false);
   const feedbackFormRef = useRef<HTMLDivElement | null>(null);
@@ -104,20 +106,14 @@ export function InterviewListPage() {
     const boards = isInterviewer
       ? []
       : await Promise.all(
-          demands.map(async (demand) => {
-            try {
-              return await api.getDemandPipelineBoard(demand.id);
-            } catch {
-              return null;
-            }
-          }),
+          demands.map((demand) => api.getDemandPipelineBoard(demand.id)),
         );
     return {
       records,
       demands,
       assignments,
       interviewers,
-      boards: boards.filter((board): board is PipelineBoard => board !== null),
+      boards,
     };
   }, [role, isInterviewer]);
 
@@ -195,14 +191,15 @@ export function InterviewListPage() {
         demandId: assignment.demand_id ?? current.demandId,
         round: assignment.round,
       }));
-      setSelectedPending(target);
+      setSelectedPending({ ...target, assignment_id: assignment.id });
     },
     [pending],
   );
 
   const handleStartPendingFeedback = useCallback((item: PendingFeedbackItem) => {
+    if (!item.assignment_id) return;
     setFocus('pending');
-    setSelectedPending(item);
+    setSelectedPending({ ...item, assignment_id: item.assignment_id });
   }, []);
 
   const focusOptions = [
@@ -232,10 +229,10 @@ export function InterviewListPage() {
         item.candidate_id === requestedCandidateId &&
         (requestedDemandId === null || item.demand_id === requestedDemandId),
     );
-    if (target) {
+    if (target?.assignment_id) {
       setFocus('pending');
       if (pendingFeedbackKey(selectedPending) !== pendingFeedbackKey(target)) {
-        setSelectedPending(target);
+        setSelectedPending({ ...target, assignment_id: target.assignment_id });
       }
       return;
     }

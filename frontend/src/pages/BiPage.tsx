@@ -232,12 +232,24 @@ function DemandMetrics({ demandId }: { demandId: number }) {
           value={metrics.offers.total}
           detail="Offer 事实只归当前招聘需求"
         >
-          <Link
-            to={`/pipeline?demand=${demandId}&stage=offer`}
-            className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--enterprise-brand-dark)] hover:underline"
-          >
-            查看 Offer 候选人 <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-          </Link>
+          {metrics.offers.items.length > 0 && (
+            <details className="mt-3 text-xs text-body">
+              <summary className="cursor-pointer font-medium text-[var(--enterprise-brand-dark)]">
+                查看 Offer 记录
+              </summary>
+              <div className="mt-2 space-y-1">
+                {metrics.offers.items.map((item) => (
+                  <Link
+                    key={item.id}
+                    to={`/candidates/${item.candidate_id}`}
+                    className="block hover:underline"
+                  >
+                    候选人 #{item.candidate_id} · {item.approval_status}
+                  </Link>
+                ))}
+              </div>
+            </details>
+          )}
         </SummaryCard>
         <SummaryCard
           title="当前协同责任"

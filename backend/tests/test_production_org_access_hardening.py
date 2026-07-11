@@ -229,7 +229,10 @@ def test_agent_write_uses_same_permission_and_records_audit_event(client, make_u
 
 def test_delete_candidate_soft_deletes_anonymizes_and_removes_raw_file(client, make_user, app, tmp_path):
     owner_id, owner_token = make_user("delete-owner@x.com", role="recruiter")
-    raw_file = tmp_path / "resume.pdf"
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir()
+    app.config["UPLOAD_FOLDER"] = str(upload_root)
+    raw_file = upload_root / "resume.pdf"
     raw_file.write_bytes(b"%PDF-1.4\nprivate resume")
     _, candidate_id = _seed_job_candidate(app, owner_id, raw_file_path=str(raw_file))
 
@@ -256,6 +259,25 @@ def test_delete_candidate_soft_deletes_anonymizes_and_removes_raw_file(client, m
 
     listed = client.get("/api/candidates", headers=_auth(owner_token))
     assert candidate_id not in {item["id"] for item in listed.get_json()}
+
+
+def test_delete_candidate_resolves_portable_relative_upload_path(client, make_user, app, tmp_path):
+    owner_id, owner_token = make_user("delete-relative@x.com", role="recruiter")
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir()
+    app.config["UPLOAD_FOLDER"] = str(upload_root)
+    raw_file = upload_root / "resume.pdf"
+    raw_file.write_bytes(b"%PDF-1.4\nportable resume")
+    _, candidate_id = _seed_job_candidate(app, owner_id, raw_file_path="resume.pdf")
+
+    response = client.delete(
+        f"/api/candidates/{candidate_id}",
+        headers=_auth(owner_token),
+        json={"reason": "候选人要求删除个人信息"},
+    )
+
+    assert response.status_code == 200
+    assert not raw_file.exists()
 
 
 def test_original_resume_enforces_candidate_visibility_and_org_isolation(

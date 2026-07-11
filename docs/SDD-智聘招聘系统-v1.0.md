@@ -220,7 +220,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 
 | 表 | 模型 | 关键字段 | 用途 |
 |---|---|---|---|
-| `users` | `User` | `org_id`, `name`, `email`, `role`, `password_hash`, `is_active`, `token_version` | 用户、角色、启停；`org_id` 是多组织隔离边界；改密/重置密码递增 `token_version` 让旧 token 失效 |
+| `users` | `User` | `org_id`, `name`, `email`, `role`, `password_hash`, `is_active`, `token_version` | 用户、角色、启停；`org_id` 是多组织隔离边界；改密/重置密码、角色或启停变化递增 `token_version` 让旧 token 失效 |
 | `candidates` | `Candidate` | `org_id`, `owner_hr_id`, `current_demand_id`, `name_masked`, `resume_json`, `raw_file_path`, `deleted_at`, `deleted_by`, `anonymized_at` | 候选人主档与当前唯一活跃 Demand 指针；支持软删除与匿名化 |
 | `upload_batches` | `UploadBatch` | `org_id`, `owner_hr_id`, `target_job_id`, `demand_id`, `source_channel`, `note` | 批量上传元数据；误导入撤回按批次定位候选人 |
 | `candidate_tags` | `CandidateTag` | `org_id`, `candidate_id`, `tag`, `score` | 简历技能标签及评分 |
@@ -231,7 +231,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `events` | `Event` | `org_id`, `actor_id`, `actor_role`, `action`, `entity_id`, `entity_type`, `payload`, `request_id`, `ip`, `user_agent`, `result`, `failure_reason`, `source`, `severity` | 写操作事件与试点审计基础；`source` 区分页面、AI、安全拦截 |
 | `audit_logs` | `AuditLog` | `org_id`, `actor_id`, `target_table`, `target_id`, `action` | 预留审计表，当前使用较少 |
 | `interview_feedback` | `InterviewFeedback` | `org_id`, `candidate_id`, `job_id`, `demand_id`, `assignment_id`, `round`, `interviewer_id`, `score`, `passed`, `reason_tags`, `note` | 具体 assignment 的面试反馈；`assignment_id` 非空时唯一 |
-| `idempotency_records` | `IdempotencyRecord` | `scope_key`, `idempotency_key`, `actor_scope`, `method`, `path`, `body_hash`, `status_code`, `response_json` | 普通 JSON/表单写接口的 `Idempotency-Key` 重试保护 |
+| `idempotency_records` | `IdempotencyRecord` | `scope_key`, `idempotency_key`, `actor_scope`, `method`, `path`, `body_hash`, `status_code`, `response_json` | 普通 JSON/表单写接口的 `Idempotency-Key` 重试保护；重放前重新校验当前账号启用状态与 `token_version` |
 
 下列 Demand-scoped 模型和约束同样已存在于当前代码候选：
 
@@ -284,7 +284,7 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 
 写接口重试约定：
 
-- 普通 JSON/表单写接口可带 `Idempotency-Key`。同一用户、同一路径、同一请求体、同一个 key 的重试会返回第一次 2xx JSON 结果，并带 `X-Idempotent-Replay: true`。
+- 普通 JSON/表单写接口可带 `Idempotency-Key`。只有当前用户仍启用、JWT `token_version` 与数据库一致时，同一用户、同一路径、同一请求体、同一个 key 的重试才返回第一次 2xx JSON 结果，并带 `X-Idempotent-Replay: true`；角色/启停/密码变化后的旧 token 不能重放历史响应。
 - 同一个 key 如果换了请求体，返回 409，避免“重试”变成另一次业务操作。
 - multipart 简历上传不走通用请求体缓存，避免大文件内存压力；它使用文件指纹、来源信息和目标岗位做 10 分钟内业务级去重。
 - 流程推进、面试排期、面试反馈有额外自然幂等逻辑，防止用户连点或接口重试产生重复业务记录。
@@ -308,7 +308,7 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `GET` | `/candidates` | 登录 | 候选人列表，recruiter 只看当前组织内自己负责的；`search` 会覆盖姓名、邮箱、电话、技能标签和简历解析 JSON 中的公司、岗位、学校等文本；软删除候选人不返回 |
 | `GET` | `/candidates/owner-options` | manager/admin | 获取启用中的招聘专员下拉选项 |
 | `GET` | `/candidates/<id>/pipelines` | 登录 | 候选人参与的招聘需求流程 |
-| `GET` | `/candidates/<id>/journey?job_id=` | 登录 | 候选人某招聘需求流程下的完整时间线、AI 面试、面试官反馈；当前以岗位画像 `job_id` 定位 |
+| `GET` | `/candidates/<id>/journey?demand_id=` | 登录 + Demand 权限 | 候选人在具体 Demand 下的完整时间线、AI 面试和面试官反馈；兼容 `job_id` 仅在零/一/多 Demand 规则可唯一解析时代理 |
 | `PATCH` | `/candidates/<id>/owner` | manager/admin | 转派候选人负责人，`reason` 必填并写入事件流水 |
 | `GET` | `/candidates/<id>/export` | owner/manager/admin | 导出单个候选人 CSV，并写入 `candidate.exported` 审计事件；同一账号 10 分钟内第 6 次起标记 `severity=warning` |
 | `DELETE` | `/candidates/<id>` | owner/manager/admin | 候选人软删除与匿名化，`reason` 必填；清空 PII、简历 JSON、原文件路径并删除原简历文件 |
@@ -362,6 +362,7 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `GET` | `/interviews` | 登录 | 面试记录列表，按角色过滤 |
 | `GET` | `/interview/interviewers` | 登录 | 返回启用中的面试官/经理/管理员选项 |
 | `POST` | `/interview/assignments` | recruiter/manager/admin + Demand 权限 | 创建主/辅安排；重复返回已有记录；同轮第二个有效 primary 或时间冲突稳定 409，数据库唯一索引兜底 |
+| `PATCH` | `/interview/assignments/<assignment_id>/cancel` | recruiter/manager/admin + Demand 管理权 | `reason` 必填；只取消未反馈任务，规范状态为 `cancelled`、释放 `primary_slot` 并允许重排；已有反馈返回稳定 409 |
 
 ### 7.7 BI / Admin / Agent（当前代码候选）
 
@@ -372,9 +373,9 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `GET` | `/bi/job/<job_id>` | 有唯一 Demand 读取权的登录用户 | 仅在 Job 唯一解析一个 Demand 时兼容代理；多 Demand 返回 409 `demand_id_required` |
 | `GET` | `/bi/demand/<demand_id>` | 有 Demand 读取权的登录用户 | 漏斗、阶段停留、待补反馈、Offer、HC 和当前责任的可解释明细 |
 | `GET` | `/admin/users` | admin | 用户列表 |
-| `POST` | `/admin/users` | admin | 创建试点账号 |
-| `PATCH` | `/admin/users/<user_id>` | admin | 修改角色、启停 |
-| `POST` | `/admin/users/<user_id>/reset-password` | admin | 重置用户密码 |
+| `POST` | `/admin/users` | admin | 创建试点账号；账号与 `user.created` 审计同事务提交 |
+| `PATCH` | `/admin/users/<user_id>` | admin | 先完整校验再修改角色/启停；变化会递增 `token_version` 撤销旧 token，事实与审计同事务提交 |
+| `POST` | `/admin/users/<user_id>/reset-password` | admin | 重置密码并递增 `token_version`；密码事实与审计同事务提交 |
 | `GET` | `/agent/tools` | recruiter/manager/admin | AI 助手工具清单 |
 | `GET` | `/agent/conversations` | recruiter/manager/admin | 当前用户 AI 对话列表 |
 | `GET` | `/agent/conversations/<conversation_id>` | recruiter/manager/admin，且仅本人会话 | AI 对话详情 |
@@ -393,14 +394,14 @@ P0 不通过页面猜测 Demand，`demand_id` 必须在路径、请求体或服�
 | 流程看板 | `GET /pipeline/demands/<demand_id>` 及其 board/history 变体 | 当前状态按 `(candidate_id, demand_id)` 取值 |
 | 流程推进 | `POST /pipeline/move` 显式携带 `demand_id`, `candidate_id`, `stage`, `note` | 校验 active flow、Demand 状态、RBAC 和组织边界；写入流水、投影与审计 |
 | 转 Demand | `POST /pipeline/transfer` 携带 `source_demand_id`, `target_demand_id`, `candidate_id`, `reason` | 单事务把源 flow 置为 `transferred`、目标 flow 置为 `pending`，当前 owner 跟随目标 Demand |
-| 面试 | 安排、反馈、详情契约都带 `demand_id`；反馈带 `assignment_id` | 轮次不拆主流程阶段；每轮一个 primary；任何反馈都不推进主流程 |
+| 面试 | 安排、取消、反馈、详情契约都带 `demand_id`；反馈必须解析为当前用户的有效 `assignment_id` | 轮次不拆主流程阶段；每轮一个 primary；未分配/已取消任务拒绝反馈；未反馈任务可说明原因取消并释放轮次槽，已有反馈不可取消；任何反馈都不推进主流程 |
 | Demand BI | `GET /bi/demand/<demand_id>` 和 Demand 维度的 overview/drill-down | 只解释进度、瓶颈与当前责任协同，不产生人员排名或考核结论 |
 
-兼容窗口内，旧 `job_id` 调用只能在后端能唯一解析为一个 Demand 时代理执行；若同一 Job 存在多个可选 Demand，必须返回 HTTP 409 与稳定错误码 `demand_id_required`，禁止默认选第一个。
+兼容窗口内，旧 `job_id` 调用只能在后端能唯一解析为一个 Demand 时代理执行；零 Demand 返回 404 `demand_not_found`，同一 Job 存在多个 Demand 时返回 HTTP 409 `demand_id_required`，禁止按状态过滤后猜测或默认选第一个。招聘专员读取面试记录时按事实所属 Demand 权限过滤，不能因候选人后来转派而读到无权访问的历史或兄弟 Demand 反馈。
 
 ### 7.9 BOSS 直聘实验辅助接口
 
-BOSS 直聘集成已在代码中注册为 `/api/boss/*` 蓝图，用于内部验证从招聘端账号拉取收件箱/推荐候选人、下载简历并导入候选人库。它是实验辅助能力，P0 主导航必须隐藏且写入路径 fail closed；主流程仍以手工上传简历、招聘需求、候选人匹配、流程推进、面试反馈和 BI 为准。
+BOSS 直聘后端已注册 `/api/boss/*` 蓝图，用于内部验证账号、收件箱、推荐候选人和简历读取；前端源码虽保留 `/boss` 页面，但 P0 `featureRegistry` 未注册 BOSS feature，因此当前构建没有可达的 BOSS 前端路由。批量导入和 AI 初筛固定返回 410，不能作为当前候选人入库路径；主流程仍以手工上传简历、招聘需求、候选人匹配、流程推进、面试反馈和 BI 为准。
 
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
@@ -610,7 +611,7 @@ flowchart TD
 
 面试官反馈写入 `interview_feedback`，候选人详情 journey 按 Demand 聚合流程时间线、AI 记录和面试反馈。面试官只提交反馈；候选人是否进入 Offer 或淘汰，由 HR/经理/管理员人工处理。
 
-当前使用 `round_sequence` 表达 `interview` 内部轮次，不恢复“一面/二面/终面”主阶段。每轮可有多名参与者，但只允许一名有效主面试官；服务锁与稳定 409 提供业务响应，revision `20260711_02` 的 `primary_slot` 唯一索引提供并发最终防线。同一 assignment 的 feedback 也有唯一索引；重复提交返回已有反馈，不产生第二条。只有主面试官反馈能将该轮标记完成，仍不会推进主流程。
+当前使用 `round_sequence` 表达 `interview` 内部轮次，不恢复“一面/二面/终面”主阶段。每轮可有多名参与者，但只允许一名有效主面试官；服务锁与稳定 409 提供业务响应，revision `20260711_02` 的 `primary_slot` 唯一索引提供并发最终防线。同一 assignment 的 feedback 也有唯一索引；重复提交返回已有反馈，不产生第二条。只有主面试官反馈能将该轮标记完成，仍不会推进主流程。创建与取消由 `interview_workflow_service` 统一管理：客户端不能写任意状态，未反馈任务填写原因后可取消并把 `primary_slot` 置空，已有反馈任务拒绝取消；通知、审计和 assignment 事实同事务提交。
 
 面试安排由 HR/经理/管理员创建。后端会兜底校验 Demand 存在、组织/状态/RBAC、候选人 active flow，以及面试官账号属于当前组织、已启用且角色合法；只有 legacy job-only 上下文先检查并唯一解析 Demand。即使前端下拉数据过期，也不会把新面试分配给无权 Demand 或停用账号。
 
@@ -632,7 +633,7 @@ flowchart TD
 | `interview_assignments` + `interview_feedback` | 已到时但尚无有效反馈的 assignment 与责任协同，不输出面试官排名 |
 | `recruitment_demands.department` | 创建时快照下的用人部门协同归属 |
 
-注意：BI 使用 Demand 下的最新阶段去重，不能直接统计所有历史流水。`overview` 返回 `funnel + alerts + demands`，`staff` 只返回当前 `workload + demands`，不返回 `performance`、个人通过率、个人转化率或排名。候选人或 Demand 负责人转派只改当前责任投影，历史推进人和反馈人不重写。
+注意：BI 使用 Demand 下未软删除候选人的最新阶段去重，不能直接统计所有历史流水。`overview` 的团队当前漏斗只聚合开放 Demand，并返回 `funnel + alerts + demands`；`staff` 只返回当前 `workload + demands`，不返回 `performance`、个人通过率、个人转化率或排名。没有候选人历史与“只有终态历史、当前无活动候选人”使用不同告警，HC 已满足时不重复报无活动候选人。候选人或 Demand 负责人转派只改当前责任投影，历史推进人和反馈人不重写。
 
 前端必须保真展示数据状态：加载中显示 loading；API 失败显示“数据暂不可用”和重试，KPI 使用 `—`；只有成功且确无事实时显示业务空态。候选人、岗位、BI、面试任务等分区独立失败，不能把异常伪装成 0、“暂无卡点”或成功空列表。
 
@@ -788,9 +789,9 @@ API 层只负责参数解析、身份入口和响应映射，不在多个路由�
 
 ### 11.1 Demand 迁移与兼容影响
 
-Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁移，由发布流程中唯一 migration job 执行。RC/SIT/生产应用工厂不执行 DDL；只有自动化测试或 `debug + SQLite` 的本地兼容路径允许应用侧建表/补列。真正空库用 `bootstrap_database.py --allow-empty` 显式初始化并 stamp 当前 head，部分 schema 会 fail closed；已有库 `alembic upgrade head`。`/api/health` 只证明进程 liveness，不能证明数据库或 schema ready。
+Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁移，由发布流程中唯一 migration job 执行。RC/SIT/生产应用工厂不执行 DDL；只有自动化测试或显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 的本地兼容路径允许应用侧建表/补列。真正空库用 `bootstrap_database.py --allow-empty` 显式初始化并 stamp 当前 head；缺失任一 `20260710_01` 之前旧基线业务表会 fail closed 且不 stamp，`candidate_demand_flows` 由 Expand revision 创建；已有库 `alembic upgrade head`。应用、Alembic、bootstrap、audit/backfill/verify 和 cleanup 共用数据库 URL 规范化器：裸 `postgresql://` 使用 `postgresql+psycopg://`，裸 `mysql://` 使用 `mysql+pymysql://`，避免运行面与运维脚本加载不同驱动。`/api/health` 只证明进程 liveness，不能证明数据库、schema 或持久 uploads ready。
 
-当前加性迁移链为 `20260710_01` → `20260711_02`。revision 02 在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复；发现冲突即中止并输出证据，不自动挑选保留行。生产仍由唯一 migration job 执行；RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
+当前加性迁移链为 `20260710_01` → `20260711_02`。revision 02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复；发现冲突即中止并输出证据，不自动挑选保留行。`verify_demand_scope.py` 还要求 `assignment_slot_conflicts` 为空，验证所有有效 primary 的 slot 等于轮次、辅助/取消任务 slot 为空。生产仍由唯一 migration job 执行；RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|
@@ -842,7 +843,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 | 项 | 内容 |
 |---|---|
 | 状态 | Accepted for dev/demo |
-| 决策 | 默认 `backend/hireinsight.db`，生产可改 `DATABASE_URL` |
+| 决策 | 默认 `backend/hireinsight.db`，生产可改 `DATABASE_URL`；所有运行/迁移脚本统一规范化 PostgreSQL/MySQL 驱动 |
 | 好处 | 启动简单、无需外部数据库 |
 | 代价 | 并发、备份、迁移、远程部署能力有限 |
 

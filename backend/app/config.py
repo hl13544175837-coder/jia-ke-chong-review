@@ -8,20 +8,19 @@ if str(BASE_AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_AGENT_DIR))
 
 from dotenv import load_dotenv
+from database_urls import normalize_database_url as _normalize_database_url
+from runtime_paths import PROJECT_ROOT, resolve_upload_folder
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
-def _normalize_database_url(url: str) -> str:
-    """Normalize common database URLs to the SQLAlchemy driver URLs this app uses."""
-    if url.startswith("postgresql://"):
-        return "postgresql+psycopg://" + url[len("postgresql://"):]
-    if url.startswith("mysql://"):
-        return "mysql+pymysql://" + url[len("mysql://"):]
-    return url
-
-
 def _upload_folder() -> str:
-    return os.environ.get("UPLOAD_FOLDER", "/tmp/zhipin_uploads")
+    return str(
+        resolve_upload_folder(
+            os.environ.get("UPLOAD_FOLDER"),
+            project_root=PROJECT_ROOT,
+        )
+    )
 
 
 class Config:
@@ -39,7 +38,9 @@ class Config:
     JWT_EXPIRY_HOURS = int(os.environ.get("JWT_EXPIRY_HOURS", "8"))
 
     # 运行模式：生产模式下会强制校验密钥强度（见 app/__init__.py 的 _enforce_production_security）
-    FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "true").lower() == "true"
+    FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+    # 本地 SQLite 旧库兼容 DDL 必须额外显式开启，debug 本身不再授权改 schema。
+    LOCAL_SCHEMA_COMPAT = os.environ.get("LOCAL_SCHEMA_COMPAT", "false").lower() == "true"
 
     # 公开注册开关：默认关闭，生产/试点下账号由 admin 创建（见 api/auth.py register）
     ALLOW_PUBLIC_REGISTRATION = os.environ.get("ALLOW_PUBLIC_REGISTRATION", "false").lower() == "true"
@@ -66,7 +67,8 @@ class Config:
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # 文件上传：容器默认使用 /tmp，避免非 root 运行时无法写入代码目录；持久化时显式配置 UPLOAD_FOLDER。
+    # 文件上传：本地开发默认 /tmp；试点/生产安全护栏强制显式绝对持久路径。
+    UPLOAD_FOLDER_SOURCE = os.environ.get("UPLOAD_FOLDER", "").strip()
     UPLOAD_FOLDER = _upload_folder()
     MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 100MB
 

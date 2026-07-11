@@ -167,7 +167,7 @@ python seed_dev.py
 python backend/scripts/cleanup_demo_data.py --dry-run
 ```
 
-确认备份目录、数据库和上传目录后，再由负责人执行：
+确认备份目录、数据库和上传目录后，先进入停写窗口并停止应用 worker/异步任务，再由负责人执行：
 
 ```bash
 python backend/scripts/cleanup_demo_data.py --confirm
@@ -177,7 +177,7 @@ python backend/scripts/cleanup_demo_data.py --confirm
 
 ### 数据库生命周期
 
-RC/SIT/生产的 Flask 应用工厂不会执行 `create_all`、补列或其他 DDL。真正空库只能显式运行 `python backend/scripts/bootstrap_database.py --allow-empty`：脚本验证数据库完全为空后创建 metadata 并写入当前 Alembic head；发现部分业务表或异常 schema 会拒绝继续。已有库统一使用 `alembic upgrade head`，当前收口候选 head 为 `20260711_02`。只有自动化测试或 `debug + SQLite` 本地兼容路径允许应用侧建表。
+RC/SIT/生产的 Flask 应用工厂不会执行 `create_all`、补列或其他 DDL。真正空库只能显式运行 `python backend/scripts/bootstrap_database.py --allow-empty`：脚本验证数据库完全为空后创建 metadata 并写入当前 Alembic head；缺失任一 `20260710_01` 之前的旧基线业务表都会拒绝继续且不 stamp，`candidate_demand_flows` 则由该 Expand revision 新建。已有库统一使用 `alembic upgrade head`，当前收口候选 head 为 `20260711_02`。只有自动化测试或显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 本地兼容路径允许应用侧建表。
 
 因此 Gunicorn/Flask worker 只消费已准备好的 schema；生产必须由唯一 migration job 执行升级。禁止用手工 SQL、多个 worker 并发迁移或“启动失败后让应用补一补”替代受测试的 revision。
 
@@ -312,10 +312,12 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 然后把 `change-me`、域名、数据库地址、LLM Key、备份目录和 Fernet 密钥替换成真实值：
 ```env
 FLASK_DEBUG=false
+LOCAL_SCHEMA_COMPAT=false
 JWT_SECRET=your-strong-random-secret-here
 JWT_EXPIRY_HOURS=8
 DATABASE_URL=mysql+pymysql://user:pass@host:3306/zhipin?charset=utf8mb4
 CORS_ORIGINS=https://zhipin.内网域名
+UPLOAD_FOLDER=/var/lib/zhipin/uploads
 AI_RECRUITMENT_COMPLIANCE_ACK=true
 CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.内网域名/privacy
 AI_HUMAN_REVIEW_REQUIRED=true
@@ -333,7 +335,9 @@ BOSS_CLI_AUTO_INSTALL=false
 BOSS_CLI_BIN=/usr/local/bin/boss
 ```
 
-`CORS_ORIGINS` 使用与生产启动护栏相同的严格校验，只接受无 path/query/fragment/用户凭据的 HTTP(S) origin，拒绝 `*` 和 `null`。`run.py`、备份、恢复和清理日志只显示数据库 driver/host/database 的脱敏 label，不打印用户名、密码或 query。
+`CORS_ORIGINS` 使用与生产启动护栏相同的严格校验，只接受无 path/query/fragment/用户凭据的 HTTP(S) origin，拒绝 `*` 和 `null`。校验错误只包含条目序号、脱敏 scheme/host 和原因，不回显 userinfo/query secret。`run.py`、备份、恢复和清理日志只显示数据库 driver/host/database 的脱敏 label，不打印用户名、密码或 query。
+
+`UPLOAD_FOLDER` 在试点/生产必须是显式的非临时绝对路径，并映射到持久卷。Flask、backup、restore、cleanup 与 readiness 共用同一解析器；缺失、相对路径、文件系统根目录或 `/tmp`/`/var/tmp` 都会 fail closed。
 
 公司 MySQL 试用环境建议使用 InnoDB、`utf8mb4` 字符集、专用库和专用账号。当前代码也兼容 PostgreSQL，连接串可写为 `postgresql://user:pass@host:5432/zhipin`，会自动转为 `postgresql+psycopg://`。
 
@@ -381,7 +385,7 @@ python scripts/backup_pilot_data.py --dry-run
 python scripts/backup_pilot_data.py
 ```
 
-恢复演练必须恢复到临时库和临时上传目录，不直接覆盖生产环境。恢复脚本会先校验 manifest/校验和、拒绝路径穿越、链接和特殊文件，并在 staging 完成后才原子切换；失败时保留原 uploads。当前标准脚本直接支持 PostgreSQL `pg_restore` 与 SQLite 文件恢复；MySQL 备份可由 `mysqldump` 产出 SQL，但 `restore_pilot_data.py --confirm` 明确 fail closed，只有 `--dry-run` 输出脱敏的人工计划。
+恢复演练必须恢复到临时库和临时上传目录，不直接覆盖生产环境。新快照在 manifest 的 `uploads.source_root` 记录源根目录；恢复时会验证候选人附件引用仍在该根内，并规范为相对于新 `UPLOAD_FOLDER` 的路径。旧快照缺少源根字段，只能同原根目录恢复，不得静默迁移到其他挂载目录。恢复脚本会先校验 manifest/校验和、拒绝路径穿越、链接和特殊文件，并在 staging 完成后才原子切换；失败时保留原 uploads。当前标准脚本直接支持 PostgreSQL `pg_restore` 与 SQLite 文件恢复；MySQL 备份可由 `mysqldump` 产出 SQL，但 `restore_pilot_data.py --confirm` 明确 fail closed，只有 `--dry-run` 输出脱敏的人工计划。
 
 如果目标 SIT/试点库是 MySQL，当前必须由 DBA 将同一 `database.sql` 导入临时库，核对 schema revision、关键表行数、Demand/Flow/Pipeline/Interview/Offer/Event 数据和 uploads 文件，并留下负责人、时间与证据；不得绕过脚本的 confirm 禁令。
 
@@ -394,19 +398,19 @@ cd backend
 createdb zhipin_restore_check
 
 DATABASE_URL=postgresql://user:pass@host:5432/zhipin_restore_check \
-UPLOAD_FOLDER=/tmp/zhipin-upload-restore-check \
+UPLOAD_FOLDER=/var/lib/zhipin/restore-check-uploads \
 python scripts/restore_pilot_data.py --backup-path /var/backups/zhipin/<backup-dir> --dry-run
 
 DATABASE_URL=postgresql://user:pass@host:5432/zhipin_restore_check \
-UPLOAD_FOLDER=/tmp/zhipin-upload-restore-check \
+UPLOAD_FOLDER=/var/lib/zhipin/restore-check-uploads \
 python scripts/restore_pilot_data.py --backup-path /var/backups/zhipin/<backup-dir> --confirm
 ```
 
-验收：临时库能查到用户、候选人、岗位和审计事件；临时 `UPLOAD_FOLDER` 里能看到原简历文件。确认无误后删除临时库和临时目录：
+验收：临时库能查到用户、候选人、岗位和审计事件；候选人 `raw_file_path` 为安全相对路径，并能通过应用从临时 `UPLOAD_FOLDER` 实际预览/下载原简历，不能只检查文件存在。确认无误后删除临时库和临时目录：
 
 ```bash
 dropdb zhipin_restore_check
-rm -rf /tmp/zhipin-upload-restore-check
+rm -rf /var/lib/zhipin/restore-check-uploads
 ```
 
 ### 方案 B：gunicorn（多 worker，Linux 生产）
@@ -561,7 +565,7 @@ MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录 Demand/�
 | 候选人管道 | `/pipeline` | 阶段管理（待筛选→AI初筛→业务待反馈→面试中→Offer→已入职/淘汰），支持误推进后的“修正阶段”并保留历史流水 |
 | AI 面试 | `/interviews` | 生成定制题目，录入作答，AI 评估报告 |
 | 数据看板 | `/bi` | 按 Demand 展示当前阶段、停留、待补反馈、HC 和当前责任，所有数字可下钻；不用于人员排名、绩效或奖金，面试官不开放 BI |
-| BOSS 直聘实验辅助 | `/boss` | 代码可保留，但 P0 试点主导航隐藏且写入路径 fail closed；若单独开放，必须确认 `FIELD_ENCRYPTION_KEY`、boss CLI 来源和 Cookie 使用边界 |
+| BOSS 直聘实验辅助 | 无可达前端路由（源码保留 `/boss`） | P0 `featureRegistry` 未注册该 feature；后端只读/账号实验接口保留，批量导入与 AI 初筛固定 410。若重新开放，必须确认 `demand_id` 写契约、`FIELD_ENCRYPTION_KEY`、boss CLI 来源和 Cookie 使用边界 |
 
 ---
 
@@ -573,7 +577,7 @@ A：已修复（2026-06-14）。确保运行的是最新代码。`.docx` 和 PDF
 
 ### Q：简历上传失败，接口返回 500？
 
-A：先检查后端日志。如果出现 `Permission denied: '/app/backend/uploads'`，说明容器内上传目录不可写。当前后端默认使用 `/tmp/zhipin_uploads`，生产如需持久化简历文件，必须显式配置 `UPLOAD_FOLDER` 到可写挂载目录，并保证运行用户有写权限。
+A：先检查后端日志。如果出现 `Permission denied: '/app/backend/uploads'`，说明容器内上传目录不可写。`/tmp/zhipin_uploads` 只是本地 debug 的可写默认；试点/生产启动护栏要求显式配置 `UPLOAD_FOLDER` 到非临时的绝对挂载目录，并保证运行用户有写权限。
 
 ### Q：AI 功能不可用，提示 LLM 调用失败？
 
@@ -588,7 +592,7 @@ A：
 
 ### Q：数据库如何重置？
 
-A：仅 `debug + SQLite` 本地开发/演示库可以删除 `backend/hireinsight.db`，重启后端走本地兼容建表，再运行 `python seed_dev.py`。RC/SIT/生产空库必须显式 bootstrap，已有库必须 Alembic；真实 HR 试点库、公司测试库和生产库禁止用 `seed_dev.py` 重置。需要清演示数据时，先备份，再按 `cleanup_demo_data.py --dry-run` / `--confirm` 执行。
+A：仅显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 本地开发/演示库可以删除 `backend/hireinsight.db`，重启后端走本地兼容建表，再运行 `python seed_dev.py`。RC/SIT/生产空库必须显式 bootstrap，已有库必须 Alembic；真实 HR 试点库、公司测试库和生产库禁止用 `seed_dev.py` 重置。需要清演示数据时，先备份，再按 `cleanup_demo_data.py --dry-run` / `--confirm` 执行。
 
 ### Q：端口冲突怎么办？
 

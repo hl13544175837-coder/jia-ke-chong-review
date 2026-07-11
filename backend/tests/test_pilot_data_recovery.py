@@ -59,6 +59,19 @@ def _create_marker_database(path, value):
     connection.close()
 
 
+def _create_candidate_path_database(path, raw_file_path):
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "CREATE TABLE candidates (id INTEGER PRIMARY KEY, raw_file_path TEXT)"
+    )
+    connection.execute(
+        "INSERT INTO candidates (id, raw_file_path) VALUES (1, ?)",
+        (str(raw_file_path),),
+    )
+    connection.commit()
+    connection.close()
+
+
 def _read_marker(path):
     connection = sqlite3.connect(path)
     try:
@@ -83,6 +96,37 @@ def test_recovery_scripts_are_importable_from_backend_package():
     assert result.returncode == 0, result.stderr
 
 
+def test_backup_and_restore_require_explicit_absolute_persistent_upload_folder(
+    tmp_path,
+    monkeypatch,
+):
+    backup = _load_script("backup_pilot_data")
+    restore = _load_script("restore_pilot_data")
+
+    for module in (backup, restore):
+        monkeypatch.delenv("FLASK_DEBUG", raising=False)
+        monkeypatch.delenv("UPLOAD_FOLDER", raising=False)
+        with pytest.raises(SystemExit, match="UPLOAD_FOLDER"):
+            module._upload_folder()
+
+        monkeypatch.setenv("UPLOAD_FOLDER", "backend/uploads")
+        with pytest.raises(SystemExit, match="absolute|\u7edd\u5bf9"):
+            module._upload_folder()
+
+        monkeypatch.setenv("UPLOAD_FOLDER", str(tmp_path / "persistent-uploads"))
+        assert module._upload_folder() == (tmp_path / "persistent-uploads").resolve()
+
+
+def test_local_debug_recovery_tools_resolve_relative_upload_folder_from_project_root(
+    monkeypatch,
+):
+    backup = _load_script("backup_pilot_data")
+    monkeypatch.setenv("FLASK_DEBUG", "true")
+    monkeypatch.setenv("UPLOAD_FOLDER", "backend/uploads")
+
+    assert backup._upload_folder() == (ROOT / "backend" / "uploads").absolute()
+
+
 def test_database_label_redacts_user_password_and_query():
     backup = _load_script("backup_pilot_data")
 
@@ -99,6 +143,8 @@ def test_database_label_redacts_user_password_and_query():
 
 def test_cleanup_dry_run_does_not_print_sqlite_query_secrets(tmp_path):
     db_path = tmp_path / "pilot.db"
+    upload_folder = tmp_path / "uploads"
+    upload_folder.mkdir()
     connection = sqlite3.connect(db_path)
     connection.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL)")
     connection.commit()
@@ -108,6 +154,7 @@ def test_cleanup_dry_run_does_not_print_sqlite_query_secrets(tmp_path):
         {
             "DATABASE_URL": f"sqlite:///{db_path}?password=unit-secret&token=unit-token",
             "BACKUP_DIR": str(tmp_path / "backups"),
+            "UPLOAD_FOLDER": str(upload_folder),
         }
     )
 
@@ -180,6 +227,7 @@ def test_sqlite_backup_captures_committed_wal_and_writes_complete_manifest(tmp_p
     assert manifest["status"] == "complete"
     assert manifest["database"]["artifact"] == db_path.name
     assert manifest["uploads"]["artifact"] == "uploads.tar.gz"
+    assert manifest["uploads"]["source_root"] == str(upload_folder.resolve())
     assert manifest["database"]["sha256"]
     assert manifest["uploads"]["sha256"]
     assert snapshot.stat().st_mode & 0o077 == 0
@@ -421,6 +469,75 @@ def test_legacy_sqlite_restore_restricts_database_and_upload_permissions(tmp_pat
     assert result.returncode == 0, result.stderr
     assert target_db.stat().st_mode & 0o077 == 0
     assert upload_folder.stat().st_mode & 0o077 == 0
+
+
+def test_legacy_sqlite_restore_rebases_paths_when_upload_root_is_unchanged(tmp_path):
+    backup_path = tmp_path / "backup"
+    backup_path.mkdir()
+    upload_folder = tmp_path / "uploads"
+    source_db = backup_path / "source.sqlite"
+    _create_candidate_path_database(source_db, upload_folder / "resume.pdf")
+    _create_upload_archive(backup_path / "uploads.tar.gz")
+    target_db = tmp_path / "target.sqlite"
+    env = os.environ.copy()
+    env.update(
+        {
+            "DATABASE_URL": f"sqlite:///{target_db}",
+            "UPLOAD_FOLDER": str(upload_folder),
+        }
+    )
+
+    result = _run(
+        "restore_pilot_data.py",
+        "--backup-path",
+        backup_path,
+        "--confirm",
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    restored = sqlite3.connect(target_db)
+    try:
+        assert restored.execute("SELECT raw_file_path FROM candidates").fetchone() == (
+            "resume.pdf",
+        )
+    finally:
+        restored.close()
+    assert (upload_folder / "resume.pdf").read_bytes() == b"resume"
+
+
+def test_legacy_sqlite_restore_rejects_relocated_upload_root_before_database_change(tmp_path):
+    backup_path = tmp_path / "backup"
+    backup_path.mkdir()
+    source_uploads = tmp_path / "source-uploads"
+    source_db = backup_path / "source.sqlite"
+    _create_candidate_path_database(source_db, source_uploads / "resume.pdf")
+    _create_upload_archive(backup_path / "uploads.tar.gz")
+    target_db = tmp_path / "target.sqlite"
+    _create_marker_database(target_db, "old")
+    target_uploads = tmp_path / "target-uploads"
+    target_uploads.mkdir()
+    (target_uploads / "old.txt").write_text("old", encoding="utf-8")
+    env = os.environ.copy()
+    env.update(
+        {
+            "DATABASE_URL": f"sqlite:///{target_db}",
+            "UPLOAD_FOLDER": str(target_uploads),
+        }
+    )
+
+    result = _run(
+        "restore_pilot_data.py",
+        "--backup-path",
+        backup_path,
+        "--confirm",
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert "uploads.source_root" in (result.stdout + result.stderr)
+    assert _read_marker(target_db) == "old"
+    assert (target_uploads / "old.txt").read_text(encoding="utf-8") == "old"
 
 
 def test_restore_rejects_manifest_checksum_mismatch_before_database_change(tmp_path):
@@ -695,6 +812,361 @@ def _seed_demand_cleanup_database(db_path, demo_file, real_file):
     connection.close()
 
 
+@pytest.mark.parametrize(
+    ("case_name", "mutation_sql", "probe_sql"),
+    [
+        (
+            "pipeline_stage_updated_by_demo",
+            """
+            CREATE TABLE pipeline_stages (
+                id INTEGER PRIMARY KEY,
+                candidate_id INTEGER,
+                job_id INTEGER,
+                demand_id INTEGER,
+                updated_by INTEGER
+            );
+            INSERT INTO pipeline_stages
+                (id, candidate_id, job_id, demand_id, updated_by)
+            VALUES (901, 20000, 20, 200, 1);
+            """,
+            "SELECT * FROM pipeline_stages ORDER BY id",
+        ),
+        (
+            "assignment_interviewer_demo",
+            """
+            CREATE TABLE interview_assignments (
+                id INTEGER PRIMARY KEY,
+                candidate_id INTEGER,
+                job_id INTEGER,
+                demand_id INTEGER,
+                interviewer_id INTEGER,
+                created_by INTEGER
+            );
+            INSERT INTO interview_assignments
+                (id, candidate_id, job_id, demand_id, interviewer_id, created_by)
+            VALUES (902, 20000, 20, 200, 1, 2);
+            """,
+            "SELECT * FROM interview_assignments ORDER BY id",
+        ),
+        (
+            "assignment_created_by_demo",
+            """
+            CREATE TABLE interview_assignments (
+                id INTEGER PRIMARY KEY,
+                candidate_id INTEGER,
+                job_id INTEGER,
+                demand_id INTEGER,
+                interviewer_id INTEGER,
+                created_by INTEGER
+            );
+            INSERT INTO interview_assignments
+                (id, candidate_id, job_id, demand_id, interviewer_id, created_by)
+            VALUES (903, 20000, 20, 200, 2, 1);
+            """,
+            "SELECT * FROM interview_assignments ORDER BY id",
+        ),
+        (
+            "feedback_interviewer_demo",
+            """
+            CREATE TABLE interview_feedback (
+                id INTEGER PRIMARY KEY,
+                assignment_id INTEGER,
+                candidate_id INTEGER,
+                job_id INTEGER,
+                demand_id INTEGER,
+                interviewer_id INTEGER
+            );
+            INSERT INTO interview_feedback
+                (id, assignment_id, candidate_id, job_id, demand_id, interviewer_id)
+            VALUES (904, NULL, 20000, 20, 200, 1);
+            """,
+            "SELECT * FROM interview_feedback ORDER BY id",
+        ),
+        (
+            "offer_created_by_demo",
+            """
+            CREATE TABLE offer_records (
+                id INTEGER PRIMARY KEY,
+                candidate_id INTEGER,
+                job_id INTEGER,
+                demand_id INTEGER,
+                created_by INTEGER
+            );
+            INSERT INTO offer_records
+                (id, candidate_id, job_id, demand_id, created_by)
+            VALUES (905, 20000, 20, 200, 1);
+            """,
+            "SELECT * FROM offer_records ORDER BY id",
+        ),
+        (
+            "disposition_created_by_demo",
+            """
+            CREATE TABLE candidate_dispositions (
+                id INTEGER PRIMARY KEY,
+                candidate_id INTEGER,
+                job_id INTEGER,
+                demand_id INTEGER,
+                created_by INTEGER
+            );
+            INSERT INTO candidate_dispositions
+                (id, candidate_id, job_id, demand_id, created_by)
+            VALUES (906, 20000, 20, 200, 1);
+            """,
+            "SELECT * FROM candidate_dispositions ORDER BY id",
+        ),
+        (
+            "event_actor_demo_real_demand",
+            """
+            ALTER TABLE events ADD COLUMN actor_id INTEGER;
+            ALTER TABLE events ADD COLUMN demand_id INTEGER;
+            UPDATE events SET actor_id = 1, demand_id = 200 WHERE id = 2;
+            """,
+            "SELECT * FROM events ORDER BY id",
+        ),
+        (
+            "agent_tool_mixed_typed_targets",
+            """
+            ALTER TABLE events ADD COLUMN actor_id INTEGER;
+            ALTER TABLE events ADD COLUMN demand_id INTEGER;
+            ALTER TABLE events ADD COLUMN payload TEXT;
+            UPDATE events
+            SET entity_type = 'agent_tool',
+                entity_id = 10,
+                actor_id = 1,
+                payload = '{"tool":"run_match","target_ids":{"job_id":10,"candidate_id":20000}}'
+            WHERE id = 2;
+            """,
+            "SELECT * FROM events ORDER BY id",
+        ),
+        (
+            "audit_actor_demo_real_target",
+            """
+            CREATE TABLE audit_logs (
+                id INTEGER PRIMARY KEY,
+                actor_id INTEGER,
+                target_table TEXT,
+                target_id INTEGER
+            );
+            INSERT INTO audit_logs (id, actor_id, target_table, target_id)
+            VALUES (907, 1, 'recruitment_demands', 200);
+            """,
+            "SELECT * FROM audit_logs ORDER BY id",
+        ),
+        (
+            "real_demand_created_by_demo",
+            "UPDATE recruitment_demands SET created_by = 1 WHERE id = 200;",
+            "SELECT * FROM recruitment_demands ORDER BY id",
+        ),
+        (
+            "real_demand_references_demo_job",
+            "UPDATE recruitment_demands SET job_id = 10 WHERE id = 200;",
+            "SELECT * FROM recruitment_demands ORDER BY id",
+        ),
+        (
+            "historical_real_flow_owned_by_demo",
+            """
+            UPDATE candidates SET current_demand_id = NULL WHERE id = 20000;
+            UPDATE candidate_demand_flows SET owner_hr_id = 1 WHERE id = 2;
+            """,
+            "SELECT * FROM candidate_demand_flows ORDER BY id",
+        ),
+        (
+            "historical_flow_crosses_real_candidate_and_demo_demand",
+            """
+            INSERT INTO candidate_demand_flows
+                (id, candidate_id, demand_id, owner_hr_id, transfer_from_demand_id)
+            VALUES (3, 20000, 100, 2, NULL);
+            """,
+            "SELECT * FROM candidate_demand_flows ORDER BY id",
+        ),
+    ],
+)
+def test_cleanup_fails_closed_for_actor_only_or_cross_scope_business_rows(
+    tmp_path,
+    case_name,
+    mutation_sql,
+    probe_sql,
+):
+    db_path = tmp_path / f"{case_name}.sqlite"
+    upload_folder = tmp_path / "backend" / "uploads"
+    upload_folder.mkdir(parents=True)
+    demo_file = upload_folder / "demo.pdf"
+    real_file = upload_folder / "real.pdf"
+    demo_file.write_bytes(b"demo")
+    real_file.write_bytes(b"real")
+    _seed_demand_cleanup_database(db_path, demo_file, real_file)
+    connection = sqlite3.connect(db_path)
+    connection.executescript(mutation_sql)
+    expected_rows = connection.execute(probe_sql).fetchall()
+    connection.commit()
+    connection.close()
+    backup_root = tmp_path / "backups"
+    env = os.environ.copy()
+    env.update(
+        {
+            "DATABASE_URL": f"sqlite:///{db_path}",
+            "UPLOAD_FOLDER": str(upload_folder),
+            "BACKUP_DIR": str(backup_root),
+        }
+    )
+
+    result = _run(
+        "cleanup_demo_data.py",
+        "--project-root",
+        tmp_path,
+        "--confirm",
+        env=env,
+    )
+
+    assert result.returncode != 0, case_name
+    assert "mixed demo/real ownership" in (result.stdout + result.stderr)
+    connection = sqlite3.connect(db_path)
+    try:
+        assert connection.execute(probe_sql).fetchall() == expected_rows
+        assert connection.execute("SELECT id FROM users ORDER BY id").fetchall() == [
+            (1,),
+            (2,),
+        ]
+    finally:
+        connection.close()
+    assert demo_file.read_bytes() == b"demo"
+    assert real_file.read_bytes() == b"real"
+    assert not backup_root.exists()
+
+
+def test_cleanup_allows_demo_actor_events_without_a_business_target(tmp_path):
+    db_path = tmp_path / "actor-private-events.sqlite"
+    upload_folder = tmp_path / "backend" / "uploads"
+    upload_folder.mkdir(parents=True)
+    demo_file = upload_folder / "demo.pdf"
+    real_file = upload_folder / "real.pdf"
+    demo_file.write_bytes(b"demo")
+    real_file.write_bytes(b"real")
+    _seed_demand_cleanup_database(db_path, demo_file, real_file)
+    connection = sqlite3.connect(db_path)
+    connection.executescript(
+        """
+        ALTER TABLE events ADD COLUMN actor_id INTEGER;
+        ALTER TABLE events ADD COLUMN demand_id INTEGER;
+        ALTER TABLE events ADD COLUMN payload TEXT;
+        INSERT INTO events (id, entity_type, entity_id, actor_id, demand_id)
+        VALUES (3, NULL, NULL, 1, NULL);
+        INSERT INTO events (id, entity_type, entity_id, actor_id, demand_id, payload)
+        VALUES (
+            4,
+            'agent_tool',
+            10,
+            1,
+            NULL,
+            '{"tool":"run_match","target_ids":{"job_id":10}}'
+        );
+        CREATE TABLE audit_logs (
+            id INTEGER PRIMARY KEY,
+            actor_id INTEGER,
+            target_table TEXT,
+            target_id INTEGER
+        );
+        INSERT INTO audit_logs (id, actor_id, target_table, target_id)
+        VALUES (908, 1, NULL, NULL);
+        CREATE TABLE notifications (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            demand_id INTEGER
+        );
+        INSERT INTO notifications (id, user_id, demand_id) VALUES
+            (909, 1, 200),
+            (910, 2, 200);
+        CREATE TABLE idempotency_records (
+            id INTEGER PRIMARY KEY,
+            actor_scope TEXT
+        );
+        INSERT INTO idempotency_records (id, actor_scope) VALUES
+            (911, 'user:1'),
+            (912, 'user:2');
+        """
+    )
+    connection.commit()
+    connection.close()
+    env = os.environ.copy()
+    env.update(
+        {
+            "DATABASE_URL": f"sqlite:///{db_path}",
+            "UPLOAD_FOLDER": str(upload_folder),
+            "BACKUP_DIR": str(tmp_path / "backups"),
+        }
+    )
+
+    result = _run(
+        "cleanup_demo_data.py",
+        "--project-root",
+        tmp_path,
+        "--confirm",
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    connection = sqlite3.connect(db_path)
+    try:
+        assert connection.execute("SELECT id FROM events ORDER BY id").fetchall() == [(2,)]
+        assert connection.execute("SELECT id FROM audit_logs ORDER BY id").fetchall() == []
+        assert connection.execute("SELECT id FROM notifications ORDER BY id").fetchall() == [
+            (910,)
+        ]
+        assert connection.execute(
+            "SELECT id FROM idempotency_records ORDER BY id"
+        ).fetchall() == [(912,)]
+    finally:
+        connection.close()
+
+
+def test_cleanup_blocks_talent_person_crossing_demo_company_and_real_map(tmp_path):
+    db_path = tmp_path / "mixed-talent-person.sqlite"
+    connection = sqlite3.connect(db_path)
+    connection.executescript(
+        """
+        CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);
+        CREATE TABLE talent_maps (
+            id INTEGER PRIMARY KEY,
+            owner_hr_id INTEGER,
+            job_id INTEGER
+        );
+        CREATE TABLE talent_map_companies (
+            id INTEGER PRIMARY KEY,
+            map_id INTEGER
+        );
+        CREATE TABLE talent_map_people (
+            id INTEGER PRIMARY KEY,
+            map_id INTEGER,
+            company_id INTEGER
+        );
+        INSERT INTO users (id, email) VALUES
+            (1, 'demo@mvp.local'),
+            (2, 'real@example.com');
+        INSERT INTO talent_maps (id, owner_hr_id, job_id) VALUES
+            (10, 1, NULL),
+            (20, 2, NULL);
+        INSERT INTO talent_map_companies (id, map_id) VALUES (100, 10);
+        INSERT INTO talent_map_people (id, map_id, company_id) VALUES
+            (1000, 10, 100),
+            (2000, 20, 100);
+        """
+    )
+    connection.commit()
+    connection.close()
+    cleanup = _load_script("cleanup_demo_data")
+    engine = cleanup.create_engine(f"sqlite:///{db_path}")
+
+    with engine.begin() as sql_connection:
+        tables = cleanup._load_tables(engine)
+        with pytest.raises(SystemExit, match="talent_map_people"):
+            cleanup._collect_plan(sql_connection, tables, "@mvp.local")
+
+    remaining = sqlite3.connect(db_path).execute(
+        "SELECT id FROM talent_map_people ORDER BY id"
+    ).fetchall()
+    assert remaining == [(1000,), (2000,)]
+
+
 def test_cleanup_plan_deletes_candidate_and_batch_before_referenced_demand(tmp_path):
     db_path = tmp_path / "pilot.sqlite"
     upload_folder = tmp_path / "uploads"
@@ -737,13 +1209,45 @@ def test_cleanup_deletes_only_the_frozen_row_ids(tmp_path):
     assert remaining == [(2,), (3,)]
 
 
-def test_cleanup_resolves_relative_upload_folder_from_project_root(tmp_path, monkeypatch):
+def test_cleanup_rejects_relative_upload_folder(tmp_path, monkeypatch):
     cleanup = _load_script("cleanup_demo_data")
+    monkeypatch.delenv("FLASK_DEBUG", raising=False)
     monkeypatch.setenv("UPLOAD_FOLDER", "backend/uploads")
 
-    resolved = cleanup._configured_upload_folder(tmp_path)
+    with pytest.raises(SystemExit, match="absolute|\u7edd\u5bf9"):
+        cleanup._configured_upload_folder(tmp_path)
 
-    assert resolved == (tmp_path / "backend" / "uploads").absolute()
+
+def test_local_debug_cleanup_resolves_relative_upload_folder_from_project_root(
+    tmp_path,
+    monkeypatch,
+):
+    cleanup = _load_script("cleanup_demo_data")
+    monkeypatch.setenv("FLASK_DEBUG", "true")
+    monkeypatch.setenv("UPLOAD_FOLDER", "backend/uploads")
+
+    assert cleanup._configured_upload_folder(tmp_path) == (
+        tmp_path / "backend" / "uploads"
+    ).absolute()
+
+
+def test_cleanup_rejects_ambiguous_legacy_and_portable_upload_reference(tmp_path):
+    cleanup = _load_script("cleanup_demo_data")
+    upload_folder = tmp_path / "backend" / "uploads"
+    upload_folder.mkdir(parents=True)
+    legacy_target = upload_folder / "demo.pdf"
+    portable_target = upload_folder / "backend" / "uploads" / "demo.pdf"
+    portable_target.parent.mkdir(parents=True)
+    legacy_target.write_bytes(b"legacy")
+    portable_target.write_bytes(b"portable")
+
+    with pytest.raises(SystemExit, match="歧义"):
+        cleanup._resolve_demo_uploads(
+            ("backend/uploads/demo.pdf",),
+            (),
+            tmp_path,
+            upload_folder,
+        )
 
 
 def test_cleanup_removes_demo_demand_flows_preserves_other_uploads_and_creates_restorable_snapshot(tmp_path):
@@ -817,6 +1321,9 @@ def test_cleanup_removes_demo_demand_flows_preserves_other_uploads_and_creates_r
     try:
         assert restored.execute("SELECT id FROM candidate_demand_flows ORDER BY id").fetchall() == [(1,), (2,)]
         assert restored.execute("SELECT id FROM candidates ORDER BY id").fetchall() == [(10000,), (20000,)]
+        assert restored.execute(
+            "SELECT id, raw_file_path FROM candidates ORDER BY id"
+        ).fetchall() == [(10000, "demo.pdf"), (20000, "real.pdf")]
     finally:
         restored.close()
     assert (restored_uploads / "demo.pdf").read_bytes() == b"demo"
@@ -834,6 +1341,10 @@ def test_cleanup_preserves_file_still_referenced_by_real_candidate(tmp_path):
     shared_file.write_bytes(b"shared")
     _seed_demand_cleanup_database(db_path, demo_file, shared_file)
     connection = sqlite3.connect(db_path)
+    connection.execute(
+        "UPDATE candidates SET raw_file_path = ? WHERE id = 20000",
+        ("shared.pdf",),
+    )
     connection.execute(
         "INSERT INTO candidates "
         "(id, owner_hr_id, upload_batch_id, current_demand_id, raw_file_path) VALUES (?, ?, ?, ?, ?)",

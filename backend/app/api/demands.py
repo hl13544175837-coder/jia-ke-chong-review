@@ -109,22 +109,28 @@ def create_demand():
         db.session.rollback()
         return jsonify(exc.as_payload()), 400
 
-    db.session.commit()
-    if created_job:
+    try:
+        if created_job:
+            record_event(
+                "job.created",
+                entity_id=demand.job_id,
+                entity_type="job",
+                payload={"source": "demand", "demand_id": demand.id},
+                demand_id=demand.id,
+                commit=False,
+            )
         record_event(
-            "job.created",
-            entity_id=demand.job_id,
-            entity_type="job",
-            payload={"source": "demand", "demand_id": demand.id},
+            "demand.created",
+            entity_id=demand.id,
+            entity_type="demand",
             demand_id=demand.id,
+            payload={"job_id": demand.job_id, "owner_hr_id": demand.owner_hr_id},
+            commit=False,
         )
-    record_event(
-        "demand.created",
-        entity_id=demand.id,
-        entity_type="demand",
-        demand_id=demand.id,
-        payload={"job_id": demand.job_id, "owner_hr_id": demand.owner_hr_id},
-    )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return jsonify(demand_payload(demand, include_jd=True)), 201
 
 
@@ -225,13 +231,18 @@ def update_demand(demand_id):
     if fields:
         db.session.rollback()
         return _validation_response(fields)
-    db.session.commit()
-    record_event(
-        "demand.updated",
-        entity_id=demand.id,
-        entity_type="demand",
-        demand_id=demand.id,
-    )
+    try:
+        record_event(
+            "demand.updated",
+            entity_id=demand.id,
+            entity_type="demand",
+            demand_id=demand.id,
+            commit=False,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return jsonify(demand_payload(demand, include_jd=True))
 
 
@@ -259,14 +270,19 @@ def close_demand(demand_id):
     else:
         demand.closed_at = utc_now()
         demand.closed_by = g.user_id
-    db.session.commit()
-    record_event(
-        "demand.closed",
-        entity_id=demand.id,
-        entity_type="demand",
-        demand_id=demand.id,
-        payload={"status": status, "reason": reason, "job_id": demand.job_id},
-    )
+    try:
+        record_event(
+            "demand.closed",
+            entity_id=demand.id,
+            entity_type="demand",
+            demand_id=demand.id,
+            payload={"status": status, "reason": reason, "job_id": demand.job_id},
+            commit=False,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return jsonify(demand_payload(demand, include_jd=True))
 
 
@@ -287,14 +303,19 @@ def restore_demand(demand_id):
     demand.closed_at = None
     demand.closed_by = None
     demand.note = clean_text(f"{demand.note or ''}\n恢复说明：{note}".strip(), 2000)
-    db.session.commit()
-    record_event(
-        "demand.restored",
-        entity_id=demand.id,
-        entity_type="demand",
-        demand_id=demand.id,
-        payload={"reason": note, "job_id": demand.job_id},
-    )
+    try:
+        record_event(
+            "demand.restored",
+            entity_id=demand.id,
+            entity_type="demand",
+            demand_id=demand.id,
+            payload={"reason": note, "job_id": demand.job_id},
+            commit=False,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return jsonify(demand_payload(demand, include_jd=True))
 
 
@@ -317,14 +338,19 @@ def downgrade_demand(demand_id):
         return _validation_response(fields)
     demand.priority = priority
     demand.downgrade_reason = reason
-    db.session.commit()
-    record_event(
-        "demand.downgraded",
-        entity_id=demand.id,
-        entity_type="demand",
-        demand_id=demand.id,
-        payload={"priority": priority, "reason": reason},
-    )
+    try:
+        record_event(
+            "demand.downgraded",
+            entity_id=demand.id,
+            entity_type="demand",
+            demand_id=demand.id,
+            payload={"priority": priority, "reason": reason},
+            commit=False,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return jsonify(demand_payload(demand, include_jd=True))
 
 
@@ -348,31 +374,106 @@ def reassign_demand_owner(demand_id):
     if target.id == demand.owner_hr_id:
         return jsonify({"error": "目标负责人没有变化", "code": "owner_unchanged"}), 409
 
+    pointed_candidates = (
+        Candidate.query.filter_by(
+            org_id=g.org_id,
+            current_demand_id=demand.id,
+        )
+        .order_by(Candidate.id)
+        .with_for_update()
+        .all()
+    )
+    active_flows = (
+        CandidateDemandFlow.query.filter_by(
+            org_id=g.org_id,
+            demand_id=demand.id,
+            status="active",
+        )
+        .order_by(CandidateDemandFlow.candidate_id)
+        .with_for_update()
+        .all()
+    )
+    pointed_by_id = {candidate.id: candidate for candidate in pointed_candidates}
+    flow_candidate_ids = [flow.candidate_id for flow in active_flows]
+    if (
+        len(flow_candidate_ids) != len(set(flow_candidate_ids))
+        or set(flow_candidate_ids) != set(pointed_by_id)
+    ):
+        conflict_ids = sorted(set(flow_candidate_ids) ^ set(pointed_by_id))
+        db.session.rollback()
+        return jsonify({
+            "error": "候选人当前需求归属不一致，请先修复数据后再转派",
+            "code": "demand_owner_projection_conflict",
+            "candidate_id": conflict_ids[0] if conflict_ids else None,
+        }), 409
+
+    all_active_flows = (
+        CandidateDemandFlow.query.filter(
+            CandidateDemandFlow.org_id == g.org_id,
+            CandidateDemandFlow.candidate_id.in_(flow_candidate_ids),
+            CandidateDemandFlow.status == "active",
+        )
+        .order_by(CandidateDemandFlow.candidate_id, CandidateDemandFlow.id)
+        .with_for_update()
+        .all()
+        if flow_candidate_ids
+        else []
+    )
+    active_counts = {}
+    for flow in all_active_flows:
+        active_counts[flow.candidate_id] = active_counts.get(flow.candidate_id, 0) + 1
+    if any(active_counts.get(candidate_id) != 1 for candidate_id in flow_candidate_ids):
+        conflict_id = next(
+            candidate_id
+            for candidate_id in flow_candidate_ids
+            if active_counts.get(candidate_id) != 1
+        )
+        db.session.rollback()
+        return jsonify({
+            "error": "候选人当前需求归属不一致，请先修复数据后再转派",
+            "code": "demand_owner_projection_conflict",
+            "candidate_id": conflict_id,
+        }), 409
+
+    locked_candidates = []
+    for flow in active_flows:
+        candidate = pointed_by_id[flow.candidate_id]
+        if (
+            candidate.deleted_at is not None
+            or candidate.org_id != g.org_id
+            or candidate.current_demand_id != demand.id
+        ):
+            db.session.rollback()
+            return jsonify({
+                "error": "候选人当前需求归属不一致，请先修复数据后再转派",
+                "code": "demand_owner_projection_conflict",
+                "candidate_id": flow.candidate_id,
+            }), 409
+        locked_candidates.append((flow, candidate))
+
     old_owner_id = demand.owner_hr_id
     demand.owner_hr_id = target.id
-    active_flows = CandidateDemandFlow.query.filter_by(
-        org_id=g.org_id,
-        demand_id=demand.id,
-        status="active",
-    ).all()
     candidate_ids = []
-    for flow in active_flows:
+    for flow, candidate in locked_candidates:
         flow.owner_hr_id = target.id
-        candidate = db.session.get(Candidate, flow.candidate_id, with_for_update=True)
-        if candidate and candidate.current_demand_id == demand.id:
-            candidate.owner_hr_id = target.id
-            candidate_ids.append(candidate.id)
-    db.session.commit()
-    record_event(
-        "demand.owner_reassigned",
-        entity_id=demand.id,
-        entity_type="demand",
-        demand_id=demand.id,
-        payload={
-            "from": old_owner_id,
-            "to": target.id,
-            "reason": reason,
-            "active_candidate_ids": candidate_ids,
-        },
-    )
+        candidate.owner_hr_id = target.id
+        candidate_ids.append(candidate.id)
+    try:
+        record_event(
+            "demand.owner_reassigned",
+            entity_id=demand.id,
+            entity_type="demand",
+            demand_id=demand.id,
+            payload={
+                "from": old_owner_id,
+                "to": target.id,
+                "reason": reason,
+                "active_candidate_ids": candidate_ids,
+            },
+            commit=False,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return jsonify(demand_payload(demand, include_jd=True))

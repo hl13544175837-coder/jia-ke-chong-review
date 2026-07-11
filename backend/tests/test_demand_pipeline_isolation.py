@@ -341,6 +341,118 @@ def test_transfer_commit_failure_rolls_back_source_target_pointer_and_flows(
         ] == ["interview"]
 
 
+def test_move_audit_failure_rolls_back_stage_flow_pointer_and_disposition(
+    client, make_user, app, monkeypatch
+):
+    owner_id, token = make_user("pipeline-audit-move@example.com", role="recruiter")
+    seeded = _seed_sibling_demands(app, owner_id)
+    from app.services import pipeline_service
+
+    def fail_audit(*args, **kwargs):
+        raise RuntimeError("audit write failed")
+
+    monkeypatch.setattr(pipeline_service, "record_event", fail_audit)
+    with pytest.raises(RuntimeError, match="audit write failed"):
+        client.post(
+            f"/api/pipeline/demands/{seeded['first_demand_id']}/move",
+            headers=_auth(token),
+            json={
+                "candidate_id": seeded["first_candidate_id"],
+                "stage": "rejected",
+                "disposition": {"reason": "不应保存"},
+            },
+        )
+
+    with app.app_context():
+        db.session.remove()
+        candidate = db.session.get(Candidate, seeded["first_candidate_id"])
+        assert candidate.current_demand_id is None
+        assert PipelineStage.query.filter_by(candidate_id=candidate.id).count() == 0
+        assert CandidateDemandFlow.query.filter_by(candidate_id=candidate.id).count() == 0
+        assert CandidateDisposition.query.filter_by(candidate_id=candidate.id).count() == 0
+
+
+def test_transfer_audit_failure_rolls_back_both_demands_and_pointer(
+    client, make_user, app, monkeypatch
+):
+    owner_id, token = make_user("pipeline-audit-transfer@example.com", role="manager")
+    seeded = _seed_sibling_demands(app, owner_id)
+    joined = client.post(
+        f"/api/pipeline/demands/{seeded['first_demand_id']}/move",
+        headers=_auth(token),
+        json={"candidate_id": seeded["first_candidate_id"], "stage": "interview"},
+    )
+    assert joined.status_code == 200
+    from app.services import pipeline_service
+
+    real_record_event = pipeline_service.record_event
+
+    def fail_transfer(action, *args, **kwargs):
+        if action == "pipeline.transferred":
+            raise RuntimeError("audit write failed")
+        return real_record_event(action, *args, **kwargs)
+
+    monkeypatch.setattr(pipeline_service, "record_event", fail_transfer)
+    with pytest.raises(RuntimeError, match="audit write failed"):
+        client.post(
+            "/api/pipeline/transfer",
+            headers=_auth(token),
+            json={
+                "candidate_id": seeded["first_candidate_id"],
+                "from_demand_id": seeded["first_demand_id"],
+                "to_demand_id": seeded["second_demand_id"],
+                "reason": "不应保存",
+            },
+        )
+
+    with app.app_context():
+        db.session.remove()
+        candidate = db.session.get(Candidate, seeded["first_candidate_id"])
+        source_flow = CandidateDemandFlow.query.filter_by(
+            candidate_id=candidate.id, demand_id=seeded["first_demand_id"]
+        ).one()
+        assert candidate.current_demand_id == seeded["first_demand_id"]
+        assert source_flow.status == "active"
+        assert CandidateDemandFlow.query.filter_by(
+            candidate_id=candidate.id, demand_id=seeded["second_demand_id"]
+        ).count() == 0
+        assert [row.stage for row in PipelineStage.query.filter_by(
+            candidate_id=candidate.id
+        ).order_by(PipelineStage.id).all()] == ["interview"]
+
+
+def test_offer_audit_failure_rolls_back_offer_record(
+    client, make_user, app, monkeypatch
+):
+    owner_id, token = make_user("pipeline-audit-offer@example.com", role="recruiter")
+    seeded = _seed_sibling_demands(app, owner_id)
+    moved = client.post(
+        f"/api/pipeline/demands/{seeded['first_demand_id']}/move",
+        headers=_auth(token),
+        json={"candidate_id": seeded["first_candidate_id"], "stage": "offer"},
+    )
+    assert moved.status_code == 200
+    from app.services import pipeline_service
+
+    def fail_audit(*args, **kwargs):
+        raise RuntimeError("audit write failed")
+
+    monkeypatch.setattr(pipeline_service, "record_event", fail_audit)
+    with pytest.raises(RuntimeError, match="audit write failed"):
+        client.put(
+            f"/api/pipeline/demands/{seeded['first_demand_id']}/offer/{seeded['first_candidate_id']}",
+            headers=_auth(token),
+            json={"salary_range": "不应保存", "approval_status": "approved"},
+        )
+
+    with app.app_context():
+        db.session.remove()
+        assert OfferRecord.query.filter_by(
+            candidate_id=seeded["first_candidate_id"],
+            demand_id=seeded["first_demand_id"],
+        ).count() == 0
+
+
 def test_onboarded_reaching_hc_suggests_completion_without_closing_demand(
     client, make_user, app
 ):

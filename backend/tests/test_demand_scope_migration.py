@@ -358,7 +358,7 @@ def test_interview_uniqueness_migration_backfills_only_active_primary_slots(tmp_
         "INSERT INTO interview_assignments "
         "(id, org_id, candidate_id, job_id, demand_id, round, round_sequence, "
         "is_primary, interviewer_id, status, created_at) "
-        "VALUES (2, 1, 1, 1, 10, 'round_1', 1, 1, 1, 'cancelled', '2026-01-16')"
+        "VALUES (2, 1, 1, 1, 10, 'round_1', 1, 1, 1, ' Cancelled ', '2026-01-16')"
     )
     connection.commit()
     connection.close()
@@ -623,6 +623,49 @@ def test_verify_reports_missing_interview_uniqueness_index(tmp_path):
         "missing_unique_index:interview_assignments."
         "uq_interview_assignment_primary_slot"
     ) in report["schema_errors"]
+
+
+def test_verify_reports_assignment_primary_slot_invariant_violations(tmp_path):
+    path = tmp_path / "cancelled-primary-slot.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "UPDATE interview_assignments "
+        "SET status = ' Cancelled ', is_primary = 1, primary_slot = 1 WHERE id = 1"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(
+        _database_url(path)
+    )
+
+    assert report["ok"] is False
+    assert report["assignment_slot_conflicts"] == [
+        {
+            "assignment_id": 1,
+            "status": " Cancelled ",
+            "is_primary": True,
+            "round_sequence": 1,
+            "primary_slot": 1,
+            "expected_primary_slot": None,
+        }
+    ]
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "UPDATE interview_assignments "
+        "SET demand_id = 10, status = 'scheduled', is_primary = 1, "
+        "round_sequence = 2, primary_slot = NULL "
+        "WHERE id = 1"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(_database_url(path))
+
+    assert report["assignment_slot_conflicts"][0]["expected_primary_slot"] == 2
 
 
 def test_backfill_rejects_a_job_owned_by_another_organization(tmp_path):

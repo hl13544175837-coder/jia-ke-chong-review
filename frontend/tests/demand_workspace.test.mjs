@@ -68,6 +68,9 @@ assert.match(detail, /招聘进度/, 'Detail page should show progress');
 assert.match(detail, /责任与卡点/, 'Detail page should show responsibility and blockers');
 assert.match(detail, /completion_suggested/, 'Detail page should surface HC completion prompt');
 assert.match(detail, /\?demand=\$\{demand\.id\}/, 'Demand detail should deep-link matching into the selected demand');
+assert.match(detail, /RISK_LABELS/, 'Demand detail should translate risk codes into user-facing labels');
+assert.match(detail, /risk_flags\.map\(riskLabel\)/, 'Risk flags should render through the label mapping');
+assert.doesNotMatch(detail, /risk_flags\.join\(/, 'Technical risk codes should not be rendered directly');
 
 assert.match(types, /interface DemandListQuery/, 'Demand list query type should be shared');
 assert.match(types, /interface DemandListResponse/, 'Paginated response type should be shared');

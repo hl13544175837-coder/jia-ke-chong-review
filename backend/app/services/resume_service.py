@@ -1,5 +1,7 @@
 import sys
 from pathlib import Path
+from flask import current_app
+from runtime_paths import DEFAULT_UPLOAD_FOLDER, resolve_stored_upload_path
 
 # 指向 base_agent，复用原始模块
 BASE_AGENT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "base_agent"
@@ -75,7 +77,11 @@ class ResumeBatchService:
             candidate.parse_error = None
             db.session.flush()
 
-            result = self.parser.parse_resume(candidate.raw_file_path)
+            source_path = resolve_stored_upload_path(
+                candidate.raw_file_path,
+                current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER,
+            )
+            result = self.parser.parse_resume(str(source_path))
             self._apply_parse_result(candidate, result)
             db.session.commit()
             return candidate

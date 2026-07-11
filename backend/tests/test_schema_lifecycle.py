@@ -30,6 +30,8 @@ class _ProductionSQLiteConfig:
     MIN_SECRET_LENGTH = 32
     SECURITY_HEADERS_ENABLED = True
     RATE_LIMIT_ENABLED = False
+    UPLOAD_FOLDER = "/var/lib/zhipin/uploads"
+    UPLOAD_FOLDER_SOURCE = "/var/lib/zhipin/uploads"
 
     @classmethod
     def for_path(cls, path):
@@ -42,6 +44,10 @@ class _ProductionSQLiteConfig:
 
 class _DebugSQLiteConfig(_ProductionSQLiteConfig):
     FLASK_DEBUG = True
+
+
+class _LocalSchemaCompatSQLiteConfig(_DebugSQLiteConfig):
+    LOCAL_SCHEMA_COMPAT = True
 
 
 def _database_url(path):
@@ -64,6 +70,19 @@ def _read_revision(path):
         engine.dispose()
 
 
+def _read_table_names(path):
+    connection = sqlite3.connect(path)
+    try:
+        return {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    finally:
+        connection.close()
+
+
 def _load_bootstrap_module():
     from scripts import bootstrap_database
 
@@ -83,9 +102,22 @@ def test_production_app_factory_does_not_bootstrap_empty_database(tmp_path):
             db.engine.dispose()
 
 
-def test_debug_sqlite_app_factory_keeps_local_schema_compatibility(tmp_path):
+def test_debug_sqlite_app_factory_does_not_implicitly_mutate_schema(tmp_path):
     db_path = tmp_path / "debug-empty.db"
     app = create_app(_DebugSQLiteConfig.for_path(db_path))
+
+    try:
+        with app.app_context():
+            assert "users" not in inspect(db.engine).get_table_names()
+    finally:
+        with app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+
+
+def test_explicit_local_schema_compat_keeps_debug_sqlite_convenience(tmp_path):
+    db_path = tmp_path / "debug-compat.db"
+    app = create_app(_LocalSchemaCompatSQLiteConfig.for_path(db_path))
 
     try:
         with app.app_context():
@@ -143,6 +175,52 @@ def test_bootstrap_rejects_partial_schema_without_filling_missing_tables(tmp_pat
     finally:
         connection.close()
     assert tables == {"users"}
+
+
+def test_bootstrap_rejects_metadata_schema_missing_a_table_alembic_never_creates(tmp_path):
+    bootstrap = _load_bootstrap_module()
+    db_path = tmp_path / "metadata-minus-matches.db"
+    engine = create_engine(_database_url(db_path))
+    try:
+        db.metadata.create_all(bind=engine)
+        with engine.begin() as connection:
+            connection.execute(text("DROP TABLE matches"))
+    finally:
+        engine.dispose()
+
+    with pytest.raises(bootstrap.BootstrapError, match="matches"):
+        bootstrap.bootstrap_database(_database_url(db_path), allow_empty=True)
+
+    connection = sqlite3.connect(db_path)
+    try:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    finally:
+        connection.close()
+    assert "matches" not in tables
+    assert "alembic_version" not in tables
+
+
+def test_bootstrap_accepts_pre_expand_schema_without_candidate_demand_flows(tmp_path):
+    bootstrap = _load_bootstrap_module()
+    db_path = tmp_path / "pre-expand.db"
+    engine = create_engine(_database_url(db_path))
+    try:
+        db.metadata.create_all(bind=engine)
+        with engine.begin() as connection:
+            connection.execute(text("DROP TABLE candidate_demand_flows"))
+    finally:
+        engine.dispose()
+
+    result = bootstrap.bootstrap_database(_database_url(db_path), allow_empty=True)
+
+    assert result.status == "existing_schema"
+    assert result.revision is None
+    assert _read_table_names(db_path).isdisjoint({"alembic_version", "candidate_demand_flows"})
 
 
 def test_bootstrap_leaves_complete_legacy_schema_for_alembic_upgrade(tmp_path):

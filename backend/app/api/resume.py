@@ -6,6 +6,11 @@ from pathlib import Path, PurePosixPath
 from flask import current_app
 from flask import Blueprint, request, jsonify, g, send_file
 from werkzeug.utils import secure_filename
+from runtime_paths import (
+    DEFAULT_UPLOAD_FOLDER,
+    RuntimePathError,
+    resolve_stored_upload_path,
+)
 from ..middleware.auth import require_auth, require_role
 from ..middleware.rate_limit import rate_limit
 from ..middleware.events import record_event
@@ -112,11 +117,10 @@ def _resolve_original_resume(candidate):
     if not candidate.raw_file_path:
         return None, "missing_path"
 
-    upload_root = Path(current_app.config.get("UPLOAD_FOLDER") or "/tmp/zhipin_uploads")
-    upload_root = upload_root.expanduser().resolve()
-    stored = Path(candidate.raw_file_path).expanduser()
-    resolved = (stored if stored.is_absolute() else upload_root / stored).resolve()
-    if resolved != upload_root and upload_root not in resolved.parents:
+    upload_root = current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER
+    try:
+        resolved = resolve_stored_upload_path(candidate.raw_file_path, upload_root)
+    except RuntimePathError:
         return None, "out_of_root"
     if not resolved.is_file():
         return None, "missing_file"
@@ -279,18 +283,6 @@ def _add_to_target_pipeline(candidate, target_demand_id):
         stage="pending",
         note="上传简历后进入待筛选",
     )
-    record_event(
-        "pipeline.moved",
-        entity_id=candidate.id,
-        entity_type="candidate",
-        demand_id=target_demand_id,
-        payload={
-            "demand_id": target_demand_id,
-            "job_id": result["job_id"],
-            "stage": "pending",
-            "source": "resume_upload",
-        },
-    )
     return not result.get("deduplicated", False)
 
 
@@ -359,40 +351,13 @@ def _process_resume(
     """解析单份简历并入库，把结果（成功/失败）追加到 results。
     display_name 用于结果展示（zip 内文件会带 "xxx.zip → 文件名" 前缀）。"""
     try:
-        candidate = svc.parse_and_save(fpath, owner_hr_id=g.user_id, upload_batch_id=upload_batch_id)
-        candidate.org_id = g.org_id
-        from ..models import CandidateTag
-        CandidateTag.query.filter_by(candidate_id=candidate.id).update({"org_id": g.org_id})
-        db.session.commit()
-        record_event(
-            "resume.uploaded",
-            entity_id=candidate.id,
-            entity_type="candidate",
-            demand_id=target_demand_id,
+        candidate = svc.parse_and_save(
+            fpath,
+            owner_hr_id=g.user_id,
+            upload_batch_id=upload_batch_id,
         )
-        try:
-            auto_joined = _add_to_target_pipeline(candidate, target_demand_id)
-        except PipelineServiceError as error:
-            results.append({
-                "file": display_name,
-                "status": "ok",
-                "candidate_id": candidate.id,
-                "target_demand_id": target_demand_id,
-                "target_job_id": target_job_id,
-                "pipeline_joined": False,
-                "pipeline_error": error.message,
-                "pipeline_error_code": error.code,
-            })
-            return
-        result = {"file": display_name, "status": "ok", "candidate_id": candidate.id}
-        if auto_joined:
-            result.update({
-                "target_demand_id": target_demand_id,
-                "target_job_id": target_job_id,
-                "pipeline_stage": "pending",
-            })
-        results.append(result)
     except Exception as e:
+        db.session.rollback()
         candidate = svc.create_failed_candidate(
             fpath,
             owner_hr_id=g.user_id,
@@ -415,6 +380,42 @@ def _process_resume(
             "candidate_id": candidate.id,
             "reason": str(e),
         })
+        return
+
+    # Parsing succeeded. Audit/storage/pipeline failures are infrastructure
+    # errors and must not create a second, falsely "parse failed" candidate.
+    candidate.org_id = g.org_id
+    from ..models import CandidateTag
+    CandidateTag.query.filter_by(candidate_id=candidate.id).update({"org_id": g.org_id})
+    db.session.commit()
+    record_event(
+        "resume.uploaded",
+        entity_id=candidate.id,
+        entity_type="candidate",
+        demand_id=target_demand_id,
+    )
+    try:
+        auto_joined = _add_to_target_pipeline(candidate, target_demand_id)
+    except PipelineServiceError as error:
+        results.append({
+            "file": display_name,
+            "status": "ok",
+            "candidate_id": candidate.id,
+            "target_demand_id": target_demand_id,
+            "target_job_id": target_job_id,
+            "pipeline_joined": False,
+            "pipeline_error": error.message,
+            "pipeline_error_code": error.code,
+        })
+        return
+    result = {"file": display_name, "status": "ok", "candidate_id": candidate.id}
+    if auto_joined:
+        result.update({
+            "target_demand_id": target_demand_id,
+            "target_job_id": target_job_id,
+            "pipeline_stage": "pending",
+        })
+    results.append(result)
 
 
 def _process_zip(
@@ -570,7 +571,7 @@ def upload():
         return jsonify({"error": "No files provided"}), 400
 
     from flask import current_app
-    folder = current_app.config.get("UPLOAD_FOLDER") or "/tmp/zhipin_uploads"
+    folder = current_app.config.get("UPLOAD_FOLDER") or str(DEFAULT_UPLOAD_FOLDER)
     Path(folder).mkdir(parents=True, exist_ok=True)
 
     from ..models import UploadBatch
@@ -714,11 +715,14 @@ def rollback_upload_batch(batch_id):
         raw_path = candidate.raw_file_path
         if raw_path:
             try:
-                path = Path(raw_path)
+                path = resolve_stored_upload_path(
+                    raw_path,
+                    current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER,
+                )
                 if path.is_file():
                     path.unlink()
                     removed_files += 1
-            except OSError:
+            except (OSError, RuntimePathError):
                 pass
 
         candidate.name_masked = "已撤回导入候选人"

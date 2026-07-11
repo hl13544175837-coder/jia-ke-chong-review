@@ -392,12 +392,27 @@ def test_interview_assignment_can_be_created_and_listed(client, make_user, app):
 
 def test_feedback_persists_structured_evaluation_and_journey_decision_summary(client, make_user, app):
     uid, token = make_user("eval@x.com", role="recruiter")
+    interviewer_id, interviewer_token = make_user(
+        "eval-interviewer@x.com", role="interviewer"
+    )
     jid, cid = _seed_job_candidate(app, owner_id=uid)
+    assignment = client.post(
+        "/api/interview/assignments",
+        headers=_auth(token),
+        json={
+            "candidate_id": cid,
+            "job_id": jid,
+            "round": "interview_first",
+            "interviewer_id": interviewer_id,
+        },
+    )
+    assert assignment.status_code == 201
 
     response = client.post(
         "/api/interview/feedback",
-        headers=_auth(token),
+        headers=_auth(interviewer_token),
         json={
+            "assignment_id": assignment.get_json()["id"],
             "candidate_id": cid,
             "job_id": jid,
             "round": "interview_first",
@@ -472,13 +487,58 @@ def test_assignment_payload_flags_overdue_and_feedback_status(client, make_user,
     assert item_after["is_overdue"] is False
 
 
+def test_cancelled_assignment_is_never_reported_as_overdue(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "cancelled-hr@x.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "cancelled-iv@x.com", role="interviewer"
+    )
+    job_id, candidate_id = _seed_job_candidate(app, owner_id=owner_id)
+    past = (
+        datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
+    ).isoformat(timespec="seconds")
+
+    response = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": candidate_id,
+            "job_id": job_id,
+            "round": "round_1",
+            "interviewer_id": interviewer_id,
+            "scheduled_at": past,
+        },
+    )
+
+    assert response.status_code == 201
+    cancelled = client.patch(
+        f"/api/interview/assignments/{response.get_json()['id']}/cancel",
+        headers=_auth(owner_token),
+        json={"reason": "面试取消"},
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.get_json()["is_overdue"] is False
+
+
 def test_interview_guide_returns_role_specific_prompts(client, make_user, app):
     uid, token = make_user("guide@x.com", role="recruiter")
     with app.app_context():
         from app import db
-        from app.models import Candidate, CandidateTag, Job
+        from app.models import Candidate, CandidateTag, Job, RecruitmentDemand
 
         job = Job(title="AI 产品经理", jd_text="负责 AI 产品规划，需要用户研究和数据分析", owner_hr_id=uid)
+        db.session.add(job)
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=uid,
+            created_by=uid,
+            request_no="REQ-GUIDE",
+            status="active",
+        )
         candidate = Candidate(
             owner_hr_id=uid,
             name_masked="候选人C",
@@ -489,7 +549,7 @@ def test_interview_guide_returns_role_specific_prompts(client, make_user, app):
                 }
             },
         )
-        db.session.add_all([job, candidate])
+        db.session.add_all([demand, candidate])
         db.session.flush()
         db.session.add(CandidateTag(candidate_id=candidate.id, tag="用户研究", score=5))
         db.session.commit()
@@ -583,7 +643,8 @@ def test_interviewer_scope_is_based_on_real_assignments(client, make_user, app):
             "passed": True,
         },
     )
-    assert blocked_feedback.status_code == 403
+    assert blocked_feedback.status_code == 404
+    assert blocked_feedback.get_json()["code"] == "assignment_not_found"
 
     own_feedback = client.post(
         "/api/interview/feedback",

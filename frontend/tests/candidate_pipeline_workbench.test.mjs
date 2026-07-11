@@ -62,6 +62,12 @@ assert.match(
 );
 
 assert.match(
+  candidateList,
+  /showAll[\s\S]*stageLabel\(candidate\.stage\)/,
+  'All-stage candidate rows should show each candidate current stage',
+);
+
+assert.match(
   candidatePanel,
   /AI 建议/,
   'Candidate detail panel should expose lightweight AI guidance',

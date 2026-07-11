@@ -16,8 +16,16 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import sys
 
 from sqlalchemy import MetaData, create_engine, select
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from database_urls import normalize_database_url
 
 
 SCHEMA_VERSION = 1
@@ -131,7 +139,7 @@ def _load_rows(connection, table):
 
 
 def audit_database(database_url):
-    engine = create_engine(database_url)
+    engine = create_engine(normalize_database_url(database_url))
     metadata = MetaData()
     metadata.reflect(bind=engine)
     required = {"candidates", "jobs", "recruitment_demands"}

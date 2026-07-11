@@ -5,8 +5,16 @@ import argparse
 from datetime import date, datetime
 import json
 from pathlib import Path
+import sys
 
 from sqlalchemy import MetaData, and_, create_engine, func, select
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from database_urls import normalize_database_url
 
 try:
     from scripts.audit_demand_scope import FACT_SPECS, fact_context
@@ -70,7 +78,7 @@ def _current_revision(connection, metadata):
 
 
 def verify_database(database_url):
-    engine = create_engine(database_url)
+    engine = create_engine(normalize_database_url(database_url))
     metadata = MetaData()
     metadata.reflect(bind=engine)
     schema_errors = []
@@ -80,6 +88,7 @@ def verify_database(database_url):
     flow_mismatches = []
     active_flow_conflicts = []
     pointer_mismatches = []
+    assignment_slot_conflicts = []
 
     with engine.connect() as connection:
         current_revision = _current_revision(connection, metadata)
@@ -121,6 +130,38 @@ def verify_database(database_url):
                     )
         if "candidate_demand_flows" not in metadata.tables:
             schema_errors.append("missing_table:candidate_demand_flows")
+
+        assignment_table = metadata.tables.get("interview_assignments")
+        assignment_slot_columns = {
+            "id",
+            "demand_id",
+            "round_sequence",
+            "is_primary",
+            "status",
+            "primary_slot",
+        }
+        if assignment_table is not None and assignment_slot_columns.issubset(
+            assignment_table.c.keys()
+        ):
+            for row in connection.execute(
+                select(*(assignment_table.c[name] for name in assignment_slot_columns))
+            ).mappings():
+                status = str(row["status"] or "scheduled").strip().lower()
+                active_primary = (
+                    row["demand_id"] is not None
+                    and bool(row["is_primary"])
+                    and status not in {"cancelled", "canceled"}
+                )
+                expected_slot = row["round_sequence"] if active_primary else None
+                if row["primary_slot"] != expected_slot:
+                    assignment_slot_conflicts.append({
+                        "assignment_id": row["id"],
+                        "status": row["status"],
+                        "is_primary": bool(row["is_primary"]),
+                        "round_sequence": row["round_sequence"],
+                        "primary_slot": row["primary_slot"],
+                        "expected_primary_slot": expected_slot,
+                    })
 
         demand_table = metadata.tables.get("recruitment_demands")
         candidate_table = metadata.tables.get("candidates")
@@ -291,6 +332,7 @@ def verify_database(database_url):
         and not flow_mismatches
         and not active_flow_conflicts
         and not pointer_mismatches
+        and not assignment_slot_conflicts
     )
     return {
         "ok": ok,
@@ -304,6 +346,7 @@ def verify_database(database_url):
         "flow_mismatches": flow_mismatches,
         "active_flow_conflicts": active_flow_conflicts,
         "pointer_mismatches": pointer_mismatches,
+        "assignment_slot_conflicts": assignment_slot_conflicts,
     }
 
 

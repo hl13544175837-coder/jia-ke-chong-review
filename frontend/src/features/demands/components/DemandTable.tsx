@@ -74,7 +74,7 @@ export function DemandTable({ response, onPageChange }: {
                 </td>
                 <td className="px-2 py-2">
                   <div className="flex flex-wrap gap-1">
-                    <StageMetric demand={demand} stage="all" label="已推" value={demand.metrics.recommended_count} />
+                    <StageMetric demand={demand} stage="all" label="全部" value={demand.metrics.recommended_count} />
                     <StageMetric demand={demand} stage="business_review" label="待反馈" value={demand.metrics.business_review_count} />
                     <StageMetric demand={demand} stage="interview" label="面试" value={demand.metrics.interview_count} />
                     <StageMetric demand={demand} stage="offer" label="Offer" value={demand.metrics.offer_count} />

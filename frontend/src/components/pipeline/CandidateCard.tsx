@@ -9,7 +9,6 @@ import { STAGES, STAGE_BY_KEY } from '../../lib/pipelineStages';
 import { formatDate } from '../../lib/formatDate';
 import { cn } from '../../lib/cn';
 import { Spinner } from '../ui';
-import { FeedbackForm } from '../interview/FeedbackForm';
 import { OfferDrawer } from './OfferDrawer';
 import { RejectionDispositionForm } from './RejectionDispositionForm';
 import { NEXT_STAGE, isInterviewStage } from '../../lib/pipelineInsights';
@@ -51,7 +50,6 @@ export function CandidateCard({
   onMove,
 }: CandidateCardProps) {
   const [picking, setPicking] = useState(false);
-  const [showFeedback, setShowFeedback] = useState(false);
   const [showDisposition, setShowDisposition] = useState(false);
   const [showOffer, setShowOffer] = useState(false);
   const atInterview = isInterviewStage(candidate.stage);
@@ -131,22 +129,12 @@ export function CandidateCard({
 
         {/* 录入评分：仅在面试阶段展示 */}
         {atInterview && (
-          <>
-            <Link
-              to={`/interviews?job=${jobId}&candidate=${candidate.candidate_id}`}
-              className="rounded-md px-2 py-1 text-[11px] font-medium text-ink hover:bg-surface-soft"
-            >
-              填写面试反馈
-            </Link>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setShowFeedback((v) => !v)}
-              className="rounded-md px-2 py-1 text-[11px] font-medium text-muted hover:bg-surface-soft disabled:opacity-50"
-            >
-              {showFeedback ? '收起' : '录入评分'}
-            </button>
-          </>
+          <Link
+            to={`/interviews?job=${jobId}&candidate=${candidate.candidate_id}`}
+            className="rounded-md px-2 py-1 text-[11px] font-medium text-ink hover:bg-surface-soft"
+          >
+            填写面试反馈
+          </Link>
         )}
 
         {/* 更多：跳到任意阶段 */}
@@ -198,18 +186,6 @@ export function CandidateCard({
             setShowDisposition(false);
           }}
         />
-      )}
-
-      {/* 内联评分表单 */}
-      {atInterview && showFeedback && (
-        <div className="mt-2">
-            <FeedbackForm
-              candidateId={candidate.candidate_id}
-              jobId={jobId}
-              onMove={(toStage, note) => onMove(candidate.candidate_id, toStage, note)}
-              onSubmitted={() => setShowFeedback(false)}
-            />
-        </div>
       )}
 
       {candidate.stage === 'offer' && showOffer && (

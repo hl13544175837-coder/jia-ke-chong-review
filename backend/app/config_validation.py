@@ -16,38 +16,59 @@ def validate_cors_origins(origins) -> list[str]:
 
     normalized = []
     invalid = []
-    for candidate in candidates:
+    for index, candidate in enumerate(candidates, start=1):
         origin = str(candidate or "").strip()
         if not origin:
             continue
+        reasons = []
+        parsed = None
+        port = None
         try:
             parsed = urlsplit(origin)
             # Accessing ``port`` also validates malformed/non-numeric ports.
-            _ = parsed.port
-            valid = (
-                origin.lower() != "null"
-                and origin != "*"
-                and parsed.scheme.lower() in {"http", "https"}
-                and bool(parsed.hostname)
-                and parsed.username is None
-                and parsed.password is None
-                and not parsed.path
-                and not parsed.query
-                and not parsed.fragment
-                and not any(character.isspace() for character in origin)
-                and origin == f"{parsed.scheme}://{parsed.netloc}"
-            )
+            port = parsed.port
         except ValueError:
-            valid = False
+            reasons.append("malformed URL or port")
+
+        if origin.lower() == "null" or origin == "*":
+            reasons.append("wildcard/null origin is forbidden")
+        if parsed is not None:
+            if parsed.scheme.lower() not in {"http", "https"}:
+                reasons.append("scheme must be http or https")
+            if not parsed.hostname:
+                reasons.append("host is missing")
+            if parsed.username is not None or parsed.password is not None:
+                reasons.append("userinfo credentials are forbidden")
+            if parsed.path:
+                reasons.append("path is forbidden")
+            if parsed.query:
+                reasons.append("query is forbidden")
+            if parsed.fragment:
+                reasons.append("fragment is forbidden")
+            if any(character.isspace() for character in origin):
+                reasons.append("whitespace is forbidden")
+            if not reasons and origin != f"{parsed.scheme}://{parsed.netloc}":
+                reasons.append("origin is not canonical")
+
+        valid = not reasons
         if valid:
             normalized.append(origin)
         else:
-            invalid.append(origin or "<empty>")
+            scheme = (parsed.scheme.lower() if parsed is not None else "") or "<missing-scheme>"
+            try:
+                host = parsed.hostname if parsed is not None else None
+            except ValueError:
+                host = None
+            host = host or "<missing-host>"
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
+            authority = host + (f":{port}" if port is not None else "")
+            invalid.append(f"#{index} {scheme}://{authority} ({'; '.join(reasons)})")
 
     if invalid:
         raise ValueError(
             "CORS_ORIGINS 仅允许无路径、query、fragment 和用户凭据的 http(s) origin；"
-            "非法项：" + ", ".join(invalid)
+            "非法项（已脱敏）：" + ", ".join(invalid)
         )
     return normalized
 

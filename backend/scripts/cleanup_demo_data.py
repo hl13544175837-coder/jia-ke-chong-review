@@ -8,6 +8,7 @@ the demo candidates selected in that same plan.
 """
 
 import argparse
+import json
 import os
 import sys
 from contextlib import contextmanager
@@ -20,9 +21,19 @@ from sqlalchemy.exc import SQLAlchemyError
 
 
 ROOT = Path(__file__).resolve().parents[2]
+BACKEND_DIR = ROOT / "backend"
 SCRIPTS = Path(__file__).resolve().parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
+
+from runtime_paths import (
+    RuntimePathError,
+    requires_persistent_uploads,
+    resolve_upload_folder,
+)
+from database_urls import normalize_database_url
 
 try:
     from scripts import backup_pilot_data
@@ -52,7 +63,7 @@ def _safe_transaction(engine, database_label):
 def _database_url():
     url = os.environ.get("DATABASE_URL")
     if url:
-        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+        return normalize_database_url(url)
     return "sqlite:///" + str(ROOT / "backend" / "hireinsight.db")
 
 
@@ -101,6 +112,211 @@ def _and(*conditions):
     return and_(*conditions)
 
 
+def _classify_business_rows(
+    connection,
+    table,
+    reference_scopes,
+    demo_user_ids,
+    actor_columns=(),
+):
+    """Split demo-context rows from mixed/actor-only real business rows.
+
+    A row is removable only when it references at least one demo-owned business
+    entity and every populated business reference is demo-owned.  A demo actor
+    does not make an otherwise real row demo data.  That distinction is what
+    keeps cleanup from deleting real history merely because a demo account
+    created, updated, or interviewed it.
+    """
+    if table is None or "id" not in table.c:
+        return set(), set()
+    references = [
+        (column, set(scope_ids))
+        for column, scope_ids in reference_scopes
+        if column in table.c
+    ]
+    actors = [column for column in actor_columns if column in table.c]
+    candidate_conditions = []
+    for column, scope_ids in references:
+        condition = _in(table, column, scope_ids)
+        if condition is not None:
+            candidate_conditions.append(condition)
+    for column in actors:
+        condition = _in(table, column, demo_user_ids)
+        if condition is not None:
+            candidate_conditions.append(condition)
+    if not candidate_conditions:
+        return set(), set()
+
+    selected_columns = [table.c.id]
+    selected_columns.extend(table.c[column] for column, _scope in references)
+    selected_columns.extend(table.c[column] for column in actors)
+    rows = connection.execute(
+        select(*selected_columns).where(or_(*candidate_conditions)).with_for_update()
+    ).mappings()
+    removable = set()
+    blockers = set()
+    for row in rows:
+        populated_refs = [
+            (row[column], scope_ids)
+            for column, scope_ids in references
+            if row[column] is not None
+        ]
+        has_demo_reference = any(value in scope for value, scope in populated_refs)
+        has_real_reference = any(value not in scope for value, scope in populated_refs)
+        has_demo_actor = any(row[column] in demo_user_ids for column in actors)
+        if has_demo_reference and not has_real_reference:
+            removable.add(row["id"])
+        elif has_demo_reference or has_demo_actor:
+            blockers.add(row["id"])
+    return removable, blockers
+
+
+def _classify_target_rows(
+    connection,
+    table,
+    demo_user_ids,
+    target_type_column,
+    target_id_column,
+    target_scopes,
+    *,
+    actor_column="actor_id",
+    demand_column=None,
+    demo_demand_ids=(),
+    payload_column=None,
+):
+    """Classify audit/event rows while allowing targetless demo-user activity."""
+    if table is None or "id" not in table.c:
+        return set(), set()
+    has_actor = actor_column in table.c
+    has_target = target_type_column in table.c and target_id_column in table.c
+    has_demand = bool(demand_column and demand_column in table.c)
+    has_payload = bool(payload_column and payload_column in table.c)
+    candidate_conditions = []
+    if has_actor:
+        actor_condition = _in(table, actor_column, demo_user_ids)
+        if actor_condition is not None:
+            candidate_conditions.append(actor_condition)
+    if has_demand:
+        demand_condition = _in(table, demand_column, demo_demand_ids)
+        if demand_condition is not None:
+            candidate_conditions.append(demand_condition)
+    if has_target:
+        for target_type, scope_ids in target_scopes.items():
+            target_condition = _and(
+                _eq(table, target_type_column, target_type),
+                _in(table, target_id_column, scope_ids),
+            )
+            if target_condition is not None:
+                candidate_conditions.append(target_condition)
+        if has_payload:
+            candidate_conditions.append(
+                table.c[target_type_column] == "agent_tool"
+            )
+    if not candidate_conditions:
+        return set(), set()
+
+    columns = [table.c.id]
+    selected_names = {"id"}
+    for column in (
+        actor_column,
+        demand_column,
+        target_type_column,
+        target_id_column,
+        payload_column,
+    ):
+        if column and column in table.c and column not in selected_names:
+            columns.append(table.c[column])
+            selected_names.add(column)
+    rows = connection.execute(
+        select(*columns).where(or_(*candidate_conditions)).with_for_update()
+    ).mappings()
+    removable = set()
+    blockers = set()
+    demo_demands = set(demo_demand_ids)
+    for row in rows:
+        actor_demo = has_actor and row[actor_column] in demo_user_ids
+        targets = []
+        if has_demand and row[demand_column] is not None:
+            targets.append(row[demand_column] in demo_demands)
+        is_agent_tool = (
+            has_target
+            and has_payload
+            and row[target_type_column] == "agent_tool"
+        )
+        if is_agent_tool:
+            payload = row[payload_column]
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except json.JSONDecodeError:
+                    payload = None
+            target_ids = payload.get("target_ids") if isinstance(payload, dict) else None
+            target_key_scopes = {
+                "candidate_id": "candidate",
+                "demand_id": "demand",
+                "job_id": "job",
+                "interview_id": "interview",
+                "feedback_id": "interview_feedback",
+                "user_id": "user",
+                "owner_id": "user",
+            }
+            recognized_target = False
+            normalized_target_values = []
+            if isinstance(target_ids, dict):
+                for key, value in target_ids.items():
+                    if value is None or key == "org_id":
+                        continue
+                    scope_name = target_key_scopes.get(key)
+                    scope = target_scopes.get(scope_name) if scope_name else None
+                    try:
+                        normalized_value = int(value)
+                    except (TypeError, ValueError):
+                        normalized_value = value
+                    normalized_target_values.append(normalized_value)
+                    try:
+                        target_is_demo = scope is not None and normalized_value in scope
+                    except TypeError:
+                        target_is_demo = False
+                    targets.append(target_is_demo)
+                    recognized_target = True
+            if row[target_id_column] is not None:
+                try:
+                    normalized_entity_id = int(row[target_id_column])
+                except (TypeError, ValueError):
+                    normalized_entity_id = row[target_id_column]
+                if (
+                    not recognized_target
+                    or normalized_entity_id not in normalized_target_values
+                ):
+                    # A typed payload that disagrees with entity_id is corrupt
+                    # mixed context, not permission to guess which one wins.
+                    targets.append(False)
+        elif has_target and row[target_id_column] is not None:
+            scope = target_scopes.get(row[target_type_column])
+            targets.append(scope is not None and row[target_id_column] in scope)
+        has_demo_target = any(targets)
+        has_real_target = any(not target for target in targets)
+        if has_demo_target and not has_real_target:
+            removable.add(row["id"])
+        elif actor_demo and not targets:
+            removable.add(row["id"])
+        elif has_demo_target or actor_demo:
+            blockers.add(row["id"])
+    return removable, blockers
+
+
+def _raise_mixed_scope(blockers, *, flow=False):
+    blockers = {name: sorted(ids) for name, ids in blockers.items() if ids}
+    if not blockers:
+        return
+    details = "; ".join(f"{name}={ids}" for name, ids in sorted(blockers.items()))
+    flow_note = " selected demo flows or" if flow else ""
+    raise SystemExit(
+        "Demo cleanup is blocked by mixed demo/real ownership;"
+        f"{flow_note} actor-only business rows require manual reassignment: {details}"
+    )
+
+
 def _candidate_upload_paths(connection, candidates, candidate_ids):
     if candidates is None or "raw_file_path" not in candidates.c or not candidate_ids:
         return set(), set()
@@ -133,9 +349,16 @@ def _collect_plan(connection, tables, demo_domain):
         connection,
         demands,
         _in(demands, "owner_hr_id", demo_user_ids),
-        _in(demands, "created_by", demo_user_ids),
-        _in(demands, "job_id", demo_job_ids),
     )
+    mixed_demand_ids = _ids(
+        connection,
+        demands,
+        _in(demands, "created_by", demo_user_ids),
+        _in(demands, "closed_by", demo_user_ids),
+        _in(demands, "job_id", demo_job_ids),
+    ) - demo_demand_ids
+    _raise_mixed_scope({"recruitment_demands": mixed_demand_ids})
+
     demo_upload_batch_ids = _ids(
         connection,
         upload_batches,
@@ -145,14 +368,19 @@ def _collect_plan(connection, tables, demo_domain):
         connection,
         candidates,
         _in(candidates, "owner_hr_id", demo_user_ids),
-        _in(candidates, "upload_batch_id", demo_upload_batch_ids),
     )
     candidates_linked_to_demo_demands = _ids(
         connection,
         candidates,
         _in(candidates, "current_demand_id", demo_demand_ids),
+        _in(candidates, "upload_batch_id", demo_upload_batch_ids),
     )
     surviving_candidate_blockers = candidates_linked_to_demo_demands - demo_candidate_ids
+    candidate_actor_blockers = _ids(
+        connection,
+        candidates,
+        _in(candidates, "deleted_by", demo_user_ids),
+    ) - demo_candidate_ids
     batches_linked_to_demo_context = _ids(
         connection,
         upload_batches,
@@ -174,164 +402,246 @@ def _collect_plan(connection, tables, demo_domain):
             "Demo cleanup is blocked because real-owned rows still reference demo context: "
             + "; ".join(blockers)
         )
-    demo_flow_ids = _ids(
+    _raise_mixed_scope({"candidates": candidate_actor_blockers})
+
+    demo_flow_ids, flow_blockers = _classify_business_rows(
         connection,
         flows,
-        _in(flows, "candidate_id", demo_candidate_ids),
-        _in(flows, "demand_id", demo_demand_ids),
-        _in(flows, "owner_hr_id", demo_user_ids),
-        _in(flows, "transfer_from_demand_id", demo_demand_ids),
+        (
+            ("candidate_id", demo_candidate_ids),
+            ("demand_id", demo_demand_ids),
+            ("transfer_from_demand_id", demo_demand_ids),
+        ),
+        demo_user_ids,
+        actor_columns=("owner_hr_id",),
     )
-    if (
-        demo_flow_ids
-        and flows is not None
-        and candidates is not None
-        and "candidate_id" in flows.c
-        and "demand_id" in flows.c
-        and "current_demand_id" in candidates.c
-    ):
-        selected_flow_rows = connection.execute(
-            select(flows.c.candidate_id, flows.c.demand_id)
-            .where(flows.c.id.in_(tuple(demo_flow_ids)))
-            .with_for_update()
-        ).fetchall()
-        surviving_flow_candidate_ids = {
-            row[0] for row in selected_flow_rows if row[0] not in demo_candidate_ids
-        }
-        if surviving_flow_candidate_ids:
-            current_demands = dict(
-                connection.execute(
-                    select(candidates.c.id, candidates.c.current_demand_id)
-                    .where(candidates.c.id.in_(tuple(surviving_flow_candidate_ids)))
-                    .with_for_update()
-                ).fetchall()
-            )
-            flow_blockers = sorted(
-                candidate_id
-                for candidate_id, demand_id in selected_flow_rows
-                if candidate_id in surviving_flow_candidate_ids
-                and current_demands.get(candidate_id) == demand_id
-            )
-            if flow_blockers:
-                raise SystemExit(
-                    "Demo cleanup is blocked because selected demo flows are current for surviving "
-                    f"candidates: {flow_blockers}"
-                )
-    demo_assignment_ids = _ids(
-        connection,
-        assignments,
-        _in(assignments, "candidate_id", demo_candidate_ids),
-        _in(assignments, "job_id", demo_job_ids),
-        _in(assignments, "demand_id", demo_demand_ids),
-        _in(assignments, "interviewer_id", demo_user_ids),
-        _in(assignments, "created_by", demo_user_ids),
-    )
+    _raise_mixed_scope({"candidate_demand_flows": flow_blockers}, flow=True)
+
     demo_talent_map_ids = _ids(
         connection,
         talent_maps,
         _in(talent_maps, "owner_hr_id", demo_user_ids),
-        _in(talent_maps, "job_id", demo_job_ids),
     )
+    mixed_talent_map_ids = _ids(
+        connection,
+        talent_maps,
+        _in(talent_maps, "job_id", demo_job_ids),
+    ) - demo_talent_map_ids
     demo_talent_company_ids = _ids(
         connection,
         talent_map_companies,
         _in(talent_map_companies, "map_id", demo_talent_map_ids),
+    )
+    demo_talent_person_ids, mixed_talent_person_ids = _classify_business_rows(
+        connection,
+        tables.get("talent_map_people"),
+        (
+            ("map_id", demo_talent_map_ids),
+            ("company_id", demo_talent_company_ids),
+        ),
+        demo_user_ids,
     )
     demo_conversation_ids = _ids(
         connection,
         conversations,
         _in(conversations, "user_id", demo_user_ids),
     )
+    demo_idempotency_record_ids = _ids(
+        connection,
+        tables.get("idempotency_records"),
+        _in(
+            tables.get("idempotency_records"),
+            "actor_scope",
+            {f"user:{user_id}" for user_id in demo_user_ids},
+        ),
+    )
+    demo_boss_account_ids = _ids(
+        connection,
+        tables.get("boss_accounts"),
+        _in(tables.get("boss_accounts"), "owner_hr_id", demo_user_ids),
+    )
+
+    business_blockers = {
+        "talent_maps": mixed_talent_map_ids,
+        "talent_map_people": mixed_talent_person_ids,
+    }
+
+    def classify(table_name, references, actor_columns=()):
+        selected, blockers = _classify_business_rows(
+            connection,
+            tables.get(table_name),
+            references,
+            demo_user_ids,
+            actor_columns=actor_columns,
+        )
+        business_blockers[table_name] = blockers
+        return selected
+
+    demo_assignment_ids = classify(
+        "interview_assignments",
+        (
+            ("candidate_id", demo_candidate_ids),
+            ("job_id", demo_job_ids),
+            ("demand_id", demo_demand_ids),
+        ),
+        actor_columns=("interviewer_id", "created_by"),
+    )
+    demo_feedback_ids = classify(
+        "interview_feedback",
+        (
+            ("assignment_id", demo_assignment_ids),
+            ("candidate_id", demo_candidate_ids),
+            ("job_id", demo_job_ids),
+            ("demand_id", demo_demand_ids),
+        ),
+        actor_columns=("interviewer_id",),
+    )
+    demo_offer_ids = classify(
+        "offer_records",
+        (
+            ("candidate_id", demo_candidate_ids),
+            ("job_id", demo_job_ids),
+            ("demand_id", demo_demand_ids),
+        ),
+        actor_columns=("created_by",),
+    )
+    demo_disposition_ids = classify(
+        "candidate_dispositions",
+        (
+            ("candidate_id", demo_candidate_ids),
+            ("job_id", demo_job_ids),
+            ("demand_id", demo_demand_ids),
+        ),
+        actor_columns=("created_by",),
+    )
+    demo_pipeline_stage_ids = classify(
+        "pipeline_stages",
+        (
+            ("candidate_id", demo_candidate_ids),
+            ("job_id", demo_job_ids),
+            ("demand_id", demo_demand_ids),
+        ),
+        actor_columns=("updated_by",),
+    )
+    demo_interview_ids = classify(
+        "interviews",
+        (
+            ("candidate_id", demo_candidate_ids),
+            ("job_id", demo_job_ids),
+            ("demand_id", demo_demand_ids),
+        ),
+    )
+    demo_match_ids = classify(
+        "matches",
+        (
+            ("candidate_id", demo_candidate_ids),
+            ("job_id", demo_job_ids),
+        ),
+    )
+
+    event_target_scopes = {
+        "user": demo_user_ids,
+        "candidate": demo_candidate_ids,
+        "job": demo_job_ids,
+        "demand": demo_demand_ids,
+        "recruitment_demand": demo_demand_ids,
+        "upload_batch": demo_upload_batch_ids,
+        "interview_assignment": demo_assignment_ids,
+        "interview_feedback": demo_feedback_ids,
+        "offer_record": demo_offer_ids,
+        "candidate_disposition": demo_disposition_ids,
+        "pipeline_stage": demo_pipeline_stage_ids,
+        "interview": demo_interview_ids,
+        "match": demo_match_ids,
+        "talent_map": demo_talent_map_ids,
+        "talent_map_company": demo_talent_company_ids,
+        "talent_map_person": demo_talent_person_ids,
+        "conversation": demo_conversation_ids,
+        "boss_account": demo_boss_account_ids,
+    }
+    demo_event_ids, event_blockers = _classify_target_rows(
+        connection,
+        tables.get("events"),
+        demo_user_ids,
+        "entity_type",
+        "entity_id",
+        event_target_scopes,
+        demand_column="demand_id",
+        demo_demand_ids=demo_demand_ids,
+        payload_column="payload",
+    )
+    business_blockers["events"] = event_blockers
+
+    audit_target_scopes = {
+        "users": demo_user_ids,
+        "candidates": demo_candidate_ids,
+        "jobs": demo_job_ids,
+        "recruitment_demands": demo_demand_ids,
+        "upload_batches": demo_upload_batch_ids,
+        "interview_assignments": demo_assignment_ids,
+        "interview_feedback": demo_feedback_ids,
+        "offer_records": demo_offer_ids,
+        "candidate_dispositions": demo_disposition_ids,
+        "pipeline_stages": demo_pipeline_stage_ids,
+        "interviews": demo_interview_ids,
+        "matches": demo_match_ids,
+        "talent_maps": demo_talent_map_ids,
+        "talent_map_companies": demo_talent_company_ids,
+        "talent_map_people": demo_talent_person_ids,
+        "conversations": demo_conversation_ids,
+        "boss_accounts": demo_boss_account_ids,
+    }
+    demo_audit_log_ids, audit_blockers = _classify_target_rows(
+        connection,
+        tables.get("audit_logs"),
+        demo_user_ids,
+        "target_table",
+        "target_id",
+        audit_target_scopes,
+    )
+    business_blockers["audit_logs"] = audit_blockers
+    _raise_mixed_scope(business_blockers)
 
     conditions = {
+        "idempotency_records": _in(
+            tables.get("idempotency_records"),
+            "id",
+            demo_idempotency_record_ids,
+        ),
         "conversation_messages": _in(
             tables.get("conversation_messages"), "conversation_id", demo_conversation_ids
         ),
         "conversations": _in(conversations, "id", demo_conversation_ids),
-        "interview_feedback": _or(
-            _in(tables.get("interview_feedback"), "assignment_id", demo_assignment_ids),
-            _in(tables.get("interview_feedback"), "candidate_id", demo_candidate_ids),
-            _in(tables.get("interview_feedback"), "job_id", demo_job_ids),
-            _in(tables.get("interview_feedback"), "demand_id", demo_demand_ids),
-            _in(tables.get("interview_feedback"), "interviewer_id", demo_user_ids),
+        "interview_feedback": _in(
+            tables.get("interview_feedback"), "id", demo_feedback_ids
         ),
         "interview_assignments": _in(assignments, "id", demo_assignment_ids),
-        "offer_records": _or(
-            _in(tables.get("offer_records"), "candidate_id", demo_candidate_ids),
-            _in(tables.get("offer_records"), "job_id", demo_job_ids),
-            _in(tables.get("offer_records"), "demand_id", demo_demand_ids),
-            _in(tables.get("offer_records"), "created_by", demo_user_ids),
+        "offer_records": _in(tables.get("offer_records"), "id", demo_offer_ids),
+        "candidate_dispositions": _in(
+            tables.get("candidate_dispositions"), "id", demo_disposition_ids
         ),
-        "candidate_dispositions": _or(
-            _in(tables.get("candidate_dispositions"), "candidate_id", demo_candidate_ids),
-            _in(tables.get("candidate_dispositions"), "job_id", demo_job_ids),
-            _in(tables.get("candidate_dispositions"), "demand_id", demo_demand_ids),
-            _in(tables.get("candidate_dispositions"), "created_by", demo_user_ids),
+        "pipeline_stages": _in(
+            tables.get("pipeline_stages"), "id", demo_pipeline_stage_ids
         ),
-        "pipeline_stages": _or(
-            _in(tables.get("pipeline_stages"), "candidate_id", demo_candidate_ids),
-            _in(tables.get("pipeline_stages"), "job_id", demo_job_ids),
-            _in(tables.get("pipeline_stages"), "demand_id", demo_demand_ids),
-            _in(tables.get("pipeline_stages"), "updated_by", demo_user_ids),
-        ),
-        "interviews": _or(
-            _in(tables.get("interviews"), "candidate_id", demo_candidate_ids),
-            _in(tables.get("interviews"), "job_id", demo_job_ids),
-            _in(tables.get("interviews"), "demand_id", demo_demand_ids),
-        ),
-        "matches": _or(
-            _in(tables.get("matches"), "candidate_id", demo_candidate_ids),
-            _in(tables.get("matches"), "job_id", demo_job_ids),
-        ),
+        "interviews": _in(tables.get("interviews"), "id", demo_interview_ids),
+        "matches": _in(tables.get("matches"), "id", demo_match_ids),
         "candidate_tags": _in(tables.get("candidate_tags"), "candidate_id", demo_candidate_ids),
         "notifications": _or(
             _in(tables.get("notifications"), "user_id", demo_user_ids),
             _in(tables.get("notifications"), "demand_id", demo_demand_ids),
         ),
-        "events": _or(
-            _in(tables.get("events"), "actor_id", demo_user_ids),
-            _in(tables.get("events"), "demand_id", demo_demand_ids),
-            _and(
-                _eq(tables.get("events"), "entity_type", "candidate"),
-                _in(tables.get("events"), "entity_id", demo_candidate_ids),
-            ),
-            _and(
-                _eq(tables.get("events"), "entity_type", "job"),
-                _in(tables.get("events"), "entity_id", demo_job_ids),
-            ),
-            _and(
-                _eq(tables.get("events"), "entity_type", "demand"),
-                _in(tables.get("events"), "entity_id", demo_demand_ids),
-            ),
-            _and(
-                _eq(tables.get("events"), "entity_type", "recruitment_demand"),
-                _in(tables.get("events"), "entity_id", demo_demand_ids),
-            ),
-        ),
-        "audit_logs": _or(
-            _in(tables.get("audit_logs"), "actor_id", demo_user_ids),
-            _and(
-                _eq(tables.get("audit_logs"), "target_table", "candidates"),
-                _in(tables.get("audit_logs"), "target_id", demo_candidate_ids),
-            ),
-            _and(
-                _eq(tables.get("audit_logs"), "target_table", "jobs"),
-                _in(tables.get("audit_logs"), "target_id", demo_job_ids),
-            ),
-            _and(
-                _eq(tables.get("audit_logs"), "target_table", "recruitment_demands"),
-                _in(tables.get("audit_logs"), "target_id", demo_demand_ids),
-            ),
-        ),
-        "talent_map_people": _or(
-            _in(tables.get("talent_map_people"), "map_id", demo_talent_map_ids),
-            _in(tables.get("talent_map_people"), "company_id", demo_talent_company_ids),
+        "events": _in(tables.get("events"), "id", demo_event_ids),
+        "audit_logs": _in(tables.get("audit_logs"), "id", demo_audit_log_ids),
+        "talent_map_people": _in(
+            tables.get("talent_map_people"), "id", demo_talent_person_ids
         ),
         "talent_map_companies": _in(
             tables.get("talent_map_companies"), "map_id", demo_talent_map_ids
         ),
         "talent_maps": _in(talent_maps, "id", demo_talent_map_ids),
-        "boss_accounts": _in(tables.get("boss_accounts"), "owner_hr_id", demo_user_ids),
+        "boss_accounts": _in(
+            tables.get("boss_accounts"), "id", demo_boss_account_ids
+        ),
         "candidate_demand_flows": _in(flows, "id", demo_flow_ids),
         "recruitment_demands": _in(demands, "id", demo_demand_ids),
         "candidates": _in(candidates, "id", demo_candidate_ids),
@@ -341,6 +651,7 @@ def _collect_plan(connection, tables, demo_domain):
     }
 
     delete_order = (
+        "idempotency_records",
         "conversation_messages",
         "conversations",
         "interview_feedback",
@@ -381,11 +692,16 @@ def _collect_plan(connection, tables, demo_domain):
 
 
 def _configured_upload_folder(project_root):
-    configured = os.environ.get("UPLOAD_FOLDER")
-    path = Path(configured).expanduser() if configured else project_root / "backend" / "uploads"
-    if not path.is_absolute():
-        path = project_root / path
-    lexical = path.absolute()
+    try:
+        lexical = resolve_upload_folder(
+            os.environ.get("UPLOAD_FOLDER"),
+            project_root=project_root,
+            require_persistent=requires_persistent_uploads(
+                os.environ.get("FLASK_DEBUG")
+            ),
+        )
+    except RuntimePathError as exc:
+        raise SystemExit(str(exc)) from None
     if lexical.is_symlink():
         raise SystemExit(f"拒绝将符号链接作为 UPLOAD_FOLDER: {lexical}")
     resolved = lexical.resolve()
@@ -394,29 +710,82 @@ def _configured_upload_folder(project_root):
     return lexical
 
 
+def _upload_reference_candidates(raw_path, project_root, upload_folder):
+    """Resolve portable and legacy project-relative upload references safely."""
+
+    stored = Path(raw_path).expanduser()
+    lexicals = (
+        [stored]
+        if stored.is_absolute()
+        else [upload_folder / stored, project_root / stored]
+    )
+    entries = []
+    seen = set()
+    for lexical in lexicals:
+        resolved = lexical.resolve(strict=False)
+        if resolved != upload_folder and upload_folder not in resolved.parents:
+            continue
+        key = (lexical.absolute(), resolved)
+        if key not in seen:
+            entries.append((lexical, resolved, lexical.is_symlink()))
+            seen.add(key)
+
+    existing = []
+    identities = set()
+    for entry in entries:
+        try:
+            stat = entry[1].stat()
+        except OSError:
+            continue
+        identity = (stat.st_dev, stat.st_ino)
+        existing.append((entry, identity))
+        identities.add(identity)
+    if len(identities) > 1:
+        raise SystemExit(
+            f"拒绝歧义的候选人附件路径（同时命中多个文件）: {raw_path}"
+        )
+    if existing:
+        selected_identity = existing[0][1]
+        return tuple(entry for entry, identity in existing if identity == selected_identity)
+    return tuple(entries)
+
+
 def _resolve_demo_uploads(raw_paths, protected_raw_paths, project_root, upload_folder):
     selected = []
     upload_folder = upload_folder.resolve()
     protected = set()
+    protected_identities = set()
     for raw_path in protected_raw_paths:
-        stored = Path(raw_path).expanduser()
-        lexical = stored if stored.is_absolute() else project_root / stored
-        protected.add(lexical.resolve(strict=False))
+        for _lexical, resolved, _is_symlink in _upload_reference_candidates(
+            raw_path, project_root, upload_folder
+        ):
+            protected.add(resolved)
+            try:
+                stat = resolved.stat()
+            except OSError:
+                continue
+            protected_identities.add((stat.st_dev, stat.st_ino))
     for raw_path in raw_paths:
-        stored = Path(raw_path).expanduser()
-        lexical = stored if stored.is_absolute() else project_root / stored
-        if lexical.is_symlink():
-            print(f"skip unsafe demo upload symlink: {lexical}")
+        candidates = _upload_reference_candidates(
+            raw_path, project_root, upload_folder
+        )
+        if not candidates:
+            print(f"skip demo upload outside configured folder: {raw_path}")
             continue
-        resolved = lexical.resolve(strict=False)
-        if resolved != upload_folder and upload_folder not in resolved.parents:
-            print(f"skip demo upload outside configured folder: {resolved}")
-            continue
-        if resolved in protected:
-            print(f"preserve upload still referenced by non-demo candidate: {resolved}")
-            continue
-        if resolved.is_file() and not resolved.is_symlink():
-            selected.append(resolved)
+        for lexical, resolved, is_symlink in candidates:
+            if is_symlink:
+                print(f"skip unsafe demo upload symlink: {lexical}")
+                continue
+            try:
+                stat = resolved.stat()
+                identity = (stat.st_dev, stat.st_ino)
+            except OSError:
+                identity = None
+            if resolved in protected or identity in protected_identities:
+                print(f"preserve upload still referenced by non-demo candidate: {resolved}")
+                continue
+            if resolved.is_file() and not resolved.is_symlink():
+                selected.append(resolved)
     return tuple(sorted(set(selected)))
 
 

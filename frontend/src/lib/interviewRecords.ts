@@ -253,7 +253,7 @@ export function buildPendingFeedback(
 
 export function buildAssignedPendingFeedback(assignments: InterviewAssignment[]): PendingFeedbackItem[] {
   return assignments
-    .filter((item) => !item.feedback_submitted)
+    .filter((item) => isActiveInterviewAssignment(item) && !item.feedback_submitted)
     .map((item) => ({
       candidate_id: item.candidate_id,
       name_masked: item.name_masked ?? `候选人 #${item.candidate_id}`,
@@ -268,6 +268,11 @@ export function buildAssignedPendingFeedback(assignments: InterviewAssignment[])
       updated_by_name: item.created_by_name,
     }))
     .sort((a, b) => (a.updated_at ?? '').localeCompare(b.updated_at ?? ''));
+}
+
+export function isActiveInterviewAssignment(item: InterviewAssignment): boolean {
+  const status = (item.status || 'scheduled').trim().toLowerCase();
+  return !['cancelled', 'canceled'].includes(status);
 }
 
 export function mergePendingFeedback(

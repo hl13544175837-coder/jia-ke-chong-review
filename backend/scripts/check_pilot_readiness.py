@@ -15,6 +15,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.config_validation import validate_cors_origins
+from runtime_paths import RuntimePathError, resolve_upload_folder
 
 
 WEAK_SECRETS = {
@@ -93,6 +94,18 @@ def _valid_cors_origins(value: str | None) -> bool:
         return False
 
 
+def _valid_persistent_upload_folder(value: str | None, project_root: Path) -> bool:
+    try:
+        resolve_upload_folder(
+            value,
+            project_root=project_root,
+            require_persistent=True,
+        )
+    except RuntimePathError:
+        return False
+    return True
+
+
 def _gitignore_patterns(project_root: Path) -> list[str]:
     gitignore = project_root / ".gitignore"
     if not gitignore.exists():
@@ -148,6 +161,16 @@ def run_checks(values: dict[str, str], project_root: Path, env_file: Path) -> li
         CheckResult("RATE_LIMIT_AGENT_CHAT", _is_positive_int(values.get("RATE_LIMIT_AGENT_CHAT")), "必须显式配置正整数"),
         CheckResult("RATE_LIMIT_RESUME_UPLOAD", _is_positive_int(values.get("RATE_LIMIT_RESUME_UPLOAD")), "必须显式配置正整数"),
         CheckResult("BACKUP_DIR", bool(values.get("BACKUP_DIR", "").strip()), "必须配置服务器备份目录"),
+        CheckResult(
+            "UPLOAD_FOLDER",
+            _valid_persistent_upload_folder(values.get("UPLOAD_FOLDER"), project_root),
+            "必须显式配置非临时目录的绝对持久路径",
+        ),
+        CheckResult(
+            "LOCAL_SCHEMA_COMPAT",
+            _is_false(values.get("LOCAL_SCHEMA_COMPAT")),
+            "试点/生产必须显式为 false",
+        ),
         CheckResult("ALLOW_PUBLIC_REGISTRATION", _is_false(values.get("ALLOW_PUBLIC_REGISTRATION")), "生产/试点必须关闭公开注册"),
         CheckResult(
             "BOSS_CLI_AUTO_INSTALL",

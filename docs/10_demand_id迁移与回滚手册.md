@@ -11,7 +11,7 @@
 - 每条历史业务事实最多映射一个 Demand，不猜测歧义数据。
 - 每条已映射事实满足 `fact.org_id == demand.org_id` 和 `fact.job_id == demand.job_id`。
 - P0 每个候选人只有一个 active `CandidateDemandFlow`，且与 `Candidate.current_demand_id` 一致。
-- 旧调用只在 Job 能唯一解析 Demand 时兼容；歧义返回 409 `demand_id_required`。
+- 旧调用只在 Job 能唯一解析 Demand 时兼容；零 Demand 返回 404 `demand_not_found`，多个 Demand 返回 409 `demand_id_required`，不得先按状态过滤后猜测。
 - 一旦允许同一 Job 并行多 Demand，不再允许只回滚到旧镜像。
 
 本手册不执行 P1 打印/归档，不开放 BOSS、人才地图、OA 占位或正式绩效。
@@ -78,7 +78,7 @@ mysql --host=<host> --user=<user> <restore_db> < <backup_id>.sql
 - PostgreSQL 大表索引评估并发创建，FK 可先创建后验证；具体策略体现在 revision 和 DBA 变更单中。
 - SQLite 仅用于开发/演示，使用 online backup API 取得 WAL 一致快照并用 batch migration；SQLite 绿色不能代替 MySQL/PostgreSQL 集成和恢复证据。
 
-标准恢复先校验 manifest/SHA-256，拒绝 uploads 归档中的路径穿越、链接和特殊文件，完整解压到 staging 后才原子切换。数据库与 uploads 不是跨资源事务，正式演练必须停写并分别验证；任一部分失败都不能宣布恢复完成。
+标准恢复先校验 manifest/SHA-256，拒绝 uploads 归档中的路径穿越、链接和特殊文件，完整解压到 staging 后才原子切换。新快照的 `uploads.source_root` 用于校验并重基址 `Candidate.raw_file_path`，恢复到新 `UPLOAD_FOLDER` 后必须实际读取原简历；旧快照缺少该字段时只允许同根恢复。数据库与 uploads 不是跨资源事务，正式演练必须停写并分别验证；任一部分失败都不能宣布恢复完成。
 
 ## 5. Phase A — Expand
 
@@ -101,12 +101,13 @@ mysql --host=<host> --user=<user> <restore_db> < <backup_id>.sql
    ```
 
 4. 确认 `alembic current == 20260711_02`，检查 Demand/flow 表、nullable `demand_id`、`current_demand_id`、面试 `primary_slot`、唯一索引和 FK。
-5. revision `20260711_02` 会先检测重复有效主面试安排和重复 `assignment_id` 反馈；发现冲突即中止并输出冲突组，不自动选择保留行。清理获得业务批准后再重跑；成功后建立 `(org_id,demand_id,candidate_id,primary_slot)` 与 `feedback.assignment_id` 两个唯一索引。
+5. revision `20260711_02` 使用 `lower(trim(status))` 识别历史取消态，再检测重复有效主面试安排和重复 `assignment_id` 反馈；发现冲突即中止并输出冲突组，不自动选择保留行。清理获得业务批准后再重跑；成功后建立 `(org_id,demand_id,candidate_id,primary_slot)` 与 `feedback.assignment_id` 两个唯一索引。
+6. 运行 `verify_demand_scope.py` 并确认 `assignment_slot_conflicts=[]`：有效 primary 的 `primary_slot` 必须等于 `round_sequence`，辅助或已取消任务的 slot 必须为空。
 
 ### 5.2 停止条件
 
 - revision 失败或不一致。
-- revision 02 发现存量 primary/feedback 重复，尚无业务批准的裁决结果。
+- revision 02 发现存量 primary/feedback 重复，或 verifier 返回 `assignment_slot_conflicts`，尚无业务批准的裁决结果。
 - 目标引擎不支持 revision 中的索引/FK 策略。
 - 迁移被多 worker 重复触发。
 - 锁等待、复制延迟或容量增长超出 DBA 阈值。
@@ -220,11 +221,12 @@ python3 backend/scripts/verify_demand_scope.py --database <database> --output <v
 | 管理员 | 可查 Demand-indexed 审计，跨 org 访问仍失败并留痕 |
 | 转 Demand | 源 `transferred`，目标 `pending`，owner 跟随目标，失败无部分写入，不计淘汰 |
 | Demand owner 转派 | active flow/当前 owner 改变，Job owner/历史 actor 不改 |
-| 面试轮次 | 每轮一名 primary；辅助反馈不完成轮次；反馈不推进主流程 |
+| 面试轮次 | 每轮一名 primary；辅助反馈不完成轮次；反馈不推进主流程；未反馈任务说明原因后可取消并释放 primary slot，已有反馈不可取消 |
 | AI | 只解析/匹配/总结/建议；无法推进、淘汰、Offer、转派或关闭 Demand |
 | 原始简历 | 原始/结构化/匹配三视图可分开查看，原文不被 AI 覆盖 |
-| 旧 Job-only 请求 | 唯一可解析时兼容；多 Demand 歧义时返回 409 `demand_id_required` |
-| 反向操作 | 误推进可追加修正，误关闭可恢复，误负责人可转派，历史不删除 |
+| 旧 Job-only 请求 | 唯一可解析时兼容；零 Demand 返回 404 `demand_not_found`；多 Demand 歧义时返回 409 `demand_id_required` |
+| 面试反馈写入 | 必须解析到当前提交人的有效 assignment；未分配或已取消任务返回 404 `assignment_not_found`，不得新增 `assignment_id IS NULL` 的反馈 |
+| 反向操作 | 误推进可追加修正，误关闭可恢复，误负责人可转派，未反馈面试可取消重排，历史不删除 |
 
 ### 8.4 切换后观察
 

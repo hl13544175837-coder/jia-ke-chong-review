@@ -1,3 +1,6 @@
+import pytest
+
+
 def _auth(token):
     return {"Authorization": f"Bearer {token}"}
 
@@ -114,3 +117,48 @@ def test_batch_add_to_pipeline_rejects_interviewer(client, make_user, app):
     )
 
     assert response.status_code == 403
+
+
+def test_batch_add_rolls_back_moves_when_summary_audit_fails(
+    client, make_user, app, monkeypatch
+):
+    user_id, token = make_user("batch-audit@example.com", role="recruiter")
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, Job, RecruitmentDemand
+
+        job = Job(title="批量审计岗位", jd_text="x", owner_hr_id=user_id)
+        candidate = Candidate(owner_hr_id=user_id, name_masked="批量候选人", resume_json={})
+        db.session.add_all([job, candidate])
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id, owner_hr_id=user_id, request_no="REQ-BATCH-AUDIT", status="active"
+        )
+        db.session.add(demand)
+        db.session.commit()
+        job_id, demand_id, candidate_id = job.id, demand.id, candidate.id
+
+    from app.api import jobs as jobs_api
+
+    def fail_audit(*args, **kwargs):
+        raise RuntimeError("audit write failed")
+
+    monkeypatch.setattr(jobs_api, "record_event", fail_audit)
+    with pytest.raises(RuntimeError, match="audit write failed"):
+        client.post(
+            f"/api/jobs/{job_id}/batch-pipeline",
+            headers=_auth(token),
+            json={"demand_id": demand_id, "candidate_ids": [candidate_id]},
+        )
+
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, CandidateDemandFlow, Event, PipelineStage
+
+        db.session.remove()
+        assert db.session.get(Candidate, candidate_id).current_demand_id is None
+        assert CandidateDemandFlow.query.filter_by(candidate_id=candidate_id).count() == 0
+        assert PipelineStage.query.filter_by(candidate_id=candidate_id).count() == 0
+        assert Event.query.filter_by(
+            action="pipeline.moved", entity_id=candidate_id
+        ).count() == 0

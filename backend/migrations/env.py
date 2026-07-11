@@ -14,6 +14,7 @@ if str(BACKEND_DIR) not in sys.path:
 from app import db  # noqa: E402
 from app import models  # noqa: E402,F401
 from app.config import Config as AppConfig  # noqa: E402
+from database_urls import normalize_database_url  # noqa: E402
 
 
 config = context.config
@@ -21,7 +22,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 configured_url = (config.get_main_option("sqlalchemy.url") or "").strip()
-database_url = configured_url or os.environ.get("DATABASE_URL") or AppConfig.DATABASE_URL
+database_url = normalize_database_url(
+    configured_url or os.environ.get("DATABASE_URL") or AppConfig.DATABASE_URL
+)
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 target_metadata = db.metadata
 

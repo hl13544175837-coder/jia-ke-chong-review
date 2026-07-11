@@ -701,7 +701,7 @@ export interface BiDemandHc {
 }
 
 export interface BiDemandCurrentResponsibility {
-  owner_hr_id: number;
+  owner_hr_id: number | null;
   owner_name: string | null;
   label: string;
   active_candidates: number;
@@ -770,6 +770,8 @@ export interface BiManagerAlert {
   candidate_id: number | null;
   candidate_name?: string;
   assignment_id?: number;
+  interviewer_id?: number | null;
+  interviewer_name?: string | null;
   stage: PipelineStage | string | null;
   stage_label?: string;
   age_days: number;
@@ -795,12 +797,14 @@ export interface BiStaffDetail {
   demands: BiOverviewDemandSummary[];
 }
 
-// Single-job funnel detail.
-export interface BiJobDetail {
+// Legacy single-Job proxy for a uniquely resolved Demand.
+export interface BiJobDetail extends BiDemandOperationalMetrics {
   job_id: number;
   job_title: string;
-  scope?: 'all' | 'owned_candidates';
-  funnel: BiFunnel;
+  compatibility: {
+    mode: 'single_demand';
+    aggregate: false;
+  };
 }
 
 // ---- Account ----
@@ -984,7 +988,7 @@ export type EvaluationScores = Record<string, number>;
 export interface InterviewFeedbackInput {
   candidate_id: number;
   demand_id: number;
-  assignment_id?: number;
+  assignment_id: number;
   // Kept optional for the unique-Demand legacy bridge; new UI does not send it.
   job_id?: number;
   round: InterviewRound;
@@ -1002,7 +1006,7 @@ export interface LegacyInterviewFeedbackInput {
   candidate_id: number;
   job_id: number;
   demand_id?: never;
-  assignment_id?: number;
+  assignment_id: number;
   round: InterviewRound;
   score: number;
   passed: boolean;

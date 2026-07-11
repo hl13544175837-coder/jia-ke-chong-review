@@ -44,6 +44,7 @@ def test_failed_resume_upload_keeps_retryable_candidate(client, make_user, app, 
 def test_retry_parse_updates_failed_candidate(client, make_user, app, monkeypatch, tmp_path):
     uid, token = make_user("retry-owner@x.com", role="recruiter")
     other_uid, other_token = make_user("retry-other@x.com", role="recruiter")
+    app.config["UPLOAD_FOLDER"] = str(tmp_path)
     resume = tmp_path / "retry.pdf"
     resume.write_bytes(b"%PDF-1.4 retry")
 
@@ -55,7 +56,7 @@ def test_retry_parse_updates_failed_candidate(client, make_user, app, monkeypatc
             owner_hr_id=uid,
             name_masked="broken.pdf",
             resume_json={},
-            raw_file_path=str(resume),
+            raw_file_path="retry.pdf",
             parse_status="failed",
             parse_error="旧错误",
         )

@@ -19,6 +19,7 @@ from ..models import (
 )
 from ..time_utils import utc_now
 from .demand_context_service import OPEN_DEMAND_STATUSES
+from .interview_workflow_service import active_assignment_filter
 from .pipeline_service import latest_demand_stage_subquery, normalize_pipeline_stage
 
 
@@ -128,7 +129,7 @@ def _outstanding_feedback(demand, now):
             Candidate.deleted_at.is_(None),
             InterviewAssignment.scheduled_at.isnot(None),
             InterviewAssignment.scheduled_at <= now,
-            ~InterviewAssignment.status.in_(["cancelled", "canceled"]),
+            active_assignment_filter(),
         )
         .order_by(InterviewAssignment.scheduled_at.asc(), InterviewAssignment.id.asc())
         .all()
@@ -346,6 +347,8 @@ def _demand_alerts(demand_record, metrics, *, stale_days=7):
                 "candidate_id": item["candidate_id"],
                 "candidate_name": item["candidate_name"],
                 "assignment_id": item["assignment_id"],
+                "interviewer_id": item["interviewer_id"],
+                "interviewer_name": item["interviewer_name"],
                 "stage": "interview",
                 "stage_label": STAGE_LABELS["interview"],
                 "age_days": item["overdue_days"],
@@ -373,17 +376,28 @@ def _demand_alerts(demand_record, metrics, *, stale_days=7):
 
     start_date = demand_record.accepted_at or demand_record.requested_at
     if (
-        metrics["funnel"]["funnel_total"] == 0
+        metrics["funnel"]["pipeline_total"] == 0
+        and not metrics["hc"]["completion_suggested"]
         and start_date
         and (today - start_date).days >= stale_days
     ):
         waiting_days = (today - start_date).days
+        has_history = metrics["funnel"]["funnel_total"] > 0
         alerts.append(
             {
-                "kind": "hr_no_recommendation",
+                "kind": "no_active_candidates" if has_history else "hr_no_recommendation",
                 "priority": "medium",
-                "title": f"{title}尚未推荐候选人",
-                "detail": f"需求已接收 {waiting_days} 天，尚无候选人进入流程",
+                "title": (
+                    f"{title}当前无在流程候选人"
+                    if has_history
+                    else f"{title}尚未推荐候选人"
+                ),
+                "detail": (
+                    f"需求已接收 {waiting_days} 天，当前没有候选人在流程中，"
+                    "请继续推荐或复盘历史结果"
+                    if has_history
+                    else f"需求已接收 {waiting_days} 天，尚无候选人进入流程"
+                ),
                 "demand_id": demand_id,
                 "job_id": job_id,
                 "candidate_id": None,
@@ -438,6 +452,11 @@ def build_team_operational_overview(org_id):
         .all()
     )
     metrics_rows = [build_demand_operational_metrics(demand) for demand in demands]
+    active_metrics_rows = [
+        metrics
+        for metrics in metrics_rows
+        if metrics["demand"]["status"] in OPEN_DEMAND_STATUSES
+    ]
     alerts = []
     for demand, metrics in zip(demands, metrics_rows):
         if metrics["demand"]["status"] in OPEN_DEMAND_STATUSES:
@@ -454,7 +473,7 @@ def build_team_operational_overview(org_id):
     return {
         "purpose": "operational_collaboration",
         "purpose_label": PURPOSE_LABEL,
-        "funnel": _aggregate_funnel(metrics_rows),
+        "funnel": _aggregate_funnel(active_metrics_rows),
         "alerts": alerts,
         "demands": [_demand_summary(metrics) for metrics in metrics_rows],
     }

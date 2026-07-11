@@ -69,7 +69,7 @@
 必须区分代码候选与环境运行态：
 
 - 当前代码候选已将流程、面试、Offer、审计关联和 BI 的业务归属收敛到 `demand_id`；匹配继续使用 `job_id`，AI 预筛/面试反馈不自动改变流程。
-- 同一 Demand/候选人/轮次的主面试安排和同一 assignment 的反馈由数据库唯一约束兜底；BI API 只返回 Demand 进度、卡点和当前责任协同，前端将加载失败、真实空态和零值分开展示。
+- 同一 Demand/候选人/轮次的主面试安排和同一 assignment 的反馈由数据库唯一约束兜底；反馈写入必须属于当前用户的有效 assignment，零 Demand 的 Job 模板不能承载面试事实；BI API 只返回 Demand 进度、卡点和当前责任协同，前端将加载失败、真实空态和零值分开展示。
 - 生产应用工厂不执行 DDL；空库显式 bootstrap，已有库 Alembic。当前 Expand head 是 `20260711_02`，Strict cutover、目标引擎恢复证据和 SIT 四角色现场验收仍属于环境发布门禁，不能由本地代码测试替代。
 - 旧“一个 Job 同时只能有一个未结束 Demand”假设已被 [ADR-0002](./adr/0002-demand-scoped-recruiting-flow.md) 和批准设计取代。历史文件可保留作决策轨迹，但不得再指导新实现或发布验收。
 

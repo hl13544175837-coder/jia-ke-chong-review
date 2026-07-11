@@ -5,8 +5,9 @@ import re
 from datetime import timedelta
 from pathlib import Path
 
-from flask import Blueprint, Response, jsonify, request, g
+from flask import Blueprint, Response, current_app, jsonify, request, g
 from sqlalchemy import func, select
+from runtime_paths import DEFAULT_UPLOAD_FOLDER, RuntimePathError, resolve_stored_upload_path
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from .. import db
@@ -32,6 +33,7 @@ from ..services.demand_context_service import (
     resolve_demand_context,
     visible_demand_query,
 )
+from ..services.interview_workflow_service import active_assignment_filter
 from ..source_channels import normalize_resume_source_channel, resume_source_channel_filter_values
 from .pipeline import LEGACY_INTERVIEW_STAGES, STAGE_ORDER, _latest_stage_subquery, normalize_pipeline_stage
 from .access import (
@@ -508,7 +510,7 @@ def candidate_journey(candidate_id):
             interviewer_id=g.user_id,
             candidate_id=candidate_id,
             demand_id=demand.id,
-        ).first()
+        ).filter(active_assignment_filter()).first()
         if assigned is None:
             return jsonify({"error": "Forbidden"}), 403
     elif not can_read_demand(g.user_id, g.role, g.org_id, demand):
@@ -691,11 +693,14 @@ def delete_candidate(candidate_id):
     raw_path = candidate.raw_file_path
     if raw_path:
         try:
-            path = Path(raw_path)
+            path = resolve_stored_upload_path(
+                raw_path,
+                current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER,
+            )
             if path.is_file():
                 path.unlink()
                 raw_file_removed = True
-        except OSError:
+        except (OSError, RuntimePathError):
             raw_file_removed = False
 
     candidate.name_masked = "已删除候选人"

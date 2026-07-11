@@ -393,45 +393,56 @@ def batch_add_to_pipeline(job_id):
     skipped_missing = 0
     skipped_conflict = 0
     failures = []
-    for candidate_id in candidate_ids:
-        if candidate_id not in visible_ids:
-            skipped_missing += 1
-            continue
-        if candidate_id in existing_ids:
-            skipped_existing += 1
-            continue
-        try:
-            move_candidate(
-                candidate_id=candidate_id,
-                demand_id=demand.id,
-                org_id=g.org_id,
-                actor_id=g.user_id,
-                stage="pending",
-                note="批量加入招聘需求",
-            )
-            added += 1
-        except PipelineServiceError as error:
-            skipped_conflict += 1
-            failures.append({
-                "candidate_id": candidate_id,
-                "code": error.code,
-                "error": error.message,
-            })
+    try:
+        for candidate_id in candidate_ids:
+            if candidate_id not in visible_ids:
+                skipped_missing += 1
+                continue
+            if candidate_id in existing_ids:
+                skipped_existing += 1
+                continue
+            try:
+                # This endpoint always writes ``pending`` without a disposition.
+                # Its expected PipelineServiceError checks all happen before the
+                # service mutates flow/stage/event state, so one outer transaction
+                # can preserve partial-success reporting without savepoint leaks.
+                move_candidate(
+                    candidate_id=candidate_id,
+                    demand_id=demand.id,
+                    org_id=g.org_id,
+                    actor_id=g.user_id,
+                    stage="pending",
+                    note="批量加入招聘需求",
+                    commit=False,
+                )
+                added += 1
+            except PipelineServiceError as error:
+                skipped_conflict += 1
+                failures.append({
+                    "candidate_id": candidate_id,
+                    "code": error.code,
+                    "error": error.message,
+                })
 
-    record_event(
-        "pipeline.batch_add",
-        entity_id=demand.id,
-        entity_type="recruitment_demand",
-        demand_id=demand.id,
-        payload={
-            "demand_id": demand.id,
-            "job_id": demand.job_id,
-            "added": added,
-            "skipped_existing": skipped_existing,
-            "skipped_missing": skipped_missing,
-            "skipped_conflict": skipped_conflict,
-        },
-    )
+        record_event(
+            "pipeline.batch_add",
+            entity_id=demand.id,
+            entity_type="recruitment_demand",
+            demand_id=demand.id,
+            payload={
+                "demand_id": demand.id,
+                "job_id": demand.job_id,
+                "added": added,
+                "skipped_existing": skipped_existing,
+                "skipped_missing": skipped_missing,
+                "skipped_conflict": skipped_conflict,
+            },
+            commit=False,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return jsonify({
         "demand_id": demand.id,
         "job_id": demand.job_id,

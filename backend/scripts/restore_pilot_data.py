@@ -187,7 +187,7 @@ def _validate_snapshot(database_url, backup_path):
         validate_upload_archive(archive_path)
     except UploadArchiveError as exc:
         raise SystemExit(f"不安全的 uploads 备份: {exc}") from exc
-    return database_artifact, archive_path
+    return database_artifact, archive_path, manifest
 
 
 def _remove_path(path):
@@ -198,22 +198,140 @@ def _remove_path(path):
         shutil.rmtree(path)
 
 
-def _replace_file_atomically(source, target):
+def _manifest_upload_source_root(manifest):
+    if manifest is None:
+        return None
+    raw_source_root = manifest["uploads"].get("source_root")
+    if raw_source_root is None:
+        # Legacy version-1 snapshots predate portable upload paths. They remain
+        # restorable, but callers must keep the original UPLOAD_FOLDER.
+        return None
+    if not isinstance(raw_source_root, str) or not raw_source_root.strip():
+        raise SystemExit("备份 manifest 校验失败: uploads.source_root 无效")
+    source_root = Path(raw_source_root).expanduser()
+    if not source_root.is_absolute():
+        raise SystemExit("备份 manifest 校验失败: uploads.source_root 必须是绝对路径")
+    source_root = source_root.resolve()
+    if source_root == Path(source_root.anchor):
+        raise SystemExit("备份 manifest 校验失败: uploads.source_root 不得是文件系统根目录")
+    return source_root
+
+
+def _portable_candidate_upload_path(raw_path, source_upload_root):
+    """Convert a stored candidate path to a safe path relative to uploads."""
+
+    if raw_path is None:
+        return None
+    value = str(raw_path).strip()
+    if not value:
+        return value
+    if "\\" in value:
+        raise SystemExit(f"候选人附件路径不安全: {value!r}")
+
+    stored = Path(value).expanduser()
+    if stored.is_absolute():
+        if source_upload_root is None:
+            return value
+        try:
+            relative = stored.resolve().relative_to(source_upload_root)
+        except ValueError as exc:
+            raise SystemExit("候选人附件路径不在快照 uploads.source_root 内") from exc
+    else:
+        relative = stored
+
+    if relative == Path(".") or ".." in relative.parts:
+        raise SystemExit(f"候选人附件路径不安全: {value!r}")
+    return relative.as_posix()
+
+
+def _rebase_sqlite_candidate_upload_paths(database_path, source_upload_root):
+    if source_upload_root is None:
+        return
+    connection = sqlite3.connect(str(database_path))
+    try:
+        table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='candidates'"
+        ).fetchone()
+        if table is None:
+            return
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(candidates)").fetchall()
+        }
+        if "raw_file_path" not in columns:
+            return
+        updates = []
+        for candidate_id, raw_path in connection.execute(
+            "SELECT id, raw_file_path FROM candidates WHERE raw_file_path IS NOT NULL"
+        ):
+            portable = _portable_candidate_upload_path(raw_path, source_upload_root)
+            if portable != raw_path:
+                updates.append((portable, candidate_id))
+        if updates:
+            connection.executemany(
+                "UPDATE candidates SET raw_file_path = ? WHERE id = ?",
+                updates,
+            )
+        connection.commit()
+    except BaseException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _rebase_postgres_candidate_upload_paths(database_url, source_upload_root):
+    if source_upload_root is None:
+        return
+    try:
+        import psycopg
+    except ImportError as exc:  # pragma: no cover - deployment dependency guard
+        raise SystemExit("PostgreSQL 恢复需要 psycopg 以重写候选人附件路径") from exc
+
+    normalized = database_url.replace("postgresql+psycopg://", "postgresql://", 1)
+    with psycopg.connect(normalized) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = current_schema() "
+                "AND table_name = 'candidates' AND column_name = 'raw_file_path'"
+            )
+            if cursor.fetchone() is None:
+                return
+            cursor.execute(
+                "SELECT id, raw_file_path FROM candidates WHERE raw_file_path IS NOT NULL"
+            )
+            updates = []
+            for candidate_id, raw_path in cursor.fetchall():
+                portable = _portable_candidate_upload_path(raw_path, source_upload_root)
+                if portable != raw_path:
+                    updates.append((portable, candidate_id))
+            if updates:
+                cursor.executemany(
+                    "UPDATE candidates SET raw_file_path = %s WHERE id = %s",
+                    updates,
+                )
+
+
+def _replace_file_atomically(source, target, *, source_upload_root=None):
     target = Path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     staged = target.parent / f".{target.name}.restore-{uuid.uuid4().hex}.tmp"
     rollback = target.parent / f".{target.name}.rollback-{uuid.uuid4().hex}"
-    shutil.copy2(source, staged)
-    os.chmod(staged, 0o600)
-
-    staged_connection = sqlite3.connect(str(staged))
     try:
-        integrity = staged_connection.execute("PRAGMA integrity_check").fetchone()
-    finally:
-        staged_connection.close()
-    if integrity != ("ok",):
+        shutil.copy2(source, staged)
+        os.chmod(staged, 0o600)
+        _rebase_sqlite_candidate_upload_paths(staged, source_upload_root)
+
+        staged_connection = sqlite3.connect(str(staged))
+        try:
+            integrity = staged_connection.execute("PRAGMA integrity_check").fetchone()
+        finally:
+            staged_connection.close()
+        if integrity != ("ok",):
+            raise SystemExit(f"SQLite 备份完整性校验失败: {integrity}")
+    except BaseException:
         staged.unlink(missing_ok=True)
-        raise SystemExit(f"SQLite 备份完整性校验失败: {integrity}")
+        raise
 
     had_target = target.exists() or target.is_symlink()
     if had_target:
@@ -229,9 +347,23 @@ def _replace_file_atomically(source, target):
         _remove_path(rollback)
 
 
-def _restore_database(database_url, backup_path, dry_run=False, database_artifact=None):
+def _restore_database(
+    database_url,
+    backup_path,
+    dry_run=False,
+    database_artifact=None,
+    source_upload_root=None,
+    target_upload_root=None,
+):
     backup_path = Path(backup_path)
     source = database_artifact or _find_database_artifact(database_url, backup_path)
+
+    portable_source_root = source_upload_root
+    if portable_source_root is None and target_upload_root is not None:
+        # A legacy snapshot does not record its source root. It is only safe to
+        # restore when every absolute candidate path already belongs to the
+        # requested target root; using that root here enforces the constraint.
+        portable_source_root = Path(target_upload_root).expanduser().resolve()
 
     if _is_mysql(database_url):
         if dry_run:
@@ -252,8 +384,11 @@ def _restore_database(database_url, backup_path, dry_run=False, database_artifac
         ]
         if dry_run:
             print(" ".join(command))
+            if portable_source_root is not None:
+                print(f"validate and rebase candidate upload paths from {portable_source_root}")
             return
         subprocess.run(command, env=_postgres_env(database_url), check=True)
+        _rebase_postgres_candidate_upload_paths(database_url, portable_source_root)
         return
 
     target = _sqlite_path(database_url)
@@ -261,8 +396,10 @@ def _restore_database(database_url, backup_path, dry_run=False, database_artifac
         raise SystemExit("Unsupported DATABASE_URL. Use MySQL, PostgreSQL, or sqlite:/// path.")
     if dry_run:
         print(f"atomic sqlite restore {source} -> {target}")
+        if portable_source_root is not None:
+            print(f"validate and rebase candidate upload paths from {portable_source_root}")
         return
-    _replace_file_atomically(source, target)
+    _replace_file_atomically(source, target, source_upload_root=portable_source_root)
 
 
 def _swap_upload_directory(prepared, upload_folder):
@@ -337,13 +474,16 @@ def main():
     database_url = _database_url()
     upload_folder = _upload_folder()
     _validate_restore_paths(backup_path, upload_folder, database_url)
-    database_artifact, archive_path = _validate_snapshot(database_url, backup_path)
+    database_artifact, archive_path, manifest = _validate_snapshot(database_url, backup_path)
+    source_upload_root = _manifest_upload_source_root(manifest)
     if args.dry_run:
         _restore_database(
             database_url,
             backup_path,
             dry_run=True,
             database_artifact=database_artifact,
+            source_upload_root=source_upload_root,
+            target_upload_root=upload_folder,
         )
         _safe_extract_uploads(archive_path, upload_folder, dry_run=True)
     else:
@@ -354,6 +494,8 @@ def main():
                 backup_path,
                 dry_run=False,
                 database_artifact=database_artifact,
+                source_upload_root=source_upload_root,
+                target_upload_root=upload_folder,
             )
             _swap_upload_directory(prepared_uploads, upload_folder)
         finally:

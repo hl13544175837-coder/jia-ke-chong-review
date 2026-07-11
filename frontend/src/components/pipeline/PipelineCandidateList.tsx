@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { ChevronRight, User } from 'lucide-react';
 import type { PipelineBoardCandidate, PipelineStage } from '../../types';
-import { STAGES, type StageConfig } from '../../lib/pipelineStages';
+import { STAGES, stageLabel, type StageConfig } from '../../lib/pipelineStages';
 import { formatDate } from '../../lib/formatDate';
 import { cn } from '../../lib/cn';
 import { Button, Spinner } from '../ui';
@@ -9,6 +9,7 @@ import { stageAgeClass, stageAgeDays } from '../../lib/pipelineInsights';
 
 interface PipelineCandidateListProps {
   stage: StageConfig;
+  showAll?: boolean;
   candidates: PipelineBoardCandidate[];
   counts: Partial<Record<PipelineStage, number>>;
   demandId: number | null;
@@ -22,6 +23,7 @@ interface PipelineCandidateListProps {
 
 export function PipelineCandidateList({
   stage,
+  showAll = false,
   candidates,
   counts,
   demandId,
@@ -41,7 +43,7 @@ export function PipelineCandidateList({
       <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold text-ink">
-            当前阶段候选人 · {candidates.length} 人
+            {showAll ? '全部流程候选人' : '当前阶段候选人'} · {candidates.length} 人
           </h2>
           <p className="mt-0.5 text-xs text-muted">按停留时间和负责人优先处理</p>
         </div>
@@ -51,7 +53,9 @@ export function PipelineCandidateList({
         {candidates.length === 0 ? (
           <div className="space-y-4 px-4 py-12 text-center">
             <div>
-              <p className="text-sm font-medium text-ink">当前阶段暂无候选人</p>
+              <p className="text-sm font-medium text-ink">
+                {showAll ? '当前需求暂无候选人' : '当前阶段暂无候选人'}
+              </p>
               <p className="mt-1 text-xs text-muted">
                 可以先切到有人的阶段继续处理，或去补充更多候选人。
               </p>
@@ -118,6 +122,11 @@ export function PipelineCandidateList({
                         >
                           {candidate.name_masked}
                         </Link>
+                        {showAll && (
+                          <span className="shrink-0 rounded-full bg-surface-soft px-2 py-0.5 text-[11px] font-medium text-body">
+                            {stageLabel(candidate.stage)}
+                          </span>
+                        )}
                         {busyId === candidate.candidate_id && <Spinner size="sm" />}
                       </div>
                       <p className={cn('mt-0.5 truncate text-xs', stageAgeClass(candidate.stage, ageDays))}>

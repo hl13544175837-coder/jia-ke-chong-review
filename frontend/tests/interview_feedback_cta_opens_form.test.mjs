@@ -27,8 +27,8 @@ assert.match(
 
 assert.match(
   interviewPage,
-  /setFocus\('pending'\)[\s\S]*setSelectedPending\(target\)/,
-  'Assignment feedback click should switch to pending feedback and select the candidate',
+  /setFocus\('pending'\)[\s\S]*setSelectedPending\(\{ \.\.\.target, assignment_id: assignment\.id \}\)/,
+  'Assignment feedback click should switch to pending feedback with an exact assignment id',
 );
 
 assert.match(

@@ -52,7 +52,9 @@ def _feedback_table():
 
 def _duplicate_primary_groups():
     assignments = _assignment_table()
-    active_status = sa.func.lower(sa.func.coalesce(assignments.c.status, "scheduled"))
+    active_status = sa.func.lower(
+        sa.func.trim(sa.func.coalesce(assignments.c.status, "scheduled"))
+    )
     count = sa.func.count().label("row_count")
     statement = (
         sa.select(
@@ -120,7 +122,9 @@ def upgrade():
         )
 
     assignments = _assignment_table(include_primary_slot=True)
-    active_status = sa.func.lower(sa.func.coalesce(assignments.c.status, "scheduled"))
+    active_status = sa.func.lower(
+        sa.func.trim(sa.func.coalesce(assignments.c.status, "scheduled"))
+    )
     op.get_bind().execute(
         sa.update(assignments)
         .where(

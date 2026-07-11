@@ -1,7 +1,9 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app import db
-from app.models import Candidate, Job, PipelineStage
+from app.models import Candidate, CandidateDemandFlow, Event, Job, PipelineStage, RecruitmentDemand
 
 
 def _auth(token):
@@ -48,6 +50,233 @@ def test_demand_creation_can_create_matching_job_profile(client, make_user, app)
       assert job.department == "科技部"
       assert job.owner_hr_id == hr_id
       assert job.status == "active"
+
+
+def test_demand_creation_rolls_back_job_and_demand_when_second_audit_fails(
+    client, make_user, app, monkeypatch
+):
+    hr_id, token = make_user("demand-audit-create@example.com", role="recruiter")
+    from app.api import demands as demands_api
+
+    real_record_event = demands_api.record_event
+
+    def fail_second_event(action, *args, **kwargs):
+        if action == "demand.created":
+            raise RuntimeError("audit write failed")
+        return real_record_event(action, *args, **kwargs)
+
+    monkeypatch.setattr(demands_api, "record_event", fail_second_event)
+    with pytest.raises(RuntimeError, match="audit write failed"):
+        client.post(
+            "/api/demands",
+            headers=_auth(token),
+            json={
+                "job_title": "审计原子性岗位",
+                "jd_text": "用于验证需求与审计同事务",
+                "owner_hr_id": hr_id,
+                "city": "上海",
+                "requester_department": "技术部",
+                "hiring_manager_name": "技术负责人",
+                "requested_at": "2026-07-11",
+                "target_date": "2026-08-11",
+                "headcount": 1,
+            },
+        )
+
+    with app.app_context():
+        db.session.remove()
+        assert Job.query.filter_by(title="审计原子性岗位").count() == 0
+        assert RecruitmentDemand.query.count() == 0
+        assert Event.query.filter(Event.action.in_(["job.created", "demand.created"])).count() == 0
+
+
+@pytest.mark.parametrize(
+    ("method", "suffix", "payload", "initial", "attribute", "expected"),
+    [
+        ("patch", "", {"note": "不应保存"}, {}, "note", "原备注"),
+        (
+            "post",
+            "/close",
+            {"status": "paused", "close_reason": "不应保存"},
+            {},
+            "status",
+            "active",
+        ),
+        (
+            "post",
+            "/restore",
+            {"note": "不应保存"},
+            {"status": "paused", "close_reason": "原暂停原因"},
+            "status",
+            "paused",
+        ),
+        (
+            "post",
+            "/downgrade",
+            {"priority": "C", "downgrade_reason": "不应保存"},
+            {},
+            "priority",
+            "B",
+        ),
+    ],
+)
+def test_demand_lifecycle_changes_roll_back_when_audit_fails(
+    client,
+    make_user,
+    app,
+    monkeypatch,
+    method,
+    suffix,
+    payload,
+    initial,
+    attribute,
+    expected,
+):
+    owner_id, token = make_user(f"demand-audit-{suffix or 'update'}@example.com", role="recruiter")
+    with app.app_context():
+        job = Job(title="事务需求岗位", jd_text="x", owner_hr_id=owner_id)
+        db.session.add(job)
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no=f"REQ-AUDIT-{suffix or 'UPDATE'}",
+            status=initial.get("status", "active"),
+            close_reason=initial.get("close_reason", ""),
+            priority="B",
+            note="原备注",
+        )
+        db.session.add(demand)
+        db.session.commit()
+        demand_id = demand.id
+
+    from app.api import demands as demands_api
+
+    def fail_audit(*args, **kwargs):
+        raise RuntimeError("audit write failed")
+
+    monkeypatch.setattr(demands_api, "record_event", fail_audit)
+    with pytest.raises(RuntimeError, match="audit write failed"):
+        getattr(client, method)(
+            f"/api/demands/{demand_id}{suffix}",
+            headers=_auth(token),
+            json=payload,
+        )
+
+    with app.app_context():
+        db.session.remove()
+        demand = db.session.get(RecruitmentDemand, demand_id)
+        assert getattr(demand, attribute) == expected
+        assert Event.query.filter_by(demand_id=demand_id).count() == 0
+
+
+def _seed_demand_owner_projection(app, owner_id, *, pointer_matches=True):
+    with app.app_context():
+        job = Job(title="负责人事务岗位", jd_text="x", owner_hr_id=owner_id)
+        db.session.add(job)
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no=f"REQ-OWNER-{pointer_matches}",
+            status="active",
+        )
+        candidate = Candidate(
+            owner_hr_id=owner_id,
+            name_masked="负责人事务候选人",
+            resume_json={},
+        )
+        db.session.add_all([demand, candidate])
+        db.session.flush()
+        candidate.current_demand_id = demand.id if pointer_matches else None
+        flow = CandidateDemandFlow(
+            candidate_id=candidate.id,
+            demand_id=demand.id,
+            owner_hr_id=owner_id,
+            status="active",
+        )
+        db.session.add(flow)
+        db.session.commit()
+        return demand.id, candidate.id, flow.id
+
+
+def test_demand_owner_reassignment_rolls_back_all_projections_when_audit_fails(
+    client, make_user, app, monkeypatch
+):
+    _, manager_token = make_user("owner-audit-manager@example.com", role="manager")
+    old_owner_id, _ = make_user("owner-audit-old@example.com", role="recruiter")
+    new_owner_id, _ = make_user("owner-audit-new@example.com", role="recruiter")
+    demand_id, candidate_id, flow_id = _seed_demand_owner_projection(app, old_owner_id)
+
+    from app.api import demands as demands_api
+
+    def fail_audit(*args, **kwargs):
+        raise RuntimeError("audit write failed")
+
+    monkeypatch.setattr(demands_api, "record_event", fail_audit)
+    with pytest.raises(RuntimeError, match="audit write failed"):
+        client.patch(
+            f"/api/demands/{demand_id}/owner",
+            headers=_auth(manager_token),
+            json={"owner_hr_id": new_owner_id, "reason": "事务失败验证"},
+        )
+
+    with app.app_context():
+        db.session.remove()
+        assert db.session.get(RecruitmentDemand, demand_id).owner_hr_id == old_owner_id
+        assert db.session.get(CandidateDemandFlow, flow_id).owner_hr_id == old_owner_id
+        assert db.session.get(Candidate, candidate_id).owner_hr_id == old_owner_id
+        assert Event.query.filter_by(action="demand.owner_reassigned").count() == 0
+
+
+def test_demand_owner_reassignment_fails_closed_on_candidate_pointer_drift(
+    client, make_user, app
+):
+    _, manager_token = make_user("owner-drift-manager2@example.com", role="manager")
+    old_owner_id, _ = make_user("owner-drift-old2@example.com", role="recruiter")
+    new_owner_id, _ = make_user("owner-drift-new2@example.com", role="recruiter")
+    demand_id, candidate_id, flow_id = _seed_demand_owner_projection(
+        app, old_owner_id, pointer_matches=False
+    )
+
+    response = client.patch(
+        f"/api/demands/{demand_id}/owner",
+        headers=_auth(manager_token),
+        json={"owner_hr_id": new_owner_id, "reason": "不应绕过漂移"},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "demand_owner_projection_conflict"
+    with app.app_context():
+        db.session.remove()
+        assert db.session.get(RecruitmentDemand, demand_id).owner_hr_id == old_owner_id
+        assert db.session.get(CandidateDemandFlow, flow_id).owner_hr_id == old_owner_id
+        assert db.session.get(Candidate, candidate_id).owner_hr_id == old_owner_id
+
+
+def test_demand_owner_reassignment_fails_closed_when_pointer_has_no_active_flow(
+    client, make_user, app
+):
+    _, manager_token = make_user("owner-missing-flow-manager@example.com", role="manager")
+    old_owner_id, _ = make_user("owner-missing-flow-old@example.com", role="recruiter")
+    new_owner_id, _ = make_user("owner-missing-flow-new@example.com", role="recruiter")
+    demand_id, candidate_id, flow_id = _seed_demand_owner_projection(app, old_owner_id)
+    with app.app_context():
+        db.session.delete(db.session.get(CandidateDemandFlow, flow_id))
+        db.session.commit()
+
+    response = client.patch(
+        f"/api/demands/{demand_id}/owner",
+        headers=_auth(manager_token),
+        json={"owner_hr_id": new_owner_id, "reason": "不应跳过无 Flow 指针"},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "demand_owner_projection_conflict"
+    with app.app_context():
+        db.session.remove()
+        assert db.session.get(RecruitmentDemand, demand_id).owner_hr_id == old_owner_id
+        assert db.session.get(Candidate, candidate_id).owner_hr_id == old_owner_id
 
 
 def test_demands_can_be_created_listed_and_closed_with_metrics(client, make_user, app):
@@ -98,7 +327,7 @@ def test_demands_can_be_created_listed_and_closed_with_metrics(client, make_user
     assert body["priority"] == "A"
     assert body["metrics"]["recommended_count"] == 3
     assert body["metrics"]["business_review_count"] == 1
-    assert body["metrics"]["interview_count"] == 2
+    assert body["metrics"]["interview_count"] == 1
     assert body["metrics"]["offer_count"] == 1
 
     listed = client.get("/api/demands", headers=_auth(token))
@@ -261,6 +490,60 @@ def test_demands_flag_hr_side_when_accepted_but_no_candidates(client, make_user,
     body = created.get_json()
     assert body["metrics"]["recommended_count"] == 0
     assert "hr_no_recommendation" in body["risk_flags"]
+
+
+def test_demand_metrics_exclude_soft_deleted_candidates(client, make_user, app):
+    hr_id, token = make_user("demand-soft-delete@example.com", role="recruiter", name="清理HR")
+
+    with app.app_context():
+        job = Job(title="数据工程师", city="上海", department="数据部", jd_text="负责数据平台")
+        candidate = Candidate(owner_hr_id=hr_id, name_masked="已删除候选人", resume_json={})
+        db.session.add_all([job, candidate])
+        db.session.flush()
+        db.session.add(PipelineStage(
+            candidate_id=candidate.id,
+            job_id=job.id,
+            stage="interview_first",
+            updated_by=hr_id,
+        ))
+        db.session.commit()
+        job_id = job.id
+        candidate_id = candidate.id
+
+    created = client.post(
+        "/api/demands",
+        headers=_auth(token),
+        json={
+            "job_id": job_id,
+            "owner_hr_id": hr_id,
+            "city": "上海",
+            "requester_department": "数据部",
+            "hiring_manager_name": "数据负责人",
+            "requested_at": "2026-07-01",
+            "target_date": "2026-08-01",
+            "headcount": 1,
+        },
+    )
+    assert created.status_code == 201
+    demand_id = created.get_json()["id"]
+    assert created.get_json()["metrics"]["recommended_count"] == 1
+
+    with app.app_context():
+        candidate = db.session.get(Candidate, candidate_id)
+        candidate.deleted_at = datetime.now(UTC).replace(tzinfo=None)
+        db.session.commit()
+
+    detail = client.get(f"/api/demands/{demand_id}", headers=_auth(token))
+    assert detail.status_code == 200
+    assert detail.get_json()["metrics"] == {
+        "recommended_count": 0,
+        "business_review_count": 0,
+        "interview_count": 0,
+        "offer_count": 0,
+        "onboarded_count": 0,
+        "transferred_count": 0,
+        "current_stage_counts": {},
+    }
 
 
 def test_recruiter_demands_are_scoped_to_owned_jobs(client, make_user, app):

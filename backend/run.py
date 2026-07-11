@@ -27,7 +27,7 @@ app = create_app()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("FLASK_DEBUG", "true").lower() == "true"
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
     print(f"\n✓ 智聘 · 招聘管理系统 后端已启动 http://localhost:{port}")
     print(f"  LLM provider : {os.environ.get('LLM_PROVIDER', 'openai')}")
     print(f"  Model        : {os.environ.get('LLM_MODEL', 'gpt-4o-mini')}")

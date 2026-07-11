@@ -26,7 +26,7 @@ def _is_production() -> bool:
     """与 app/__init__.py::_enforce_production_security 一致的生产判定。"""
     if os.environ.get("TESTING", "").lower() == "true":
         return False
-    return os.environ.get("FLASK_DEBUG", "true").lower() != "true"
+    return os.environ.get("FLASK_DEBUG", "false").lower() != "true"
 
 
 def _get_fernet() -> Fernet:

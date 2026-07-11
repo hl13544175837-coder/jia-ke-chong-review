@@ -15,10 +15,12 @@
 
 ```bash
 cd backend
+cp .env.example .env  # 首次本地开发；再填写必要的 LLM 配置
 PORT=5001 python run.py
 ```
 
 开发联调后端固定使用 http://localhost:5001，前端开发服务会代理到这个端口。
+代码与容器的安全默认是 `FLASK_DEBUG=false`；`.env.example` 只为本地开发显式设置 `FLASK_DEBUG=true`。如果还需让应用为本地 SQLite 旧库建表/补兼容列，必须另外显式设置 `LOCAL_SCHEMA_COMPAT=true`；debug 不再隐式授权 DDL。
 
 启动日志只显示脱敏后的数据库 driver/host/database label，不打印用户名、密码或 query。`GET /api/health` 只用于进程 liveness；它返回 200 不能证明数据库连接、schema revision、backfill、uploads 或外部依赖 ready。
 
@@ -34,8 +36,10 @@ Libra/SIT 的 RC server 镜像在 Gunicorn 启动前依次执行受控空库 boo
 
 ```env
 FLASK_DEBUG=false
+LOCAL_SCHEMA_COMPAT=false
 DATABASE_URL=mysql+pymysql://<user>:<password>@<host>:3306/<database>?charset=utf8mb4
 CORS_ORIGINS=http://localhost:5000,http://127.0.0.1:5000,http://<本机局域网IP>:5000
+UPLOAD_FOLDER=/var/lib/zhipin/uploads
 ALLOW_PUBLIC_REGISTRATION=false
 SECURITY_HEADERS_ENABLED=true
 RATE_LIMIT_ENABLED=true
@@ -49,7 +53,9 @@ ALLOW_EMPTY_DATABASE_BOOTSTRAP=false
 AUTO_MIGRATE_DATABASE=false
 ```
 
-`CORS_ORIGINS` 每一项必须是无路径的完整 HTTP(S) origin；`*`、`null`、带用户名/密码、path、query、fragment、空格或非 HTTP(S) scheme 都会被自检和生产启动护栏拒绝。
+`CORS_ORIGINS` 每一项必须是无路径的完整 HTTP(S) origin；`*`、`null`、带用户名/密码、path、query、fragment、空格或非 HTTP(S) scheme 都会被自检和生产启动护栏拒绝。错误只输出条目序号、脱敏 scheme/host 和原因，不回显 userinfo 或 query 中的密码/token。
+
+`UPLOAD_FOLDER` 在试点/生产必须显式配置为非临时目录的绝对路径，并由宿主机卷或等价持久存储承载。Flask、backup、restore、cleanup 和 readiness 共用同一路径解析规则；运维脚本在非 debug 模式下遇到缺失、相对或 `/tmp` 路径会 fail closed。
 
 `FIELD_ENCRYPTION_KEY` 不能复制占位值。启用 BOSS 或进入测试/生产前，先生成固定 Fernet 密钥：
 
@@ -57,7 +63,7 @@ AUTO_MIGRATE_DATABASE=false
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Flask 应用工厂在 RC/SIT/生产模式下不会创建或修改表。真正空库需从项目根目录显式执行 `python backend/scripts/bootstrap_database.py --allow-empty`；脚本只接受空库，发现部分建表会 fail closed。已有库升级到 `demand_id` P0 必须经过 Alembic Expand：当前 RC/SIT 由容器 entrypoint 在 Gunicorn 前执行，GA/生产由唯一 migration job 执行。只有自动化测试或 `debug + SQLite` 的本地兼容路径允许应用侧建表。任何路线都不能用手工 SQL 代替已测试的 revision。只有本地演示库需要演示数据时才执行：
+Flask 应用工厂在 RC/SIT/生产模式下不会创建或修改表。真正空库需从项目根目录显式执行 `python backend/scripts/bootstrap_database.py --allow-empty`；脚本只接受空库，缺失任一 `20260710_01` 之前的旧基线业务表都会 fail closed 且不 stamp；`candidate_demand_flows` 由该 Expand revision 新建，不属于旧基线。已有库升级到 `demand_id` P0 必须经过 Alembic Expand：当前 RC/SIT 由容器 entrypoint 在 Gunicorn 前执行，GA/生产由唯一 migration job 执行。只有自动化测试或显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 的本地兼容路径允许应用侧建表。任何路线都不能用手工 SQL 代替已测试的 revision。只有本地演示库需要演示数据时才执行：
 
 ```bash
 cd backend
@@ -89,9 +95,9 @@ python scripts/verify_demand_scope.py --database <local-sqlite-fixture> \
 
 ### BOSS 直聘后端接口（实验辅助能力）
 
-BOSS 直聘集成用于内部验证从招聘端账号拉取收件箱/推荐候选人、下载简历并导入系统的辅助流程。它不是当前 HR 试点主流程的必测项；主流程仍以手工上传简历、招聘需求、候选人匹配、流程推进、面试反馈和 BI 为准。
+BOSS 直聘集成源码用于内部验证从招聘端账号拉取收件箱/推荐候选人和读取简历。它不是当前 HR 试点主流程的必测项；主流程仍以手工上传简历、招聘需求、候选人匹配、流程推进、面试反馈和 BI 为准。
 
-`/boss` 页面依赖后端 `/api/boss/*` 接口。测试环境部署后，未登录访问
+当前 `featureRegistry` 未注册 BOSS feature，因此 P0 构建没有可达的 `/boss` 前端路由，不只是隐藏主导航。后端仍保留 `/api/boss/*` 只读/账号实验接口；批量导入和 AI 初筛写接口固定返回 410 `feature_not_available`，不能描述为当前可用的“导入候选人库”。测试环境部署后，未登录访问
 `/api/boss/accounts` 应返回 401；登录后未绑定 BOSS 账号时，
 `/api/boss/status` 应返回 409 `no_active_account`，不应返回 404。
 
@@ -100,7 +106,7 @@ BOSS 账号通过浏览器 Cookie 导入，Cookie 会写入 `boss_accounts` 表�
 重启后已导入账号无法解密。涉及拉取收件箱、推荐候选人、下载简历等能力时，
 后端还需要可用的 `boss` CLI。运行期依赖安装已被禁止，容器也不再为了该实验能力携带 git；旧的 `BOSS_CLI_AUTO_INSTALL=true` 会被安全忽略。若独立验证确实需要 BOSS，必须在镜像构建阶段固定并审查 CLI 版本，再用 `BOSS_CLI_BIN` 指向可执行文件。
 
-P0 HR 主流程试点必须从主导航隐藏 `/boss` 页面，并让未单独授权的写入路径 fail closed；若要在独立验证中开放，必须先确认 BOSS Cookie 使用边界、`FIELD_ENCRYPTION_KEY`、boss CLI 安装来源和账号权限。
+若后续要把源码中的 `/boss` 页面重新注册为可达路由，必须先确认 BOSS Cookie 使用边界、`FIELD_ENCRYPTION_KEY`、boss CLI 安装来源、账号权限，并重新设计显式 `demand_id` 写入契约。
 
 ---
 
@@ -130,7 +136,7 @@ P0 HR 主流程试点必须从主导航隐藏 `/boss` 页面，并让未单独�
 
 面试官账号 **interviewer01@mvp.local** 只保留工作台和“我的面试”主入口。面试官可以从面试任务进入候选人详情查看材料并填写反馈；不会显示“推进 Offer/淘汰”等流程按钮，也不开放全量简历库、候选人流程、AI 助手主入口、岗位级 BI 或专员级 BI。
 
-管理员账号用于创建账号、重置密码和管理角色。管理员重置密码、用户自己修改密码后，旧登录态会立刻失效，需要重新登录。当前 MVP 还不是完整企业管理员后台，暂未提供全量数据导出审批、导出水印、字段级权限等企业治理能力；但候选人详情查看、候选人 CSV 导出、删除、负责人转派、流程推进、Demand 关闭/恢复、角色变更、AI 解析产物落库/基线遗留写事件和越权 403 都会进入审计日志；P0 不允许 AI 写主流程。
+管理员账号用于创建账号、重置密码和管理角色。管理员重置密码、修改角色/启停状态或用户自己修改密码后，旧登录态会立刻失效，需要重新登录。当前 MVP 还不是完整企业管理员后台，暂未提供全量数据导出审批、导出水印、字段级权限等企业治理能力；但候选人详情查看、候选人 CSV 导出、删除、负责人转派、流程推进、Demand 关闭/恢复、角色变更、AI 解析产物落库/基线遗留写事件和越权 403 都会进入审计日志；P0 不允许 AI 写主流程。
 
 右上角只保留通知和账号菜单。修改密码、退出登录都在账号菜单里，侧边栏不再重复显示个人信息卡片，避免试用人员把账户操作误认为招聘主流程。
 
@@ -148,15 +154,17 @@ AI 助手首页的示例问题会按角色变化：招聘专员看到自己负�
 
 岗位匹配结果页默认展示 AI 推荐排序。如果 HR 明确知道要找某个人，或觉得 AI 排名不准，可以切到「全部候选人」，在权限范围内按姓名、公司、学校、岗位、技能或邮箱搜索候选人；页面会继续显示该候选人与当前岗位画像的匹配预览，并允许手动加入该需求流程。匹配度、入需求流程状态、匹配技能和缺失技能筛选只影响当前结果，批量加入也只作用于当前筛选后已勾选的人。
 
-面试安排只能选择启用中的面试官账号和在招岗位。如果账号被停用或岗位已关闭，先由管理员启用账号，或到招聘岗位页恢复在招，再重新安排面试。同一个面试官同一时间只能有一场面试；如果系统提示已有安排，需要改时间或换面试官。
+面试安排只能选择启用中的面试官账号和开放中（pending/active）的具体 Demand。如果账号被停用或 Demand 已暂停/关闭，先由管理员启用账号，或到需求工作台恢复 Demand，再重新安排面试；Job 只是画像模板，不代替 Demand 的启停语义。同一个面试官同一时间只能有一场有效面试；如果系统提示已有安排，需要改时间或换面试官。
 
-面试反馈统一在「面试任务」页处理，但它不再作为招聘专员、经理或管理员的左侧一级入口。候选人在管道进入面试阶段后，可以从管道右侧点击「填写面试反馈」，系统会带着候选人和岗位定位到待反馈项；面试官在「我的面试」任务卡上点「填写反馈」后，会自动切到待处理并滚动到对应反馈表。AI 预筛参考只是辅助，不替代人工安排和反馈。
+面试反馈统一在「面试任务」页处理，但它不再作为招聘专员、经理或管理员的左侧一级入口。候选人在管道进入面试阶段后，可以从管道右侧点击「填写面试反馈」，系统会带着候选人和 Demand 定位到具体 assignment；没有有效 assignment 时只提示先安排，不展示可提交表单。面试官在「我的面试」任务卡上点「填写反馈」后，会自动切到待处理并滚动到对应反馈表。AI 预筛参考只是辅助，不替代人工安排和反馈。
+
+面试误安排可由 Demand owner、经理或管理员在任务列表填写原因后取消。已提交反馈的任务不可取消；未反馈任务取消后撤销面试官访问、释放主面试官轮次槽位，可重新安排，并保留通知与审计。
 
 需求是流程的启停边界：Demand 暂停、取消或关闭后限制其新流程写入，但不同步关闭 Job 模板，也不影响同一 Job 下的其他 Demand。
 
 候选人详情的 P0 目标是“原始简历 / 结构化画像 / 匹配分析”三页签，原始简历默认展示且是事实真源；AI 结果是可收起的辅助判断。原文件丢失、解析失败或用户无权限时，页面必须说明原因和下一步，不得用结构化文本伪装原件。
 
-为避免网络抖动或用户连点造成重复数据，后端会轻量复用重复请求：同一账号短时间重复上传同一批简历会返回第一次结果；重复推进到同一阶段、重复安排同一面试、重复提交同一轮反馈，不会再追加第二条业务记录。普通写接口也支持 `Idempotency-Key`，前端或网关重试时同 key、同请求体会复用第一次结果。用户不用额外操作。
+为避免网络抖动或用户连点造成重复数据，后端会轻量复用重复请求：同一账号短时间重复上传同一批简历会返回第一次结果；重复推进到同一阶段、重复安排同一面试、重复提交同一轮反馈，不会再追加第二条业务记录。普通写接口也支持 `Idempotency-Key`，只有当前账号仍启用且 token 未撤销时，同 key、同请求体才会复用第一次结果；权限、启停或密码变更后旧 token 不能重放缓存响应。用户不用额外操作。
 
 如果整批简历误导入，管理员、经理或该批次上传人可以按上传批次撤回。撤回会把该批候选人从列表、看板和匹配中移除，匿名化候选人信息并删除原简历文件；审计日志会保留谁在什么时候因为什么原因撤回。撤回不是普通恢复按钮，如需找回真实候选人数据，必须走备份恢复演练和权限审批。
 
@@ -195,13 +203,13 @@ python seed_dev.py
 python backend/scripts/cleanup_demo_data.py --dry-run
 ```
 
-确认备份无误后，才由负责人执行：
+确认备份无误后，先进入停写窗口并停止应用 worker/异步任务，再由负责人执行：
 
 ```bash
 python backend/scripts/cleanup_demo_data.py --confirm
 ```
 
-该脚本会先生成带 manifest 和 SHA-256 校验和的可恢复快照，再删除 `@mvp.local` demo owner 的账号及关联业务数据，并且只删除这些记录独占引用的上传文件。真实 owner、无关文件和跨范围引用不会被顺带清理；检测到混合归属会 fail closed。MySQL 暂不支持脚本自动确认清理，必须走同引擎备份恢复与受审计的 DBA 路线。
+该脚本会先生成带 manifest 和 SHA-256 校验和的可恢复快照，manifest 记录 uploads 源根目录；恢复到新 `UPLOAD_FOLDER` 时，其内候选人附件引用会安全转为相对路径。旧快照没有源根字段，只允许使用原上传根目录，跨目录恢复会 fail closed。随后脚本再删除 `@mvp.local` demo owner 的账号及关联业务数据，并且只删除这些记录独占引用的上传文件。真实 owner、无关文件和跨范围引用不会被顺带清理；检测到混合归属会 fail closed。MySQL 暂不支持脚本自动确认清理，必须走同引擎备份恢复与受审计的 DBA 路线。
 
 ---
 

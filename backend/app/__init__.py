@@ -6,6 +6,7 @@ import jwt
 from flask import Flask, g, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from runtime_paths import DEFAULT_UPLOAD_FOLDER, RuntimePathError, resolve_upload_folder
 
 from .config_validation import validate_cors_origins
 
@@ -61,12 +62,16 @@ def create_app(config=None):
 
 
 def _should_run_local_schema_compat(app):
-    """Keep legacy auto-DDL strictly inside tests and local SQLite debug runs."""
+    """Keep legacy auto-DDL inside tests or explicit local SQLite compatibility."""
     if app.config.get("TESTING"):
         return True
 
     database_uri = str(app.config.get("SQLALCHEMY_DATABASE_URI") or "").lower()
-    return bool(app.config.get("FLASK_DEBUG")) and database_uri.startswith("sqlite:")
+    return (
+        bool(app.config.get("FLASK_DEBUG"))
+        and bool(app.config.get("LOCAL_SCHEMA_COMPAT"))
+        and database_uri.startswith("sqlite:")
+    )
 
 
 def _register_healthcheck(app):
@@ -260,7 +265,23 @@ def _idempotency_actor_scope(app):
             payload = jwt.decode(token, app.config["JWT_SECRET"], algorithms=["HS256"])
             user_id = payload.get("user_id")
             if user_id is not None:
-                return f"user:{user_id}"
+                from .models import User
+
+                user = db.session.get(User, user_id)
+                try:
+                    token_version = int(payload.get("token_version", 0) or 0)
+                except (TypeError, ValueError):
+                    user = None
+                    token_version = -1
+                if (
+                    user is not None
+                    and user.is_active
+                    and token_version == (user.token_version or 0)
+                ):
+                    # Preserve the historical scope key so in-flight retries
+                    # remain safe across deployment. Current authorization is
+                    # enforced above via active state and token_version.
+                    return f"user:{user.id}"
         except jwt.PyJWTError:
             pass
         token_hash = hashlib.sha256(token.encode()).hexdigest()[:24]
@@ -276,9 +297,9 @@ def _enforce_production_security(app):
     - JWT_SECRET 不能是默认/弱值，长度需 >= MIN_SECRET_LENGTH
     - CORS_ORIGINS 必须配置白名单，禁止生产全开放
     - AI 招聘能力必须显式完成合规确认、候选人隐私告知和人工复核承诺
-    开发与测试不受影响（debug 默认 true / TESTING=true）。
+    开发与测试不受影响（debug 需显式开启 / TESTING=true）。
     """
-    if app.config.get("TESTING") or app.config.get("FLASK_DEBUG", True):
+    if app.config.get("TESTING") or app.config.get("FLASK_DEBUG", False):
         return
 
     weak = app.config.get("WEAK_SECRETS", set())
@@ -303,11 +324,22 @@ def _enforce_production_security(app):
         problems.append("CANDIDATE_PRIVACY_NOTICE_URL 必须配置候选人隐私告知/授权说明地址")
     if not app.config.get("AI_HUMAN_REVIEW_REQUIRED", True):
         problems.append("AI_HUMAN_REVIEW_REQUIRED 必须为 true，AI 结论不得绕过人工复核")
+    upload_source = app.config.get("UPLOAD_FOLDER_SOURCE")
+    configured_upload = str(app.config.get("UPLOAD_FOLDER") or "")
+    if upload_source is None:
+        upload_source = configured_upload
+    elif not str(upload_source).strip() and configured_upload != str(DEFAULT_UPLOAD_FOLDER):
+        # 自定义部署 Config 可直接提供绝对 UPLOAD_FOLDER。
+        upload_source = configured_upload
+    try:
+        resolve_upload_folder(str(upload_source or ""), require_persistent=True)
+    except RuntimePathError as exc:
+        problems.append(f"UPLOAD_FOLDER 不安全：{exc}")
 
     if problems:
         raise RuntimeError(
             "生产安全校验未通过，拒绝启动：\n  - " + "\n  - ".join(problems)
-            + "\n（如为本地开发，请设置 FLASK_DEBUG=true）"
+            + "\n（如为本地开发，请显式设置 FLASK_DEBUG=true）"
         )
 
 

@@ -97,7 +97,8 @@ Accepted（代码候选已实现，环境待验收）
 
 **在应用启动或多 worker 中自动执行 DDL/回填**
 
-- Rejected。迁移必须由版本化 Alembic 脚本和唯一 release migration job 执行，否则无法保证顺序、幂等、锁竞争与回滚边界。
+- Rejected。GA/生产迁移必须由版本化 Alembic 脚本和唯一 release migration job 执行，否则无法保证顺序、幂等、锁竞争与回滚边界；Flask 应用工厂、Gunicorn worker 和业务 worker 均不得执行 DDL/回填。
+- 仅对数据可丢弃的 RC/SIT，允许容器 entrypoint 在 Gunicorn 启动前执行显式空库 bootstrap 与 `alembic upgrade head`，但发布层必须保证整个迁移窗口只有一个副本、一次启动，且用独立环境开关启用。勾选自动部署本身不构成单副本证据；无法确认单副本时必须改用唯一 migration job，不得依赖数据库碰撞“自然串行”。该例外不适用于生产或真实候选人数据。
 
 **保留 AI 主流程写工具，仅依赖确认弹窗或 prompt 约束**
 

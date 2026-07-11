@@ -204,11 +204,15 @@ function isToday(value: string | null): boolean {
 }
 
 function buildInterviewerTaskStats(assignments: InterviewAssignment[]): InterviewerTaskStats {
+  const activeAssignments = assignments.filter((item) => {
+    const status = (item.status || 'scheduled').trim().toLowerCase();
+    return !['cancelled', 'canceled'].includes(status);
+  });
   return {
-    pendingFeedback: assignments.filter((item) => !item.feedback_submitted).length,
-    todayInterviews: assignments.filter((item) => isToday(item.scheduled_at)).length,
-    submittedFeedback: assignments.filter((item) => item.feedback_submitted).length,
-    overdueFeedback: assignments.filter((item) => item.is_overdue && !item.feedback_submitted).length,
+    pendingFeedback: activeAssignments.filter((item) => !item.feedback_submitted).length,
+    todayInterviews: activeAssignments.filter((item) => isToday(item.scheduled_at)).length,
+    submittedFeedback: activeAssignments.filter((item) => item.feedback_submitted).length,
+    overdueFeedback: activeAssignments.filter((item) => item.is_overdue && !item.feedback_submitted).length,
   };
 }
 
@@ -287,7 +291,9 @@ function useDashboardStats(
             next.businessReview = valueOrNull(funnel.business_review);
             next.interview = valueOrNull(funnel.interview);
             next.offer = valueOrNull(funnel.offer);
-            next.outstandingFeedback = biR.value.demands.reduce(
+            next.outstandingFeedback = biR.value.demands
+              .filter((item) => item.status === 'pending' || item.status === 'active')
+              .reduce(
               (total, item) => total + item.outstanding_feedback,
               0,
             );
@@ -359,6 +365,7 @@ function alertKindLabel(kind: string): string {
   if (kind === 'business_feedback_pending') return '业务待反馈';
   if (kind === 'demand_overdue') return '需求逾期';
   if (kind === 'hr_no_recommendation') return '尚未推荐';
+  if (kind === 'no_active_candidates') return '当前无在流程候选人';
   if (kind === 'hc_completion_suggested') return 'HC 已满足';
   return '待处理';
 }
@@ -451,6 +458,12 @@ function ManagementAlerts({
                       <Badge tone={alertTone(alert.priority)}>{alertKindLabel(alert.kind)}</Badge>
                     </span>
                     <span className="mt-1 block text-sm text-muted">{alert.detail}</span>
+                    {alert.kind === 'pending_interview_feedback' && (
+                      <span className="mt-1 block text-xs text-muted">
+                        应补反馈面试官：{alert.interviewer_name || '未知面试官'}
+                        {alert.owner_name ? ` · 协同负责人：${alert.owner_name}` : ''}
+                      </span>
+                    )}
                   </span>
                   <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-soft" />
                 </Link>

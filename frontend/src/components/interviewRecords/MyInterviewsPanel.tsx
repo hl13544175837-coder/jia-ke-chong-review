@@ -1,6 +1,6 @@
 import { AlertTriangle, CalendarCheck2 } from 'lucide-react';
 import { formatDate } from '../../lib/formatDate';
-import { roundLabel } from '../../lib/interviewRecords';
+import { isActiveInterviewAssignment, roundLabel } from '../../lib/interviewRecords';
 import type { InterviewAssignment } from '../../types';
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle } from '../ui';
 
@@ -10,8 +10,9 @@ interface MyInterviewsPanelProps {
 }
 
 export function MyInterviewsPanel({ assignments, onStartFeedback }: MyInterviewsPanelProps) {
-  const pending = assignments.filter((item) => !item.feedback_submitted);
-  const overdue = assignments.filter((item) => item.is_overdue);
+  const active = assignments.filter(isActiveInterviewAssignment);
+  const pending = active.filter((item) => !item.feedback_submitted);
+  const overdue = active.filter((item) => item.is_overdue);
   const done = assignments.filter((item) => item.feedback_submitted);
   const focusItems = [...overdue, ...pending.filter((item) => !item.is_overdue)].slice(0, 4);
 

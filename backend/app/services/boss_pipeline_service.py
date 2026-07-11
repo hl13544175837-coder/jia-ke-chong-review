@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from flask import current_app
+from runtime_paths import DEFAULT_UPLOAD_FOLDER
 
 from .. import db
 from ..models import (
@@ -89,7 +90,7 @@ class BossPipelineService:
     def _save_markdown(self, owner_hr_id: int, geek_id: str, md_text: str) -> Optional[str]:
         """把简历 Markdown 写入 UPLOAD_FOLDER/boss/<uid>/<geek>.md，返回路径。失败返回 None。"""
         try:
-            base = current_app.config.get("UPLOAD_FOLDER") or "uploads"
+            base = current_app.config.get("UPLOAD_FOLDER") or str(DEFAULT_UPLOAD_FOLDER)
             folder = Path(base) / "boss" / str(owner_hr_id)
             folder.mkdir(parents=True, exist_ok=True)
             safe = _safe_markdown_basename(geek_id)

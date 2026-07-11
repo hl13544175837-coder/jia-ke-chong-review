@@ -32,12 +32,37 @@ def test_candidate_pipelines_lists_current_stage_per_job(client, make_user, app)
 
 def test_journey_aggregates_timeline_and_feedback(client, make_user, app):
     uid, token = make_user("hr@x.com", role="recruiter")
+    interviewer_id, interviewer_token = make_user(
+        "journey-interviewer@x.com", role="interviewer"
+    )
     jid, did, cid = _seed(app, uid)
     client.post("/api/pipeline/move", headers=_auth(token),
                 json={"candidate_id": cid, "demand_id": did, "stage": "interview", "note": "n1"})
-    client.post("/api/interview/feedback", headers=_auth(token),
-                json={"candidate_id": cid, "demand_id": did, "round": "round_1",
-                      "score": 4, "passed": True, "strengths": "好"})
+    assignment = client.post(
+        "/api/interview/assignments",
+        headers=_auth(token),
+        json={
+            "candidate_id": cid,
+            "demand_id": did,
+            "round": "round_1",
+            "interviewer_id": interviewer_id,
+        },
+    )
+    assert assignment.status_code == 201
+    feedback = client.post(
+        "/api/interview/feedback",
+        headers=_auth(interviewer_token),
+        json={
+            "assignment_id": assignment.get_json()["id"],
+            "candidate_id": cid,
+            "demand_id": did,
+            "round": "round_1",
+            "score": 4,
+            "passed": True,
+            "strengths": "好",
+        },
+    )
+    assert feedback.status_code == 201
     r = client.get(f"/api/candidates/{cid}/journey?demand_id={did}", headers=_auth(token))
     assert r.status_code == 200
     body = r.get_json()
