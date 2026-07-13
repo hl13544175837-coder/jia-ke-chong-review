@@ -55,8 +55,12 @@ class Config:
     # ALLOW_INSECURE_SIT_STARTUP 或测试）才真正生效；GA/生产即使误设也不会关闭鉴权，
     # 且启动门禁（docker-entrypoint.sh）会拒绝 GA 携带 AUTH_DISABLED=true。
     AUTH_DISABLED = os.environ.get("AUTH_DISABLED", "false").lower() == "true"
-    # 鉴权关闭时用哪个账号作为当前用户：留空则取库中第一个在职 admin（否则第一个在职用户）。
+    # 网关模式下的当前用户身份：优先用请求头 X-Emp-Code（网关工号）find-or-create
+    # 一个后端用户；没有工号头时才回退到下面的默认账号。
+    # 回退账号：留空则取库中第一个在职 admin（否则第一个在职用户）。
     AUTH_DISABLED_USER_EMAIL = os.environ.get("AUTH_DISABLED_USER_EMAIL", "")
+    # 按工号自动建号时给的角色（真实角色/组织后续随身份集成对接）。
+    AUTH_GATEWAY_USER_ROLE = os.environ.get("AUTH_GATEWAY_USER_ROLE", "admin")
 
     # CORS 允许来源：逗号分隔的域名白名单；留空表示不限制（仅限开发）
     CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]

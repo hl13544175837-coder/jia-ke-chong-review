@@ -93,6 +93,8 @@ import type {
 import { API_BASE } from './apiBase';
 
 export const TOKEN_KEY = 'hireinsight_token';
+// 网关工号（profile 的 ymEmpCode）。作为后端当前用户身份，随每个业务请求发送。
+export const EMP_CODE_KEY = 'hireinsight_emp_code';
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -104,6 +106,29 @@ export function setToken(token: string): void {
 
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getEmpCode(): string | null {
+  return localStorage.getItem(EMP_CODE_KEY);
+}
+
+export function setEmpCode(empCode: string): void {
+  localStorage.setItem(EMP_CODE_KEY, empCode);
+}
+
+export function clearEmpCode(): void {
+  localStorage.removeItem(EMP_CODE_KEY);
+}
+
+// 统一的鉴权请求头：Bearer token + 网关工号（X-Emp-Code）。
+// 所有直接 fetch 业务接口的地方都应复用它，避免漏带工号。
+export function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const empCode = getEmpCode();
+  if (empCode) headers['X-Emp-Code'] = empCode;
+  return headers;
 }
 
 // Error surfaced to callers; carries HTTP status and any backend message.
@@ -144,12 +169,8 @@ interface RequestOptions {
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, formData, idempotencyKey } = opts;
-  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
+  const headers: Record<string, string> = { ...(opts.headers ?? {}), ...authHeaders() };
 
-  const token = getToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
   if (idempotencyKey) {
     headers['Idempotency-Key'] = idempotencyKey;
   }
@@ -276,12 +297,9 @@ export const api = {
     return request(`/resume/${candidateId}`);
   },
   async exportCandidate(candidateId: number): Promise<Blob> {
-    const headers: Record<string, string> = {};
-    const token = getToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    const res = await fetch(`${API_BASE}/candidates/${candidateId}/export`, { headers });
+    const res = await fetch(`${API_BASE}/candidates/${candidateId}/export`, {
+      headers: authHeaders(),
+    });
     if (!res.ok) {
       if (res.status === 401 && unauthorizedHandler) {
         unauthorizedHandler();

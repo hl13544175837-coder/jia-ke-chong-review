@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { JwtPayload, LoginResponse, Role } from '../types';
-import { clearToken, getToken, setToken, setUnauthorizedHandler } from './api';
+import { clearToken, clearEmpCode, getToken, setToken, setUnauthorizedHandler } from './api';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 const NAME_KEY = 'hireinsight_name';
@@ -107,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       logout: () => {
         clearToken();
+        clearEmpCode();
         localStorage.removeItem(NAME_KEY);
         localStorage.removeItem(ROLE_KEY);
         setSession(null);

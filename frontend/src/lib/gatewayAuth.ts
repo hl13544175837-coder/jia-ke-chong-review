@@ -9,7 +9,7 @@
 //   后端 /zhipin-server/api/auth/me 按工号映射真实角色。
 // - 登录后业务接口带同一个 Bearer token，网关鉴权后透传身份给后端。
 
-import { ApiError } from './api';
+import { ApiError, setEmpCode } from './api';
 import { md5 } from './md5';
 import type { LoginResponse, Role } from '../types';
 
@@ -79,8 +79,8 @@ interface GatewayUserInfo {
   yhUserCode?: string | null;
 }
 
-// 用 token 拉取用户信息（姓名）
-async function gatewayProfile(token: string): Promise<{ name: string }> {
+// 用 token 拉取用户信息（姓名 + 网关工号）
+async function gatewayProfile(token: string): Promise<{ name: string; empCode: string }> {
   let resp: Response;
   try {
     resp = await fetch(`${OAUTH_BASE}/api/profile`, {
@@ -95,12 +95,15 @@ async function gatewayProfile(token: string): Promise<{ name: string }> {
   const data = ensureSucc(body, resp.status, '获取用户信息失败');
   const info = data?.userInfo ?? {};
   const name = info.empName || info.nickname || info.yhUserCode || info.ymEmpCode || '用户';
-  return { name };
+  const empCode = info.ymEmpCode || info.yhUserCode || '';
+  return { name, empCode };
 }
 
 // 对外：走网关完成登录，返回与原 LoginResponse 相同的会话结构。
+// 同时把网关工号存起来（随每个业务请求发给后端做当前用户身份）。
 export async function loginViaGateway(account: string, password: string): Promise<LoginResponse> {
   const token = await gatewayLogin(account, password);
-  const { name } = await gatewayProfile(token);
+  const { name, empCode } = await gatewayProfile(token);
+  if (empCode) setEmpCode(empCode);
   return { token, role: DEFAULT_ROLE, name };
 }

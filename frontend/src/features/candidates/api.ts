@@ -1,4 +1,4 @@
-import { ApiError, api, getToken } from '../../lib/api';
+import { ApiError, api, authHeaders } from '../../lib/api';
 import { API_BASE } from '../../lib/apiBase';
 import type { CandidateProfileDetail, OriginalResumeBlob } from './types';
 
@@ -12,10 +12,9 @@ async function fetchOriginalResume(
   candidateId: number,
   mode: 'preview' | 'download',
 ): Promise<OriginalResumeBlob> {
-  const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`${API_BASE}/resume/${candidateId}/original/${mode}`, { headers });
+  const response = await fetch(`${API_BASE}/resume/${candidateId}/original/${mode}`, {
+    headers: authHeaders(),
+  });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string; code?: string } | null;
     throw new ApiError(

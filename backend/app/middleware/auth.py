@@ -21,12 +21,50 @@ def _auth_disabled():
     )
 
 
-def _resolve_gateway_user():
-    """鉴权关闭时的当前用户：配置邮箱 > 第一个在职 admin > 第一个在职用户。
+def _provision_gateway_user(emp_code):
+    """按网关工号 find-or-create 一个后端用户（承载 g.user_id 的外键/审计/org）。
 
+    真实姓名、角色、组织后续随身份集成对接；当前用工号占位、给默认角色。
+    工号以合成邮箱 `<工号>@gateway.local` 作为唯一键，避免加库表列。
+    """
+    from ..models import User
+
+    email = f"{emp_code}@gateway.local"
+    user = User.query.filter_by(email=email).first()
+    if user is not None:
+        return user
+
+    role = (current_app.config.get("AUTH_GATEWAY_USER_ROLE") or "admin").strip() or "admin"
+    user = User(
+        name=emp_code,
+        email=email,
+        role=role,
+        password_hash="!gateway-managed",  # 非法哈希：该账号不能用密码登录
+        org_id=1,
+        is_active=True,
+        token_version=0,
+    )
+    db.session.add(user)
+    try:
+        db.session.commit()
+    except Exception:  # 并发首次请求可能撞唯一键，回滚后重查
+        db.session.rollback()
+        user = User.query.filter_by(email=email).first()
+    return user
+
+
+def _resolve_gateway_user():
+    """鉴权关闭时的当前用户。
+
+    优先用请求头 X-Emp-Code（网关工号）find-or-create 用户；无工号头时回退到
+    配置的默认账号 > 第一个在职 admin > 第一个在职用户。
     后端仍需一个真实 User 承载 g.user_id（外键归属、审计、org 过滤都依赖它）。
     """
     from ..models import User
+
+    emp_code = (request.headers.get("X-Emp-Code") or "").strip()
+    if emp_code:
+        return _provision_gateway_user(emp_code)
 
     email = (current_app.config.get("AUTH_DISABLED_USER_EMAIL") or "").strip()
     base = User.query.filter_by(is_active=True)

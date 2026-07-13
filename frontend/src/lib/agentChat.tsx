@@ -13,7 +13,7 @@ import {
   type ReactNode,
   type MutableRefObject,
 } from 'react';
-import { getToken } from './api';
+import { authHeaders } from './api';
 import { api } from './api';
 import { API_BASE } from './apiBase';
 import type { ConversationSummary } from '../types';
@@ -129,9 +129,8 @@ function writeStoredRecentConversations(ids: number[]) {
 }
 
 async function authFetch<T>(url: string): Promise<T> {
-  const token = getToken();
   const response = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: authHeaders(),
   });
   if (!response.ok) {
     throw new Error(`请求失败 (HTTP ${response.status})`);

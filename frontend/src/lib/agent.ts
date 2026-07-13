@@ -15,7 +15,7 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
-import { getToken } from './api';
+import { authHeaders } from './api';
 import { API_BASE } from './apiBase';
 
 // ---- Wire types ----------------------------------------------------------
@@ -95,14 +95,13 @@ export async function executeWriteTool(
   args: Record<string, unknown>,
   conversationId?: number | null,
 ): Promise<ExecuteWriteResult> {
-  const token = getToken();
   const body: Record<string, unknown> = { tool, args };
   if (conversationId) body.conversation_id = conversationId;
   const resp = await fetch(`${API_BASE}/agent/execute`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...authHeaders(),
     },
     body: JSON.stringify(body),
   });
@@ -130,14 +129,13 @@ export async function streamChat(
   { message, history, conversationId, signal }: StreamChatParams,
   onEvent: (event: AgentEvent) => void
 ): Promise<void> {
-  const token = getToken();
   const body: Record<string, unknown> = { message, history };
   if (conversationId) body.conversation_id = conversationId;
   const resp = await fetch(`${API_BASE}/agent/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...authHeaders(),
     },
     body: JSON.stringify(body),
     signal,
@@ -216,9 +214,8 @@ function isAgentEvent(value: unknown): value is AgentEvent {
 // Fetch the agent's tool catalogue for the capability cloud. Failures are
 // swallowed by the caller — the cloud is a nice-to-have, not load-bearing.
 export async function fetchAgentTools(signal?: AbortSignal): Promise<AgentTool[]> {
-  const token = getToken();
   const resp = await fetch(`${API_BASE}/agent/tools`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: authHeaders(),
     signal,
   });
   if (!resp.ok) {

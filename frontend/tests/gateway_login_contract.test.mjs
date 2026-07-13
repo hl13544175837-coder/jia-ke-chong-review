@@ -34,4 +34,11 @@ assert.ok(loginPage.includes('loginViaGateway'), 'LoginPage 应调用 loginViaGa
 assert.ok(loginPage.includes('account'), 'LoginPage 应采集账号 account');
 assert.ok(!loginPage.includes('api.login('), 'LoginPage 不应再直连后端 api.login');
 
+// 5) 网关工号作为后端用户身份：登录存工号，业务请求统一带 X-Emp-Code
+const apiSrc = read('lib/api.ts');
+assert.ok(apiSrc.includes('X-Emp-Code'), 'authHeaders 应发送 X-Emp-Code 工号头');
+assert.ok(apiSrc.includes('export function authHeaders'), 'api 应导出统一 authHeaders');
+assert.ok(gw.includes('setEmpCode'), '登录应存网关工号');
+assert.ok(gw.includes('ymEmpCode'), '工号应取自 profile 的 ymEmpCode');
+
 console.log('gateway_login_contract: OK');
