@@ -261,6 +261,8 @@ CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 
 
 当前 RC/SIT 还会显式传入 `ALLOW_INSECURE_SIT_STARTUP=true`、`SECURITY_HEADERS_ENABLED=false`、`RATE_LIMIT_ENABLED=false` 和 `ALLOW_PUBLIC_REGISTRATION=true`，CORS 留空时允许测试跨域。这是项目负责人单人、可丢弃数据测试的明确授权，不开 `FLASK_DEBUG`，也不改动 Demand/候选人/面试/BI 的业务数据约束。`GA` 对这些值使用严格反向配置，且 `ALLOW_INSECURE_SIT_STARTUP=false`。完整测试模板见 `backend/sit-unrestricted.env.example`；`check_pilot_readiness.py` 只是真实数据试点/GA 门禁，不是当前 SIT 构建阻断器。
 
+镜像构建还会把经 Makefile 校验的 `RC` / `GA` 写入镜像内部 `.release-channel` 文件，而不是可被 K8S 环境变量替换的 `ENV`。GA entrypoint 会在 bootstrap/Alembic 之前核对所有严格值；运行时若尝试开启 SIT 放行、自动迁移/空库初始化、公开注册，或关闭安全头/限流，容器会在任何数据库动作前拒绝启动。缺失或未知发布标记同样 fail closed。
+
 如果点击“发布到SIT”弹出：
 
 ```text

@@ -795,6 +795,8 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 环境安全边界与 schema 生命周期独立。`ALLOW_INSECURE_SIT_STARTUP` 默认为 `false`；当前非 `GA` RC 在项目负责人单人、可丢弃数据测试授权下显式设为 `true`，并关闭应用安全头/限流、开放注册和 CORS。该开关只跳过弱 JWT、CORS 白名单、AI 合规值和持久 uploads 路径的启动拒绝；容器仍 `FLASK_DEBUG=false`，不会触发 `LOCAL_SCHEMA_COMPAT`，也不绕过 RBAC、组织隔离、业务数据约束或 Alembic。`GA` 和真实数据试点必须显式保持 `false`并通过 `check_pilot_readiness.py`。
 
+发布通道另有一层不受运行时环境变量覆盖的边界：Makefile 只接受精确 `RC` / `GA`，并把发布通道写入镜像内 `.release-channel` 文件。entrypoint 先读取该标记；GA 镜像若被 K8S env 覆盖为 SIT 放行、自动迁移/空库初始化、公开注册或关闭安全头/限流，会在任何 DDL 之前拒绝启动。RC 镜像则保留本轮已授权的完全宽松测试配置。
+
 当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
