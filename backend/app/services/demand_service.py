@@ -27,6 +27,7 @@ INTERVIEW_PROGRESS_STAGES = {
     "onboarded",
 }
 OFFER_STAGES = {"offer", "onboarded"}
+DEFAULT_INTERVIEWER_ROLES = {"interviewer", "manager", "admin"}
 
 
 class DemandValidationError(Exception):
@@ -40,6 +41,18 @@ class DemandValidationError(Exception):
             "error": self.message,
             "code": "validation_error",
             "fields": self.fields,
+        }
+
+
+class DemandRequestNoConflict(Exception):
+    def __init__(self):
+        super().__init__("需求编号已存在")
+
+    def as_payload(self):
+        return {
+            "error": "需求编号已存在",
+            "code": "request_no_conflict",
+            "fields": {"request_no": "需求编号已存在"},
         }
 
 
@@ -66,8 +79,31 @@ def _positive_int(value):
     return parsed if parsed > 0 else None
 
 
-def _generated_request_no():
-    return f"REQ-{date.today():%Y%m%d}-{uuid4().hex[:8].upper()}"
+def normalize_request_no(value):
+    return str(value or "").strip().upper()[:80]
+
+
+def generate_request_no():
+    return f"REQ-{date.today():%Y%m%d}-{uuid4().hex[:16].upper()}"
+
+
+def resolve_default_interviewer(value, *, org_id):
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return None
+    try:
+        interviewer_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    if interviewer_id <= 0:
+        return None
+    return User.query.filter(
+        User.id == interviewer_id,
+        User.org_id == org_id,
+        User.is_active.is_(True),
+        User.role.in_(DEFAULT_INTERVIEWER_ROLES),
+    ).first()
 
 
 def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
@@ -82,6 +118,11 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
     target_date = parse_date(data.get("target_date"))
     headcount = _positive_int(data.get("headcount"))
     owner = validate_recruiter_owner(data.get("owner_hr_id"), org_id)
+    raw_default_interviewer_id = data.get("default_interviewer_id")
+    default_interviewer = resolve_default_interviewer(
+        raw_default_interviewer_id,
+        org_id=org_id,
+    )
 
     if not city:
         fields["city"] = "请选择招聘城市"
@@ -101,6 +142,13 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
         fields["target_date"] = "请选择期望完成日期"
     elif requested_at and target_date < requested_at:
         fields["target_date"] = "期望完成日期不能早于提需求日期"
+    if (
+        raw_default_interviewer_id not in (None, "")
+        and default_interviewer is None
+    ):
+        fields["default_interviewer_id"] = (
+            "请选择当前组织内已启用的面试官、经理或管理员"
+        )
 
     title = clean_text(data.get("job_title") or data.get("title"), 200)
     jd_text = str(data.get("jd_text") or data.get("job_description") or "").strip()
@@ -121,7 +169,7 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
     if raw_status == "paused" and not clean_text(data.get("close_reason"), 1000):
         fields["close_reason"] = "暂停原因必填"
 
-    request_no = clean_text(data.get("request_no"), 80) or _generated_request_no()
+    request_no = normalize_request_no(data.get("request_no")) or generate_request_no()
     duplicate = RecruitmentDemand.query.filter_by(
         org_id=org_id,
         request_no=request_no,
@@ -130,10 +178,13 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
         fields["request_no"] = "需求编号已存在"
 
     if fields:
+        if set(fields) == {"request_no"} and duplicate is not None:
+            raise DemandRequestNoConflict()
         raise DemandValidationError(fields)
 
     return {
         "owner": owner,
+        "default_interviewer": default_interviewer,
         "city": city,
         "department": department,
         "hiring_manager_name": hiring_manager_name,
@@ -178,6 +229,11 @@ def create_demand_from_input(data, *, org_id, actor_id, actor_role, job=None):
         org_id=org_id,
         job_id=job.id,
         owner_hr_id=values["owner"].id,
+        default_interviewer_id=(
+            values["default_interviewer"].id
+            if values["default_interviewer"] is not None
+            else None
+        ),
         created_by=actor_id,
         city=values["city"],
         department=values["department"],
@@ -316,6 +372,12 @@ def risk_flags(demand, metrics):
 def demand_payload(demand, *, include_jd=False):
     job = demand.job
     owner = db.session.get(User, demand.owner_hr_id) if demand.owner_hr_id else None
+    default_interviewer = None
+    if demand.default_interviewer_id:
+        default_interviewer = User.query.filter_by(
+            id=demand.default_interviewer_id,
+            org_id=demand.org_id,
+        ).first()
     metrics = demand_metrics(demand)
     payload = {
         "id": demand.id,
@@ -326,6 +388,12 @@ def demand_payload(demand, *, include_jd=False):
         "job_code": job.job_code if job else "",
         "owner_hr_id": demand.owner_hr_id,
         "owner_hr_name": owner.name if owner else "",
+        "default_interviewer_id": (
+            default_interviewer.id if default_interviewer else None
+        ),
+        "default_interviewer_name": (
+            default_interviewer.name if default_interviewer else None
+        ),
         "request_no": demand.request_no or "",
         "requester_name": demand.requester_name or "",
         "requester_department": demand.requester_department or demand.department or "",

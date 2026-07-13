@@ -1,4 +1,5 @@
 from flask import Blueprint, g, jsonify, request
+from sqlalchemy.exc import IntegrityError
 
 from .. import db
 from ..middleware.auth import require_auth, require_role
@@ -12,19 +13,23 @@ from ..services.demand_context_service import (
 )
 from ..services.demand_service import (
     ALL_STATUSES,
+    DemandRequestNoConflict,
     DemandValidationError,
     apply_list_filters,
     clean_text,
     create_demand_from_input,
     demand_payload,
+    normalize_request_no,
     paginate_demands,
     parse_date,
+    resolve_default_interviewer,
 )
 from ..time_utils import utc_now
 from .access import job_is_active, same_org
 
 
 bp = Blueprint("demands", __name__)
+REQUEST_NO_UNIQUE_INDEX = "uq_recruitment_demands_org_request_no"
 
 COMMAND_ONLY_FIELDS = {
     "status",
@@ -45,6 +50,30 @@ def _validation_response(fields, message="请检查招聘需求信息"):
             "fields": fields,
         }
     ), 400
+
+
+def _request_no_conflict_response():
+    return jsonify(DemandRequestNoConflict().as_payload()), 409
+
+
+def _is_request_no_unique_violation(error):
+    original = getattr(error, "orig", None)
+    constraint_name = getattr(
+        getattr(original, "diag", None),
+        "constraint_name",
+        None,
+    )
+    if constraint_name == REQUEST_NO_UNIQUE_INDEX:
+        return True
+    message = str(original or error).lower()
+    return (
+        REQUEST_NO_UNIQUE_INDEX.lower() in message
+        or (
+            "unique constraint failed" in message
+            and "recruitment_demands.org_id" in message
+            and "recruitment_demands.request_no" in message
+        )
+    )
 
 
 def _authorized_demand(demand_id, *, manage=False, lock=False):
@@ -105,9 +134,17 @@ def create_demand():
             actor_role=g.role,
             job=job,
         )
+    except DemandRequestNoConflict as exc:
+        db.session.rollback()
+        return jsonify(exc.as_payload()), 409
     except DemandValidationError as exc:
         db.session.rollback()
         return jsonify(exc.as_payload()), 400
+    except IntegrityError as exc:
+        db.session.rollback()
+        if _is_request_no_unique_violation(exc):
+            return _request_no_conflict_response()
+        raise
 
     try:
         if created_job:
@@ -128,6 +165,11 @@ def create_demand():
             commit=False,
         )
         db.session.commit()
+    except IntegrityError as exc:
+        db.session.rollback()
+        if _is_request_no_unique_violation(exc):
+            return _request_no_conflict_response()
+        raise
     except Exception:
         db.session.rollback()
         raise
@@ -147,7 +189,7 @@ def get_demand(demand_id):
 def _apply_editable_fields(demand, data):
     fields = {}
     if "request_no" in data:
-        request_no = clean_text(data.get("request_no"), 80)
+        request_no = normalize_request_no(data.get("request_no"))
         if not request_no:
             fields["request_no"] = "需求编号不能为空"
         else:
@@ -157,9 +199,24 @@ def _apply_editable_fields(demand, data):
                 RecruitmentDemand.id != demand.id,
             ).first()
             if duplicate:
-                fields["request_no"] = "需求编号已存在"
+                raise DemandRequestNoConflict()
             else:
                 demand.request_no = request_no
+    if "default_interviewer_id" in data:
+        raw_interviewer_id = data.get("default_interviewer_id")
+        if raw_interviewer_id in (None, ""):
+            demand.default_interviewer_id = None
+        else:
+            default_interviewer = resolve_default_interviewer(
+                raw_interviewer_id,
+                org_id=g.org_id,
+            )
+            if default_interviewer is None:
+                fields["default_interviewer_id"] = (
+                    "请选择当前组织内已启用的面试官、经理或管理员"
+                )
+            else:
+                demand.default_interviewer_id = default_interviewer.id
     if "requester_name" in data:
         demand.requester_name = clean_text(data.get("requester_name"), 120)
     if "requester_department" in data or "department" in data:
@@ -227,7 +284,11 @@ def update_demand(demand_id):
             {field: "请使用对应的专用操作" for field in forbidden},
             "状态、负责人、优先级及动作原因不能通过通用编辑修改",
         )
-    fields = _apply_editable_fields(demand, data)
+    try:
+        fields = _apply_editable_fields(demand, data)
+    except DemandRequestNoConflict as exc:
+        db.session.rollback()
+        return jsonify(exc.as_payload()), 409
     if fields:
         db.session.rollback()
         return _validation_response(fields)
@@ -240,6 +301,11 @@ def update_demand(demand_id):
             commit=False,
         )
         db.session.commit()
+    except IntegrityError as exc:
+        db.session.rollback()
+        if _is_request_no_unique_violation(exc):
+            return _request_no_conflict_response()
+        raise
     except Exception:
         db.session.rollback()
         raise

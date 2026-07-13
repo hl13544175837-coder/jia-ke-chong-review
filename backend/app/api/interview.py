@@ -2,7 +2,7 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from ..middleware.auth import require_auth
+from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from ..services.interview_service import PreScreenService
 from ..services.interview_workflow_service import (
@@ -721,6 +721,7 @@ def list_interviews():
 
 @bp.get("/interview/interviewers")
 @require_auth
+@require_role("recruiter", "manager", "admin")
 def list_interviewers():
     from ..models import User
 
@@ -728,7 +729,10 @@ def list_interviewers():
              .filter(User.org_id == g.org_id, User.is_active.is_(True), User.role.in_(["interviewer", "manager", "admin"]))
              .order_by(User.name.asc())
              .all())
-    return jsonify([{"id": u.id, "name": u.name, "role": u.role} for u in users])
+    return jsonify([
+        {"id": u.id, "name": u.name, "email": u.email, "role": u.role}
+        for u in users
+    ])
 
 
 @bp.get("/interview/assignments")

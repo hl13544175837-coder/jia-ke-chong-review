@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlalchemy import create_engine, inspect, text
 
 
@@ -261,7 +263,7 @@ def test_alembic_expand_is_additive_revisioned_and_idempotent(tmp_path):
     )
     with engine.connect() as connection:
         assert connection.execute(text("SELECT COUNT(*) FROM pipeline_stages")).scalar_one() == 1
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260711_02"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260711_04"
     engine.dispose()
 
 
@@ -290,7 +292,7 @@ def test_interview_uniqueness_revision_adds_primary_slot_and_unique_indexes(tmp_
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260711_02"
+        ).scalar_one() == "20260711_04"
     engine.dispose()
 
 
@@ -598,8 +600,8 @@ def test_verify_checks_revision_completeness_and_job_consistency(tmp_path):
     verified = verify.verify_database(url)
     assert verified["ok"] is True
     assert verified["schema_revision"] == {
-        "current": "20260711_02",
-        "expected": "20260711_02",
+        "current": "20260711_04",
+        "expected": "20260711_04",
         "ok": True,
     }
     assert verified["unmapped_total"] == 0
@@ -623,6 +625,147 @@ def test_verify_reports_missing_interview_uniqueness_index(tmp_path):
         "missing_unique_index:interview_assignments."
         "uq_interview_assignment_primary_slot"
     ) in report["schema_errors"]
+
+
+def test_verify_reports_missing_demand_request_no_unique_index(tmp_path):
+    path = tmp_path / "missing-demand-request-no-index.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    connection = sqlite3.connect(path)
+    connection.execute("DROP INDEX uq_recruitment_demands_org_request_no")
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(
+        _database_url(path)
+    )
+
+    assert (
+        "missing_unique_index:recruitment_demands."
+        "uq_recruitment_demands_org_request_no"
+    ) in report["schema_errors"]
+
+
+def test_verify_reports_missing_default_interviewer_index_and_foreign_key(
+    tmp_path,
+):
+    path = tmp_path / "missing-default-interviewer-constraints.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    engine = create_engine(_database_url(path))
+    with engine.begin() as connection:
+        context = MigrationContext.configure(connection)
+        operations = Operations(context)
+        with operations.batch_alter_table("recruitment_demands") as batch_op:
+            batch_op.drop_constraint(
+                "fk_recruitment_demands_default_interviewer_id_users",
+                type_="foreignkey",
+            )
+        operations.drop_index(
+            "ix_recruitment_demands_org_default_interviewer",
+            table_name="recruitment_demands",
+        )
+    engine.dispose()
+
+    report = _load_script("verify_demand_scope").verify_database(
+        _database_url(path)
+    )
+
+    assert (
+        "missing_index:recruitment_demands."
+        "ix_recruitment_demands_org_default_interviewer"
+    ) in report["schema_errors"]
+    assert (
+        "missing_foreign_key:recruitment_demands."
+        "fk_recruitment_demands_default_interviewer_id_users"
+    ) in report["schema_errors"]
+
+
+def test_verify_reports_nullable_and_unnormalized_request_numbers(tmp_path):
+    path = tmp_path / "invalid-request-number-contract.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("sqlalchemy.url", _database_url(path))
+    command.downgrade(config, "20260711_03")
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "UPDATE alembic_version SET version_num = '20260711_04'"
+    )
+    connection.execute(
+        "CREATE UNIQUE INDEX uq_recruitment_demands_org_request_no "
+        "ON recruitment_demands (org_id, request_no)"
+    )
+    connection.execute(
+        "UPDATE recruitment_demands SET request_no = NULL WHERE id = 10"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(
+        _database_url(path)
+    )
+
+    assert (
+        "nullable_column:recruitment_demands.request_no"
+        in report["schema_errors"]
+    )
+    assert report["request_no_issues"] == [
+        {
+            "demand_id": 10,
+            "request_no": None,
+            "issue": "null",
+        }
+    ]
+
+
+def test_verify_rejects_cross_org_default_and_only_warns_for_inactive(tmp_path):
+    path = tmp_path / "default-interviewer-data-verification.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    connection = sqlite3.connect(path)
+    connection.execute("ALTER TABLE users ADD COLUMN is_active BOOLEAN")
+    connection.executemany(
+        "INSERT INTO users "
+        "(id, org_id, name, email, role, password_hash, is_active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            (3, 2, "Foreign", "foreign@example.test", "interviewer", "x", 1),
+            (4, 1, "Inactive", "inactive@example.test", "interviewer", "x", 0),
+        ],
+    )
+    connection.execute(
+        "UPDATE recruitment_demands SET default_interviewer_id = 3 WHERE id = 10"
+    )
+    connection.commit()
+    connection.close()
+
+    verify = _load_script("verify_demand_scope")
+    cross_org = verify.verify_database(_database_url(path))
+    assert cross_org["default_interviewer_mismatches"] == [
+        {
+            "demand_id": 10,
+            "default_interviewer_id": 3,
+            "issues": ["org_mismatch"],
+        }
+    ]
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "UPDATE recruitment_demands SET default_interviewer_id = 4 WHERE id = 10"
+    )
+    connection.commit()
+    connection.close()
+    inactive = verify.verify_database(_database_url(path))
+
+    assert inactive["default_interviewer_mismatches"] == []
+    assert inactive["default_interviewer_warnings"] == [
+        {
+            "demand_id": 10,
+            "default_interviewer_id": 4,
+            "warnings": ["inactive"],
+        }
+    ]
 
 
 def test_verify_reports_assignment_primary_slot_invariant_violations(tmp_path):

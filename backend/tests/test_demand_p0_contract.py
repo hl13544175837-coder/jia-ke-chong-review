@@ -291,9 +291,11 @@ def test_demand_list_filters_by_owner_department_and_created_date(
     _, manager_token = make_user("filter-manager@example.com", role="manager")
     job_id = _make_job(app, first_owner_id)
 
+    created_ids = {}
     for owner_id, suffix, department in [
         (first_owner_id, "FIRST", "科技部"),
         (second_owner_id, "SECOND", "运营部"),
+        (second_owner_id, "SECOND-OUTSIDE", "运营部"),
     ]:
         response = client.post(
             "/api/demands",
@@ -306,6 +308,20 @@ def test_demand_list_filters_by_owner_department_and_created_date(
             ),
         )
         assert response.status_code == 201
+        created_ids[suffix] = response.get_json()["id"]
+
+    with app.app_context():
+        db.session.get(RecruitmentDemand, created_ids["FIRST"]).created_at = datetime(
+            2026, 7, 10, 9, 0, 0
+        )
+        db.session.get(RecruitmentDemand, created_ids["SECOND"]).created_at = datetime(
+            2026, 7, 10, 12, 0, 0
+        )
+        db.session.get(
+            RecruitmentDemand,
+            created_ids["SECOND-OUTSIDE"],
+        ).created_at = datetime(2026, 7, 12, 12, 0, 0)
+        db.session.commit()
 
     response = client.get(
         (

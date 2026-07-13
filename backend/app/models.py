@@ -2,6 +2,13 @@ from . import db
 from .time_utils import utc_now
 
 
+def _default_demand_request_no():
+    """Keep direct ORM inserts valid without duplicating identifier rules."""
+    from .services.demand_service import generate_request_no
+
+    return generate_request_no()
+
+
 class User(db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
@@ -90,6 +97,17 @@ class RecruitmentDemand(db.Model):
         db.Index("ix_recruitment_demands_org_job", "org_id", "job_id"),
         db.Index("ix_recruitment_demands_org_owner_status", "org_id", "owner_hr_id", "status"),
         db.Index("ix_recruitment_demands_org_status_created", "org_id", "status", "created_at"),
+        db.Index(
+            "ix_recruitment_demands_org_default_interviewer",
+            "org_id",
+            "default_interviewer_id",
+        ),
+        db.Index(
+            "uq_recruitment_demands_org_request_no",
+            "org_id",
+            "request_no",
+            unique=True,
+        ),
     )
 
     __tablename__ = "recruitment_demands"
@@ -97,12 +115,25 @@ class RecruitmentDemand(db.Model):
     org_id = db.Column(db.Integer, default=1, nullable=False)
     job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"), nullable=False)
     owner_hr_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    default_interviewer_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "users.id",
+            name="fk_recruitment_demands_default_interviewer_id_users",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     city = db.Column(db.String(80), default="")
     department = db.Column(db.String(120), default="")
     job_title_snapshot = db.Column(db.String(200), default="")
     jd_text_snapshot = db.Column(db.Text)
-    request_no = db.Column(db.String(80), default="")
+    request_no = db.Column(
+        db.String(80),
+        default=_default_demand_request_no,
+        nullable=False,
+    )
     requester_name = db.Column(db.String(120), default="")
     requester_department = db.Column(db.String(120), default="")
     hiring_manager_name = db.Column(db.String(120), default="")

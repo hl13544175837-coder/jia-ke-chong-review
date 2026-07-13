@@ -387,7 +387,12 @@ def test_interview_assignment_can_be_created_and_listed(client, make_user, app):
     assert any(item["id"] == created["id"] for item in listed)
 
     interviewers = client.get("/api/interview/interviewers", headers=_auth(token)).get_json()
-    assert {"id": interviewer_id, "name": "李面试官", "role": "interviewer"} in interviewers
+    assert {
+        "id": interviewer_id,
+        "name": "李面试官",
+        "email": "assign-iv@x.com",
+        "role": "interviewer",
+    } in interviewers
 
 
 def test_feedback_persists_structured_evaluation_and_journey_decision_summary(client, make_user, app):

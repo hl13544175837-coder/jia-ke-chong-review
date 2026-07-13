@@ -38,6 +38,7 @@ def test_recruitment_demand_has_instance_snapshots_and_lifecycle_metadata():
         "created_by",
         "closed_at",
         "closed_by",
+        "default_interviewer_id",
     }
 
     assert expected_columns.issubset(_column_names(models.RecruitmentDemand))
@@ -45,6 +46,11 @@ def test_recruitment_demand_has_instance_snapshots_and_lifecycle_metadata():
         "ix_recruitment_demands_org_job": ("org_id", "job_id"),
         "ix_recruitment_demands_org_owner_status": ("org_id", "owner_hr_id", "status"),
         "ix_recruitment_demands_org_status_created": ("org_id", "status", "created_at"),
+        "ix_recruitment_demands_org_default_interviewer": (
+            "org_id",
+            "default_interviewer_id",
+        ),
+        "uq_recruitment_demands_org_request_no": ("org_id", "request_no"),
     }
 
 

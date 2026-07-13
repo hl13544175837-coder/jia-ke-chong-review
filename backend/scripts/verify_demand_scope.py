@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 
-from sqlalchemy import MetaData, and_, create_engine, func, select
+from sqlalchemy import MetaData, and_, create_engine, func, inspect, select
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -22,7 +22,7 @@ except ImportError:  # Direct execution: python backend/scripts/verify_demand_sc
     from audit_demand_scope import FACT_SPECS, fact_context
 
 
-EXPECTED_REVISION = "20260711_02"
+EXPECTED_REVISION = "20260711_04"
 EXPECTED_COLUMNS = {
     "recruitment_demands": {
         "city",
@@ -32,6 +32,8 @@ EXPECTED_COLUMNS = {
         "created_by",
         "closed_at",
         "closed_by",
+        "default_interviewer_id",
+        "request_no",
     },
     "candidates": {"current_demand_id"},
     "pipeline_stages": {"demand_id"},
@@ -50,6 +52,12 @@ EXPECTED_COLUMNS = {
     "upload_batches": {"demand_id"},
 }
 EXPECTED_UNIQUE_INDEXES = {
+    "recruitment_demands": {
+        "uq_recruitment_demands_org_request_no": (
+            "org_id",
+            "request_no",
+        ),
+    },
     "interview_assignments": {
         "uq_interview_assignment_primary_slot": (
             "org_id",
@@ -62,6 +70,28 @@ EXPECTED_UNIQUE_INDEXES = {
         "uq_interview_feedback_assignment_id": ("assignment_id",),
     },
 }
+EXPECTED_INDEXES = {
+    "recruitment_demands": {
+        "ix_recruitment_demands_org_default_interviewer": (
+            "org_id",
+            "default_interviewer_id",
+        ),
+    },
+}
+EXPECTED_NOT_NULL_COLUMNS = {
+    "recruitment_demands": {"request_no"},
+}
+EXPECTED_FOREIGN_KEYS = {
+    "recruitment_demands": {
+        "fk_recruitment_demands_default_interviewer_id_users": {
+            "constrained_columns": ("default_interviewer_id",),
+            "referred_table": "users",
+            "referred_columns": ("id",),
+            "ondelete": "SET NULL",
+        },
+    },
+}
+DEFAULT_INTERVIEWER_ROLES = {"interviewer", "manager", "admin"}
 
 
 def _safe(value):
@@ -89,8 +119,12 @@ def verify_database(database_url):
     active_flow_conflicts = []
     pointer_mismatches = []
     assignment_slot_conflicts = []
+    request_no_issues = []
+    default_interviewer_mismatches = []
+    default_interviewer_warnings = []
 
     with engine.connect() as connection:
+        inspector = inspect(connection)
         current_revision = _current_revision(connection, metadata)
         revision_result = {
             "current": current_revision,
@@ -127,6 +161,81 @@ def verify_database(database_url):
                 if actual_columns != expected_columns:
                     schema_errors.append(
                         f"index_columns_mismatch:{table_name}.{index_name}"
+                    )
+        for table_name, expected_indexes in EXPECTED_INDEXES.items():
+            table = metadata.tables.get(table_name)
+            if table is None:
+                continue
+            actual_indexes = {index.name: index for index in table.indexes}
+            for index_name, expected_columns in expected_indexes.items():
+                index = actual_indexes.get(index_name)
+                if index is None:
+                    schema_errors.append(
+                        f"missing_index:{table_name}.{index_name}"
+                    )
+                    continue
+                if index.unique:
+                    schema_errors.append(
+                        f"unexpected_unique_index:{table_name}.{index_name}"
+                    )
+                actual_columns = tuple(column.name for column in index.columns)
+                if actual_columns != expected_columns:
+                    schema_errors.append(
+                        f"index_columns_mismatch:{table_name}.{index_name}"
+                    )
+        for table_name, expected_columns in EXPECTED_NOT_NULL_COLUMNS.items():
+            table = metadata.tables.get(table_name)
+            if table is None:
+                continue
+            for column_name in expected_columns:
+                column = table.c.get(column_name)
+                if column is not None and column.nullable:
+                    schema_errors.append(
+                        f"nullable_column:{table_name}.{column_name}"
+                    )
+        for table_name, expected_foreign_keys in EXPECTED_FOREIGN_KEYS.items():
+            if table_name not in metadata.tables:
+                continue
+            actual_foreign_keys = {
+                foreign_key.get("name"): foreign_key
+                for foreign_key in inspector.get_foreign_keys(table_name)
+                if foreign_key.get("name")
+            }
+            for foreign_key_name, expected in expected_foreign_keys.items():
+                foreign_key = actual_foreign_keys.get(foreign_key_name)
+                if foreign_key is None:
+                    schema_errors.append(
+                        f"missing_foreign_key:{table_name}.{foreign_key_name}"
+                    )
+                    continue
+                actual_columns = tuple(
+                    foreign_key.get("constrained_columns") or ()
+                )
+                actual_referred_columns = tuple(
+                    foreign_key.get("referred_columns") or ()
+                )
+                actual_ondelete = str(
+                    (foreign_key.get("options") or {}).get("ondelete") or ""
+                ).upper()
+                if actual_columns != expected["constrained_columns"]:
+                    schema_errors.append(
+                        f"foreign_key_columns_mismatch:"
+                        f"{table_name}.{foreign_key_name}"
+                    )
+                if foreign_key.get("referred_table") != expected["referred_table"]:
+                    schema_errors.append(
+                        f"foreign_key_table_mismatch:"
+                        f"{table_name}.{foreign_key_name}"
+                    )
+                if actual_referred_columns != expected["referred_columns"]:
+                    schema_errors.append(
+                        f"foreign_key_referred_columns_mismatch:"
+                        f"{table_name}.{foreign_key_name}"
+                    )
+                if actual_ondelete != expected["ondelete"]:
+                    schema_errors.append(
+                        f"foreign_key_ondelete_mismatch:"
+                        f"{table_name}.{foreign_key_name}"
                     )
         if "candidate_demand_flows" not in metadata.tables:
             schema_errors.append("missing_table:candidate_demand_flows")
@@ -166,9 +275,11 @@ def verify_database(database_url):
         demand_table = metadata.tables.get("recruitment_demands")
         candidate_table = metadata.tables.get("candidates")
         job_table = metadata.tables.get("jobs")
+        user_table = metadata.tables.get("users")
         demands = {}
         candidates = {}
         jobs = {}
+        users = {}
         if demand_table is not None:
             demands = {
                 row["id"]: dict(row)
@@ -186,6 +297,13 @@ def verify_database(database_url):
                 row["id"]: dict(row)
                 for row in connection.execute(select(job_table)).mappings()
             }
+        if user_table is None:
+            schema_errors.append("missing_table:users")
+        else:
+            users = {
+                row["id"]: dict(row)
+                for row in connection.execute(select(user_table)).mappings()
+            }
 
         for demand in demands.values():
             issues = []
@@ -202,6 +320,62 @@ def verify_database(database_url):
                         "issues": issues,
                     }
                 )
+
+            raw_request_no = demand.get("request_no")
+            normalized_request_no = str(raw_request_no or "").strip().upper()[:80]
+            request_no_issue = None
+            if raw_request_no is None:
+                request_no_issue = "null"
+            elif not normalized_request_no:
+                request_no_issue = "blank"
+            elif raw_request_no != normalized_request_no:
+                request_no_issue = "not_normalized"
+            if request_no_issue:
+                request_no_issues.append(
+                    {
+                        "demand_id": demand["id"],
+                        "request_no": raw_request_no,
+                        "issue": request_no_issue,
+                    }
+                )
+
+            default_interviewer_id = demand.get("default_interviewer_id")
+            if default_interviewer_id is not None:
+                default_interviewer = users.get(default_interviewer_id)
+                default_issues = []
+                if default_interviewer is None:
+                    default_issues.append("orphan_user")
+                elif default_interviewer.get("org_id") != demand.get("org_id"):
+                    default_issues.append("org_mismatch")
+                if default_issues:
+                    default_interviewer_mismatches.append(
+                        {
+                            "demand_id": demand["id"],
+                            "default_interviewer_id": default_interviewer_id,
+                            "issues": default_issues,
+                        }
+                    )
+                elif default_interviewer is not None:
+                    warnings = []
+                    if (
+                        "is_active" in default_interviewer
+                        and not bool(default_interviewer.get("is_active"))
+                    ):
+                        warnings.append("inactive")
+                    if (
+                        default_interviewer.get("role")
+                        and default_interviewer.get("role")
+                        not in DEFAULT_INTERVIEWER_ROLES
+                    ):
+                        warnings.append("ineligible_role")
+                    if warnings:
+                        default_interviewer_warnings.append(
+                            {
+                                "demand_id": demand["id"],
+                                "default_interviewer_id": default_interviewer_id,
+                                "warnings": warnings,
+                            }
+                        )
 
         for table_name, timestamp_column in FACT_SPECS:
             table = metadata.tables.get(table_name)
@@ -333,6 +507,8 @@ def verify_database(database_url):
         and not active_flow_conflicts
         and not pointer_mismatches
         and not assignment_slot_conflicts
+        and not request_no_issues
+        and not default_interviewer_mismatches
     )
     return {
         "ok": ok,
@@ -347,6 +523,9 @@ def verify_database(database_url):
         "active_flow_conflicts": active_flow_conflicts,
         "pointer_mismatches": pointer_mismatches,
         "assignment_slot_conflicts": assignment_slot_conflicts,
+        "request_no_issues": request_no_issues,
+        "default_interviewer_mismatches": default_interviewer_mismatches,
+        "default_interviewer_warnings": default_interviewer_warnings,
     }
 
 
