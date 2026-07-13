@@ -34,9 +34,13 @@ case "$RELEASE_CHANNEL" in
         : "${SERVICE_NAME:=zhipin-server}"
         : "${SERVICE_PORT:=5000}"
         : "${CONSUL_CHECK_MODE:=ttl}"
+        # 网关统一鉴权：RC/SIT 在网关后，后端默认不再校验自签 JWT（避免网关不透明
+        # token 报 "Invalid token"）。仅在 ALLOW_INSECURE_SIT_STARTUP=true 时真正生效。
+        : "${AUTH_DISABLED:=true}"
         export CONSUL_ENABLED EUREKA_ENABLED CONSUL_HOST CONSUL_PORT \
-               SERVICE_NAME SERVICE_PORT CONSUL_CHECK_MODE
+               SERVICE_NAME SERVICE_PORT CONSUL_CHECK_MODE AUTH_DISABLED
         echo "RC 默认服务注册：CONSUL_ENABLED=$CONSUL_ENABLED CONSUL_HOST=$CONSUL_HOST CONSUL_PORT=$CONSUL_PORT CHECK_MODE=$CONSUL_CHECK_MODE"
+        echo "RC 网关鉴权模式：AUTH_DISABLED=$AUTH_DISABLED（需 ALLOW_INSECURE_SIT_STARTUP=true 才生效）"
         ;;
     GA)
         require_ga_value ALLOW_INSECURE_SIT_STARTUP "${ALLOW_INSECURE_SIT_STARTUP:-}" false
@@ -45,6 +49,7 @@ case "$RELEASE_CHANNEL" in
         require_ga_value SECURITY_HEADERS_ENABLED "${SECURITY_HEADERS_ENABLED:-}" true
         require_ga_value RATE_LIMIT_ENABLED "${RATE_LIMIT_ENABLED:-}" true
         require_ga_value ALLOW_PUBLIC_REGISTRATION "${ALLOW_PUBLIC_REGISTRATION:-}" false
+        require_ga_value AUTH_DISABLED "${AUTH_DISABLED:-}" false
         ;;
     *)
         echo "Refusing startup: unknown release channel '$RELEASE_CHANNEL'" >&2

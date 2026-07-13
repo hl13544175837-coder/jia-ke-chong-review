@@ -4,6 +4,42 @@ from flask import request, jsonify, g, current_app
 from .. import db
 
 
+def _auth_disabled():
+    """是否处于“网关统一鉴权、后端不再校验 JWT”模式。
+
+    只有显式开启 AUTH_DISABLED，且当前是明确不安全的环境（本地 debug /
+    可丢弃 SIT / 测试）时才生效。这样即使 GA/生产误设 AUTH_DISABLED=true，
+    也不会真正关闭鉴权（fail-safe）。
+    """
+    cfg = current_app.config
+    if not cfg.get("AUTH_DISABLED"):
+        return False
+    return bool(
+        cfg.get("FLASK_DEBUG")
+        or cfg.get("ALLOW_INSECURE_SIT_STARTUP")
+        or cfg.get("TESTING")
+    )
+
+
+def _resolve_gateway_user():
+    """鉴权关闭时的当前用户：配置邮箱 > 第一个在职 admin > 第一个在职用户。
+
+    后端仍需一个真实 User 承载 g.user_id（外键归属、审计、org 过滤都依赖它）。
+    """
+    from ..models import User
+
+    email = (current_app.config.get("AUTH_DISABLED_USER_EMAIL") or "").strip()
+    base = User.query.filter_by(is_active=True)
+    user = None
+    if email:
+        user = base.filter_by(email=email).first()
+    if user is None:
+        user = base.filter_by(role="admin").order_by(User.id).first()
+    if user is None:
+        user = base.order_by(User.id).first()
+    return user
+
+
 def authenticate_token(token):
     """Validate a JWT against the current user state and token version."""
 
@@ -41,6 +77,20 @@ def authenticate_token(token):
 def require_auth(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
+        # 网关统一鉴权模式：跳过 JWT 校验，用默认用户身份，避免网关不透明 token
+        # 被当作 JWT 解析而报 "Invalid token"。
+        if _auth_disabled():
+            user = _resolve_gateway_user()
+            if user is None:
+                return jsonify({
+                    "error": "已开启网关鉴权模式(AUTH_DISABLED)，但库中没有可用账号，请先创建一个用户",
+                }), 500
+            g.user_id = user.id
+            g.role = user.role
+            g.org_id = user.org_id or 1
+            g.gateway_auth = True
+            return f(*args, **kwargs)
+
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
         user, error = authenticate_token(token)
         if error is not None:

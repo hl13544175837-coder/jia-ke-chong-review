@@ -49,6 +49,15 @@ class Config:
     # 公开注册开关：默认关闭，生产/试点下账号由 admin 创建（见 api/auth.py register）
     ALLOW_PUBLIC_REGISTRATION = os.environ.get("ALLOW_PUBLIC_REGISTRATION", "false").lower() == "true"
 
+    # 网关统一鉴权模式：接入公司网关后，鉴权在网关完成，后端不再校验自签 JWT。
+    # 开启后 require_auth 跳过 JWT 校验，改用默认用户身份填充 g.user_id/g.role/g.org_id
+    # （见 app/middleware/auth.py）。安全护栏：仅在显式不安全环境（FLASK_DEBUG 或
+    # ALLOW_INSECURE_SIT_STARTUP 或测试）才真正生效；GA/生产即使误设也不会关闭鉴权，
+    # 且启动门禁（docker-entrypoint.sh）会拒绝 GA 携带 AUTH_DISABLED=true。
+    AUTH_DISABLED = os.environ.get("AUTH_DISABLED", "false").lower() == "true"
+    # 鉴权关闭时用哪个账号作为当前用户：留空则取库中第一个在职 admin（否则第一个在职用户）。
+    AUTH_DISABLED_USER_EMAIL = os.environ.get("AUTH_DISABLED_USER_EMAIL", "")
+
     # CORS 允许来源：逗号分隔的域名白名单；留空表示不限制（仅限开发）
     CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 
