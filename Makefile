@@ -12,6 +12,10 @@ ifeq ($(strip $(PKG_VERSION)),)
 	override PKG_VERSION := $(shell date +%Y%m%d%H%M)
 endif
 
+# Release policy is derived from the validated package tag and cannot be
+# replaced by a command-line variable assignment.
+override RELEASE_CHANNEL := $(PKG_TAG)
+
 # Determine registry based on PKG_TAG
 ifeq ($(PKG_TAG),GA)
 	override REGISTRY := registry.ymdd.tech
@@ -63,7 +67,7 @@ cleanfrontend:
 
 buildserver:
 	@echo "Building zhipin-server image: $(ZHIPIN_SERVER_IMAGE)"
-	sudo docker build --build-arg AUTO_MIGRATE_DATABASE=$(AUTO_MIGRATE_DATABASE) --build-arg ALLOW_EMPTY_DATABASE_BOOTSTRAP=$(ALLOW_EMPTY_DATABASE_BOOTSTRAP) --build-arg ALLOW_INSECURE_SIT_STARTUP=$(ALLOW_INSECURE_SIT_STARTUP) --build-arg SECURITY_HEADERS_ENABLED=$(SECURITY_HEADERS_ENABLED) --build-arg RATE_LIMIT_ENABLED=$(RATE_LIMIT_ENABLED) --build-arg ALLOW_PUBLIC_REGISTRATION=$(ALLOW_PUBLIC_REGISTRATION) -t $(ZHIPIN_SERVER_IMAGE) -f backend/Dockerfile .
+	sudo docker build --build-arg RELEASE_CHANNEL=$(RELEASE_CHANNEL) --build-arg AUTO_MIGRATE_DATABASE=$(AUTO_MIGRATE_DATABASE) --build-arg ALLOW_EMPTY_DATABASE_BOOTSTRAP=$(ALLOW_EMPTY_DATABASE_BOOTSTRAP) --build-arg ALLOW_INSECURE_SIT_STARTUP=$(ALLOW_INSECURE_SIT_STARTUP) --build-arg SECURITY_HEADERS_ENABLED=$(SECURITY_HEADERS_ENABLED) --build-arg RATE_LIMIT_ENABLED=$(RATE_LIMIT_ENABLED) --build-arg ALLOW_PUBLIC_REGISTRATION=$(ALLOW_PUBLIC_REGISTRATION) -t $(ZHIPIN_SERVER_IMAGE) -f backend/Dockerfile .
 
 pushserver:
 	@echo "Pushing zhipin-server image: $(ZHIPIN_SERVER_IMAGE)"

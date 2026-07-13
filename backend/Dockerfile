@@ -1,5 +1,6 @@
 FROM registry.ymdd.tech/library/python:3.12-uv
 
+ARG RELEASE_CHANNEL=UNKNOWN
 ARG AUTO_MIGRATE_DATABASE=false
 ARG ALLOW_EMPTY_DATABASE_BOOTSTRAP=false
 ARG ALLOW_INSECURE_SIT_STARTUP=false
@@ -27,6 +28,11 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt -i https://pypi.
 # Copy backend and base_agent modules
 COPY backend /app/backend
 COPY base_agent /app/base_agent
+
+RUN case "$RELEASE_CHANNEL" in \
+        "RC"|"GA") printf '%s\n' "$RELEASE_CHANNEL" > /app/backend/.release-channel ;; \
+        *) echo "RELEASE_CHANNEL must be RC or GA" >&2; exit 1 ;; \
+    esac
 
 # Configure Python environment
 ENV PYTHONUNBUFFERED=1

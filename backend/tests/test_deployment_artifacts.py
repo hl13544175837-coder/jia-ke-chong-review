@@ -12,6 +12,19 @@ from cryptography.fernet import Fernet
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _copy_entrypoint(tmp_path, release_channel):
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir(exist_ok=True)
+    script = backend_dir / "docker-entrypoint.sh"
+    shutil.copy2(ROOT / "backend" / "docker-entrypoint.sh", script)
+    script.chmod(0o755)
+    (backend_dir / ".release-channel").write_text(
+        f"{release_channel}\n",
+        encoding="utf-8",
+    )
+    return script
+
+
 def test_sit_server_build_is_explicitly_unrestricted_but_ga_is_strict():
     rc = subprocess.run(
         ["make", "-n", "buildserver", "PKG_TAG=RC", "PKG_VERSION=contract-test"],
@@ -30,6 +43,8 @@ def test_sit_server_build_is_explicitly_unrestricted_but_ga_is_strict():
 
     assert rc.returncode == 0
     assert ga.returncode == 0
+    assert "--build-arg RELEASE_CHANNEL=RC" in rc.stdout
+    assert "--build-arg RELEASE_CHANNEL=GA" in ga.stdout
     for build_arg, rc_value, ga_value in [
         ("AUTO_MIGRATE_DATABASE", "true", "false"),
         ("ALLOW_EMPTY_DATABASE_BOOTSTRAP", "true", "false"),
@@ -58,6 +73,7 @@ def test_make_rejects_unknown_package_tags():
 
 def test_make_release_policy_cannot_be_overridden_from_command_line():
     hostile_values = {
+        "RELEASE_CHANNEL": "RC",
         "AUTO_MIGRATE_DATABASE": "true",
         "ALLOW_EMPTY_DATABASE_BOOTSTRAP": "true",
         "ALLOW_INSECURE_SIT_STARTUP": "true",
@@ -87,6 +103,7 @@ def test_make_release_policy_cannot_be_overridden_from_command_line():
             "PKG_TAG=RC",
             "PKG_VERSION=contract-test",
             *(f"{key}={value}" for key, value in {
+                "RELEASE_CHANNEL": "GA",
                 "AUTO_MIGRATE_DATABASE": "false",
                 "ALLOW_EMPTY_DATABASE_BOOTSTRAP": "false",
                 "ALLOW_INSECURE_SIT_STARTUP": "false",
@@ -103,6 +120,8 @@ def test_make_release_policy_cannot_be_overridden_from_command_line():
 
     assert ga.returncode == 0
     assert rc.returncode == 0
+    assert "--build-arg RELEASE_CHANNEL=RC" in rc.stdout
+    assert "--build-arg RELEASE_CHANNEL=GA" in ga.stdout
     for build_arg, rc_value, ga_value in [
         ("AUTO_MIGRATE_DATABASE", "true", "false"),
         ("ALLOW_EMPTY_DATABASE_BOOTSTRAP", "true", "false"),
@@ -116,7 +135,7 @@ def test_make_release_policy_cannot_be_overridden_from_command_line():
 
 
 def test_backend_entrypoint_runs_alembic_only_when_enabled(tmp_path):
-    script = ROOT / "backend" / "docker-entrypoint.sh"
+    script = _copy_entrypoint(tmp_path, "RC")
     assert script.exists()
 
     bin_dir = tmp_path / "bin"
@@ -164,6 +183,94 @@ def test_backend_entrypoint_runs_alembic_only_when_enabled(tmp_path):
     assert log_path.read_text(encoding="utf-8").splitlines() == ["start-app disabled"]
 
 
+def test_ga_entrypoint_rejects_each_unsafe_runtime_override_before_database_access(tmp_path):
+    unsafe_values = {
+        "ALLOW_INSECURE_SIT_STARTUP": "true",
+        "AUTO_MIGRATE_DATABASE": "true",
+        "ALLOW_EMPTY_DATABASE_BOOTSTRAP": "true",
+        "SECURITY_HEADERS_ENABLED": "false",
+        "RATE_LIMIT_ENABLED": "false",
+        "ALLOW_PUBLIC_REGISTRATION": "true",
+    }
+
+    for variable, value in unsafe_values.items():
+        case_dir = tmp_path / variable.lower()
+        case_dir.mkdir()
+        script = _copy_entrypoint(case_dir, "GA")
+        bin_dir = case_dir / "bin"
+        bin_dir.mkdir()
+        command_log = case_dir / "commands.log"
+        for name in ("python", "alembic", "start-app"):
+            executable = bin_dir / name
+            executable.write_text(
+                f'#!/bin/sh\nprintf "{name} %s\\n" "$*" >> "$COMMAND_LOG"\n',
+                encoding="utf-8",
+            )
+            executable.chmod(0o755)
+
+        env = os.environ.copy()
+        env.update(
+            {
+                "PATH": f"{bin_dir}:{env['PATH']}",
+                "COMMAND_LOG": str(command_log),
+                "ALLOW_INSECURE_SIT_STARTUP": "false",
+                "AUTO_MIGRATE_DATABASE": "false",
+                "ALLOW_EMPTY_DATABASE_BOOTSTRAP": "false",
+                "SECURITY_HEADERS_ENABLED": "true",
+                "RATE_LIMIT_ENABLED": "true",
+                "ALLOW_PUBLIC_REGISTRATION": "false",
+                variable: value,
+            }
+        )
+
+        result = subprocess.run(
+            [str(script), "start-app", "blocked"],
+            cwd=str(case_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode != 0, variable
+        assert variable in result.stderr, variable
+        assert not command_log.exists(), variable
+
+
+def test_entrypoint_fails_closed_for_missing_or_unknown_release_marker(tmp_path):
+    for marker in (None, "QA"):
+        case_dir = tmp_path / (marker or "missing")
+        case_dir.mkdir()
+        script = _copy_entrypoint(case_dir, "RC")
+        marker_path = script.parent / ".release-channel"
+        if marker is None:
+            marker_path.unlink()
+        else:
+            marker_path.write_text(f"{marker}\n", encoding="utf-8")
+        command_log = case_dir / "commands.log"
+        env = os.environ.copy()
+        env.update(
+            {
+                "COMMAND_LOG": str(command_log),
+                "AUTO_MIGRATE_DATABASE": "true",
+                "ALLOW_EMPTY_DATABASE_BOOTSTRAP": "true",
+            }
+        )
+
+        result = subprocess.run(
+            [str(script), "start-app", "blocked"],
+            cwd=str(case_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode != 0
+        assert "release channel" in result.stderr.lower()
+        assert not command_log.exists()
+
+
 def test_backend_dockerfile_wires_migration_entrypoint():
     content = (ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
 
@@ -180,6 +287,10 @@ def test_backend_dockerfile_wires_migration_entrypoint():
     assert "ENV FLASK_DEBUG=false" in content
     assert "ARG FLASK_DEBUG" not in content
     assert "ENV LOCAL_SCHEMA_COMPAT=false" in content
+    assert "ARG RELEASE_CHANNEL=UNKNOWN" in content
+    assert "ENV RELEASE_CHANNEL" not in content
+    assert "/app/backend/.release-channel" in content
+    assert '"RC"|"GA"' in content
     assert 'ENTRYPOINT ["/app/backend/docker-entrypoint.sh"]' in content
 
 

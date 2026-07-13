@@ -1,4 +1,5 @@
 import os
+import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -29,7 +30,11 @@ class _ProductionSQLiteConfig:
     WEAK_SECRETS = set()
     MIN_SECRET_LENGTH = 32
     SECURITY_HEADERS_ENABLED = True
-    RATE_LIMIT_ENABLED = False
+    RATE_LIMIT_ENABLED = True
+    ALLOW_PUBLIC_REGISTRATION = False
+    AUTO_MIGRATE_DATABASE = False
+    ALLOW_EMPTY_DATABASE_BOOTSTRAP = False
+    ALLOW_INSECURE_SIT_STARTUP = False
     UPLOAD_FOLDER = "/var/lib/zhipin/uploads"
     UPLOAD_FOLDER_SOURCE = "/var/lib/zhipin/uploads"
 
@@ -324,6 +329,12 @@ def test_backend_image_defaults_empty_bootstrap_to_disabled():
 
 
 def test_entrypoint_bootstraps_before_alembic_upgrade(tmp_path):
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir()
+    entrypoint = backend_dir / "docker-entrypoint.sh"
+    shutil.copy2(BACKEND_DIR / "docker-entrypoint.sh", entrypoint)
+    entrypoint.chmod(0o755)
+    (backend_dir / ".release-channel").write_text("RC\n", encoding="utf-8")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     command_log = tmp_path / "commands.log"
@@ -345,7 +356,7 @@ def test_entrypoint_bootstraps_before_alembic_upgrade(tmp_path):
         }
     )
     result = subprocess.run(
-        [str(BACKEND_DIR / "docker-entrypoint.sh"), "start-app", "ready"],
+        [str(entrypoint), "start-app", "ready"],
         cwd=ROOT,
         env=env,
         capture_output=True,
