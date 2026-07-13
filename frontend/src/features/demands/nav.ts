@@ -9,5 +9,6 @@ export const demandsNavItems: FeatureNavItem[] = [
     icon: ClipboardList,
     roles: DEMAND_ROLES,
     activePaths: ['/jobs'],
+    menuCode: 'demands',
   },
 ];

@@ -10,6 +10,8 @@ export interface FeatureNavItem {
   icon: LucideIcon;
   roles: Role[];
   activePaths?: string[];
+  // 对应网关菜单 code（queryCurrentUserMenu），受网关菜单权限控制。
+  menuCode?: string;
 }
 
 export interface FeatureRoute {

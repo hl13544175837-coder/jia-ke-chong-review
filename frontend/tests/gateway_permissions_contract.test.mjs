@@ -28,6 +28,16 @@ assert.ok(app.includes('authed={isAuthenticated}'), 'PermissionsProvider 应在�
 const shell = read('components/AppShell.tsx');
 assert.ok(shell.includes('usePermissions'), 'AppShell 应使用 usePermissions');
 assert.ok(shell.includes('hasMenu'), '导航应按 hasMenu 过滤');
-assert.ok(read('lib/nav.ts').includes('menuCode'), 'NavItem 应支持 menuCode');
+
+// 导航项接上 zhipin 真实菜单 code
+const nav = read('lib/nav.ts');
+for (const code of ['index', 'pipeline', 'interviews', 'bi', 'agent', 'settings']) {
+  assert.ok(nav.includes(`'${code}'`), `nav 应配置 menuCode ${code}`);
+}
+assert.ok(read('features/candidates/nav.ts').includes("menuCode: 'candidates'"), '简历库应配 candidates');
+assert.ok(read('features/demands/nav.ts').includes("menuCode: 'demands'"), '招聘管理应配 demands');
+
+// 按钮权限公共方法
+assert.ok(perm.includes('export function useCan'), '应导出按钮权限公共方法 useCan');
 
 console.log('gateway_permissions_contract: OK');

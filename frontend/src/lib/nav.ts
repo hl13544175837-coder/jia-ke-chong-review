@@ -27,12 +27,16 @@ export interface NavItem {
   menuCode?: string;
 }
 
+// menuCode 对应网关 queryCurrentUserMenu 返回的菜单 code。已在网关为 zhipin 配置的：
+// index / candidates / demands / pipeline。其余（interviews/bi/agent/agentLogs/settings）
+// 待网关补配后才会显示（未授权即隐藏，见 usePermissions 的语义）。
 export const NAV_ITEMS: NavItem[] = [
   {
     to: '/',
     label: '工作台',
     icon: LayoutDashboard,
     roles: ['recruiter', 'manager', 'admin', 'interviewer'],
+    menuCode: 'index',
   },
   ...featureNavItems,
   {
@@ -40,36 +44,42 @@ export const NAV_ITEMS: NavItem[] = [
     label: '候选人流程',
     icon: KanbanSquare,
     roles: ['recruiter', 'manager', 'admin'],
+    menuCode: 'pipeline',
   },
   {
     to: '/interviews',
     label: '我的面试',
     icon: ClipboardCheck,
     roles: ['interviewer'],
+    menuCode: 'interviews',
   },
   {
     to: '/bi',
     label: '进度看板',
     icon: BarChart3,
     roles: ['manager', 'admin'],
+    menuCode: 'bi',
   },
   {
     to: '/agent',
     label: 'AI 助手',
     icon: Sparkles,
     roles: ['recruiter', 'manager', 'admin'],
+    menuCode: 'agent',
   },
   {
     to: '/admin/agent-logs',
     label: 'AI 调用日志',
     icon: ScrollText,
     roles: ['admin'],
+    menuCode: 'agentLogs',
   },
   {
     to: '/admin/settings',
     label: '系统设置',
     icon: Settings,
     roles: ['admin'],
+    menuCode: 'settings',
   },
 ];
 

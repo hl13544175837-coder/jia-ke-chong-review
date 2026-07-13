@@ -8,5 +8,6 @@ export const candidatesNavItems: FeatureNavItem[] = [
     label: '简历库',
     icon: Users,
     roles: CANDIDATE_LIST_ROLES,
+    menuCode: 'candidates',
   },
 ];

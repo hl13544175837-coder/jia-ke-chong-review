@@ -56,7 +56,7 @@ async function fetchCurrentUserMenu(): Promise<{
   tree: MenuNode[];
 }> {
   const url = `${OAUTH_BASE}/api/queryCurrentUserMenu?clientId=${encodeURIComponent(CLIENT_ID)}`;
-  const resp = await fetch(url, { headers: authHeaders() });
+  const resp = await fetch(url, { headers: authHeaders(), method: 'POST' });
   const body = (await resp.json().catch(() => ({}))) as {
     code?: number;
     succ?: boolean;
@@ -106,7 +106,7 @@ export function PermissionsProvider({
       setState({ ready: true, loading: false, menuCodes, buttonCodes, tree });
       if (import.meta.env.DEV) {
         // 联调辅助：打印 zhipin 实际返回的菜单/按钮 code，便于对齐前端 gating。
-        // eslint-disable-next-line no-console
+         
         console.info('[permissions] menuCodes=', [...menuCodes], 'buttonCodes=', [...buttonCodes]);
       }
     } catch {
@@ -139,6 +139,15 @@ export function usePermissions(): PermissionsValue {
     throw new Error('usePermissions must be used within a PermissionsProvider');
   }
   return ctx;
+}
+
+// 按钮权限公共方法：组件里判断某个按钮 code 是否可见/可用。
+//   const canExport = useCan('candidate_EXPORT');
+//   {canExport && <Button>导出</Button>}   或  <Button disabled={!canExport}>导出</Button>
+// 未配 code 或权限未就绪时返回 true（fail-open）。
+// eslint-disable-next-line react-refresh/only-export-components
+export function useCan(code?: string | null): boolean {
+  return usePermissions().hasButton(code);
 }
 
 // 按钮/资源级权限门：有 code 权限才渲染 children（fail-open 见上）。
