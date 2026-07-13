@@ -11,6 +11,8 @@
 
 本轮不合入 OA/Merak 或 Consul/Eureka WIP。OA 缺真实服务身份、字段过滤和联调证据；应用内注册中心在 Gunicorn 多 worker 下会重复注册，且 K8S 已有原生服务发现能力，必须单独立项。
 
+> 【2026-07-13 后续】上述“单独立项”已在 `test` 分支落地为可选服务注册模块（`backend/app/registry/`），由配置动态切换、默认关闭（`CONSUL_ENABLED`/`EUREKA_ENABLED` 均为 false 时不注册，仍走 K8S 原生服务发现）。此前顾虑的多 worker 重复注册，已通过 `backend/gunicorn.conf.py` 的 master 单点注册钩子解决（注册只在 master 发生一次，worker 仅响应 `/actuator/health`）。是否在 SIT 启用、以及是否纳入 Libra/SIT 发布，仍需项目负责人确认。详见 DEPLOYMENT.md「服务注册中心（Consul / Eureka）」。
+
 ## 2. 已确认的问题
 
 1. `create_app()` 在所有环境执行 `create_all`、`ALTER TABLE` 和业务数据归一化，绕开 Alembic revision，并可能在多 worker/多副本并发改库。

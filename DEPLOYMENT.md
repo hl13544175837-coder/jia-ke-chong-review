@@ -423,13 +423,18 @@ rm -rf /var/lib/zhipin/restore-check-uploads
 
 ```bash
 cd backend
-gunicorn -w 2 -b 0.0.0.0:5000 \
-  --timeout 120 \
-  --keep-alive 5 \
-  "run:app"
+# 推荐：用 gunicorn.conf.py（含 worker/超时参数 + 服务注册 master 单点钩子）
+gunicorn -c gunicorn.conf.py run:app
+
+# 等价的显式写法（不走注册钩子时用）：
+gunicorn -w 4 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 ```
 
 > ⚠️ AI 助手的 SSE 流式响应需要 `--timeout` 设置足够大（推荐 120s+）
+>
+> ⚠️ 若启用了 Consul/Eureka 服务注册，**必须**用 `-c gunicorn.conf.py` 启动：
+> 注册只在 gunicorn master 进程发生一次；直接 `-w 4 run:app` 会让每个 worker
+> 各注册一份同 ip:port（见 [服务注册中心](#服务注册中心consul--eureka)）。
 
 ### 方案 C：systemd 服务（Linux 开机自启）
 
@@ -457,6 +462,56 @@ WantedBy=multi-user.target
 systemctl enable zhipin
 systemctl start zhipin
 ```
+
+### 服务注册中心（Consul / Eureka）
+
+后端可选注册到 Consul 或 Eureka，供公司 Spring Cloud 服务发现。**默认两者都关**，
+此时不注册（K8S 用原生 Service 发现即可）。由配置动态选择后端，无需改代码。
+
+**配置来源与优先级**：环境变量 > Spring 属性文件（`REGISTRY_PROPERTIES_FILE`）> 默认。
+属性文件支持 `spring.cloud.consul.*` / `eureka.*` 点号键，可直接复用 Spring 服务那份
+`application.properties` 片段。后端选择：`REGISTRY_TYPE=consul|eureka|none` 显式指定，
+或按 `CONSUL_ENABLED` / `EUREKA_ENABLED` 自动推导（两者都关 → 不注册）。
+
+**SIT 示例（对应给定的 Consul 环境）**，写入 `backend/.env`：
+
+```bash
+CONSUL_ENABLED=true
+EUREKA_ENABLED=false
+CONSUL_HOST=consul.tomcat.tomcat.01.sit
+CONSUL_PORT=8500
+CONSUL_REGISTER=true
+SERVICE_NAME=zhipin-server
+SERVICE_PORT=5000            # 留空则取 PORT
+SERVICE_PREFER_IP_ADDRESS=true
+HEALTH_CHECK_PATH=/actuator/health
+# Consul 主动回拉本服务健康检查（需 consul 能访问到本服务 ip:port）
+CONSUL_CHECK_MODE=http
+# 若 consul 与本服务跨网段、无法回拉，改为本服务主动上报心跳：
+# CONSUL_CHECK_MODE=ttl
+```
+
+切 Eureka 只需：`CONSUL_ENABLED=false`、`EUREKA_ENABLED=true`、
+`EUREKA_SERVER_URLS=http://eureka-1/eureka,http://eureka-2/eureka`。
+
+**健康检查端点**：应用提供 Spring Boot 兼容的 `/actuator/health`（返回 `{"status":"UP"}`）
+和 `/actuator/info`，Consul HTTP 检查和 Eureka healthCheckUrl 均指向它。
+
+**多 worker 注意**：生产用 `gunicorn -c gunicorn.conf.py run:app` 启动，注册在
+master 单点完成，worker 只负责响应健康检查；systemd 方案 C（单进程 `run.py`）会在
+应用内直接注册一次，也安全。
+
+**上线前连通性自检**（不必启动整个应用）：
+
+```bash
+# 用 .env / 环境变量里的配置，跑 注册 → 发现 → 注销
+python backend/scripts/registry_smoketest.py
+# 注册后保持在线 60s，便于在 Consul/Eureka UI 里肉眼确认
+python backend/scripts/registry_smoketest.py --hold 60
+```
+
+> 网络前提：本机/本 Pod 必须能解析并访问 `CONSUL_HOST:CONSUL_PORT`（或 Eureka zone）。
+> HTTP 检查模式还要求注册中心能反向访问本服务 `ip:port`；做不到时用 `CONSUL_CHECK_MODE=ttl`。
 
 ### Libra/CI 镜像构建参考（非手工试点首选）
 

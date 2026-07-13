@@ -87,6 +87,21 @@ def _register_healthcheck(app):
             "service": "zhipin-server",
         })
 
+    # Spring Boot Actuator 兼容端点：供 Consul / Eureka 健康检查拉取，
+    # 让本服务在注册中心里与 Spring Cloud 服务表现一致（{"status":"UP"}）。
+    @app.get("/actuator/health")
+    def actuator_health():
+        return jsonify({"status": "UP"})
+
+    @app.get("/actuator/info")
+    def actuator_info():
+        return jsonify({
+            "app": {
+                "name": "zhipin-server",
+                "description": "智聘 · AI 招聘管理系统",
+            }
+        })
+
 
 def _register_security_headers(app):
     @app.after_request

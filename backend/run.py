@@ -33,4 +33,15 @@ if __name__ == "__main__":
     print(f"  Model        : {os.environ.get('LLM_MODEL', 'gpt-4o-mini')}")
     print(f"  Database     : {safe_database_label(app.config.get('SQLALCHEMY_DATABASE_URI', ''))}")
     print(f"  Debug        : {debug}\n")
+
+    # 开发单进程注册（生产多 worker 走 gunicorn.conf.py 的 master 钩子，勿在此重复）。
+    # debug 重载器会 fork 子进程，只在真正跑服务的子进程（WERKZEUG_RUN_MAIN=true）
+    # 或非重载模式下注册，避免父进程也注册一次。
+    if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        try:
+            from app.registry import start_registration
+            start_registration()
+        except Exception as exc:  # noqa: BLE001 - 注册异常不阻断本地启动
+            print(f"  [registry] 服务注册启动失败：{exc}")
+
     app.run(host="0.0.0.0", port=port, debug=debug)

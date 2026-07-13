@@ -53,6 +53,7 @@ EXPOSE 5000
 
 WORKDIR /app/backend
 
-# Run with Gunicorn, setting high timeout (120s+) for SSE (AI agent) compatibility
+# Run with Gunicorn. gunicorn.conf.py 提供 worker/超时等参数，并在 master
+# 单点完成服务注册（Consul/Eureka），避免多 worker 重复注册。SSE 需要的大超时也在其中。
 ENTRYPOINT ["/app/backend/docker-entrypoint.sh"]
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--timeout", "120", "--keep-alive", "5", "run:app"]
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "run:app"]
