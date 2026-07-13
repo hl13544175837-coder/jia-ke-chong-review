@@ -153,6 +153,26 @@ def test_dev_mode_skips_enforcement():
     _enforce_production_security(app)  # 开发模式放行
 
 
+def test_insecure_sit_startup_is_off_by_default():
+    assert Config.ALLOW_INSECURE_SIT_STARTUP is False
+
+
+def test_explicit_insecure_sit_flag_skips_startup_gate_with_debug_off():
+    app = _mk(
+        FLASK_DEBUG=False,
+        ALLOW_INSECURE_SIT_STARTUP=True,
+        JWT_SECRET="sit-disposable-secret",
+        CORS_ORIGINS=[],
+        AI_RECRUITMENT_COMPLIANCE_ACK=False,
+        CANDIDATE_PRIVACY_NOTICE_URL="",
+        AI_HUMAN_REVIEW_REQUIRED=False,
+        UPLOAD_FOLDER_SOURCE="",
+        UPLOAD_FOLDER="/tmp/zhipin_uploads",
+    )
+
+    _enforce_production_security(app)  # SIT 明确放行，不依赖 debug
+
+
 def test_public_register_closed_by_default():
     with _managed_app(_DefaultClosed) as app:
         client = app.test_client()
@@ -170,6 +190,34 @@ class _RuntimeHardeningConfig(_DefaultClosed):
     RATE_LIMITS = {
         "auth.login": {"limit": 2, "window_seconds": 60},
     }
+
+
+class _StrictCorsConfig(_DefaultClosed):
+    CORS_ORIGINS = ["https://old-only.example"]
+    ALLOW_INSECURE_SIT_STARTUP = False
+
+
+class _UnrestrictedSitCorsConfig(_StrictCorsConfig):
+    ALLOW_INSECURE_SIT_STARTUP = True
+
+
+def test_insecure_sit_ignores_stale_cors_whitelist():
+    origin = "http://localhost:5173"
+    with _managed_app(_UnrestrictedSitCorsConfig) as app:
+        response = app.test_client().get("/api/health", headers={"Origin": origin})
+
+    assert response.status_code == 200
+    assert response.headers["Access-Control-Allow-Origin"] == origin
+
+
+def test_strict_mode_keeps_configured_cors_whitelist():
+    with _managed_app(_StrictCorsConfig) as app:
+        client = app.test_client()
+        blocked = client.get("/api/health", headers={"Origin": "http://localhost:5173"})
+        allowed = client.get("/api/health", headers={"Origin": "https://old-only.example"})
+
+    assert "Access-Control-Allow-Origin" not in blocked.headers
+    assert allowed.headers["Access-Control-Allow-Origin"] == "https://old-only.example"
 
 
 def test_security_headers_are_added_to_api_responses():

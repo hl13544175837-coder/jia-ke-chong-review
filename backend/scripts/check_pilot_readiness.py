@@ -149,6 +149,11 @@ def run_checks(values: dict[str, str], project_root: Path, env_file: Path) -> li
         ),
         CheckResult("JWT_EXPIRY_HOURS", _is_positive_int(values.get("JWT_EXPIRY_HOURS")), "需配置为正整数"),
         CheckResult("FLASK_DEBUG", _is_false(values.get("FLASK_DEBUG")), "生产/试点必须为 false"),
+        CheckResult(
+            "ALLOW_INSECURE_SIT_STARTUP",
+            _is_false(values.get("ALLOW_INSECURE_SIT_STARTUP")),
+            "生产/真实数据试点必须显式为 false",
+        ),
         CheckResult("DATABASE_URL", database_kind in {"mysql", "postgresql"}, f"生产/试点需使用 MySQL 或 PostgreSQL，当前类型：{database_kind}"),
         CheckResult(
             "CORS_ORIGINS",

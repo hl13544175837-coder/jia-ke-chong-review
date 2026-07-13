@@ -30,7 +30,12 @@ def create_app(config=None):
     _enforce_production_security(app)
 
     cors_origins = app.config.get("CORS_ORIGINS") or []
-    if cors_origins:
+    if app.config.get("ALLOW_INSECURE_SIT_STARTUP", False):
+        # 可丢弃数据 SIT 显式全开，避免 K8S 遗留白名单继续阻塞联调。
+        # Flask-CORS 会在未传 origins 时重新读取 app.config["CORS_ORIGINS"]，
+        # 所以这里必须显式覆盖为通配符。
+        CORS(app, origins="*")
+    elif cors_origins:
         CORS(app, origins=cors_origins, supports_credentials=True)
     else:
         # 未配置白名单：仅开发可接受，生产已被 _enforce_production_security 拦截
@@ -297,9 +302,13 @@ def _enforce_production_security(app):
     - JWT_SECRET 不能是默认/弱值，长度需 >= MIN_SECRET_LENGTH
     - CORS_ORIGINS 必须配置白名单，禁止生产全开放
     - AI 招聘能力必须显式完成合规确认、候选人隐私告知和人工复核承诺
-    开发与测试不受影响（debug 需显式开启 / TESTING=true）。
+    开发、自动化测试和显式放行的可丢弃数据 SIT 不受影响。
     """
-    if app.config.get("TESTING") or app.config.get("FLASK_DEBUG", False):
+    if (
+        app.config.get("TESTING")
+        or app.config.get("FLASK_DEBUG", False)
+        or app.config.get("ALLOW_INSECURE_SIT_STARTUP", False)
+    ):
         return
 
     weak = app.config.get("WEAK_SECRETS", set())
@@ -339,7 +348,7 @@ def _enforce_production_security(app):
     if problems:
         raise RuntimeError(
             "生产安全校验未通过，拒绝启动：\n  - " + "\n  - ".join(problems)
-            + "\n（如为本地开发，请显式设置 FLASK_DEBUG=true）"
+            + "\n（本地开发用 FLASK_DEBUG=true；可丢弃数据 SIT 可显式设置 ALLOW_INSECURE_SIT_STARTUP=true）"
         )
 
 

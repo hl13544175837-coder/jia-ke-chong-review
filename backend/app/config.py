@@ -39,6 +39,8 @@ class Config:
 
     # 运行模式：生产模式下会强制校验密钥强度（见 app/__init__.py 的 _enforce_production_security）
     FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+    # 仅供数据可丢弃的 RC/SIT 显式跳过启动安全门禁；默认和 GA 均关闭。
+    ALLOW_INSECURE_SIT_STARTUP = os.environ.get("ALLOW_INSECURE_SIT_STARTUP", "false").lower() == "true"
     # 本地 SQLite 旧库兼容 DDL 必须额外显式开启，debug 本身不再授权改 schema。
     LOCAL_SCHEMA_COMPAT = os.environ.get("LOCAL_SCHEMA_COMPAT", "false").lower() == "true"
 

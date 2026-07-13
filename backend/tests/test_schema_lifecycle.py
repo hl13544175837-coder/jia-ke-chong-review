@@ -50,6 +50,18 @@ class _LocalSchemaCompatSQLiteConfig(_DebugSQLiteConfig):
     LOCAL_SCHEMA_COMPAT = True
 
 
+class _InsecureSitSQLiteConfig(_ProductionSQLiteConfig):
+    FLASK_DEBUG = False
+    ALLOW_INSECURE_SIT_STARTUP = True
+    LOCAL_SCHEMA_COMPAT = True
+    JWT_SECRET = "test-secret"
+    CORS_ORIGINS = []
+    AI_RECRUITMENT_COMPLIANCE_ACK = False
+    CANDIDATE_PRIVACY_NOTICE_URL = ""
+    AI_HUMAN_REVIEW_REQUIRED = False
+    WEAK_SECRETS = {"test-secret"}
+
+
 def _database_url(path):
     return f"sqlite:///{path}"
 
@@ -87,6 +99,12 @@ def _load_bootstrap_module():
     from scripts import bootstrap_database
 
     return bootstrap_database
+
+
+def _load_demand_scope_verifier():
+    from scripts import verify_demand_scope
+
+    return verify_demand_scope
 
 
 def test_production_app_factory_does_not_bootstrap_empty_database(tmp_path):
@@ -129,6 +147,19 @@ def test_explicit_local_schema_compat_keeps_debug_sqlite_convenience(tmp_path):
             db.engine.dispose()
 
 
+def test_insecure_sit_startup_does_not_enable_local_schema_compat(tmp_path):
+    db_path = tmp_path / "insecure-sit-empty.db"
+    app = create_app(_InsecureSitSQLiteConfig.for_path(db_path))
+
+    try:
+        with app.app_context():
+            assert "users" not in inspect(db.engine).get_table_names()
+    finally:
+        with app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+
+
 def test_bootstrap_requires_explicit_empty_database_permission(tmp_path):
     bootstrap = _load_bootstrap_module()
 
@@ -151,6 +182,20 @@ def test_bootstrap_empty_database_creates_head_schema_and_revision(tmp_path):
         assert "candidate_demand_flows" in inspect(engine).get_table_names()
     finally:
         engine.dispose()
+
+
+def test_bootstrap_empty_database_passes_demand_scope_schema_verification(tmp_path):
+    bootstrap = _load_bootstrap_module()
+    verifier = _load_demand_scope_verifier()
+    db_path = tmp_path / "fresh-verified.db"
+    database_url = _database_url(db_path)
+
+    bootstrap.bootstrap_database(database_url, allow_empty=True)
+    report = verifier.verify_database(database_url)
+
+    assert report["schema_revision"]["ok"] is True
+    assert report["schema_errors"] == []
+    assert report["ok"] is True
 
 
 def test_bootstrap_rejects_partial_schema_without_filling_missing_tables(tmp_path):
