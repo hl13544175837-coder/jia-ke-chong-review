@@ -26,6 +26,12 @@ PORT=5001 python run.py
 
 Libra/SIT 的 RC server 镜像在 Gunicorn 启动前依次执行受控空库 bootstrap 和 `alembic -c /app/backend/alembic.ini upgrade head`。`ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 只会初始化“真正为空”的数据库并写入当前 Alembic head；发现部分业务表或不完整 schema 会拒绝继续。`AUTO_MIGRATE_DATABASE=true` 再负责已有库的加性升级。Makefile 对 `GA` 同时关闭这两个开关，因此这不是生产自动建表/迁移授权。直接运行 `python run.py` 不触发容器 entrypoint；需要时在 `backend/` 显式执行 bootstrap 或 Alembic。
 
+### 当前 SIT/test 宽松配置
+
+当前 RC 只给项目负责人使用可丢弃测试数据。镜像显式设置 `ALLOW_INSECURE_SIT_STARTUP=true`，不再因弱测试密钥、空 CORS 白名单、AI 生产合规项或临时 uploads 路径拒绝启动；同时使用 `SECURITY_HEADERS_ENABLED=false`、`RATE_LIMIT_ENABLED=false`、`ALLOW_PUBLIC_REGISTRATION=true` 和留空的 `CORS_ORIGINS`。容器仍保持 `FLASK_DEBUG=false`，不开 Werkzeug 调试器，也不因此获得应用内 `create_all()` 权限。
+
+手工运行可复制 `backend/sit-unrestricted.env.example`。`check_pilot_readiness.py` 是给真实 HR 数据试点/GA 的生产自检，它会要求 `ALLOW_INSECURE_SIT_STARTUP=false`，不得拿该脚本的 FAIL 去阻断当前宽松 SIT 构建。若要导入真实候选人数据或开放给其他人，必须先切回下文严格配置并完成试点检查。
+
 ---
 
 ## 公司 MySQL 测试库试用（需现场复核）
@@ -36,6 +42,7 @@ Libra/SIT 的 RC server 镜像在 Gunicorn 启动前依次执行受控空库 boo
 
 ```env
 FLASK_DEBUG=false
+ALLOW_INSECURE_SIT_STARTUP=false
 LOCAL_SCHEMA_COMPAT=false
 DATABASE_URL=mysql+pymysql://<user>:<password>@<host>:3306/<database>?charset=utf8mb4
 CORS_ORIGINS=http://localhost:5000,http://127.0.0.1:5000,http://<本机局域网IP>:5000
@@ -76,10 +83,12 @@ python seed_dev.py
 
 当前 audit/backfill/verify 脚本和 migrations 已存在。本地文件库按以下顺序验证，不跳过审批、audit 或 verify：
 
+执行前先停掉所有会创建或编辑 Demand 的本地后端/worker；`20260711_04` 会按大写、去首尾空格和 80 字符上限规范化已有 `request_no`，不能边迁移边写入。downgrade 只回退 schema，不会恢复编号原始字符；需要原值时必须恢复迁移前快照。
+
 ```bash
 cd backend
 alembic upgrade head
-alembic current  # 当前收口候选应为 20260711_02
+alembic current  # 当前收口候选应为 20260711_04
 python scripts/audit_demand_scope.py --database <local-sqlite-fixture> \
   --output <audit-report.json> --manifest-output <mapping-to-review.json>
 # 必须由 Product/Data Owner 将审批后的条目标记 approved=true
@@ -91,7 +100,7 @@ python scripts/verify_demand_scope.py --database <local-sqlite-fixture> \
   --output <verify-report.json>
 ```
 
-上述命令的具体参数以各脚本 `--help` 为准。MySQL/PostgreSQL 不用本地 SQLite 结果代替同引擎验证；其发布与回滚门禁见 [docs/10_demand_id迁移与回滚手册.md](docs/10_demand_id迁移与回滚手册.md)。
+上述命令的具体参数以各脚本 `--help` 为准。只有 `verify_demand_scope.py` 返回成功且 `request_no_issues=[]`、`default_interviewer_mismatches=[]` 才能结束停写；`default_interviewer_warnings` 中的停用账号只是后续人工换人提示，不代表跨组织或孤儿数据。MySQL/PostgreSQL 不用本地 SQLite 结果代替同引擎验证；其发布与回滚门禁见 [docs/10_demand_id迁移与回滚手册.md](docs/10_demand_id迁移与回滚手册.md)。
 
 ### BOSS 直聘后端接口（实验辅助能力）
 
@@ -150,11 +159,11 @@ AI 助手首页的示例问题会按角色变化：招聘专员看到自己负�
 
 `Job` 是可复用职位/JD 模板，`RecruitmentDemand` 是具体招聘责任单。HR 可以用同一 Job 创建不同城市、部门、批次、HC 或负责人的 Demand；流程和面试必须选中具体 Demand，匹配仍使用 Job 画像。没有候选人时先上传简历；没有可用 Demand 时去需求工作台新建或恢复；面试官为空时由管理员创建或启用账号。
 
-简历上传页只负责把简历保存到简历库。支持 PDF、DOCX 和 ZIP；旧版 `.doc` 存在宏风险，系统会跳过并提示先转换。上传成功后，如果要推进某个需求，去「简历库」选择「目标岗位 / 加入招聘需求」查看适配候选人，再点击「加入该需求流程」。筛选区里的「入需求流程状态」只用来区分候选人是否已进需求流程。候选人来源、内推人/猎头联系人和本次上传备注都是选填信息，默认收起，不影响上传。
+简历上传页只负责把简历保存到简历库。支持 PDF、DOCX 和 ZIP；旧版 `.doc` 存在宏风险，系统会跳过并提示先转换。上传成功后，如果要推进某个需求，去「简历库」选择具体「目标招聘需求」查看该需求对应岗位的适配候选人，再点击「加入所选需求」。筛选区里的「入需求流程状态」只用来区分候选人是否已进需求流程。候选人来源、内推人/猎头联系人和本次上传备注都是选填信息，默认收起，不影响上传。
 
 岗位匹配结果页默认展示 AI 推荐排序。如果 HR 明确知道要找某个人，或觉得 AI 排名不准，可以切到「全部候选人」，在权限范围内按姓名、公司、学校、岗位、技能或邮箱搜索候选人；页面会继续显示该候选人与当前岗位画像的匹配预览，并允许手动加入该需求流程。匹配度、入需求流程状态、匹配技能和缺失技能筛选只影响当前结果，批量加入也只作用于当前筛选后已勾选的人。
 
-面试安排只能选择启用中的面试官账号和开放中（pending/active）的具体 Demand。如果账号被停用或 Demand 已暂停/关闭，先由管理员启用账号，或到需求工作台恢复 Demand，再重新安排面试；Job 只是画像模板，不代替 Demand 的启停语义。同一个面试官同一时间只能有一场有效面试；如果系统提示已有安排，需要改时间或换面试官。
+创建 Demand 时的“默认面试官”可留空，也可按姓名或邮箱搜索当前组织内已启用的内部账号；界面中的“例如：王杰”只是搜索提示，不会自动选中任何人。面试安排只能选择启用中的面试官账号和开放中（pending/active）的具体 Demand；选中 Demand 后会带出其默认面试官，但 HR 仍可搜索换人。如果账号被停用或 Demand 已暂停/关闭，先由管理员启用账号，或到需求工作台恢复 Demand，再重新安排面试；Job 只是画像模板，不代替 Demand 的启停语义。同一个面试官同一时间只能有一场有效面试；如果系统提示已有安排，需要改时间或换面试官。
 
 面试反馈统一在「面试任务」页处理，但它不再作为招聘专员、经理或管理员的左侧一级入口。候选人在管道进入面试阶段后，可以从管道右侧点击「填写面试反馈」，系统会带着候选人和 Demand 定位到具体 assignment；没有有效 assignment 时只提示先安排，不展示可提交表单。面试官在「我的面试」任务卡上点「填写反馈」后，会自动切到待处理并滚动到对应反馈表。AI 预筛参考只是辅助，不替代人工安排和反馈。
 

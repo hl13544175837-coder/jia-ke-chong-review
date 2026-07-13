@@ -237,7 +237,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 
 | P0 模型/表 | 关键字段或约束 | 唯一 Owner 语义 |
 |---|---|---|
-| `RecruitmentDemand` / `recruitment_demands` | `org_id`, `job_id`, `job_title_snapshot`, `jd_text_snapshot`, `city`, `department`, `headcount`, `owner_hr_id`, `created_by`, `requested_at`, `accepted_at`, `target_date`, `status`, `closed_at`, `closed_by`, `close_reason` | 具体招聘任务；同一 Job 允许并行或历史多个 Demand，Demand 状态不反向改写 Job 状态 |
+| `RecruitmentDemand` / `recruitment_demands` | `org_id`, `job_id`, `job_title_snapshot`, `jd_text_snapshot`, `city`, `department`, `headcount`, `owner_hr_id`, `default_interviewer_id`, `request_no`, `created_by`, `requested_at`, `accepted_at`, `target_date`, `status`, `closed_at`, `closed_by`, `close_reason`；`(org_id, request_no)` 唯一 | 具体招聘任务；同一 Job 允许并行或历史多个 Demand，Demand 状态不反向改写 Job 状态；默认面试官只是后续安排初值 |
 | `Candidate` | 新增 `current_demand_id` | 候选人当前唯一活跃招聘流的快速定位指针，不替代历史流水 |
 | `CandidateDemandFlow` / `candidate_demand_flows` | `org_id`, `candidate_id`, `demand_id`, `owner_hr_id`, `status`, `started_at`, `ended_at`, `transfer_from_demand_id`, `transfer_reason`；唯一约束 `(org_id, candidate_id, demand_id)` | 候选人在某 Demand 下的应聘关系与活动状态；当前阶段从该 Demand 的最新 `PipelineStage` 取得，P0 仅允许一个 active flow |
 | 主流程与业务事实 | `pipeline_stages`, `interviews`, `interview_assignments`, `interview_feedback`, `offers`, `dispositions`, `events`, `notifications`, `upload_batches` 增加可回填的 `demand_id` | 所有业务事实在严格切换后按 Demand 归属；`job_id` 仅保留画像或兼容语义 |
@@ -333,8 +333,8 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
 | `GET` | `/demands` | recruiter/manager/admin | 查询当前账号可管理的用人需求 |
-| `POST` | `/demands` | recruiter/manager/admin | 创建用人需求；可传 `job_id` 复用已有岗位画像，也可传 `job_title` + `jd_text` 自动创建岗位画像 |
-| `PATCH` | `/demands/<demand_id>` | owner/manager/admin | 更新需求字段，包含优先级调整 |
+| `POST` | `/demands` | recruiter/manager/admin | 创建用人需求；可传 `job_id` 复用已有岗位画像，也可传 `job_title` + `jd_text` 自动创建岗位画像；`default_interviewer_id` 可空且必须是同组织启用账号 |
+| `PATCH` | `/demands/<demand_id>` | owner/manager/admin | 更新需求可编辑字段，包括设置/清空 `default_interviewer_id`；状态、负责人和优先级命令仍走专用端点 |
 | `POST` | `/demands/<demand_id>/close` | owner/manager/admin | 关闭、完成、暂停或取消 Demand；不反向修改 Job |
 | `POST` | `/demands/<demand_id>/restore` | owner/manager/admin | 仅恢复 Demand，不反向修改 Job |
 | `POST` | `/demands/<demand_id>/downgrade` | owner/manager/admin | 兼容旧降级入口，记录降级原因 |
@@ -360,7 +360,7 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `POST` | `/interview/feedback` | 登录且有 Demand/assignment 权限 | 提交具体 assignment 反馈；同 assignment 重复返回已有反馈，数据库唯一索引为并发最终防线；任何反馈都不推进流程 |
 | `GET` | `/interview/feedback` | 登录 | 查询反馈，返回原因分类 |
 | `GET` | `/interviews` | 登录 | 面试记录列表，按角色过滤 |
-| `GET` | `/interview/interviewers` | 登录 | 返回启用中的面试官/经理/管理员选项 |
+| `GET` | `/interview/interviewers` | 登录 | 返回启用中的面试官/经理/管理员选项，包含姓名、email 和角色供可搜索选择 |
 | `POST` | `/interview/assignments` | recruiter/manager/admin + Demand 权限 | 创建主/辅安排；重复返回已有记录；同轮第二个有效 primary 或时间冲突稳定 409，数据库唯一索引兜底 |
 | `PATCH` | `/interview/assignments/<assignment_id>/cancel` | recruiter/manager/admin + Demand 管理权 | `reason` 必填；只取消未反馈任务，规范状态为 `cancelled`、释放 `primary_slot` 并允许重排；已有反馈返回稳定 409 |
 
@@ -543,7 +543,7 @@ flowchart TD
 5. 招聘需求卡片和岗位画像列表都可作为匹配入口；需求卡片是业务主入口，岗位列表保留给复用画像和维护 JD。
 6. 岗位匹配页提供“AI 推荐 / 全部候选人”视角。AI 推荐使用 `/jobs/<id>/match` 的持久化排序；全部候选人使用 `/candidates?search=` 在当前账号权限范围内搜索，再调用 `/jobs/<id>/match-preview?candidate_ids=` 展示当前搜索结果与岗位的命中标签、缺失标签和匹配分。
 7. 页面筛选支持匹配度、入需求流程状态、匹配技能和缺失技能；批量加入只作用于当前筛选后已勾选且尚未进入该需求流程的候选人。
-8. 简历库筛选区使用“目标岗位 / 加入招聘需求”触发岗位适配预览，调用 `/jobs/<id>/match-preview`，只返回当前页候选人的命中标签、缺失标签和匹配分，不写入 `matches`；“入需求流程状态”只区分候选人是否已进入需求流程。
+8. 简历库筛选区使用“目标招聘需求”选择具体 `demand_id`，再使用该需求关联的 `job_id` 调用 `/jobs/<id>/match-preview` 生成岗位适配预览；预览只返回当前页候选人的命中标签、缺失标签和匹配分，不写入 `matches`。用户点击“加入所选需求”时必须同时传入 `demand_id`；“入需求流程状态”只区分候选人是否已进入需求流程。
 9. `/jobs/<id>/match` 会清理该岗位旧 match 记录并写入新的 top N。
 
 风险边界：
@@ -613,7 +613,9 @@ flowchart TD
 
 当前使用 `round_sequence` 表达 `interview` 内部轮次，不恢复“一面/二面/终面”主阶段。每轮可有多名参与者，但只允许一名有效主面试官；服务锁与稳定 409 提供业务响应，revision `20260711_02` 的 `primary_slot` 唯一索引提供并发最终防线。同一 assignment 的 feedback 也有唯一索引；重复提交返回已有反馈，不产生第二条。只有主面试官反馈能将该轮标记完成，仍不会推进主流程。创建与取消由 `interview_workflow_service` 统一管理：客户端不能写任意状态，未反馈任务填写原因后可取消并把 `primary_slot` 置空，已有反馈任务拒绝取消；通知、审计和 assignment 事实同事务提交。
 
-面试安排由 HR/经理/管理员创建。后端会兜底校验 Demand 存在、组织/状态/RBAC、候选人 active flow，以及面试官账号属于当前组织、已启用且角色合法；只有 legacy job-only 上下文先检查并唯一解析 Demand。即使前端下拉数据过期，也不会把新面试分配给无权 Demand 或停用账号。
+面试安排由 HR/经理/管理员创建。Demand 可保存一个可空 `default_interviewer_id`，创建页和正式安排页通过同一可搜索账号组件选人；不按姓名或固定 ID 硬编码。选中 Demand 后仅预填它的默认面试官，当次 assignment 仍以 HR 最终选定人为准，不回写 Demand。后端会兜底校验 Demand 存在、组织/状态/RBAC、候选人 active flow，以及面试官账号属于当前组织、已启用且角色合法；只有 legacy job-only 上下文先检查并唯一解析 Demand。即使前端选项过期，也不会把新面试分配给无权 Demand 或停用账号。
+
+前端将面试官选项请求与既有面试记录、Demand、assignment 和待反馈任务解耦。人员选项加载失败时，主工作区继续展示已有事实；安排面板单独进入错误态，禁用新建并允许只重试人员选项。Demand 创建表单不默认选择第一条 Job，本地日期在表单实例初始化时计算。Demand 状态动作完成后，详情刷新期间与刷新失败时都会锁定依赖最新状态的按钮；失败态保留旧事实用于阅读，但明确标为可能过期并提供重试。
 
 `reason_tags` 是面试事实和阻塞原因的标准化分类，只用于协同复盘和流程改进，不是对面试官、HR 或部门做绩效定性。
 
@@ -791,7 +793,9 @@ API 层只负责参数解析、身份入口和响应映射，不在多个路由�
 
 Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁移，由发布流程中唯一 migration job 执行。RC/SIT/生产应用工厂不执行 DDL；只有自动化测试或显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 的本地兼容路径允许应用侧建表/补列。真正空库用 `bootstrap_database.py --allow-empty` 显式初始化并 stamp 当前 head；缺失任一 `20260710_01` 之前旧基线业务表会 fail closed 且不 stamp，`candidate_demand_flows` 由 Expand revision 创建；已有库 `alembic upgrade head`。应用、Alembic、bootstrap、audit/backfill/verify 和 cleanup 共用数据库 URL 规范化器：裸 `postgresql://` 使用 `postgresql+psycopg://`，裸 `mysql://` 使用 `mysql+pymysql://`，避免运行面与运维脚本加载不同驱动。`/api/health` 只证明进程 liveness，不能证明数据库、schema 或持久 uploads ready。
 
-当前加性迁移链为 `20260710_01` → `20260711_02`。revision 02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复；发现冲突即中止并输出证据，不自动挑选保留行。`verify_demand_scope.py` 还要求 `assignment_slot_conflicts` 为空，验证所有有效 primary 的 slot 等于轮次、辅助/取消任务 slot 为空。生产仍由唯一 migration job 执行；RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
+环境安全边界与 schema 生命周期独立。`ALLOW_INSECURE_SIT_STARTUP` 默认为 `false`；当前非 `GA` RC 在项目负责人单人、可丢弃数据测试授权下显式设为 `true`，并关闭应用安全头/限流、开放注册和 CORS。该开关只跳过弱 JWT、CORS 白名单、AI 合规值和持久 uploads 路径的启动拒绝；容器仍 `FLASK_DEBUG=false`，不会触发 `LOCAL_SCHEMA_COMPAT`，也不绕过 RBAC、组织隔离、业务数据约束或 Alembic。`GA` 和真实数据试点必须显式保持 `false`并通过 `check_pilot_readiness.py`。
+
+当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|

@@ -4,6 +4,8 @@
 
 > **2026-07-11 状态**：`codex/premerge-p0-closeout-20260711` 已形成基于 CFPD `test` 的代码候选。即使代码已 fast-forward 推到 CFPD `test`，也只代表发布平台可读取该代码，不代表已触发 Libra 构建或 SIT 部署。SIT 演示数据允许清空或重建；实际状态仍以 CFPD ref、Libra CommitID/镜像、部署日志、schema revision、测试站资产和受控 API 为准。
 
+> **当前 RC 运行口径**：SIT 是项目负责人单人使用的可丢弃数据测试环境。RC server 镜像会显式跳过生产启动配置门禁，关闭应用安全头/限流，开放注册与 CORS，同时保持 `FLASK_DEBUG=false`。这不改变 CFPD ref、Libra 部署证据、schema 和业务冒烟的验收要求，也不授权导入真实候选人数据。
+
 ## 一句话结论
 
 智聘测试站 `https://test-zhipin.yimidida.com/` 的有效发布路线是：
@@ -101,10 +103,12 @@ https://libra.yimidida.com/#/cicd/ci/pipelineexec/2994/4334,4335
 
 #### demand_id 版本的发布顺序
 
-Libra 构建成功不会自动证明 schema 已准备好。当前 RC/SIT server 镜像通过 Makefile 传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 和 `AUTO_MIGRATE_DATABASE=true`：entrypoint 先只在真正空库运行显式 bootstrap 并 stamp 当前 head，再在 Gunicorn 前执行 `alembic -c /app/backend/alembic.ini upgrade head`；发现部分 schema 会拒绝继续，不做猜测补表。`GA` 对两个开关都关闭。这条路线只用于数据可丢弃的 SIT 验收环境，发布时不得并发启动多个新 server 副本；生产仍必须使用唯一 migration job 和完整门禁。当前代码候选期望 revision 为 `20260711_02`。
+Libra 构建成功不会自动证明 schema 已准备好。当前 RC/SIT server 镜像通过 Makefile 传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 和 `AUTO_MIGRATE_DATABASE=true`：entrypoint 先只在真正空库运行显式 bootstrap 并 stamp 当前 head，再在 Gunicorn 前执行 `alembic -c /app/backend/alembic.ini upgrade head`；发现部分 schema 会拒绝继续，不做猜测补表。`GA` 对两个开关都关闭。这条路线只用于数据可丢弃的 SIT 验收环境，发布时不得并发启动多个新 server 副本；生产仍必须使用唯一 migration job 和完整门禁。当前代码候选期望 revision 为 `20260711_04`。
+
+同一个非 `GA` 构建还应在 `make -n PKG_TAG=RC buildserver` 中出现 `ALLOW_INSECURE_SIT_STARTUP=true`、`SECURITY_HEADERS_ENABLED=false`、`RATE_LIMIT_ENABLED=false` 和 `ALLOW_PUBLIC_REGISTRATION=true`；`GA` 干跑必须显示反向严格值。`check_pilot_readiness.py` 会故意拒绝宽松开关，因为它是真实数据试点/GA 工具，不应作为本 SIT 构建成功条件。
 
 1. 在 SIT 同引擎临时库验证 pre-cutover 备份恢复；MySQL 必须有真实临时库导入与核对证据。
-2. RC/SIT 容器启动时由 entrypoint 处理真空库 bootstrap 或已有库 Expand，发布后独立核对 `alembic current == 20260711_02`；`/api/health` 只证明 liveness。
+2. RC/SIT 容器启动时由 entrypoint 处理真空库 bootstrap 或已有库 Expand，发布后独立核对 `alembic current == 20260711_04`；`/api/health` 只证明 liveness。
 3. 运行 audit/backfill dry-run；歧义 bundle 经业务负责人批准后才允许回填。
 4. verify 通过后部署 dual-write 兼容版，做 shadow comparison，不立即 Contract。
 5. 新前端、新后端、AI、BI、通知、审计全部对齐且旧 worker/旧资产退出后，由负责人决定是否设置 cutover marker。

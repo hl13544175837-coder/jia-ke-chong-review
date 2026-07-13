@@ -2,7 +2,9 @@
 
 > **状态（2026-07-11）：** demand-scoped P0 已形成合并前代码候选。把候选 fast-forward 推到 CFPD `test` 只更新代码源，不代表 Libra 已构建或 SIT 已部署。RC/SIT entrypoint 支持真正空库的显式 bootstrap 和已有库的 `alembic -c /app/backend/alembic.ini upgrade head`；`GA`/生产对两者默认关闭，生产仍严格执行本手册的备份、唯一 migration job 和回滚门禁。
 
-> **当前代码边界：** 当前 additive 链为 Demand Expand `20260710_01` → 面试唯一性 `20260711_02`，head 为 `20260711_02`，仍没有 Strict revision；SQLite 已有 upgrade/downgrade 往返用例，MySQL/PostgreSQL 尚无同引擎证据。当前 backfill 只能回填到已存在的 Demand，不自动创建 B 类“历史迁移需求”；当 B 类不为 0 时必须先交付并评审专用创建迁移，不得手填 SQL。在 Strict revision、B 类处理和同引擎验证补齐前，Phase D 结论必须是 NO-GO。
+> **当前代码边界：** 当前 additive 链为 Demand Expand `20260710_01` → 面试唯一性 `20260711_02` → Demand 默认面试官 `20260711_03` → 需求编号唯一性 `20260711_04`，head 为 `20260711_04`，仍没有 Strict revision；SQLite 已有 upgrade/downgrade 往返用例，MySQL/PostgreSQL 尚无同引擎证据。当前 backfill 只能回填到已存在的 Demand，不自动创建 B 类“历史迁移需求”；当 B 类不为 0 时必须先交付并评审专用创建迁移，不得手填 SQL。在 Strict revision、B 类处理和同引擎验证补齐前，Phase D 结论必须是 NO-GO。
+
+> `ALLOW_INSECURE_SIT_STARTUP=true` 只跳过当前可丢弃数据 SIT 的生产启动配置自检。它不跳过 Alembic、请求编号唯一约束、Demand 停写、verify 或本手册的数据归属对账，也不让 `LOCAL_SCHEMA_COMPAT` 在 `FLASK_DEBUG=false` 时获得建表权限。
 
 ## 1. 目标与非目标
 
@@ -27,7 +29,7 @@
 | Product/Data Owner | 批准 B/C/D 类映射，确认 Demand/HC/负责人与 BI 口径 |
 | Evidence Recorder | 归档命令、版本、时间、报告、校验和、截图、决策人与 cutover marker |
 
-正式发布前必须预约完整窗口，禁止让 gunicorn/Flask worker 或应用请求执行 Demand 多表 DDL/回填。当前数据可丢弃的 SIT 例外是：RC 容器 entrypoint 在 Gunicorn 起 worker 之前只对真正空库 bootstrap，并对已有库运行 additive migrations；部分 schema 会拒绝启动，且发布窗口不并发扩容新副本。
+正式发布前必须预约完整窗口，禁止让 gunicorn/Flask worker 或应用请求执行 Demand 多表 DDL/回填。当前数据可丢弃的 SIT 例外是：RC 容器 entrypoint 在 Gunicorn 起 worker 之前只对真正空库 bootstrap，并对已有库运行 additive migrations；部分 schema 会拒绝启动，且发布窗口不并发扩容新副本。但只要待执行链包含 `20260711_04`，就必须额外冻结 Demand 创建/编辑并排空旧应用实例；“数据可丢弃”不等于允许旧 Pod 与编号规范化并发写入。
 
 ## 3. 发布前硬门禁
 
@@ -84,7 +86,7 @@ mysql --host=<host> --user=<user> <restore_db> < <backup_id>.sql
 
 ### 5.1 执行
 
-1. 将应用保持在与旧 schema 兼容的版本，不开启并行 Demand。生产应用工厂和业务 worker 不执行 DDL。
+1. 将应用保持在与旧 schema 兼容的版本，不开启并行 Demand。生产应用工厂和业务 worker 不执行 DDL。在执行 `20260711_04` 前开启 Demand 写入冻结，停止创建/编辑入口并排空所有可能写 Demand 的旧 Flask/Gunicorn/worker 实例；在 revision 和 verify 通过前不恢复写入。
 2. 真正空库由 Release Owner 显式执行 bootstrap；它会拒绝部分 schema，并在创建当前 metadata 后 stamp head：
 
    ```bash
@@ -100,13 +102,15 @@ mysql --host=<host> --user=<user> <restore_db> < <backup_id>.sql
    alembic current
    ```
 
-4. 确认 `alembic current == 20260711_02`，检查 Demand/flow 表、nullable `demand_id`、`current_demand_id`、面试 `primary_slot`、唯一索引和 FK。
+4. 确认 `alembic current == 20260711_04`，检查 Demand/flow 表、nullable `demand_id`、`current_demand_id`、面试 `primary_slot`、Demand `default_interviewer_id`、`(org_id, request_no)` 唯一索引和 FK。
 5. revision `20260711_02` 使用 `lower(trim(status))` 识别历史取消态，再检测重复有效主面试安排和重复 `assignment_id` 反馈；发现冲突即中止并输出冲突组，不自动选择保留行。清理获得业务批准后再重跑；成功后建立 `(org_id,demand_id,candidate_id,primary_slot)` 与 `feedback.assignment_id` 两个唯一索引。
-6. 运行 `verify_demand_scope.py` 并确认 `assignment_slot_conflicts=[]`：有效 primary 的 `primary_slot` 必须等于 `round_sequence`，辅助或已取消任务的 slot 必须为空。
+6. revision `20260711_03` 只增加可空默认面试官外键，旧 Demand 不猜测人员；revision `20260711_04` 将空编号补为 `LEGACY-DEMAND-<id>`、对非空编号去首尾空格/转大写/截至 80 字符，并在建唯一索引前检测同组织冲突；冲突未经业务批准不得继续。该数据规范化不可由 downgrade 逆向还原。
+7. 运行 `verify_demand_scope.py` 并确认 `assignment_slot_conflicts=[]`、`request_no_issues=[]`、`default_interviewer_mismatches=[]`：有效 primary 的 `primary_slot` 必须等于 `round_sequence`，辅助或已取消任务的 slot 必须为空；停用默认面试官进入 `default_interviewer_warnings` 供人工换人，不与跨组织/孤儿引用混合。
 
 ### 5.2 停止条件
 
 - revision 失败或不一致。
+- `20260711_04` 执行期间仍有旧应用实例或 worker 可以写 Demand。
 - revision 02 发现存量 primary/feedback 重复，或 verifier 返回 `assignment_slot_conflicts`，尚无业务批准的裁决结果。
 - 目标引擎不支持 revision 中的索引/FK 策略。
 - 迁移被多 worker 重复触发。
@@ -114,7 +118,7 @@ mysql --host=<host> --user=<user> <restore_db> < <backup_id>.sql
 
 ### 5.3 回滚
 
-优先回滚应用并保留 additive schema，不在发布窗口中为了“干净”立即 drop 新列/新表。只有 revision downgrade 已在同引擎演练且新表确认无业务写入时，才可由 DBA 执行。
+优先回滚应用并保留 additive schema，不在发布窗口中为了“干净”立即 drop 新列/新表。只有 revision downgrade 已在同引擎演练且新表确认无业务写入时，才可由 DBA 执行。`20260711_04` downgrade 只把 `request_no` 改回可空并移除唯一索引，不恢复原始大小写、空格、空值或截断前字符；需要原值时必须停写并恢复迁移前整库快照。
 
 ## 6. Phase B — Audit 与 Backfill
 
@@ -186,7 +190,7 @@ python3 backend/scripts/verify_demand_scope.py --database <database> --output <v
 ### 8.2 切换
 
 1. 由唯一 migration job 应用 strict revision（实际 revision ID 以代码为准），将核心 Demand 归属约束收紧。
-2. 部署 Demand-scoped 后端与前端。`/api/health` 只做进程 liveness；应用版本、`alembic current == 20260711_02`、唯一索引和受控 API 必须作为独立部署门禁核对。
+2. 部署 Demand-scoped 后端与前端。`/api/health` 只做进程 liveness；应用版本、`alembic current == 20260711_04`、唯一索引和受控 API 必须作为独立部署门禁核对。
 3. 记录 cutover marker，至少包含：
 
    ```text
@@ -265,7 +269,7 @@ libra_commit_id:
 backend_version_or_image_digest:
 frontend_asset_hash:
 alembic_before:
-alembic_after:  # 本代码候选应为 20260711_02；Strict 后以实际 revision 为准
+alembic_after:  # 本代码候选应为 20260711_04；Strict 后以实际 revision 为准
 
 audit_report_path_sha256:
 approved_mapping_path_sha256:
