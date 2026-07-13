@@ -49,4 +49,8 @@ if [ "${AUTO_MIGRATE_DATABASE:-false}" = "true" ]; then
     alembic -c /app/backend/alembic.ini upgrade head
 fi
 
+# 切到脚本所在目录（/app/backend）再启动应用：即使编排层覆盖了 workingDir，
+# gunicorn 的相对配置路径（gunicorn.conf.py）、run:app 等也能稳定解析。
+cd "$SCRIPT_DIR"
+
 exec "$@"
