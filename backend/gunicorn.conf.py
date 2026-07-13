@@ -20,13 +20,30 @@ keepalive = int(os.environ.get("GUNICORN_KEEPALIVE", "5"))
 
 
 # ── 服务注册生命周期钩子（master 单点）─────────────────────────────
+def _wire_registry_logging(server):
+    """把 app.registry 的日志接到 gunicorn error 输出，容器 stdout/stderr 可见。
+
+    否则注册模块用的独立 logger 不会进 gunicorn 日志，注册成功/失败（尤其是
+    网络不通导致的静默失败）在容器里将完全看不到。
+    """
+    import logging
+    reg_log = logging.getLogger("app.registry")
+    reg_log.handlers = server.log.error_log.handlers
+    reg_log.setLevel(logging.INFO)
+    reg_log.propagate = False
+
+
 def when_ready(server):
     """master 就绪后注册一次。注册失败不阻断服务对外可用。"""
     try:
+        _wire_registry_logging(server)
         from app.registry import start_registration
-        start_registration()
+        result = start_registration()
+        # 再用 gunicorn logger 明确打一行汇总，保证一定可见
+        line = "[registry] " + result.summary()
+        (server.log.info if result.ok else server.log.error)(line)
     except Exception as exc:  # noqa: BLE001 - 注册异常不应拖垮启动
-        server.log.error("服务注册启动失败：%s", exc)
+        server.log.error("[registry] 服务注册启动失败：%s", exc)
 
 
 def on_exit(server):
@@ -34,5 +51,6 @@ def on_exit(server):
     try:
         from app.registry import stop_registration
         stop_registration()
+        server.log.info("[registry] 已触发服务注销（若之前已注册）")
     except Exception as exc:  # noqa: BLE001
-        server.log.error("服务注销失败：%s", exc)
+        server.log.error("[registry] 服务注销失败：%s", exc)

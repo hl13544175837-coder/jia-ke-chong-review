@@ -39,8 +39,11 @@ if __name__ == "__main__":
     # 或非重载模式下注册，避免父进程也注册一次。
     if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         try:
+            import logging
+            logging.basicConfig(level=logging.INFO)  # 让注册日志在开发终端可见
             from app.registry import start_registration
-            start_registration()
+            result = start_registration()
+            print(f"  [registry] {result.summary()}")
         except Exception as exc:  # noqa: BLE001 - 注册异常不阻断本地启动
             print(f"  [registry] 服务注册启动失败：{exc}")
 
