@@ -6,6 +6,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, ArrowLeft, KeyRound, Bell, ChevronDown } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { navItemsForRole, navLabelForRole } from '../lib/nav';
+import { usePermissions } from '../lib/permissions';
 import { cn } from '../lib/cn';
 import { Badge } from './ui';
 import { AccountSettings } from './AccountSettings';
@@ -50,9 +51,12 @@ function isNavItemActive(item: NavItem, pathname: string, defaultActive: boolean
 
 export function AppShell() {
   const { name, role, logout } = useAuth();
+  const { hasMenu } = usePermissions();
   const navigate = useNavigate();
   const location = useLocation();
-  const items = role ? navItemsForRole(role) : [];
+  // 先按角色过滤，再叠加网关菜单权限（menuCode 已配置且用户无该 code 时隐藏；
+  // 权限未就绪或未配置 menuCode 时 hasMenu 返回 true，不影响现有菜单）。
+  const items = (role ? navItemsForRole(role) : []).filter((item) => hasMenu(item.menuCode));
 
   const sidebarScope = useRef<HTMLElement>(null);
   const mainScope = useRef<HTMLDivElement>(null);

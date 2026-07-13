@@ -11,6 +11,7 @@ import {
   useLocation,
 } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
+import { PermissionsProvider } from './lib/permissions';
 import { AppShell } from './components/AppShell';
 import { defaultRouteForRole } from './lib/nav';
 import { featureRoutes } from './app/featureRegistry';
@@ -61,6 +62,7 @@ function HomeRedirect() {
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
   return (
+    <PermissionsProvider authed={isAuthenticated}>
     <Routes>
       <Route
         path="/login"
@@ -177,6 +179,7 @@ function AppRoutes() {
       </Route>
       <Route path="*" element={<HomeRedirect />} />
     </Routes>
+    </PermissionsProvider>
   );
 }
 

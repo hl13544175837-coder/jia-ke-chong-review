@@ -21,6 +21,10 @@ export interface NavItem {
   // Roles allowed to see this item.
   roles: Role[];
   activePaths?: string[];
+  // 对应网关菜单 code（queryCurrentUserMenu 的 code）。设置后该菜单项受网关权限控制：
+  // 仅当用户拥有该菜单 code 时显示。未设置则不受网关菜单权限影响（见 usePermissions 的
+  // fail-open 语义）。待 zhipin 真实菜单 code 确定后逐项补齐。
+  menuCode?: string;
 }
 
 export const NAV_ITEMS: NavItem[] = [

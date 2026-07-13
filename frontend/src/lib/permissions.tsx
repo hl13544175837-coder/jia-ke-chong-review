@@ -1,0 +1,156 @@
+// 网关菜单/按钮权限接入。
+//
+// 登录后拉取 /pgs/oauth/api/queryCurrentUserMenu?clientId=zhipin，把返回的菜单树
+// 拍平成两个集合：menuCodes（菜单 code）、buttonCodes（resourceInfo 里的按钮 code）。
+// 组件用 hasMenu(code)/hasButton(code) 或 <Can code> 控制显示隐藏。
+//
+// 安全默认（fail-open）：在权限「就绪」之前（尚未加载 / 加载失败），hasMenu/hasButton
+// 一律返回 true，避免联调期或网关抖动把菜单和按钮误隐藏。一旦成功加载，才按 code 生效。
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { authHeaders } from './api';
+
+// 权限接口在网关 OAuth 前缀下（与登录/profile 同源），clientId 标识当前应用。
+const OAUTH_BASE = ((import.meta.env.VITE_OAUTH_BASE_URL ?? '/pgs/oauth') as string)
+  .trim()
+  .replace(/\/+$/, '') || '/pgs/oauth';
+const CLIENT_ID = ((import.meta.env.VITE_PERMISSION_CLIENT_ID ?? 'zhipin') as string).trim() || 'zhipin';
+
+export interface MenuNode {
+  id?: string;
+  code: string;
+  name: string;
+  url?: string;
+  icon?: string;
+  mtype?: number;
+  menuOrder?: number;
+  hideMenu?: boolean;
+  children?: MenuNode[] | null;
+  resourceInfo?: MenuNode[] | null;
+}
+
+function collectCodes(
+  nodes: MenuNode[] | null | undefined,
+  menuCodes: Set<string>,
+  buttonCodes: Set<string>,
+): void {
+  for (const node of nodes ?? []) {
+    if (node?.code) menuCodes.add(node.code);
+    for (const res of node?.resourceInfo ?? []) {
+      if (res?.code) buttonCodes.add(res.code);
+    }
+    collectCodes(node?.children, menuCodes, buttonCodes);
+  }
+}
+
+async function fetchCurrentUserMenu(): Promise<{
+  menuCodes: Set<string>;
+  buttonCodes: Set<string>;
+  tree: MenuNode[];
+}> {
+  const url = `${OAUTH_BASE}/api/queryCurrentUserMenu?clientId=${encodeURIComponent(CLIENT_ID)}`;
+  const resp = await fetch(url, { headers: authHeaders() });
+  const body = (await resp.json().catch(() => ({}))) as {
+    code?: number;
+    succ?: boolean;
+    data?: MenuNode[];
+  };
+  const tree = body?.succ === true || body?.code === 1 ? body.data ?? [] : [];
+  const menuCodes = new Set<string>();
+  const buttonCodes = new Set<string>();
+  collectCodes(tree, menuCodes, buttonCodes);
+  return { menuCodes, buttonCodes, tree };
+}
+
+interface PermissionsValue {
+  ready: boolean; // 是否已成功加载过权限
+  loading: boolean;
+  menuCodes: Set<string>;
+  buttonCodes: Set<string>;
+  tree: MenuNode[];
+  hasMenu: (code?: string | null) => boolean;
+  hasButton: (code?: string | null) => boolean;
+  reload: () => void;
+}
+
+const EMPTY = {
+  ready: false,
+  loading: false,
+  menuCodes: new Set<string>(),
+  buttonCodes: new Set<string>(),
+  tree: [] as MenuNode[],
+};
+
+const PermissionsContext = createContext<PermissionsValue | undefined>(undefined);
+
+export function PermissionsProvider({
+  authed,
+  children,
+}: {
+  authed: boolean;
+  children: ReactNode;
+}) {
+  const [state, setState] = useState(EMPTY);
+
+  const load = useCallback(async () => {
+    setState((s) => ({ ...s, loading: true }));
+    try {
+      const { menuCodes, buttonCodes, tree } = await fetchCurrentUserMenu();
+      setState({ ready: true, loading: false, menuCodes, buttonCodes, tree });
+      if (import.meta.env.DEV) {
+        // 联调辅助：打印 zhipin 实际返回的菜单/按钮 code，便于对齐前端 gating。
+        // eslint-disable-next-line no-console
+        console.info('[permissions] menuCodes=', [...menuCodes], 'buttonCodes=', [...buttonCodes]);
+      }
+    } catch {
+      setState({ ...EMPTY, ready: false, loading: false });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (authed) {
+      load();
+    } else {
+      setState(EMPTY);
+    }
+  }, [authed, load]);
+
+  const value = useMemo<PermissionsValue>(() => {
+    const hasMenu = (code?: string | null) => !state.ready || !code || state.menuCodes.has(code);
+    const hasButton = (code?: string | null) =>
+      !state.ready || !code || state.buttonCodes.has(code);
+    return { ...state, hasMenu, hasButton, reload: load };
+  }, [state, load]);
+
+  return <PermissionsContext.Provider value={value}>{children}</PermissionsContext.Provider>;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function usePermissions(): PermissionsValue {
+  const ctx = useContext(PermissionsContext);
+  if (!ctx) {
+    throw new Error('usePermissions must be used within a PermissionsProvider');
+  }
+  return ctx;
+}
+
+// 按钮/资源级权限门：有 code 权限才渲染 children（fail-open 见上）。
+export function Can({
+  code,
+  children,
+  fallback = null,
+}: {
+  code?: string | null;
+  children: ReactNode;
+  fallback?: ReactNode;
+}) {
+  const { hasButton } = usePermissions();
+  return <>{hasButton(code) ? children : fallback}</>;
+}
