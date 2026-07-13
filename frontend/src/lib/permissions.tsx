@@ -71,6 +71,7 @@ async function fetchCurrentUserMenu(): Promise<{
 
 interface PermissionsValue {
   ready: boolean; // 是否已成功加载过权限
+  settled: boolean; // 首次权限请求是否已结束（成功或失败）
   loading: boolean;
   menuCodes: Set<string>;
   buttonCodes: Set<string>;
@@ -82,6 +83,7 @@ interface PermissionsValue {
 
 const EMPTY = {
   ready: false,
+  settled: false,
   loading: false,
   menuCodes: new Set<string>(),
   buttonCodes: new Set<string>(),
@@ -103,14 +105,15 @@ export function PermissionsProvider({
     setState((s) => ({ ...s, loading: true }));
     try {
       const { menuCodes, buttonCodes, tree } = await fetchCurrentUserMenu();
-      setState({ ready: true, loading: false, menuCodes, buttonCodes, tree });
+      setState({ ready: true, settled: true, loading: false, menuCodes, buttonCodes, tree });
       if (import.meta.env.DEV) {
         // 联调辅助：打印 zhipin 实际返回的菜单/按钮 code，便于对齐前端 gating。
-         
+
         console.info('[permissions] menuCodes=', [...menuCodes], 'buttonCodes=', [...buttonCodes]);
       }
     } catch {
-      setState({ ...EMPTY, ready: false, loading: false });
+      // 失败也标记 settled，避免一直卡加载；hasMenu/hasButton 走 fail-open 全显示。
+      setState({ ...EMPTY, settled: true });
     }
   }, []);
 
@@ -129,7 +132,21 @@ export function PermissionsProvider({
     return { ...state, hasMenu, hasButton, reload: load };
   }, [state, load]);
 
-  return <PermissionsContext.Provider value={value}>{children}</PermissionsContext.Provider>;
+  // 进入应用（已登录）但首个菜单请求还没结束时，先显示加载、不渲染路由/菜单，
+  // 等菜单数据就绪后一次性渲染，避免菜单先全显示再被过滤造成的闪动。
+  const gate = authed && !state.settled;
+
+  return (
+    <PermissionsContext.Provider value={value}>
+      {gate ? (
+        <div className="flex min-h-screen items-center justify-center text-sm text-muted">
+          加载中…
+        </div>
+      ) : (
+        children
+      )}
+    </PermissionsContext.Provider>
+  );
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

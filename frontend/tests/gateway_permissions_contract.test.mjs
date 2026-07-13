@@ -19,6 +19,10 @@ assert.ok(perm.includes('export function PermissionsProvider'), '应导出 Permi
 // fail-open：未就绪时 hasMenu/hasButton 返回 true
 assert.ok(perm.includes('!state.ready'), 'hasMenu/hasButton 应在未就绪时 fail-open');
 
+// 进入应用先拉菜单再渲染：首个请求 settle 前显示加载、不渲染路由（避免菜单闪动）
+assert.ok(perm.includes('settled'), '应有 settled 标记首个权限请求是否结束');
+assert.ok(perm.includes('authed && !state.settled'), '已登录但未 settle 时应先显示加载而非渲染路由');
+
 // App 挂载 PermissionsProvider（登录后加载）
 const app = read('App.tsx');
 assert.ok(app.includes('PermissionsProvider'), 'App 应挂载 PermissionsProvider');
