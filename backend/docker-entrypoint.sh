@@ -24,6 +24,19 @@ require_ga_value() {
 
 case "$RELEASE_CHANNEL" in
     RC)
+        # RC/SIT 镜像默认开启服务注册并指向 SIT Consul（无 K8S/Libra env 注入时兜底）。
+        # 运行时 env 始终优先（:= 仅在变量未设置/为空时才赋默认）。
+        # GA 分支不设这些默认，保持“默认不注册”，避免生产误连 SIT 注册中心。
+        : "${CONSUL_ENABLED:=true}"
+        : "${EUREKA_ENABLED:=false}"
+        : "${CONSUL_HOST:=consul.tomcat.tomcat.01.sit}"
+        : "${CONSUL_PORT:=8500}"
+        : "${SERVICE_NAME:=zhipin-server}"
+        : "${SERVICE_PORT:=5000}"
+        : "${CONSUL_CHECK_MODE:=ttl}"
+        export CONSUL_ENABLED EUREKA_ENABLED CONSUL_HOST CONSUL_PORT \
+               SERVICE_NAME SERVICE_PORT CONSUL_CHECK_MODE
+        echo "RC 默认服务注册：CONSUL_ENABLED=$CONSUL_ENABLED CONSUL_HOST=$CONSUL_HOST CONSUL_PORT=$CONSUL_PORT CHECK_MODE=$CONSUL_CHECK_MODE"
         ;;
     GA)
         require_ga_value ALLOW_INSECURE_SIT_STARTUP "${ALLOW_INSECURE_SIT_STARTUP:-}" false

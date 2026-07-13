@@ -465,8 +465,13 @@ systemctl start zhipin
 
 ### 服务注册中心（Consul / Eureka）
 
-后端可选注册到 Consul 或 Eureka，供公司 Spring Cloud 服务发现。**默认两者都关**，
-此时不注册（K8S 用原生 Service 发现即可）。由配置动态选择后端，无需改代码。
+后端可选注册到 Consul 或 Eureka，供公司 Spring Cloud 服务发现。由配置动态选择后端，无需改代码。
+
+**RC/SIT 镜像默认开启**：`docker-entrypoint.sh` 在 RELEASE_CHANNEL=RC 时，会为
+`CONSUL_ENABLED=true`、`CONSUL_HOST=consul.tomcat.tomcat.01.sit`、`CONSUL_PORT=8500`、
+`CONSUL_CHECK_MODE=ttl` 等注入默认值（无 K8S/Libra env 注入时的兜底）。运行时 env
+始终优先，可整组覆盖指向别的 Consul。**GA 镜像不设这些默认**，保持“默认不注册”，
+避免生产误连 SIT 注册中心；GA 要注册需显式在部署 env 里配置。
 
 **配置来源与优先级**：环境变量 > Spring 属性文件（`REGISTRY_PROPERTIES_FILE`）> 默认。
 属性文件支持 `spring.cloud.consul.*` / `eureka.*` 点号键，可直接复用 Spring 服务那份
