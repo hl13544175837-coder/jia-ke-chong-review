@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { candidatesApi as api } from '../api';
+import { API_BASE } from '../../../lib/apiBase';
 import { formatDate } from '../../../lib/formatDate';
 import { useAsync } from '../../../lib/useAsync';
 import { useAuth } from '../../../lib/auth';
@@ -1643,8 +1644,8 @@ export function CandidateProfilePage() {
     available: false,
     filename: null,
     mime_type: null,
-    preview_url: `/api/resume/${candidateId}/original/preview`,
-    download_url: `/api/resume/${candidateId}/original/download`,
+    preview_url: `${API_BASE}/resume/${candidateId}/original/preview`,
+    download_url: `${API_BASE}/resume/${candidateId}/original/download`,
   };
 
   return (

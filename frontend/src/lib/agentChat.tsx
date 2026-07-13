@@ -15,6 +15,7 @@ import {
 } from 'react';
 import { getToken } from './api';
 import { api } from './api';
+import { API_BASE } from './apiBase';
 import type { ConversationSummary } from '../types';
 
 const STORAGE_KEY_CONV = 'zhipin:agent:conversation_id';
@@ -159,7 +160,7 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
   const loadConversationMessages = useCallback(
     async (id: number): Promise<ConversationMessageItem[]> => {
       const data = await authFetch<{ messages: ConversationMessageItem[] }>(
-        `/api/agent/conversations/${id}`,
+        `${API_BASE}/agent/conversations/${id}`,
       );
       return data.messages ?? [];
     },

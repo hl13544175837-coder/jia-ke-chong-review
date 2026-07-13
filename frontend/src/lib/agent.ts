@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { getToken } from './api';
+import { API_BASE } from './apiBase';
 
 // ---- Wire types ----------------------------------------------------------
 
@@ -97,7 +98,7 @@ export async function executeWriteTool(
   const token = getToken();
   const body: Record<string, unknown> = { tool, args };
   if (conversationId) body.conversation_id = conversationId;
-  const resp = await fetch('/api/agent/execute', {
+  const resp = await fetch(`${API_BASE}/agent/execute`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -132,7 +133,7 @@ export async function streamChat(
   const token = getToken();
   const body: Record<string, unknown> = { message, history };
   if (conversationId) body.conversation_id = conversationId;
-  const resp = await fetch('/api/agent/chat', {
+  const resp = await fetch(`${API_BASE}/agent/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -216,7 +217,7 @@ function isAgentEvent(value: unknown): value is AgentEvent {
 // swallowed by the caller — the cloud is a nice-to-have, not load-bearing.
 export async function fetchAgentTools(signal?: AbortSignal): Promise<AgentTool[]> {
   const token = getToken();
-  const resp = await fetch('/api/agent/tools', {
+  const resp = await fetch(`${API_BASE}/agent/tools`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     signal,
   });

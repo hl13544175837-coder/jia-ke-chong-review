@@ -90,8 +90,8 @@ import type {
   CallLogListResponse,
   CallLogQuery,
 } from '../types';
+import { API_BASE } from './apiBase';
 
-const API_BASE = '/api';
 export const TOKEN_KEY = 'hireinsight_token';
 
 export function getToken(): string | null {
