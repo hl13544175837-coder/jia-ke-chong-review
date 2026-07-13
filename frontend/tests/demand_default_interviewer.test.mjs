@@ -140,6 +140,21 @@ assert.match(
   /onFieldChange\?\.\(String\(field\)\)/,
   'Changing a field should clear a stale server-side validation message',
 );
+assert.match(
+  demandForm,
+  /useEffect\(\(\)\s*=>\s*\{\s*if \(interviewersLoading \|\| interviewersError \|\| form\.default_interviewer_id === null\) return;/,
+  'Loading or failed interviewer options should preserve the selected default interviewer ID',
+);
+assert.match(
+  demandForm,
+  /const selectedIsAvailable = interviewers\.some\([\s\S]*interviewer\.id === form\.default_interviewer_id[\s\S]*if \(!selectedIsAvailable\) \{[\s\S]*default_interviewer_id: null/,
+  'A completed successful options refresh should clear a selected interviewer who is no longer available',
+);
+assert.match(
+  demandForm,
+  /if \(!selectedIsAvailable\) \{[\s\S]*onFieldChange\?\.\('default_interviewer_id'\);[\s\S]*\}/,
+  'Clearing a stale default interviewer should notify the page to dismiss matching server errors',
+);
 assert.doesNotMatch(
   demandForm,
   /default_interviewer_id:\s*\d+/,

@@ -109,6 +109,17 @@ export function DemandForm({
     }
   }, [currentUserId, role]);
 
+  useEffect(() => {
+    if (interviewersLoading || interviewersError || form.default_interviewer_id === null) return;
+    const selectedIsAvailable = interviewers.some(
+      (interviewer) => interviewer.id === form.default_interviewer_id,
+    );
+    if (!selectedIsAvailable) {
+      setForm((current) => ({ ...current, default_interviewer_id: null }));
+      onFieldChange?.('default_interviewer_id');
+    }
+  }, [form.default_interviewer_id, interviewers, interviewersError, interviewersLoading, onFieldChange]);
+
   function patch<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
     onFieldChange?.(String(field));
