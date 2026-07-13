@@ -14,21 +14,23 @@ endif
 
 # Determine registry based on PKG_TAG
 ifeq ($(PKG_TAG),GA)
-	REGISTRY = registry.ymdd.tech
-	AUTO_MIGRATE_DATABASE = false
-	ALLOW_EMPTY_DATABASE_BOOTSTRAP = false
-	ALLOW_INSECURE_SIT_STARTUP = false
-	SECURITY_HEADERS_ENABLED = true
-	RATE_LIMIT_ENABLED = true
-	ALLOW_PUBLIC_REGISTRATION = false
+	override REGISTRY := registry.ymdd.tech
+	override AUTO_MIGRATE_DATABASE := false
+	override ALLOW_EMPTY_DATABASE_BOOTSTRAP := false
+	override ALLOW_INSECURE_SIT_STARTUP := false
+	override SECURITY_HEADERS_ENABLED := true
+	override RATE_LIMIT_ENABLED := true
+	override ALLOW_PUBLIC_REGISTRATION := false
+else ifeq ($(PKG_TAG),RC)
+	override REGISTRY := registry-sit.uce.cn
+	override AUTO_MIGRATE_DATABASE := true
+	override ALLOW_EMPTY_DATABASE_BOOTSTRAP := true
+	override ALLOW_INSECURE_SIT_STARTUP := true
+	override SECURITY_HEADERS_ENABLED := false
+	override RATE_LIMIT_ENABLED := false
+	override ALLOW_PUBLIC_REGISTRATION := true
 else
-	REGISTRY = registry-sit.uce.cn
-	AUTO_MIGRATE_DATABASE = true
-	ALLOW_EMPTY_DATABASE_BOOTSTRAP = true
-	ALLOW_INSECURE_SIT_STARTUP = true
-	SECURITY_HEADERS_ENABLED = false
-	RATE_LIMIT_ENABLED = false
-	ALLOW_PUBLIC_REGISTRATION = true
+$(error PKG_TAG must be exactly RC or GA, got '$(PKG_TAG)')
 endif
 
 ZHIPIN_FRONTEND_REPO = system-zhipin-mvp/zhipin-frontend

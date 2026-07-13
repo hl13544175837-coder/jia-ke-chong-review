@@ -333,6 +333,16 @@ def _enforce_production_security(app):
         problems.append("CANDIDATE_PRIVACY_NOTICE_URL 必须配置候选人隐私告知/授权说明地址")
     if not app.config.get("AI_HUMAN_REVIEW_REQUIRED", True):
         problems.append("AI_HUMAN_REVIEW_REQUIRED 必须为 true，AI 结论不得绕过人工复核")
+    strict_runtime_policy = {
+        "SECURITY_HEADERS_ENABLED": True,
+        "RATE_LIMIT_ENABLED": True,
+        "ALLOW_PUBLIC_REGISTRATION": False,
+        "AUTO_MIGRATE_DATABASE": False,
+        "ALLOW_EMPTY_DATABASE_BOOTSTRAP": False,
+    }
+    for setting, required_value in strict_runtime_policy.items():
+        if app.config.get(setting) is not required_value:
+            problems.append(f"{setting} 必须显式为 {str(required_value).lower()}")
     upload_source = app.config.get("UPLOAD_FOLDER_SOURCE")
     configured_upload = str(app.config.get("UPLOAD_FOLDER") or "")
     if upload_source is None:

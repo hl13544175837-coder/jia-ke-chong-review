@@ -48,6 +48,24 @@ def test_prod_rejects_short_secret():
         _enforce_production_security(app)
 
 
+def test_prod_rejects_public_sit_template_secret():
+    app = _mk(
+        JWT_SECRET="sit-disposable-not-a-real-secret",
+        CORS_ORIGINS=["https://x.com"],
+        AI_RECRUITMENT_COMPLIANCE_ACK=True,
+        CANDIDATE_PRIVACY_NOTICE_URL="https://x.com/privacy",
+        AI_HUMAN_REVIEW_REQUIRED=True,
+        SECURITY_HEADERS_ENABLED=True,
+        RATE_LIMIT_ENABLED=True,
+        ALLOW_PUBLIC_REGISTRATION=False,
+        AUTO_MIGRATE_DATABASE=False,
+        ALLOW_EMPTY_DATABASE_BOOTSTRAP=False,
+    )
+
+    with pytest.raises(RuntimeError, match="JWT_SECRET"):
+        _enforce_production_security(app)
+
+
 def test_prod_requires_cors_whitelist():
     app = _mk(JWT_SECRET="x" * 40, CORS_ORIGINS=[])
     with pytest.raises(RuntimeError, match="CORS_ORIGINS"):
@@ -99,6 +117,36 @@ def test_prod_passes_with_strong_config():
         AI_HUMAN_REVIEW_REQUIRED=True,
     )
     _enforce_production_security(app)  # 不抛即通过
+
+
+@pytest.mark.parametrize(
+    ("setting", "unsafe_value"),
+    [
+        ("SECURITY_HEADERS_ENABLED", False),
+        ("RATE_LIMIT_ENABLED", False),
+        ("ALLOW_PUBLIC_REGISTRATION", True),
+        ("AUTO_MIGRATE_DATABASE", True),
+        ("ALLOW_EMPTY_DATABASE_BOOTSTRAP", True),
+    ],
+)
+def test_prod_rejects_unsafe_runtime_policy(setting, unsafe_value):
+    values = {
+        "JWT_SECRET": "x" * 40,
+        "CORS_ORIGINS": ["https://x.com"],
+        "AI_RECRUITMENT_COMPLIANCE_ACK": True,
+        "CANDIDATE_PRIVACY_NOTICE_URL": "https://x.com/privacy",
+        "AI_HUMAN_REVIEW_REQUIRED": True,
+        "SECURITY_HEADERS_ENABLED": True,
+        "RATE_LIMIT_ENABLED": True,
+        "ALLOW_PUBLIC_REGISTRATION": False,
+        "AUTO_MIGRATE_DATABASE": False,
+        "ALLOW_EMPTY_DATABASE_BOOTSTRAP": False,
+        setting: unsafe_value,
+    }
+    app = _mk(**values)
+
+    with pytest.raises(RuntimeError, match=setting):
+        _enforce_production_security(app)
 
 
 def test_postgres_url_uses_psycopg_driver():
@@ -155,17 +203,24 @@ def test_dev_mode_skips_enforcement():
 
 def test_insecure_sit_startup_is_off_by_default():
     assert Config.ALLOW_INSECURE_SIT_STARTUP is False
+    assert Config.AUTO_MIGRATE_DATABASE is False
+    assert Config.ALLOW_EMPTY_DATABASE_BOOTSTRAP is False
 
 
 def test_explicit_insecure_sit_flag_skips_startup_gate_with_debug_off():
     app = _mk(
         FLASK_DEBUG=False,
         ALLOW_INSECURE_SIT_STARTUP=True,
-        JWT_SECRET="sit-disposable-secret",
+        JWT_SECRET="sit-disposable-not-a-real-secret",
         CORS_ORIGINS=[],
         AI_RECRUITMENT_COMPLIANCE_ACK=False,
         CANDIDATE_PRIVACY_NOTICE_URL="",
         AI_HUMAN_REVIEW_REQUIRED=False,
+        SECURITY_HEADERS_ENABLED=False,
+        RATE_LIMIT_ENABLED=False,
+        ALLOW_PUBLIC_REGISTRATION=True,
+        AUTO_MIGRATE_DATABASE=True,
+        ALLOW_EMPTY_DATABASE_BOOTSTRAP=True,
         UPLOAD_FOLDER_SOURCE="",
         UPLOAD_FOLDER="/tmp/zhipin_uploads",
     )

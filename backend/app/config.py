@@ -41,6 +41,8 @@ class Config:
     FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
     # 仅供数据可丢弃的 RC/SIT 显式跳过启动安全门禁；默认和 GA 均关闭。
     ALLOW_INSECURE_SIT_STARTUP = os.environ.get("ALLOW_INSECURE_SIT_STARTUP", "false").lower() == "true"
+    AUTO_MIGRATE_DATABASE = os.environ.get("AUTO_MIGRATE_DATABASE", "false").lower() == "true"
+    ALLOW_EMPTY_DATABASE_BOOTSTRAP = os.environ.get("ALLOW_EMPTY_DATABASE_BOOTSTRAP", "false").lower() == "true"
     # 本地 SQLite 旧库兼容 DDL 必须额外显式开启，debug 本身不再授权改 schema。
     LOCAL_SCHEMA_COMPAT = os.environ.get("LOCAL_SCHEMA_COMPAT", "false").lower() == "true"
 
@@ -60,7 +62,14 @@ class Config:
     }
 
     # 视为弱/默认的密钥，生产启动时拒绝
-    WEAK_SECRETS = {"dev-secret-change-in-prod", "dev-secret", "test-secret", "change-me-in-production", ""}
+    WEAK_SECRETS = {
+        "dev-secret-change-in-prod",
+        "dev-secret",
+        "test-secret",
+        "change-me-in-production",
+        "sit-disposable-not-a-real-secret",
+        "",
+    }
     MIN_SECRET_LENGTH = 32
 
     # 数据库：开发用 SQLite（绝对路径，避免 CWD 不同导致建出空库），试点/生产换 MySQL 或 PostgreSQL URL

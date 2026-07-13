@@ -24,6 +24,7 @@ WEAK_SECRETS = {
     "dev-secret-change-in-prod",
     "test-secret",
     "change-me-in-production",
+    "sit-disposable-not-a-real-secret",
 }
 
 
@@ -174,6 +175,12 @@ def run_checks(values: dict[str, str], project_root: Path, env_file: Path) -> li
         CheckResult(
             "LOCAL_SCHEMA_COMPAT",
             _is_false(values.get("LOCAL_SCHEMA_COMPAT")),
+            "试点/生产必须显式为 false",
+        ),
+        CheckResult("AUTO_MIGRATE_DATABASE", _is_false(values.get("AUTO_MIGRATE_DATABASE")), "试点/生产必须显式为 false"),
+        CheckResult(
+            "ALLOW_EMPTY_DATABASE_BOOTSTRAP",
+            _is_false(values.get("ALLOW_EMPTY_DATABASE_BOOTSTRAP")),
             "试点/生产必须显式为 false",
         ),
         CheckResult("ALLOW_PUBLIC_REGISTRATION", _is_false(values.get("ALLOW_PUBLIC_REGISTRATION")), "生产/试点必须关闭公开注册"),

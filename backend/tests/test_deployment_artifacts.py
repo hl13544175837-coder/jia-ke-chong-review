@@ -42,6 +42,79 @@ def test_sit_server_build_is_explicitly_unrestricted_but_ga_is_strict():
         assert f"--build-arg {build_arg}={ga_value}" in ga.stdout
 
 
+def test_make_rejects_unknown_package_tags():
+    for tag in ["QA", "production", "RC2"]:
+        result = subprocess.run(
+            ["make", "-n", "buildserver", f"PKG_TAG={tag}", "PKG_VERSION=contract-test"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode != 0
+        assert "PKG_TAG" in result.stderr
+
+
+def test_make_release_policy_cannot_be_overridden_from_command_line():
+    hostile_values = {
+        "AUTO_MIGRATE_DATABASE": "true",
+        "ALLOW_EMPTY_DATABASE_BOOTSTRAP": "true",
+        "ALLOW_INSECURE_SIT_STARTUP": "true",
+        "SECURITY_HEADERS_ENABLED": "false",
+        "RATE_LIMIT_ENABLED": "false",
+        "ALLOW_PUBLIC_REGISTRATION": "true",
+    }
+    ga = subprocess.run(
+        [
+            "make",
+            "-n",
+            "buildserver",
+            "PKG_TAG=GA",
+            "PKG_VERSION=contract-test",
+            *(f"{key}={value}" for key, value in hostile_values.items()),
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    rc = subprocess.run(
+        [
+            "make",
+            "-n",
+            "buildserver",
+            "PKG_TAG=RC",
+            "PKG_VERSION=contract-test",
+            *(f"{key}={value}" for key, value in {
+                "AUTO_MIGRATE_DATABASE": "false",
+                "ALLOW_EMPTY_DATABASE_BOOTSTRAP": "false",
+                "ALLOW_INSECURE_SIT_STARTUP": "false",
+                "SECURITY_HEADERS_ENABLED": "true",
+                "RATE_LIMIT_ENABLED": "true",
+                "ALLOW_PUBLIC_REGISTRATION": "false",
+            }.items()),
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert ga.returncode == 0
+    assert rc.returncode == 0
+    for build_arg, rc_value, ga_value in [
+        ("AUTO_MIGRATE_DATABASE", "true", "false"),
+        ("ALLOW_EMPTY_DATABASE_BOOTSTRAP", "true", "false"),
+        ("ALLOW_INSECURE_SIT_STARTUP", "true", "false"),
+        ("SECURITY_HEADERS_ENABLED", "false", "true"),
+        ("RATE_LIMIT_ENABLED", "false", "true"),
+        ("ALLOW_PUBLIC_REGISTRATION", "true", "false"),
+    ]:
+        assert f"--build-arg {build_arg}={rc_value}" in rc.stdout
+        assert f"--build-arg {build_arg}={ga_value}" in ga.stdout
+
+
 def test_backend_entrypoint_runs_alembic_only_when_enabled(tmp_path):
     script = ROOT / "backend" / "docker-entrypoint.sh"
     assert script.exists()
@@ -128,6 +201,10 @@ def test_environment_templates_separate_sit_unrestricted_from_production():
 
     assert default_values["ALLOW_INSECURE_SIT_STARTUP"] == "false"
     assert pilot_values["ALLOW_INSECURE_SIT_STARTUP"] == "false"
+    assert default_values["AUTO_MIGRATE_DATABASE"] == "false"
+    assert default_values["ALLOW_EMPTY_DATABASE_BOOTSTRAP"] == "false"
+    assert pilot_values["AUTO_MIGRATE_DATABASE"] == "false"
+    assert pilot_values["ALLOW_EMPTY_DATABASE_BOOTSTRAP"] == "false"
 
     assert sit_path.exists()
     sit_values = _read_env_template(sit_path)
@@ -141,6 +218,7 @@ def test_environment_templates_separate_sit_unrestricted_from_production():
     assert sit_values["LOCAL_SCHEMA_COMPAT"] == "false"
     assert sit_values["DATABASE_URL"]
     assert sit_values["JWT_SECRET"]
+    assert sit_values["JWT_SECRET"] == "sit-disposable-not-a-real-secret"
     assert "change-me" not in sit_path.read_text(encoding="utf-8")
     assert "sk-" not in sit_path.read_text(encoding="utf-8")
 
@@ -235,6 +313,8 @@ def test_pilot_readiness_check_fails_without_required_production_env(tmp_path):
     assert "CORS_ORIGINS" in result.stdout
     assert "UPLOAD_FOLDER" in result.stdout
     assert "ALLOW_INSECURE_SIT_STARTUP" in result.stdout
+    assert "AUTO_MIGRATE_DATABASE" in result.stdout
+    assert "ALLOW_EMPTY_DATABASE_BOOTSTRAP" in result.stdout
     assert "short-secret" not in result.stdout
 
 
@@ -248,6 +328,8 @@ def test_pilot_readiness_check_passes_with_production_env(tmp_path):
             "JWT_EXPIRY_HOURS=8",
             "FLASK_DEBUG=false",
             "ALLOW_INSECURE_SIT_STARTUP=false",
+            "AUTO_MIGRATE_DATABASE=false",
+            "ALLOW_EMPTY_DATABASE_BOOTSTRAP=false",
             "DATABASE_URL=postgresql://user:pass@db:5432/zhipin",
             "CORS_ORIGINS=https://zhipin.example.com",
             "SECURITY_HEADERS_ENABLED=true",
@@ -320,6 +402,52 @@ def test_pilot_readiness_rejects_insecure_sit_startup_flag(tmp_path):
 
     assert result.returncode == 1
     assert "[FAIL] ALLOW_INSECURE_SIT_STARTUP" in result.stdout
+
+
+def test_pilot_readiness_rejects_public_sit_secret_and_schema_mutation(tmp_path):
+    script = ROOT / "backend" / "scripts" / "check_pilot_readiness.py"
+    env_file = tmp_path / "backend" / ".env"
+    env_file.parent.mkdir()
+    env_file.write_text(
+        "\n".join([
+            "JWT_SECRET=sit-disposable-not-a-real-secret",
+            "JWT_EXPIRY_HOURS=8",
+            "FLASK_DEBUG=false",
+            "ALLOW_INSECURE_SIT_STARTUP=false",
+            "AUTO_MIGRATE_DATABASE=true",
+            "ALLOW_EMPTY_DATABASE_BOOTSTRAP=true",
+            "DATABASE_URL=postgresql://user:pass@db:5432/zhipin",
+            "CORS_ORIGINS=https://zhipin.example.com",
+            "SECURITY_HEADERS_ENABLED=true",
+            "RATE_LIMIT_ENABLED=true",
+            "RATE_LIMIT_LOGIN=10",
+            "RATE_LIMIT_AGENT_CHAT=20",
+            "RATE_LIMIT_RESUME_UPLOAD=8",
+            "BACKUP_DIR=/var/backups/zhipin",
+            "UPLOAD_FOLDER=/var/lib/zhipin/uploads",
+            "LOCAL_SCHEMA_COMPAT=false",
+            "ALLOW_PUBLIC_REGISTRATION=false",
+            "BOSS_CLI_AUTO_INSTALL=false",
+            "AI_RECRUITMENT_COMPLIANCE_ACK=true",
+            "CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.example.com/privacy",
+            "AI_HUMAN_REVIEW_REQUIRED=true",
+            "FIELD_ENCRYPTION_KEY=" + Fernet.generate_key().decode(),
+        ])
+    )
+    (tmp_path / ".gitignore").write_text("backend/.env\n*.env\n")
+
+    result = subprocess.run(
+        [sys.executable, str(script), "--env-file", str(env_file), "--project-root", str(tmp_path)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "[FAIL] JWT_SECRET" in result.stdout
+    assert "[FAIL] AUTO_MIGRATE_DATABASE" in result.stdout
+    assert "[FAIL] ALLOW_EMPTY_DATABASE_BOOTSTRAP" in result.stdout
 
 
 def test_pilot_readiness_check_requires_ai_compliance_flags(tmp_path):
