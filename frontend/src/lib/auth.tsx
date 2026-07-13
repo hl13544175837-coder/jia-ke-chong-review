@@ -6,11 +6,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import type { JwtPayload, LoginResponse, Role } from '../types';
 import { clearToken, getToken, setToken, setUnauthorizedHandler } from './api';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 const NAME_KEY = 'hireinsight_name';
 const ROLE_KEY = 'hireinsight_role';
@@ -75,6 +77,8 @@ function loadSession(): Session | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(() => loadSession());
+  // 401 后是否弹出“重新登录”确认框（确认后才跳转，不直接登出）。
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // If the stored token is expired/invalid, clear it on mount.
   useEffect(() => {
@@ -111,14 +115,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [session]
   );
 
-  // Register logout as the global 401 handler so the API client can clear the
-  // session and force a re-login on any expired/invalid token (see api.ts).
+  // 401 处理：不直接登出跳转，先弹确认框；用户确认后再登出并跳转登录页。
+  // 用 ref 读当前会话，未登录（如登录页）时的偶发 401 不弹框。
+  const sessionRef = useRef(session);
   useEffect(() => {
-    setUnauthorizedHandler(value.logout);
-    return () => setUnauthorizedHandler(null);
-  }, [value.logout]);
+    sessionRef.current = session;
+  }, [session]);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      if (sessionRef.current) setSessionExpired(true);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      <ConfirmDialog
+        open={sessionExpired}
+        title="登录状态已失效"
+        description="你的登录已过期或在别处失效，需要重新登录。"
+        confirmLabel="重新登录"
+        cancelLabel="稍后"
+        onConfirm={() => {
+          setSessionExpired(false);
+          value.logout();
+        }}
+        onCancel={() => setSessionExpired(false)}
+      />
+    </AuthContext.Provider>
+  );
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
