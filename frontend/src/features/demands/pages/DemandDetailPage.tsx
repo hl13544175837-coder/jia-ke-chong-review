@@ -33,12 +33,14 @@ export function DemandDetailPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [values, setValues] = useState<DemandActionValues>({ reason: '', priority: 'B', owner_hr_id: null, close_status: 'paused' });
 
-  if (state.loading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
-  if (state.error) return <ErrorState message={state.error.message} onRetry={state.reload} />;
+  if (state.loading && !state.data) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
+  if (state.error && !state.data) return <ErrorState message={state.error.message} onRetry={state.reload} />;
   if (!state.data) return null;
   const demand = state.data;
   const completion_suggested = demand.completion_suggested;
   const canRestore = ['paused', 'filled', 'cancelled', 'closed'].includes(demand.status);
+  const demandStateUncertain = state.loading || Boolean(state.error);
+  const hasAlternativeOwner = (owners.data ?? []).some((owner) => owner.id !== demand.owner_hr_id);
 
   function open(nextMode: DemandActionMode) {
     setMode(nextMode);
@@ -79,13 +81,44 @@ export function DemandDetailPage() {
         >
           匹配候选人
         </Link>
-        <Button type="button" variant="secondary" onClick={() => open('priority')}>调整优先级</Button>
-        {(role === 'manager' || role === 'admin') && <Button type="button" variant="secondary" onClick={() => open('owner')}>转派负责人</Button>}
+        <Button type="button" variant="secondary" disabled={demandStateUncertain} onClick={() => open('priority')}>调整优先级</Button>
+        {(role === 'manager' || role === 'admin') && (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={demandStateUncertain || owners.loading || Boolean(owners.error) || !hasAlternativeOwner}
+            onClick={() => open('owner')}
+          >
+            {owners.loading ? '负责人加载中…' : owners.error ? '转派暂不可用' : !hasAlternativeOwner ? '暂无可转派负责人' : '转派负责人'}
+          </Button>
+        )}
         {canRestore
-          ? <Button type="button" onClick={() => open('restore')}>恢复需求</Button>
-          : <Button type="button" variant="danger" onClick={() => open('close')}>暂停 / 关闭</Button>}
+          ? <Button type="button" disabled={demandStateUncertain} onClick={() => open('restore')}>恢复需求</Button>
+          : <Button type="button" variant="danger" disabled={demandStateUncertain} onClick={() => open('close')}>暂停 / 关闭</Button>}
       </div>
-      {message && <p className="rounded-md bg-danger-50 px-3 py-2 text-sm text-danger-700">{message}</p>}
+      {message && <p role="alert" className="rounded-md bg-danger-50 px-3 py-2 text-sm text-danger-700">{message}</p>}
+      {state.loading && state.data && (
+        <p aria-live="polite" className="rounded-md bg-surface-soft px-3 py-2 text-sm text-body">
+          操作已提交，正在同步最新需求状态…
+        </p>
+      )}
+      {state.error && state.data && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-sm text-warning-800">
+          <span>操作已提交，但最新状态加载失败；当前页面可能仍是操作前状态，请勿重复操作。</span>
+          <Button type="button" size="sm" variant="secondary" onClick={state.reload}>重新加载最新状态</Button>
+        </div>
+      )}
+      {(role === 'manager' || role === 'admin') && owners.error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-sm text-warning-800">
+          <span>招聘负责人列表加载失败，暂时不能转派；需求其他信息仍可查看。</span>
+          <Button type="button" size="sm" variant="secondary" onClick={owners.reload}>重新加载负责人</Button>
+        </div>
+      )}
+      {(role === 'manager' || role === 'admin') && !owners.loading && !owners.error && !hasAlternativeOwner && (
+        <p className="rounded-md bg-surface-soft px-3 py-2 text-sm text-body">
+          暂无其他可转派招聘负责人；请管理员先创建或启用其他招聘专员账号。
+        </p>
+      )}
 
       {completion_suggested && (
         <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-800">
@@ -128,6 +161,7 @@ export function DemandDetailPage() {
           <CardBody className="space-y-3 text-sm text-body">
             <p>招聘负责人：{demand.owner_hr_name || `专员 #${demand.owner_hr_id}`}</p>
             <p>用人负责人：{demand.hiring_manager_name}</p>
+            <p>默认面试官：{demand.default_interviewer_name || '未设置'}</p>
             <p>当前状态：<Badge>{demand.status}</Badge></p>
             {demand.risk_flags.length > 0 ? (
               <div className="flex items-start gap-2 rounded-md bg-warning-50 p-3 text-warning-800">

@@ -17,6 +17,7 @@ const pipelinePage = readSource('pages/PipelinePage.tsx');
 const addToPipeline = readSource('components/pipeline/AddToPipeline.tsx');
 const pipelineCandidatePanel = readSource('components/pipeline/PipelineCandidatePanel.tsx');
 const interviewAssignment = readSource('components/interviewRecords/InterviewAssignmentPanel.tsx');
+const searchableInterviewerField = readSource('components/interviewRecords/SearchableInterviewerField.tsx');
 const interviewListPage = readSource('pages/InterviewListPage.tsx');
 const reassignOwner = readSource('components/candidate/ReassignOwner.tsx');
 const biPage = readSource('pages/BiPage.tsx');
@@ -112,9 +113,9 @@ assert.match(
   'Interview assignment should give non-admin users a plain-language next step when interviewer accounts are missing',
 );
 assert.match(
-  interviewAssignment,
+  searchableInterviewerField,
   /ROLE_LABEL/,
-  'Interview assignment should display interviewer roles to avoid picking the wrong account type',
+  'The shared interviewer selector should display roles to avoid picking the wrong account type',
 );
 assert.match(
   interviewAssignment,

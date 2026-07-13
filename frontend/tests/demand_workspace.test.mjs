@@ -32,6 +32,36 @@ assert.doesNotMatch(page, /function DemandCard/, 'The list page should not rende
 assert.match(page, /useNavigate/, 'Create success should navigate to detail');
 assert.match(page, /navigate\(`\/demands\/\$\{created\.id\}`\)/, '201 should open the new demand');
 assert.match(page, /submitGuardRef\.current/, 'A synchronous guard should prevent double clicks');
+assert.match(
+  page,
+  /const \[showCreateForm, setShowCreateForm\] = useState\(false\)/,
+  'Demand creation should be collapsed by default so the demand table stays near the top',
+);
+assert.match(
+  page,
+  /aria-expanded=\{showCreateForm\}/,
+  'The create-demand toggle should expose its expanded state to assistive technology',
+);
+assert.match(
+  page,
+  /aria-controls="demand-create-panel"/,
+  'The create-demand toggle should identify the panel it controls',
+);
+assert.match(
+  page,
+  /id="demand-create-panel"/,
+  'The create-demand panel should remain mounted so collapsing it does not clear partial input',
+);
+assert.match(
+  page,
+  /hidden=\{!showCreateForm\}/,
+  'The full existing form should be hidden, rather than unmounted, while the create area is collapsed',
+);
+assert.match(
+  page,
+  /showCreateForm \? '收起' : '展开'/,
+  'The create-demand toggle should clearly switch between expand and collapse actions',
+);
 
 for (const label of [
   '职位 / JD',
@@ -71,6 +101,51 @@ assert.match(detail, /\?demand=\$\{demand\.id\}/, 'Demand detail should deep-lin
 assert.match(detail, /RISK_LABELS/, 'Demand detail should translate risk codes into user-facing labels');
 assert.match(detail, /risk_flags\.map\(riskLabel\)/, 'Risk flags should render through the label mapping');
 assert.doesNotMatch(detail, /risk_flags\.join\(/, 'Technical risk codes should not be rendered directly');
+assert.match(
+  detail,
+  /if \(state\.loading && !state\.data\)/,
+  'Refreshing a demand after a dialog action should keep the existing page and focus target mounted',
+);
+assert.match(
+  detail,
+  /state\.error && state\.data/,
+  'A failed refresh should be visible even when stale demand data is still mounted',
+);
+assert.match(
+  detail,
+  /操作已提交，但最新状态加载失败/,
+  'The stale-data warning should explain that the mutation may have succeeded',
+);
+assert.match(
+  detail,
+  /onClick=\{state\.reload\}/,
+  'A failed demand refresh should provide a direct retry action',
+);
+assert.match(
+  detail,
+  /const demandStateUncertain = state\.loading \|\| Boolean\(state\.error\)/,
+  'Actions should share one guard while the latest demand state is loading or unknown',
+);
+assert.match(
+  detail,
+  /owners\.error[\s\S]*owners\.reload/,
+  'A failed owner list should be explained separately and offer a retry',
+);
+assert.match(
+  detail,
+  /disabled=\{demandStateUncertain \|\| owners\.loading \|\| Boolean\(owners\.error\) \|\| !hasAlternativeOwner\}/,
+  'Owner reassignment should stay unavailable until eligible owners are known',
+);
+assert.match(
+  detail,
+  /const hasAlternativeOwner = \(owners\.data \?\? \[\]\)\.some\(\(owner\) => owner\.id !== demand\.owner_hr_id\)/,
+  'Reassignment should distinguish a true no-alternative state from a loaded owner list',
+);
+assert.match(
+  detail,
+  /暂无其他可转派招聘负责人/,
+  'Managers should get a next-step explanation when no alternative recruiter exists',
+);
 
 assert.match(types, /interface DemandListQuery/, 'Demand list query type should be shared');
 assert.match(types, /interface DemandListResponse/, 'Paginated response type should be shared');

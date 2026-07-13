@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { SearchableInterviewerField } from '../../../components/interviewRecords/SearchableInterviewerField';
 import { Button, Input } from '../../../components/ui';
 import type {
   CandidateOwnerOption,
   DemandPriority,
+  InterviewerOption,
   JobListItem,
   RecruitmentDemandInput,
   Role,
@@ -14,6 +16,11 @@ interface DemandFormProps {
   role: Role | null;
   currentUserId: number | null;
   currentUserName: string | null;
+  interviewers: InterviewerOption[];
+  interviewersLoading?: boolean;
+  interviewersError?: string | null;
+  onReloadInterviewers?: () => void;
+  onFieldChange?: (field: string) => void;
   busy: boolean;
   serverErrors?: Record<string, string>;
   onSubmit: (payload: RecruitmentDemandInput) => void;
@@ -22,6 +29,7 @@ interface DemandFormProps {
 interface FormState {
   job_id: string;
   owner_hr_id: string;
+  default_interviewer_id: number | null;
   request_no: string;
   requester_name: string;
   requester_department: string;
@@ -35,7 +43,12 @@ interface FormState {
   note: string;
 }
 
-const today = new Date().toISOString().slice(0, 10);
+function localDateInputValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function RequiredLabel({ children }: { children: string }) {
   return (
@@ -56,6 +69,11 @@ export function DemandForm({
   role,
   currentUserId,
   currentUserName,
+  interviewers,
+  interviewersLoading = false,
+  interviewersError = null,
+  onReloadInterviewers,
+  onFieldChange,
   busy,
   serverErrors = {},
   onSubmit,
@@ -67,34 +85,23 @@ export function DemandForm({
     return owners;
   }, [currentUserId, currentUserName, owners, role]);
 
-  const [form, setForm] = useState<FormState>({
+  const [form, setForm] = useState<FormState>(() => ({
     job_id: '',
     owner_hr_id: role === 'recruiter' && currentUserId ? String(currentUserId) : '',
+    default_interviewer_id: null,
     request_no: '',
     requester_name: '',
     requester_department: '',
     city: '',
     hiring_manager_name: '',
-    requested_at: today,
+    requested_at: localDateInputValue(),
     accepted_at: '',
     target_date: '',
     priority: 'B',
     headcount: '1',
     note: '',
-  });
+  }));
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (!form.job_id && jobs.length > 0) {
-      const first = jobs[0];
-      setForm((current) => ({
-        ...current,
-        job_id: String(first.id),
-        city: current.city || first.city || '',
-        requester_department: current.requester_department || first.department || '',
-      }));
-    }
-  }, [form.job_id, jobs]);
 
   useEffect(() => {
     if (role === 'recruiter' && currentUserId) {
@@ -104,6 +111,7 @@ export function DemandForm({
 
   function patch<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
+    onFieldChange?.(String(field));
     setLocalErrors((current) => {
       if (!current[field]) return current;
       const next = { ...current };
@@ -114,12 +122,24 @@ export function DemandForm({
 
   function selectJob(value: string) {
     const selected = jobs.find((job) => String(job.id) === value);
+    const changedFields: Array<keyof FormState> = [
+      'job_id',
+      'city',
+      'requester_department',
+    ];
     setForm((current) => ({
       ...current,
       job_id: value,
-      city: selected?.city || current.city,
-      requester_department: selected?.department || current.requester_department,
+      city: selected?.city || '',
+      requester_department: selected?.department || '',
     }));
+    changedFields.forEach((field) => onFieldChange?.(String(field)));
+    setLocalErrors((current) => {
+      if (!changedFields.some((field) => current[field])) return current;
+      const next = { ...current };
+      changedFields.forEach((field) => delete next[field]);
+      return next;
+    });
   }
 
   function submit(event: FormEvent) {
@@ -142,6 +162,7 @@ export function DemandForm({
     onSubmit({
       job_id: Number(form.job_id),
       owner_hr_id: Number(form.owner_hr_id),
+      default_interviewer_id: form.default_interviewer_id,
       city: form.city.trim(),
       request_no: form.request_no.trim() || undefined,
       requester_name: form.requester_name.trim(),
@@ -252,6 +273,28 @@ export function DemandForm({
           </select>
           {error('owner_hr_id') && <p className="mt-1 text-xs text-danger-600">{error('owner_hr_id')}</p>}
         </label>
+        <SearchableInterviewerField
+          label="默认面试官（可选）"
+          options={interviewers}
+          value={form.default_interviewer_id}
+          onChange={(value) => patch('default_interviewer_id', value)}
+          disabled={busy || interviewersLoading || Boolean(interviewersError)}
+          error={error('default_interviewer_id')}
+          helperText={interviewersLoading
+            ? '正在加载可选面试官…'
+            : interviewersError
+              ? <span>面试官列表暂时无法加载：{interviewersError}</span>
+              : interviewers.length === 0
+                ? '暂无可选账号，可先留空；需要时请管理员创建或启用面试官账号。'
+                : '可以留空；正式安排面试时仍可更换。'}
+        />
+        {interviewersError && onReloadInterviewers && (
+          <div className="flex items-end">
+            <Button type="button" size="sm" variant="secondary" onClick={onReloadInterviewers}>
+              重新加载面试官
+            </Button>
+          </div>
+        )}
         <Input
           name="request_no"
           label="需求编号（可选）"

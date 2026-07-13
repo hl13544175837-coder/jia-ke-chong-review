@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ClipboardList } from 'lucide-react';
+import { ChevronDown, ClipboardList } from 'lucide-react';
 import { Button, Card, CardBody, CardHeader, CardTitle, EmptyState, ErrorState, PageHeader, Spinner } from '../../../components/ui';
 import { RecruitmentManagementTabs } from '../../../components/recruitment/RecruitmentManagementTabs';
 import { ApiError, api } from '../../../lib/api';
@@ -18,6 +18,7 @@ export function DemandsPage() {
   const navigate = useNavigate();
   const { role, userId, name } = useAuth();
   const [query, setQuery] = useState<DemandListQuery>({ status: 'all', page: 1, page_size: 20, sort: 'created_at_desc' });
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
   const [createMessage, setCreateMessage] = useState<string | null>(null);
@@ -34,6 +35,7 @@ export function DemandsPage() {
       : Promise.resolve([] as CandidateOwnerOption[])),
     [role],
   );
+  const interviewers = useAsync(() => api.listInterviewers(), []);
 
   async function handleCreate(payload: RecruitmentDemandInput) {
     if (submitGuardRef.current || submitting) return;
@@ -58,6 +60,16 @@ export function DemandsPage() {
     }
   }
 
+  function clearCreateError(field: string) {
+    setCreateMessage(null);
+    setCreateErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
+
   const response = demands.data ?? EMPTY_RESPONSE;
 
   return (
@@ -66,8 +78,30 @@ export function DemandsPage() {
       <RecruitmentManagementTabs />
 
       <Card variant="elevated">
-        <CardHeader><CardTitle>创建招聘需求</CardTitle></CardHeader>
-        <CardBody>
+        <CardHeader className={showCreateForm ? undefined : 'border-b-0'}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>创建招聘需求</CardTitle>
+              <p className="mt-1 text-xs text-muted-soft">需要时展开填写，创建成功后直接进入需求详情。</p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={submitting}
+              aria-expanded={showCreateForm}
+              aria-controls="demand-create-panel"
+              onClick={() => setShowCreateForm((current) => !current)}
+            >
+              {showCreateForm ? '收起' : '展开'}
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${showCreateForm ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardBody id="demand-create-panel" hidden={!showCreateForm}>
           {jobs.loading || owners.loading ? (
             <div className="flex items-center gap-2 py-6 text-sm text-muted"><Spinner size="sm" />加载职位与负责人…</div>
           ) : jobs.error || owners.error ? (
@@ -86,6 +120,11 @@ export function DemandsPage() {
               role={role}
               currentUserId={userId}
               currentUserName={name}
+              interviewers={interviewers.data ?? []}
+              interviewersLoading={interviewers.loading}
+              interviewersError={interviewers.error?.message ?? null}
+              onReloadInterviewers={interviewers.reload}
+              onFieldChange={clearCreateError}
               busy={submitting}
               serverErrors={createErrors}
               onSubmit={handleCreate}

@@ -1,6 +1,16 @@
+import { useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '../../../components/ui';
 import type { CandidateOwnerOption, DemandPriority, RecruitmentDemand } from '../../../types';
+
+const FOCUSABLE_SELECTOR = [
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'button:not([disabled])',
+  '[href]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
 
 export type DemandActionMode = 'close' | 'restore' | 'priority' | 'owner';
 
@@ -30,7 +40,74 @@ export function DemandActionDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  if (!mode) return null;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const busyRef = useRef(busy);
+  const onCancelRef = useRef(onCancel);
+  const isOpen = mode !== null;
+
+  useLayoutEffect(() => {
+    busyRef.current = busy;
+    onCancelRef.current = onCancel;
+  }, [busy, onCancel]);
+
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+
+    previousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const previousOverflow = document.body.style.overflow;
+    const appRoot = document.getElementById('root');
+    const previousInert = appRoot?.inert ?? false;
+    document.body.style.overflow = 'hidden';
+    if (appRoot) appRoot.inert = true;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !busyRef.current) {
+        onCancelRef.current();
+        return;
+      }
+      if (event.key === 'Tab') {
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+        const focusable = Array.from(
+          dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+        );
+        if (focusable.length === 0) {
+          event.preventDefault();
+          dialog.focus();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (event.shiftKey && (active === first || !dialog.contains(active))) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && active === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    const focusFrame = window.requestAnimationFrame(() => {
+      const firstControl = dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      (firstControl ?? dialogRef.current)?.focus();
+    });
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      if (appRoot) appRoot.inert = previousInert;
+      if (previousFocusRef.current?.isConnected) previousFocusRef.current.focus();
+    };
+  }, [isOpen]);
+
+  if (!mode || typeof document === 'undefined') return null;
   const title = mode === 'close' ? '暂停或关闭需求' : mode === 'restore' ? '恢复需求' : mode === 'priority' ? '调整优先级' : '转派招聘负责人';
   const impact = mode === 'close'
     ? '候选人历史、面试、Offer 和审计记录会保留；职位 / JD 模板不会被关闭。'
@@ -43,10 +120,17 @@ export function DemandActionDialog({
     && (mode !== 'owner' || Boolean(values.owner_hr_id))
     && (mode !== 'priority' || values.priority !== demand.priority);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="w-full max-w-lg rounded-lg border border-hairline bg-canvas shadow-card-lg">
-        <div className="space-y-4 p-5">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-ink/30 p-4">
+      <div
+        ref={dialogRef}
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-lg border border-hairline bg-canvas shadow-card-lg"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+      >
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 text-warning-700" />
             <div><h2 className="font-display text-lg text-ink">{title}</h2><p className="mt-1 text-sm text-muted">{demand.job_title} · {demand.request_no}</p></div>
@@ -77,11 +161,12 @@ export function DemandActionDialog({
           </label>
           <div className="rounded-md bg-surface-soft p-3 text-sm text-body"><strong className="text-ink">这次操作会影响：</strong><p className="mt-1">{impact}</p></div>
         </div>
-        <div className="flex justify-end gap-2 border-t border-hairline px-5 py-3">
+        <div className="flex shrink-0 justify-end gap-2 border-t border-hairline px-5 py-3">
           <Button type="button" variant="secondary" disabled={busy} onClick={onCancel}>取消</Button>
           <Button type="button" loading={busy} disabled={!valid || busy} onClick={onConfirm}>确认</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -266,6 +266,8 @@ export interface RecruitmentDemand {
   job_code: string;
   owner_hr_id: number;
   owner_hr_name: string;
+  default_interviewer_id: number | null;
+  default_interviewer_name: string | null;
   request_no: string;
   requester_name: string;
   requester_department: string;
@@ -292,6 +294,7 @@ export interface RecruitmentDemandInput {
   job_title?: string;
   jd_text?: string;
   owner_hr_id: number;
+  default_interviewer_id?: number | null;
   city: string;
   request_no?: string;
   requester_name?: string;
@@ -921,6 +924,7 @@ export interface NotificationListResponse {
 export interface InterviewerOption {
   id: number;
   name: string;
+  email: string;
   role: Role;
 }
 

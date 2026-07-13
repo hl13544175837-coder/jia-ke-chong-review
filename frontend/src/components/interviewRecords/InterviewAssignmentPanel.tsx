@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarClock } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -11,16 +11,9 @@ import type {
   InterviewerOption,
   PipelineBoard,
   RecruitmentDemand,
-  Role,
 } from '../../types';
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, EmptyState, Input, Select } from '../ui';
-
-const ROLE_LABEL: Record<Role, string> = {
-  recruiter: '招聘专员',
-  interviewer: '面试官',
-  manager: '经理',
-  admin: '管理员',
-};
+import { SearchableInterviewerField } from './SearchableInterviewerField';
 
 const ROUND_SEQUENCE_BY_ROUND: Partial<Record<InterviewRound, number>> = {
   round_1: 1,
@@ -33,6 +26,9 @@ interface InterviewAssignmentPanelProps {
   demands: RecruitmentDemand[];
   boards: PipelineBoard[];
   interviewers: InterviewerOption[];
+  interviewersLoading?: boolean;
+  interviewersError?: string | null;
+  onReloadInterviewers?: () => void;
   assignments: InterviewAssignment[];
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -43,6 +39,9 @@ export function InterviewAssignmentPanel({
   demands,
   boards,
   interviewers,
+  interviewersLoading = false,
+  interviewersError = null,
+  onReloadInterviewers,
   assignments,
   open: controlledOpen,
   onOpenChange,
@@ -55,7 +54,8 @@ export function InterviewAssignmentPanel({
   const [round, setRound] = useState<InterviewRound>('round_1');
   const [roundSequence, setRoundSequence] = useState('1');
   const [isPrimary, setIsPrimary] = useState(true);
-  const [interviewerId, setInterviewerId] = useState('');
+  const [interviewerId, setInterviewerId] = useState<number | null>(null);
+  const [pendingDefaultInterviewerId, setPendingDefaultInterviewerId] = useState<number | null>(null);
   const [scheduledAt, setScheduledAt] = useState('');
   const [location, setLocation] = useState('');
   const [note, setNote] = useState('');
@@ -66,8 +66,31 @@ export function InterviewAssignmentPanel({
   const open = controlledOpen ?? localOpen;
   const recentAssignments = useMemo(() => assignments.slice(0, 6), [assignments]);
   const selectedDemandId = Number(demandId);
+  const selectedDemand = demands.find((demand) => demand.id === selectedDemandId);
   const selectedBoard = boards.find((board) => board.demand_id === selectedDemandId);
   const demandCandidates = selectedBoard?.candidates.filter((candidate) => candidate.stage === 'interview') ?? [];
+  const defaultInterviewerUnavailable = Boolean(selectedDemand?.default_interviewer_id)
+    && !interviewers.some((interviewer) => interviewer.id === selectedDemand?.default_interviewer_id);
+
+  useEffect(() => {
+    if (pendingDefaultInterviewerId === null) return;
+    const pendingIsAvailable = interviewers.some(
+      (interviewer) => interviewer.id === pendingDefaultInterviewerId,
+    );
+    if (!pendingIsAvailable) return;
+    setInterviewerId(pendingDefaultInterviewerId);
+    setPendingDefaultInterviewerId(null);
+  }, [interviewers, pendingDefaultInterviewerId]);
+
+  useEffect(() => {
+    if (interviewersLoading || interviewersError || interviewerId === null) return;
+    const selectedIsAvailable = interviewers.some(
+      (interviewer) => interviewer.id === interviewerId,
+    );
+    if (!selectedIsAvailable) {
+      setInterviewerId(null);
+    }
+  }, [interviewers, interviewerId, interviewersLoading, interviewersError]);
 
   function setOpen(nextOpen: boolean) {
     if (onOpenChange) {
@@ -77,10 +100,26 @@ export function InterviewAssignmentPanel({
     setLocalOpen(nextOpen);
   }
 
+  function selectDemand(nextDemandId: string) {
+    setDemandId(nextDemandId);
+    setCandidateId('');
+    const selectedDemand = demands.find((demand) => String(demand.id) === nextDemandId);
+    const defaultInterviewerId = selectedDemand?.default_interviewer_id ?? null;
+    const defaultIsAvailable = defaultInterviewerId !== null
+      && interviewers.some((interviewer) => interviewer.id === defaultInterviewerId);
+    setInterviewerId(defaultIsAvailable ? defaultInterviewerId : null);
+    setPendingDefaultInterviewerId(defaultIsAvailable ? null : defaultInterviewerId);
+  }
+
+  function selectInterviewer(nextInterviewerId: number | null) {
+    setPendingDefaultInterviewerId(null);
+    setInterviewerId(nextInterviewerId);
+  }
+
   async function handleCreate() {
     const cid = Number(candidateId);
     const did = Number(demandId);
-    const iid = Number(interviewerId);
+    const iid = interviewerId;
     const sequence = Number(roundSequence);
     if (!cid || !did || !iid) {
       setMessage('请选择招聘需求、该需求中的候选人和面试官');
@@ -106,7 +145,8 @@ export function InterviewAssignmentPanel({
       });
       setCandidateId('');
       setDemandId('');
-      setInterviewerId('');
+      setPendingDefaultInterviewerId(null);
+      setInterviewerId(null);
       setRound('round_1');
       setRoundSequence('1');
       setIsPrimary(true);
@@ -166,7 +206,7 @@ export function InterviewAssignmentPanel({
       <CardBody>
         {open && (
           <div className="mb-5 space-y-3 rounded-lg border border-hairline bg-surface-soft p-4">
-            {(demands.length === 0 || interviewers.length === 0) && (
+            {(demands.length === 0 || interviewersLoading || interviewersError || interviewers.length === 0) && (
               <div className="grid gap-2 md:grid-cols-3">
                 {demands.length === 0 && (
                   <div className="rounded-md border border-hairline bg-canvas px-3 py-2 text-xs text-muted">
@@ -176,7 +216,23 @@ export function InterviewAssignmentPanel({
                     </Link>
                   </div>
                 )}
-                {interviewers.length === 0 && (
+                {interviewersLoading && (
+                  <div className="rounded-md border border-hairline bg-canvas px-3 py-2 text-xs text-muted">
+                    <p className="font-semibold text-ink">正在加载可选面试官…</p>
+                  </div>
+                )}
+                {!interviewersLoading && interviewersError && (
+                  <div role="alert" className="rounded-md border border-danger-200 bg-danger-50 px-3 py-2 text-xs text-danger-700">
+                    <p className="font-semibold">面试官列表暂时无法加载</p>
+                    <p className="mt-1">{interviewersError}</p>
+                    {onReloadInterviewers && (
+                      <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={onReloadInterviewers}>
+                        重新加载面试官
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {!interviewersLoading && !interviewersError && interviewers.length === 0 && (
                   <div className="rounded-md border border-hairline bg-canvas px-3 py-2 text-xs text-muted">
                     <p className="font-semibold text-ink">
                       暂无可选面试官，请管理员先创建或启用面试官账号。
@@ -195,12 +251,11 @@ export function InterviewAssignmentPanel({
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <div>
                 <Select
+                  id="interview-assignment-demand"
+                  name="demand_id"
                   label="招聘需求"
                   value={demandId}
-                  onChange={(e) => {
-                    setDemandId(e.target.value);
-                    setCandidateId('');
-                  }}
+                  onChange={(e) => selectDemand(e.target.value)}
                 >
                   <option value="">选择招聘需求</option>
                   {demands.map((demand) => (
@@ -215,6 +270,8 @@ export function InterviewAssignmentPanel({
               </div>
               <div>
                 <Select
+                  id="interview-assignment-candidate"
+                  name="candidate_id"
                   label="候选人"
                   value={candidateId}
                   disabled={!demandId}
@@ -237,6 +294,8 @@ export function InterviewAssignmentPanel({
                 )}
               </div>
               <Select
+                id="interview-assignment-round"
+                name="round"
                 label="轮次"
                 value={round}
                 onChange={(e) => {
@@ -252,15 +311,24 @@ export function InterviewAssignmentPanel({
                   </option>
                 ))}
               </Select>
-              <Select label="面试官" value={interviewerId} onChange={(e) => setInterviewerId(e.target.value)}>
-                <option value="">选择面试官</option>
-                {interviewers.map((interviewer) => (
-                  <option key={interviewer.id} value={interviewer.id}>
-                    {interviewer.name}（{ROLE_LABEL[interviewer.role] ?? interviewer.role}）
-                  </option>
-                ))}
-              </Select>
+              <SearchableInterviewerField
+                key={`interviewer-${demandId || 'none'}`}
+                label="面试官"
+                options={interviewers}
+                value={interviewerId}
+                onChange={selectInterviewer}
+                disabled={interviewersLoading || Boolean(interviewersError) || interviewers.length === 0}
+                helperText={interviewersLoading
+                  ? '正在加载可选面试官…'
+                  : interviewersError
+                    ? '面试官列表加载失败，请重新加载后再安排。'
+                    : defaultInterviewerUnavailable && interviewerId === null
+                      ? '该需求的默认面试官已不可用，请人工选择。'
+                      : '选择需求后会带出可用的默认面试官，仍可更换。'}
+              />
               <Select
+                id="interview-assignment-responsibility"
+                name="is_primary"
                 label="面试责任"
                 value={isPrimary ? 'primary' : 'supporting'}
                 onChange={(e) => setIsPrimary(e.target.value === 'primary')}
@@ -271,6 +339,8 @@ export function InterviewAssignmentPanel({
             </div>
             <div className="grid gap-3 md:grid-cols-3">
               <Input
+                id="interview-assignment-round-sequence"
+                name="round_sequence"
                 label="轮次序号"
                 type="number"
                 min={1}
@@ -278,27 +348,51 @@ export function InterviewAssignmentPanel({
                 onChange={(e) => setRoundSequence(e.target.value)}
               />
               <Input
+                id="interview-assignment-scheduled-at"
+                name="scheduled_at"
                 label="面试时间"
                 type="datetime-local"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
               />
               <Input
+                id="interview-assignment-location"
+                name="location"
                 label="地点 / 会议链接"
                 value={location}
                 placeholder="例：腾讯会议 123 或会议室 A"
                 onChange={(e) => setLocation(e.target.value)}
               />
             </div>
-            <textarea
-              className="w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm text-ink placeholder:text-muted-soft focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
-              rows={2}
-              placeholder="安排备注"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-            {message && <p className="text-sm text-muted">{message}</p>}
-            <Button type="button" size="sm" loading={saving} disabled={saving} onClick={handleCreate}>
+            <div>
+              <label
+                htmlFor="interview-assignment-note"
+                className="mb-1.5 block text-sm font-medium text-ink"
+              >
+                安排备注（可选）
+              </label>
+              <textarea
+                id="interview-assignment-note"
+                name="note"
+                className="w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm text-ink placeholder:text-muted-soft focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
+                rows={2}
+                placeholder="补充本轮面试的特殊说明"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </div>
+            {message && (
+              <p role="status" aria-live="polite" className="text-sm text-muted">
+                {message}
+              </p>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              loading={saving}
+              disabled={saving || interviewersLoading || Boolean(interviewersError)}
+              onClick={handleCreate}
+            >
               保存安排
             </Button>
           </div>

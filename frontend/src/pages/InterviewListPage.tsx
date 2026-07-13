@@ -54,7 +54,6 @@ interface InterviewWorkspaceData {
   boards: PipelineBoard[];
   demands: RecruitmentDemand[];
   assignments: InterviewAssignment[];
-  interviewers: InterviewerOption[];
 }
 
 type AssignedPendingFeedbackItem = PendingFeedbackItem & { assignment_id: number };
@@ -93,14 +92,18 @@ export function InterviewListPage() {
   const requestedDemandId = positiveIdFromParam(searchParams.get('demand'));
   const requestedCandidateId = positiveIdFromParam(searchParams.get('candidate'));
 
+  const interviewersAsync = useAsync<InterviewerOption[]>(
+    () => isInterviewer ? Promise.resolve([]) : api.listInterviewers(),
+    [role, isInterviewer],
+  );
+
   const workspaceAsync = useAsync<InterviewWorkspaceData>(async () => {
-    const [records, demandResponse, assignments, interviewers] = await Promise.all([
+    const [records, demandResponse, assignments] = await Promise.all([
       api.listInterviews(),
       isInterviewer
         ? Promise.resolve({ items: [] as RecruitmentDemand[] })
         : api.listDemands({ status: 'all', page: 1, page_size: 100, sort: 'created_at_desc' }),
       api.listInterviewAssignments(),
-      isInterviewer ? Promise.resolve([] as InterviewerOption[]) : api.listInterviewers(),
     ]);
     const demands = demandResponse.items;
     const boards = isInterviewer
@@ -112,7 +115,6 @@ export function InterviewListPage() {
       records,
       demands,
       assignments,
-      interviewers,
       boards,
     };
   }, [role, isInterviewer]);
@@ -124,7 +126,7 @@ export function InterviewListPage() {
     () => assignments.filter((assignment) => assignment.interviewer_id === userId),
     [assignments, userId],
   );
-  const interviewers = useMemo(() => workspaceAsync.data?.interviewers ?? [], [workspaceAsync.data]);
+  const interviewers = useMemo(() => interviewersAsync.data ?? [], [interviewersAsync.data]);
   const boards = useMemo(() => workspaceAsync.data?.boards ?? [], [workspaceAsync.data]);
 
   const pipelinePending = useMemo(() => buildPendingFeedback(boards, records), [boards, records]);
@@ -333,6 +335,9 @@ export function InterviewListPage() {
                 demands={schedulableDemands}
                 boards={boards}
                 interviewers={interviewers}
+                interviewersLoading={interviewersAsync.loading}
+                interviewersError={interviewersAsync.error?.message ?? null}
+                onReloadInterviewers={interviewersAsync.reload}
                 assignments={assignments}
                 open={assignmentPanelOpen}
                 onOpenChange={setAssignmentPanelOpen}
@@ -377,6 +382,9 @@ export function InterviewListPage() {
                 demands={schedulableDemands}
                 boards={boards}
                 interviewers={interviewers}
+                interviewersLoading={interviewersAsync.loading}
+                interviewersError={interviewersAsync.error?.message ?? null}
+                onReloadInterviewers={interviewersAsync.reload}
                 assignments={assignments}
                 open={assignmentPanelOpen}
                 onOpenChange={setAssignmentPanelOpen}
