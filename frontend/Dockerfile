@@ -10,13 +10,24 @@ WORKDIR /app
 # 所以只能通过本 ARG 注入，不能靠 .env 文件。
 ARG VITE_API_BASE_URL=https://test-pgsgw.yimidida.com/zhipin-server/api
 
+# 网关 OAuth 登录/用户信息前缀（/pgs/oauth）。测试与生产同一网关不同环境：
+#   测试：--build-arg VITE_OAUTH_BASE_URL=https://test-pgsgw.yimidida.com/pgs/oauth
+#   生产：--build-arg VITE_OAUTH_BASE_URL=https://pgsgw.yimidida.com/pgs/oauth
+ARG VITE_OAUTH_BASE_URL=https://test-pgsgw.yimidida.com/pgs/oauth
+
+# 临时默认角色（网关 profile 无应用角色，联调兜底）。接后端 /auth/me 后移除。
+ARG VITE_DEFAULT_ROLE=admin
+
 # Copy package dependency configuration relative to root build context
 COPY frontend/package*.json ./
 RUN npm ci
 
 # Copy frontend source code and build
 COPY frontend/ ./
-RUN VITE_API_BASE_URL="$VITE_API_BASE_URL" npm run build
+RUN VITE_API_BASE_URL="$VITE_API_BASE_URL" \
+    VITE_OAUTH_BASE_URL="$VITE_OAUTH_BASE_URL" \
+    VITE_DEFAULT_ROLE="$VITE_DEFAULT_ROLE" \
+    npm run build
 
 # Production stage
 FROM registry.ymdd.tech/library/nginx:1.25-alpine

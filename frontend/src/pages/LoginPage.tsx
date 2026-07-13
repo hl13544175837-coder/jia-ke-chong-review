@@ -3,7 +3,8 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, ApiError, clearToken } from '../lib/api';
+import { ApiError, clearToken } from '../lib/api';
+import { loginViaGateway } from '../lib/gatewayAuth';
 import { useAuth } from '../lib/auth';
 import { defaultRouteForRole } from '../lib/nav';
 import { Button, Input, ErrorState } from '../components/ui';
@@ -15,7 +16,7 @@ export function LoginPage() {
 
   const scope = useRef<HTMLDivElement>(null);
 
-  const [email, setEmail] = useState('');
+  const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -69,7 +70,8 @@ export function LoginPage() {
     try {
       // 清除残留旧 token，防止 API 请求带无效 token 触发 401
       clearToken();
-      const res = await api.login({ email, password });
+      // 走网关 OAuth 登录：账号 + 密码(前端 MD5) → token → profile 拿姓名
+      const res = await loginViaGateway(account, password);
       login(res);
       navigate(defaultRouteForRole(), { replace: true });
     } catch (err) {
@@ -139,14 +141,14 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
-              label="邮箱"
-              name="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@company.com"
+              label="账号"
+              name="account"
+              type="text"
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              placeholder="工号 / 账号"
               required
-              autoComplete="email"
+              autoComplete="username"
             />
             <Input
               label="密码"

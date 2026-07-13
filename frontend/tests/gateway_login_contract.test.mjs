@@ -1,0 +1,37 @@
+// 契约测试：前端登录走网关 OAuth，且所有接口走可配置网关前缀。
+import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import assert from 'node:assert/strict';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const srcRoot = join(__dirname, '../src');
+const read = (p) => readFileSync(join(srcRoot, p), 'utf8');
+
+// 1) 统一 API 前缀由环境变量驱动
+const apiBase = read('lib/apiBase.ts');
+assert.ok(apiBase.includes('VITE_API_BASE_URL'), 'apiBase 应由 VITE_API_BASE_URL 决定');
+assert.ok(apiBase.includes('API_BASE'), 'apiBase 应导出 API_BASE');
+
+// 2) MD5 工具存在且导出
+assert.ok(existsSync(join(srcRoot, 'lib/md5.ts')), 'md5.ts 应存在');
+assert.ok(read('lib/md5.ts').includes('export function md5'), 'md5.ts 应导出 md5');
+
+// 3) 网关登录模块：登录 + profile + 默认角色，密码 MD5，读 data.token
+const gw = read('lib/gatewayAuth.ts');
+assert.ok(gw.includes('/login'), '应 POST 网关 /login');
+assert.ok(gw.includes('/api/profile'), '应 GET 网关 /api/profile');
+assert.ok(gw.includes('md5(password)'), '密码应 MD5 后发送');
+assert.ok(gw.includes('data?.token') || gw.includes('data.token'), 'token 应取自 data.token');
+assert.ok(gw.includes('Bearer'), 'profile 应带 Bearer 鉴权');
+assert.ok(gw.includes('VITE_OAUTH_BASE_URL'), 'OAuth 前缀应可配置');
+assert.ok(gw.includes('VITE_DEFAULT_ROLE'), '默认角色应可配置');
+assert.ok(gw.includes('succ') || gw.includes('code === 1'), '应按网关包 succ/code 判成败');
+
+// 4) 登录页改用账号 + 网关登录，不再用邮箱直连后端 login
+const loginPage = read('pages/LoginPage.tsx');
+assert.ok(loginPage.includes('loginViaGateway'), 'LoginPage 应调用 loginViaGateway');
+assert.ok(loginPage.includes('account'), 'LoginPage 应采集账号 account');
+assert.ok(!loginPage.includes('api.login('), 'LoginPage 不应再直连后端 api.login');
+
+console.log('gateway_login_contract: OK');
