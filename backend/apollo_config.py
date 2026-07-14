@@ -143,8 +143,9 @@ def load_apollo_into_environ() -> dict:
             raise RuntimeError(msg)
         return {"enabled": True, "error": msg}
 
-    # 支持逗号分隔的多 appId（如应用配置在 zhipin-mvp、mcp.sso.token 在 zhipin）。
-    app_ids = [a.strip() for a in _env_any("APOLLO_APP_ID", default="zhipin").split(",") if a.strip()] or ["zhipin"]
+    # appId 写死为 zhipin：服务器上 APOLLO_APP_ID 被误配为 zhipin-mvp，这里刻意忽略
+    # 该环境变量，始终只读 zhipin。（多 appId 拉取逻辑保留，仅入口固定为 zhipin。）
+    app_ids = ["zhipin"]
     cluster = _env_any("APOLLO_CLUSTER", default="default")
     namespaces = [
         n.strip() for n in _env_any("APOLLO_NAMESPACES", default="application").split(",") if n.strip()
