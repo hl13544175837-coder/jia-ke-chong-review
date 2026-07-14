@@ -20,6 +20,15 @@ env_file = Path(__file__).parent / ".env"
 if env_file.exists():
     load_dotenv(env_file)
 
+# 在读取 Config / 创建应用之前，先从 Apollo 拉配置注入 os.environ（若启用）。
+# 生产多 worker 下 master 已在 gunicorn.conf.py 的 on_starting 拉过并经 fork 继承，
+# 这里幂等不会重复拉；开发单进程由这里负责。
+try:
+    from apollo_config import load_apollo_into_environ
+    load_apollo_into_environ()
+except Exception as exc:  # noqa: BLE001 - Apollo 异常不应阻断启动（除非显式 FAIL_FAST）
+    print(f"  [apollo] 配置加载异常：{exc}")
+
 from app import create_app
 from app.config_validation import safe_database_label
 

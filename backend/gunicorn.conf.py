@@ -20,6 +20,27 @@ keepalive = int(os.environ.get("GUNICORN_KEEPALIVE", "5"))
 
 
 # ── 服务注册生命周期钩子（master 单点）─────────────────────────────
+def on_starting(server):
+    """master 启动、fork worker 之前：从 Apollo 拉配置注入 os.environ（若启用）。
+
+    放在 fork 之前，worker 与 when_ready 注册钩子都能通过继承拿到 Apollo 的配置
+    （否则 Apollo 若在 worker 内注入，master 的 when_ready 注册读不到）。
+    """
+    try:
+        import logging
+        ap_log = logging.getLogger("apollo")
+        ap_log.handlers = server.log.error_log.handlers
+        ap_log.setLevel(logging.INFO)
+        ap_log.propagate = False
+
+        from apollo_config import load_apollo_into_environ
+        result = load_apollo_into_environ()
+        if result.get("enabled"):
+            server.log.info("[apollo] %s", result)
+    except Exception as exc:  # noqa: BLE001 - Apollo 异常不阻断启动（除非 FAIL_FAST）
+        server.log.error("[apollo] 配置加载异常：%s", exc)
+
+
 def _wire_registry_logging(server):
     """把 app.registry 的日志接到 gunicorn error 输出，容器 stdout/stderr 可见。
 
