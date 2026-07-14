@@ -26,8 +26,10 @@ import requests
 log = logging.getLogger("apollo")
 
 # 公司各环境 Apollo meta 地址（可用 APOLLO_META 覆盖）。
+# dev 以实测可连、且已配置 zhipin 应用的 10.206.20.59 为准（早期资料里的
+# 10.201.250.29 未采用，如仍需请与运维核对）。
 META_BY_ENV = {
-    "dev": "http://10.201.250.29:8080",
+    "dev": "http://10.206.20.59:8080",
     "sit": "http://10.206.34.115:8080",
     "fat": "http://10.206.152.49:8080",
     "pre": "http://172.16.24.139:8080",
