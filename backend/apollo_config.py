@@ -104,13 +104,19 @@ def load_apollo_into_environ() -> dict:
     if _loaded:
         return {"enabled": True, "skipped": "already-loaded"}
 
-    if (os.environ.get("APOLLO_ENABLED") or "false").strip().lower() != "true":
+    enabled_raw = (os.environ.get("APOLLO_ENABLED") or "false").strip()
+    if enabled_raw.lower() != "true":
+        log.info("Apollo 未启用（APOLLO_ENABLED=%r），跳过，走环境变量配置", enabled_raw)
         return {"enabled": False}
 
     _loaded = True  # 尽早置位，避免并发/重入重复拉取
     meta = _meta_address()
+    apollo_env = (os.environ.get("APOLLO_ENV") or "").strip()
     if not meta:
-        msg = "APOLLO_ENABLED=true 但未解析到 meta 地址（设置 APOLLO_ENV 或 APOLLO_META）"
+        msg = (
+            f"Apollo 已启用但未解析到 meta 地址（APOLLO_ENV={apollo_env!r} 不在内置表中，"
+            f"且未设 APOLLO_META）"
+        )
         log.error(msg)
         if (os.environ.get("APOLLO_FAIL_FAST") or "false").lower() == "true":
             raise RuntimeError(msg)
@@ -124,7 +130,15 @@ def load_apollo_into_environ() -> dict:
     secret = (os.environ.get("APOLLO_SECRET") or "").strip()
     override = (os.environ.get("APOLLO_OVERRIDE_ENV") or "false").lower() == "true"
 
+    # 拉取前先打目标，网络卡住/超时时也能从日志看出在连哪个地址。
+    log.info(
+        "Apollo 开始连接：meta=%s env=%s app=%s cluster=%s ns=%s secret=%s override=%s",
+        meta, apollo_env or "(未设)", app_id, cluster, ",".join(namespaces),
+        "有" if secret else "无", override,
+    )
+
     servers = _config_servers(meta, app_id, secret)
+    log.info("Apollo config service：%s", servers)
     merged: dict[str, str] = {}
     errors = []
     for namespace in namespaces:
@@ -132,31 +146,38 @@ def load_apollo_into_environ() -> dict:
         for server in servers:
             try:
                 pulled = _pull_namespace(server, app_id, cluster, namespace, secret)
+                log.info("Apollo 命名空间 %s 拉取成功（%d 个 key）", namespace, len(pulled))
                 break
             except requests.RequestException as exc:
                 errors.append(f"{namespace}@{server}: {exc}")
+                log.warning("Apollo 命名空间 %s 拉取失败 @%s：%s", namespace, server, exc)
         if pulled:
             merged.update(pulled)
 
     if not merged and errors:
-        msg = f"Apollo 拉取失败（meta={meta} app={app_id}）：{errors[0]}"
+        msg = f"Apollo 连接/拉取失败（meta={meta} app={app_id}）：{errors[0]}"
         log.error(msg)
         if (os.environ.get("APOLLO_FAIL_FAST") or "false").lower() == "true":
             raise RuntimeError(msg)
         return {"enabled": True, "meta": meta, "app_id": app_id, "keys": 0, "error": msg}
 
-    injected = 0
+    injected_keys = []
+    skipped_existing = []
     for key, value in merged.items():
         # 永远不让 Apollo 配置覆盖 Apollo 自身的引导参数（meta/env/开关等）。
         if key.startswith("APOLLO_"):
             continue
         if override or key not in os.environ:
             os.environ[key] = value
-            injected += 1
+            injected_keys.append(key)
+        else:
+            skipped_existing.append(key)
 
+    # 只打 key 名，不打 value（可能是密钥）。
     log.info(
-        "Apollo 配置已加载：meta=%s app=%s cluster=%s ns=%s 注入%d个key(override=%s)",
-        meta, app_id, cluster, ",".join(namespaces), injected, override,
+        "Apollo 连接成功：meta=%s app=%s 注入%d个key=%s%s",
+        meta, app_id, len(injected_keys), sorted(injected_keys),
+        f"；跳过{len(skipped_existing)}个已存在环境变量={sorted(skipped_existing)}" if skipped_existing else "",
     )
     return {
         "enabled": True,
@@ -164,5 +185,6 @@ def load_apollo_into_environ() -> dict:
         "app_id": app_id,
         "cluster": cluster,
         "namespaces": namespaces,
-        "keys": injected,
+        "keys": len(injected_keys),
+        "injected_keys": sorted(injected_keys),
     }

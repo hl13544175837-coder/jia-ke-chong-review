@@ -35,8 +35,8 @@ def on_starting(server):
 
         from apollo_config import load_apollo_into_environ
         result = load_apollo_into_environ()
-        if result.get("enabled"):
-            server.log.info("[apollo] %s", result)
+        # 无论启用与否都打一行汇总，方便在测试服务器排查是否连上 Apollo。
+        server.log.info("[apollo] %s", result)
     except Exception as exc:  # noqa: BLE001 - Apollo 异常不阻断启动（除非 FAIL_FAST）
         server.log.error("[apollo] 配置加载异常：%s", exc)
 

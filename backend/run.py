@@ -24,8 +24,11 @@ if env_file.exists():
 # 生产多 worker 下 master 已在 gunicorn.conf.py 的 on_starting 拉过并经 fork 继承，
 # 这里幂等不会重复拉；开发单进程由这里负责。
 try:
+    import logging as _logging
+    _logging.basicConfig(level=_logging.INFO)  # 让 apollo 日志在终端可见
     from apollo_config import load_apollo_into_environ
-    load_apollo_into_environ()
+    _apollo_result = load_apollo_into_environ()
+    print(f"  [apollo] {_apollo_result}")
 except Exception as exc:  # noqa: BLE001 - Apollo 异常不应阻断启动（除非显式 FAIL_FAST）
     print(f"  [apollo] 配置加载异常：{exc}")
 
