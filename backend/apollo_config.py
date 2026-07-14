@@ -42,12 +42,20 @@ _HTTP_TIMEOUT = 5
 _loaded = False  # 进程级幂等标记（fork 会被子进程继承）
 
 
+# APOLLO_ENV 未设置时的默认环境。
+DEFAULT_APOLLO_ENV = "sit"
+
+
+def _apollo_env() -> str:
+    """当前 Apollo 环境（APOLLO_ENV 未设置则默认 sit）。"""
+    return (os.environ.get("APOLLO_ENV") or DEFAULT_APOLLO_ENV).strip().lower()
+
+
 def _meta_address() -> str:
     explicit = (os.environ.get("APOLLO_META") or "").strip()
     if explicit:
         return explicit.rstrip("/")
-    env = (os.environ.get("APOLLO_ENV") or "").strip().lower()
-    return META_BY_ENV.get(env, "").rstrip("/")
+    return META_BY_ENV.get(_apollo_env(), "").rstrip("/")
 
 
 def _signed_headers(app_id: str, secret: str, path_with_query: str) -> dict:
@@ -111,10 +119,11 @@ def load_apollo_into_environ() -> dict:
 
     _loaded = True  # 尽早置位，避免并发/重入重复拉取
     meta = _meta_address()
-    apollo_env = (os.environ.get("APOLLO_ENV") or "").strip()
+    env_is_default = not (os.environ.get("APOLLO_ENV") or "").strip()
+    apollo_env = _apollo_env() + ("(默认)" if env_is_default else "")
     if not meta:
         msg = (
-            f"Apollo 已启用但未解析到 meta 地址（APOLLO_ENV={apollo_env!r} 不在内置表中，"
+            f"Apollo 已启用但未解析到 meta 地址（APOLLO_ENV={apollo_env} 不在内置表中，"
             f"且未设 APOLLO_META）"
         )
         log.error(msg)
@@ -133,7 +142,7 @@ def load_apollo_into_environ() -> dict:
     # 拉取前先打目标，网络卡住/超时时也能从日志看出在连哪个地址。
     log.info(
         "Apollo 开始连接：meta=%s env=%s app=%s cluster=%s ns=%s secret=%s override=%s",
-        meta, apollo_env or "(未设)", app_id, cluster, ",".join(namespaces),
+        meta, apollo_env, app_id, cluster, ",".join(namespaces),
         "有" if secret else "无", override,
     )
 
