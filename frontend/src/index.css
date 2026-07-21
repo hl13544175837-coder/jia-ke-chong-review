@@ -631,6 +631,30 @@
     line-height: 1.6;
   }
 
+  /* Readdy 简历库使用轻量标题和三段式候选人范围，
+     收起旧工作台的大面积渐变指标头。 */
+  .readdy-candidates .enterprise-hero {
+    align-items: end;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0 0 4px;
+  }
+
+  .readdy-candidates .enterprise-hero h1 {
+    font-size: 22px;
+  }
+
+  .readdy-candidates .enterprise-hero p {
+    margin-top: 4px;
+    color: #8b8784;
+    font-size: 13px;
+  }
+
+  .readdy-candidates .enterprise-metrics {
+    display: none;
+  }
+
   @media (max-width: 1180px) {
     .enterprise-search-grid {
       grid-template-columns: repeat(2, minmax(180px, 1fr));

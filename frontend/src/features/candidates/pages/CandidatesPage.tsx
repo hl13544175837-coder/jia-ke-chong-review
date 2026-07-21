@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RotateCcw, Target, Upload, UserPlus, Users } from 'lucide-react';
+import { Eye, RotateCcw, Target, Upload, UserPlus, Users, X } from 'lucide-react';
 import { candidatesApi as api } from '../api';
 import { formatDate } from '../../../lib/formatDate';
 import { useDebounce } from '../../../lib/useDebounce';
@@ -244,26 +244,41 @@ function SourceSummary({ candidate }: { candidate: CandidateListItem }) {
 
 interface CandidateRowProps {
   candidate: CandidateListItem;
+  selected: boolean;
   targetDemandId: string;
   jobFit: MatchResultItem | null;
   jobFitLoading: boolean;
   jobFitError: boolean;
   addingCandidateId: number | null;
+  onSelect: (candidateId: number, selected: boolean) => void;
+  onPreview: (candidate: CandidateListItem) => void;
   onAddToDemand: (candidateId: number) => void;
 }
 
 function CandidateRow({
   candidate,
+  selected,
   targetDemandId,
   jobFit,
   jobFitLoading,
   jobFitError,
   addingCandidateId,
+  onSelect,
+  onPreview,
   onAddToDemand,
 }: CandidateRowProps) {
   const isAdding = addingCandidateId === candidate.id;
   return (
     <tr className="border-b border-hairline-soft transition-colors hover:bg-surface-soft last:border-0">
+      <td className="px-4 py-4 text-center">
+        <input
+          type="checkbox"
+          aria-label={`选择 ${candidate.name_masked || `候选人 #${candidate.id}`}`}
+          checked={selected}
+          onChange={(event) => onSelect(candidate.id, event.target.checked)}
+          className="h-4 w-4 rounded border-[#d9d5d0] text-[#379f70] focus:ring-[#379f70]"
+        />
+      </td>
       <td className="px-5 py-4">
         <div className="min-w-[180px]">
           <Link
@@ -299,6 +314,14 @@ function CandidateRow({
       <td className="px-5 py-4 text-sm text-muted">{formatDate(candidate.created_at)}</td>
       <td className="px-5 py-4 text-right">
         <div className="flex flex-col items-end gap-2">
+          <button
+            type="button"
+            onClick={() => onPreview(candidate)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-[#379f70] transition-colors hover:text-[#26784f]"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            快速查看
+          </button>
           <Link
             to={`/candidates/${candidate.id}`}
             className="text-xs font-medium text-accent-blue transition-colors hover:underline"
@@ -335,6 +358,9 @@ export function CandidatesPage() {
   const [scoreFilter, setScoreFilter] = useState('0');
   const [targetDemandId, setTargetDemandId] = useState('');
   const [addingCandidateId, setAddingCandidateId] = useState<number | null>(null);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<number[]>([]);
+  const [candidatePreview, setCandidatePreview] = useState<CandidateListItem | null>(null);
+  const [batchAdding, setBatchAdding] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -343,6 +369,18 @@ export function CandidatesPage() {
     () => api.listDemands({ status: 'all', page: 1, page_size: 100 }),
     [],
   );
+  const scopeCountsAsync = useAsync(async () => {
+    const [all, inPipeline, talentPool] = await Promise.all([
+      api.searchCandidates({ page: 1, per_page: 1 }),
+      api.searchCandidates({ pipeline_status: 'in_pipeline', page: 1, per_page: 1 }),
+      api.searchCandidates({ pipeline_status: 'not_in_pipeline', page: 1, per_page: 1 }),
+    ]);
+    return {
+      all: all.total,
+      in_pipeline: inPipeline.total,
+      not_in_pipeline: talentPool.total,
+    };
+  }, []);
 
   const { data, loading, error, reload } = useAsync(
     () => api.searchCandidates({
@@ -388,6 +426,13 @@ export function CandidatesPage() {
   const selectedJobId = selectedDemand?.job_id ?? 0;
   const candidateIds = useMemo(() => candidates.map((candidate) => candidate.id), [candidates]);
   const candidateIdKey = candidateIds.join(',');
+
+  useEffect(() => {
+    const visibleIds = new Set(
+      candidateIdKey ? candidateIdKey.split(',').map(Number) : [],
+    );
+    setSelectedCandidateIds((current) => current.filter((id) => visibleIds.has(id)));
+  }, [candidateIdKey]);
   const matchPreviewAsync = useAsync(
     () => {
       if (!selectedJobId || candidateIds.length === 0) {
@@ -454,6 +499,17 @@ export function CandidatesPage() {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
   }, [candidates, cityFilter, matchByCandidateId, scoreFilter, selectedJobId, tagFilter]);
+  const selectedCandidateSet = useMemo(
+    () => new Set(selectedCandidateIds),
+    [selectedCandidateIds],
+  );
+  const visibleCandidateIds = useMemo(
+    () => filteredCandidates.map((candidate) => candidate.id),
+    [filteredCandidates],
+  );
+  const allVisibleSelected =
+    visibleCandidateIds.length > 0
+    && visibleCandidateIds.every((id) => selectedCandidateSet.has(id));
 
   const uniqueTagCount = tagOptions.length;
   const highScoreCount = candidates.filter((c) => (c.max_score ?? 0) >= 4).length;
@@ -509,6 +565,33 @@ export function CandidatesPage() {
     }
   }
 
+  async function handleBatchAddToDemand() {
+    const demandId = Number(targetDemandId);
+    if (!selectedJobId || !targetDemandId || Number.isNaN(demandId)) {
+      setActionError('请先选择要加入的招聘需求');
+      setActionMessage(null);
+      return;
+    }
+    if (selectedCandidateIds.length === 0) return;
+
+    setBatchAdding(true);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      const result = await api.batchAddToPipeline(selectedJobId, selectedCandidateIds, demandId);
+      setActionMessage(
+        `批量处理完成：成功加入 ${result.added} 人${result.skipped_existing ? `，已在流程 ${result.skipped_existing} 人` : ''}`,
+      );
+      setSelectedCandidateIds([]);
+      reload();
+      scopeCountsAsync.reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : '批量加入招聘需求失败');
+    } finally {
+      setBatchAdding(false);
+    }
+  }
+
   if (loading && data === null) {
     return (
       <div className="flex items-center justify-center py-32">
@@ -529,7 +612,8 @@ export function CandidatesPage() {
   }
 
   return (
-    <EnterprisePage>
+    <div data-ui="readdy-candidates">
+      <EnterprisePage className="readdy-candidates">
       <EnterpriseHero
         title="简历库"
         description={
@@ -572,6 +656,68 @@ export function CandidatesPage() {
           </div>
         }
       />
+
+      <section
+        data-ui="readdy-candidate-tabs"
+        aria-label="候选人范围"
+        className="grid overflow-hidden rounded-xl border border-[#f3f2ed] bg-white sm:grid-cols-3"
+      >
+        {([
+          { key: 'all', label: '全部候选人', count: scopeCountsAsync.data?.all },
+          { key: 'in_pipeline', label: '招聘流程中', count: scopeCountsAsync.data?.in_pipeline },
+          { key: 'not_in_pipeline', label: '人才池', count: scopeCountsAsync.data?.not_in_pipeline },
+        ] as const).map((item) => {
+          const active = item.key === 'all'
+            ? pipelineStatusFilter === 'all'
+            : pipelineStatusFilter === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setPipelineStatusFilter(item.key)}
+              className={`flex h-14 items-center justify-center gap-2 border-b border-[#f3f2ed] px-4 text-sm font-medium transition-colors last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0 ${active ? 'bg-[#e9f5f0] text-[#1d6b42]' : 'text-[#575454] hover:bg-[#fafaf9]'}`}
+            >
+              <span>{item.label}</span>
+              <span className={`rounded px-2 py-0.5 text-xs ${active ? 'bg-white/80 text-[#1d6b42]' : 'bg-[#f8f7f4] text-[#959190]'}`}>
+                {item.count ?? '—'}
+              </span>
+            </button>
+          );
+        })}
+      </section>
+
+      {scopeCountsAsync.error && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>候选人范围统计暂时不可用，列表数据不受影响。</span>
+          <Button type="button" variant="secondary" size="sm" onClick={scopeCountsAsync.reload}>
+            重试统计
+          </Button>
+        </div>
+      )}
+
+      {selectedCandidateIds.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#cce7da] bg-[#f2faf6] px-4 py-3">
+          <p className="text-sm font-medium text-[#245f43]">
+            已选择 {selectedCandidateIds.length} 位候选人
+          </p>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={() => setSelectedCandidateIds([])}>
+              取消选择
+            </Button>
+            <Button
+              type="button"
+              variant="accent"
+              size="sm"
+              loading={batchAdding}
+              disabled={!targetDemandId || batchAdding}
+              onClick={handleBatchAddToDemand}
+            >
+              <UserPlus className="h-4 w-4" />
+              批量加入所选需求
+            </Button>
+          </div>
+        </div>
+      )}
 
       {candidates.length === 0 && !hasActiveFilters ? (
         <EnterpriseTableCard>
@@ -714,11 +860,29 @@ export function CandidatesPage() {
                       {demandsAsync.loading ? (
                         <span>正在加载招聘需求…</span>
                       ) : demandsAsync.error ? (
-                        <span className="text-danger-600">{demandsAsync.error.message}</span>
+                        <span className="flex items-center justify-between gap-3 text-danger-600">
+                          <span>招聘需求加载失败：{demandsAsync.error.message}</span>
+                          <button
+                            type="button"
+                            onClick={demandsAsync.reload}
+                            className="shrink-0 font-medium underline underline-offset-2"
+                          >
+                            重试
+                          </button>
+                        </span>
                       ) : targetDemandId && matchPreviewAsync.loading ? (
                         <span>正在计算当前页候选人与该岗位的命中、欠缺和建议。</span>
                       ) : targetDemandId && matchPreviewAsync.error ? (
-                        <span className="text-danger-600">职位匹配预览失败，请重试后再决定是否加入需求。</span>
+                        <span className="flex items-center justify-between gap-3 text-danger-600">
+                          <span>职位匹配预览失败，请重试后再决定是否加入需求。</span>
+                          <button
+                            type="button"
+                            onClick={matchPreviewAsync.reload}
+                            className="shrink-0 font-medium underline underline-offset-2"
+                          >
+                            重试
+                          </button>
+                        </span>
                       ) : targetDemandId ? (
                         <span>列表已切换为职位匹配摘要；点击“加入所选需求”才会写入流程。</span>
                       ) : (
@@ -764,6 +928,21 @@ export function CandidatesPage() {
                 <table className="enterprise-table">
 	                  <thead>
 	                    <tr>
+	                      <th className="w-12 px-4 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              aria-label="选择当前页全部候选人"
+                              checked={allVisibleSelected}
+                              onChange={(event) => {
+                                if (event.target.checked) {
+                                  setSelectedCandidateIds(visibleCandidateIds);
+                                } else {
+                                  setSelectedCandidateIds([]);
+                                }
+                              }}
+                              className="h-4 w-4 rounded border-[#d9d5d0] text-[#379f70] focus:ring-[#379f70]"
+                            />
+                          </th>
 	                      <th className="px-5 py-3">候选人</th>
 	                      <th className="px-5 py-3">简历摘要</th>
 	                      <th className="px-5 py-3">{targetDemandId ? '职位匹配摘要' : '核心技能'}</th>
@@ -778,11 +957,18 @@ export function CandidatesPage() {
 	                      <CandidateRow
 	                        key={candidate.id}
 	                        candidate={candidate}
+	                        selected={selectedCandidateSet.has(candidate.id)}
 	                        targetDemandId={targetDemandId}
 	                        jobFit={matchByCandidateId.get(candidate.id) ?? null}
 	                        jobFitLoading={Boolean(targetDemandId && matchPreviewAsync.loading)}
 	                        jobFitError={Boolean(targetDemandId && matchPreviewAsync.error)}
 	                        addingCandidateId={addingCandidateId}
+	                        onSelect={(candidateId, selected) => {
+                              setSelectedCandidateIds((current) => selected
+                                ? Array.from(new Set([...current, candidateId]))
+                                : current.filter((id) => id !== candidateId));
+                            }}
+	                        onPreview={setCandidatePreview}
 	                        onAddToDemand={handleAddToDemand}
 	                      />
 	                    ))}
@@ -792,6 +978,78 @@ export function CandidatesPage() {
           </EnterpriseTableCard>
         </>
       )}
-    </EnterprisePage>
+
+      {candidatePreview && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={() => setCandidatePreview(null)}>
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="候选人快速详情"
+            className="h-full w-full max-w-lg overflow-y-auto bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-[#eeeae5] pb-5">
+              <div>
+                <p className="text-xs font-medium text-[#379f70]">候选人快速详情</p>
+                <h2 className="mt-1 text-xl font-bold text-[#292b2a]">
+                  {candidatePreview.name_masked || `候选人 #${candidatePreview.id}`}
+                </h2>
+                <p className="mt-1 text-sm text-[#8b8784]">
+                  {[candidatePreview.latest_experience?.position, candidatePreview.latest_experience?.company]
+                    .filter(Boolean)
+                    .join(' · ') || '暂无工作经历'}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭候选人快速详情"
+                onClick={() => setCandidatePreview(null)}
+                className="rounded-lg p-2 text-[#8b8784] hover:bg-[#f6f4f1] hover:text-[#292b2a]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5 py-5 text-sm">
+              <section className="grid grid-cols-2 gap-3 rounded-xl bg-[#faf9f7] p-4">
+                <div><p className="text-xs text-[#9a9692]">意向城市</p><p className="mt-1 font-medium">{candidatePreview.intent_city || '未填写'}</p></div>
+                <div><p className="text-xs text-[#9a9692]">简历来源</p><p className="mt-1 font-medium">{candidatePreview.source?.channel || '未记录'}</p></div>
+                <div><p className="text-xs text-[#9a9692]">最高技能分</p><p className="mt-1 font-medium">{candidatePreview.max_score || '—'}</p></div>
+                <div><p className="text-xs text-[#9a9692]">解析状态</p><div className="mt-1"><ParseStatusPill status={candidatePreview.parse_status} /></div></div>
+              </section>
+              <section>
+                <h3 className="mb-2 font-semibold text-[#292b2a]">核心技能</h3>
+                <SkillBadges candidate={candidatePreview} />
+              </section>
+              {candidatePreview.education_summary && (
+                <section>
+                  <h3 className="mb-2 font-semibold text-[#292b2a]">教育经历</h3>
+                  <p className="rounded-xl border border-[#eeeae5] p-4 text-[#625f5c]">{candidatePreview.education_summary}</p>
+                </section>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 flex gap-3 border-t border-[#eeeae5] bg-white pt-4">
+              <Link to={`/candidates/${candidatePreview.id}`} className="flex-1">
+                <Button type="button" variant="secondary" className="w-full">查看完整简历</Button>
+              </Link>
+              <Button
+                type="button"
+                variant="accent"
+                className="flex-1"
+                disabled={!targetDemandId}
+                onClick={() => {
+                  void handleAddToDemand(candidatePreview.id);
+                  setCandidatePreview(null);
+                }}
+              >
+                加入所选需求
+              </Button>
+            </div>
+          </aside>
+        </div>
+      )}
+      </EnterprisePage>
+    </div>
   );
 }
