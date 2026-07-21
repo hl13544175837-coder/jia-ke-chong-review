@@ -63,7 +63,7 @@ export const NAV_ITEMS: NavItem[] = [
     menuCode: 'interviews',
   },
   {
-    to: '/bi',
+    to: '/analytics',
     label: '进度看板',
     icon: BarChart3,
     roles: ['manager', 'admin'],

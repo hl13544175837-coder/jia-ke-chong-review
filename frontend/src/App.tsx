@@ -35,6 +35,12 @@ const InterviewReportPage = lazy(() => import('./pages/InterviewReportPage').the
 const BiPage = lazy(() => import('./pages/BiPage').then((module) => ({ default: module.BiPage })));
 const HiredPage = lazy(() => import('./pages/HiredPage').then((module) => ({ default: module.HiredPage })));
 const KanbanPage = lazy(() => import('./pages/KanbanPage').then((module) => ({ default: module.KanbanPage })));
+const ReaddyInterviewsPage = lazy(() => import('./pages/ReaddyInterviewsPage').then((module) => ({ default: module.ReaddyInterviewsPage })));
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })));
+const DirectorCockpitPage = lazy(() => import('./pages/director/DirectorCockpitPage').then((module) => ({ default: module.DirectorCockpitPage })));
+const DirectorProgressPage = lazy(() => import('./pages/director/DirectorProgressPage').then((module) => ({ default: module.DirectorProgressPage })));
+const DirectorInsightsPage = lazy(() => import('./pages/director/DirectorInsightsPage').then((module) => ({ default: module.DirectorInsightsPage })));
+const DirectorApprovalsPage = lazy(() => import('./pages/director/DirectorApprovalsPage').then((module) => ({ default: module.DirectorApprovalsPage })));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage').then((module) => ({ default: module.UsersPage })));
 const SystemSettingsPage = lazy(() => import('./pages/admin/SystemSettingsPage').then((module) => ({ default: module.SystemSettingsPage })));
 const AiArchitecturePage = lazy(() => import('./pages/admin/AiArchitecturePage').then((module) => ({ default: module.AiArchitecturePage })));
@@ -151,25 +157,31 @@ function AppRoutes() {
         <Route
           path="/director/cockpit"
           element={
-            <RequireRole allow={['manager', 'admin']} element={<DashboardPage />} />
+            <RequireRole allow={['manager', 'admin']} element={<DirectorCockpitPage />} />
           }
         />
         <Route
           path="/director/progress"
           element={
-            <RequireRole allow={['manager', 'admin']} element={<BiPage />} />
+            <RequireRole allow={['manager', 'admin']} element={<DirectorProgressPage />} />
           }
         />
         <Route
           path="/director/insights"
           element={
-            <RequireRole allow={['manager', 'admin']} element={<BiPage />} />
+            <RequireRole allow={['manager', 'admin']} element={<DirectorInsightsPage />} />
           }
         />
         <Route
           path="/director/approvals"
           element={
-            <RequireRole allow={['manager', 'admin']} element={<OffersPage />} />
+            <RequireRole allow={['manager', 'admin']} element={<DirectorApprovalsPage />} />
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <RequireRole allow={['manager', 'admin']} element={<AnalyticsPage />} />
           }
         />
         <Route
@@ -251,8 +263,8 @@ function AppRoutes() {
           path="/interviews"
           element={
             <RequireRole
-              allow={['recruiter', 'interviewer', 'manager', 'admin']}
-              element={<InterviewListPage />}
+              allow={['recruiter', 'manager', 'admin']}
+              element={<ReaddyInterviewsPage />}
             />
           }
         />

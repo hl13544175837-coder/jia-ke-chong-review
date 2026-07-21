@@ -40,7 +40,7 @@ assert.doesNotMatch(
 );
 assert.match(
   nav,
-  /to:\s*'\/bi'[\s\S]*label:\s*'进度看板'/,
+  /to:\s*'\/analytics'[\s\S]*label:\s*'进度看板'/,
   'BI should be presented as an operational progress workspace rather than a performance product',
 );
 assert.match(
