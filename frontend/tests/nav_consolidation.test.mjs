@@ -78,8 +78,8 @@ assert.match(
 
 assert.match(
   app,
-  /path="\/interviews"[\s\S]*allow=\{\['recruiter', 'interviewer', 'manager', 'admin'\]\}/,
-  'Interview task route should remain available for deep links from dashboard and pipeline',
+  /path="\/interviews"[\s\S]*allow=\{\['recruiter', 'manager', 'admin'\]\}/,
+  'Interview management route serves recruiter/manager/admin; interviewers use their own /interviewer/* workspace',
 );
 
 assert.match(
