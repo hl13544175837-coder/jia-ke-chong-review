@@ -33,6 +33,8 @@ const KpiStandardsPage = lazy(() => import('./pages/KpiStandardsPage').then((mod
 const InterviewerScopePage = lazy(() => import('./pages/InterviewerScopePage').then((module) => ({ default: module.InterviewerScopePage })));
 const InterviewReportPage = lazy(() => import('./pages/InterviewReportPage').then((module) => ({ default: module.InterviewReportPage })));
 const BiPage = lazy(() => import('./pages/BiPage').then((module) => ({ default: module.BiPage })));
+const HiredPage = lazy(() => import('./pages/HiredPage').then((module) => ({ default: module.HiredPage })));
+const KanbanPage = lazy(() => import('./pages/KanbanPage').then((module) => ({ default: module.KanbanPage })));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage').then((module) => ({ default: module.UsersPage })));
 const SystemSettingsPage = lazy(() => import('./pages/admin/SystemSettingsPage').then((module) => ({ default: module.SystemSettingsPage })));
 const AiArchitecturePage = lazy(() => import('./pages/admin/AiArchitecturePage').then((module) => ({ default: module.AiArchitecturePage })));
@@ -97,7 +99,7 @@ function AppRoutes() {
           element={
             <RequireRole
               allow={['recruiter', 'manager', 'admin']}
-              element={<Navigate to="/pipeline?stage=onboarded" replace />}
+              element={<HiredPage />}
             />
           }
         />
@@ -241,7 +243,7 @@ function AppRoutes() {
           element={
             <RequireRole
               allow={['recruiter', 'manager', 'admin']}
-              element={<PipelinePage />}
+              element={<KanbanPage />}
             />
           }
         />

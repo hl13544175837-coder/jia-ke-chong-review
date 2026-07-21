@@ -74,12 +74,17 @@ export function AgentPage() {
     conversationId,
     setConversationId,
     conversations,
+    conversationsError,
+    conversationLoadError,
+    clearConversationLoadError,
     switchConversation,
     createNewConversation,
     renameConversation,
     archiveConversation,
+    reloadConversations,
   } = useAgentChat();
   const [tools, setTools] = useState<AgentTool[]>([]);
+  const [toolsError, setToolsError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -325,15 +330,27 @@ export function AgentPage() {
   );
 
   // Load the capability catalogue once for the empty-state cloud.
-  useEffect(() => {
+  const loadTools = useCallback(() => {
     const controller = new AbortController();
+    setToolsError(null);
     fetchAgentTools(controller.signal)
-      .then(setTools)
-      .catch(() => {
-        /* non-critical */
+      .then((catalogue) => {
+        setTools(catalogue);
+        setToolsError(null);
+      })
+      .catch((error: unknown) => {
+        setTools([]);
+        setToolsError(
+          error instanceof Error ? error.message : 'AI 能力目录加载失败',
+        );
       });
-    return () => controller.abort();
+    return controller;
   }, []);
+
+  useEffect(() => {
+    const controller = loadTools();
+    return () => controller.abort();
+  }, [loadTools]);
 
   // Abort any in-flight stream on unmount.
   useEffect(() => () => abortRef.current?.abort(), [abortRef]);
@@ -381,15 +398,32 @@ export function AgentPage() {
       {/* 主体：侧边栏 + 对话区 */}
       <div className="flex flex-1 gap-4 overflow-hidden">
         {sidebarOpen && (
-          <ConversationSidebar
-            conversations={conversations}
-            currentId={conversationId}
-            streaming={streaming}
-            onSwitch={switchConversation}
-            onCreate={() => createNewConversation()}
-            onRename={renameConversation}
-            onDelete={(id) => archiveConversation(id, true)}
-          />
+          <div className="flex w-64 flex-col gap-2">
+            {conversationsError && (
+              <div
+                role="alert"
+                className="flex items-start justify-between gap-2 rounded-md border border-[#efb49f] bg-[#fff3ed] px-3 py-2 text-xs text-[#9b4a2f]"
+              >
+                <span>会话列表加载失败：{conversationsError}</span>
+                <button
+                  type="button"
+                  onClick={() => reloadConversations()}
+                  className="shrink-0 font-semibold underline"
+                >
+                  重试
+                </button>
+              </div>
+            )}
+            <ConversationSidebar
+              conversations={conversations}
+              currentId={conversationId}
+              streaming={streaming}
+              onSwitch={switchConversation}
+              onCreate={() => createNewConversation()}
+              onRename={renameConversation}
+              onDelete={(id) => archiveConversation(id, true)}
+            />
+          </div>
         )}
 
         {/* 消息区 */}
@@ -397,6 +431,36 @@ export function AgentPage() {
           ref={scrollRef}
           className="flex-1 overflow-y-auto rounded-lg border border-hairline bg-canvas"
         >
+          {conversationLoadError && (
+            <div
+              role="alert"
+              className="mx-auto mt-4 flex max-w-3xl items-start justify-between gap-2 rounded-md border border-[#efb49f] bg-[#fff3ed] px-4 py-2 text-xs text-[#9b4a2f]"
+            >
+              <span>{conversationLoadError}</span>
+              <button
+                type="button"
+                onClick={clearConversationLoadError}
+                className="shrink-0 font-semibold underline"
+              >
+                知道了
+              </button>
+            </div>
+          )}
+          {toolsError && (
+            <div
+              role="alert"
+              className="mx-auto mt-4 flex max-w-3xl items-start justify-between gap-2 rounded-md border border-[#f0d79a] bg-[#fdf8ec] px-4 py-2 text-xs text-[#8a6a1f]"
+            >
+              <span>AI 能力目录加载失败：{toolsError}（不影响直接对话）</span>
+              <button
+                type="button"
+                onClick={() => loadTools()}
+                className="shrink-0 font-semibold underline"
+              >
+                重试
+              </button>
+            </div>
+          )}
           {isEmpty ? (
             <EmptyState tools={tools} examples={examples} onPick={send} disabled={streaming} />
           ) : (

@@ -13,13 +13,20 @@ import {
   type ReactNode,
   type MutableRefObject,
 } from 'react';
-import { authHeaders } from './api';
+import { authHeaders, getEmpCode } from './api';
 import { api } from './api';
 import { API_BASE } from './apiBase';
 import type { ConversationSummary } from '../types';
 
-const STORAGE_KEY_CONV = 'zhipin:agent:conversation_id';
-const STORAGE_KEY_CONV_LIST = 'zhipin:agent:recent_conversations';
+// 本地会话编号按当前登录用户隔离：不同账号共用同一浏览器时互不串会话。
+// 工号在网关登录时写入（见 api.ts 的 EMP_CODE_KEY），无工号时退化为匿名空间。
+const STORAGE_KEY_CONV_BASE = 'zhipin:agent:conversation_id';
+const STORAGE_KEY_CONV_LIST_BASE = 'zhipin:agent:recent_conversations';
+
+function userStorageKey(base: string): string {
+  const empCode = (getEmpCode() ?? '').trim();
+  return empCode ? `${base}:${empCode}` : `${base}:anonymous`;
+}
 
 export interface ConversationMessageItem {
   id: number;
@@ -93,13 +100,18 @@ interface AgentChatValue {
   archiveConversation: (id: number, archived: boolean) => Promise<void>;
   // 会话级内存缓存：id -> messages，切换时先读缓存避免闪烁
   conversationCache: MutableRefObject<Map<number, Message[]>>;
+  // 会话列表加载失败信息（null 表示正常）；配合 reloadConversations 重试
+  conversationsError: string | null;
+  // 会话内容加载失败信息（切换或恢复历史会话时）；null 表示正常
+  conversationLoadError: string | null;
+  clearConversationLoadError: () => void;
 }
 
 const AgentChatContext = createContext<AgentChatValue | undefined>(undefined);
 
 function readStoredConversationId(): number | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_CONV);
+    const raw = localStorage.getItem(userStorageKey(STORAGE_KEY_CONV_BASE));
     if (!raw) return null;
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -110,10 +122,11 @@ function readStoredConversationId(): number | null {
 
 function writeStoredConversationId(id: number | null) {
   try {
+    const key = userStorageKey(STORAGE_KEY_CONV_BASE);
     if (id === null) {
-      localStorage.removeItem(STORAGE_KEY_CONV);
+      localStorage.removeItem(key);
     } else {
-      localStorage.setItem(STORAGE_KEY_CONV, String(id));
+      localStorage.setItem(key, String(id));
     }
   } catch {
     // localStorage may be unavailable in private contexts.
@@ -122,7 +135,7 @@ function writeStoredConversationId(id: number | null) {
 
 function writeStoredRecentConversations(ids: number[]) {
   try {
-    localStorage.setItem(STORAGE_KEY_CONV_LIST, JSON.stringify(ids.slice(0, 20)));
+    localStorage.setItem(userStorageKey(STORAGE_KEY_CONV_LIST_BASE), JSON.stringify(ids.slice(0, 20)));
   } catch {
     // ignore
   }
@@ -146,6 +159,8 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
     () => readStoredConversationId(),
   );
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [conversationsError, setConversationsError] = useState<string | null>(null);
+  const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const toolSeqRef = useRef(0);
   // 会话级内存缓存：切回某会话时先读缓存，避免后端往返闪烁
@@ -192,18 +207,27 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
     try {
       const data = await api.listConversations({ archived: false, per_page: 100 });
       setConversations(data.items ?? []);
+      setConversationsError(null);
       // 记录最近会话 id 列表到 localStorage，便于刷新后恢复
       const ids = (data.items ?? []).map((c) => c.id);
       writeStoredRecentConversations(ids);
-    } catch {
-      // 列表加载失败不阻断对话
+    } catch (error) {
+      // 列表加载失败不阻断对话，但必须让用户知道并可重试
+      setConversationsError(
+        error instanceof Error ? error.message : '会话列表加载失败',
+      );
     }
+  }, []);
+
+  const clearConversationLoadError = useCallback(() => {
+    setConversationLoadError(null);
   }, []);
 
   const switchConversation = useCallback(
     async (id: number) => {
       // 流式生成中不允许切换（避免状态错乱）
       if (streaming) return;
+      setConversationLoadError(null);
       // 先读内存缓存，避免闪烁
       const cached = conversationCache.current.get(id);
       if (cached) {
@@ -215,8 +239,11 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
       try {
         const dbMessages = await loadConversationMessages(id);
         hydrateMessagesFromDb(dbMessages);
-      } catch {
-        // 加载失败保留缓存或空状态
+      } catch (error) {
+        // 加载失败保留缓存或空状态，但提示用户可重试
+        setConversationLoadError(
+          error instanceof Error ? error.message : '会话内容加载失败',
+        );
       }
     },
     [streaming, setConversationId, loadConversationMessages, hydrateMessagesFromDb],
@@ -274,6 +301,7 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
         // 读不到不再清空 messages —— 保留当前（空）状态，引导用户新建或选历史
         if (!cancelled) {
           setConversationId(null);
+          setConversationLoadError('历史会话恢复失败，可重新发起对话或从列表选择');
         }
       });
     return () => {
@@ -303,6 +331,9 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
         renameConversation,
         archiveConversation,
         conversationCache,
+        conversationsError,
+        conversationLoadError,
+        clearConversationLoadError,
       }}
     >
       {children}
