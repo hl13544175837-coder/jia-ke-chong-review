@@ -28,6 +28,7 @@ const JobMatchPage = lazy(() => import('./pages/JobMatchPage').then((module) => 
 const PipelinePage = lazy(() => import('./pages/PipelinePage').then((module) => ({ default: module.PipelinePage })));
 const InterviewListPage = lazy(() => import('./pages/InterviewListPage').then((module) => ({ default: module.InterviewListPage })));
 const InterviewsPage = lazy(() => import('./pages/InterviewsPage').then((module) => ({ default: module.InterviewsPage })));
+const OffersPage = lazy(() => import('./pages/OffersPage').then((module) => ({ default: module.OffersPage })));
 const InterviewReportPage = lazy(() => import('./pages/InterviewReportPage').then((module) => ({ default: module.InterviewReportPage })));
 const BiPage = lazy(() => import('./pages/BiPage').then((module) => ({ default: module.BiPage })));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage').then((module) => ({ default: module.UsersPage })));
@@ -170,6 +171,15 @@ function AppRoutes() {
             <RequireRole
               allow={['recruiter', 'manager', 'admin', 'interviewer']}
               element={<InterviewReportPage />}
+            />
+          }
+        />
+        <Route
+          path="/offers"
+          element={
+            <RequireRole
+              allow={['recruiter', 'manager', 'admin']}
+              element={<OffersPage />}
             />
           }
         />

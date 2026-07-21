@@ -16,14 +16,18 @@ from ..services.pipeline_service import (
     STAGE_ORDER,
     PipelineServiceError,
     get_offer_record,
+    get_offer_by_id,
+    list_offer_records,
     move_candidate,
     normalize_pipeline_stage,
+    offer_payload,
     parse_date,
     pipeline_board,
     pipeline_counts,
     pipeline_history,
     save_offer_record,
     stage_sort_index,
+    transition_offer,
     transfer_candidate as transfer_candidate_service,
 )
 from ..services.interview_workflow_service import active_assignment_filter
@@ -277,6 +281,62 @@ def get_offer(candidate_id, job_id=None, demand_id=None):
     if candidate is None:
         return jsonify({"error": "候选人不存在", "code": "candidate_not_found"}), 404
     return jsonify(get_offer_record(demand, candidate_id))
+
+
+@bp.get("/offers")
+@require_auth
+def list_offers():
+    if g.role == "interviewer":
+        return jsonify({"error": "Forbidden"}), 403
+    statuses = [item for item in request.args.get("status", "").split(",") if item]
+    return jsonify(
+        list_offer_records(
+            org_id=g.org_id,
+            user_id=g.user_id,
+            role=g.role,
+            search=request.args.get("search"),
+            statuses=statuses,
+        )
+    )
+
+
+@bp.get("/offers/<int:offer_id>")
+@require_auth
+def get_offer_detail(offer_id):
+    if g.role == "interviewer":
+        return jsonify({"error": "Forbidden"}), 403
+    try:
+        offer, demand = get_offer_by_id(offer_id=offer_id, org_id=g.org_id)
+    except PipelineServiceError as error:
+        return _error_response(error)
+    if not can_read_demand(g.user_id, g.role, g.org_id, demand):
+        return jsonify({"error": "Forbidden"}), 403
+    return jsonify(offer_payload(offer, demand=demand, candidate_id=offer.candidate_id))
+
+
+@bp.post("/offers/<int:offer_id>/actions")
+@require_auth
+def run_offer_action(offer_id):
+    if g.role == "interviewer":
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json() or {}
+    action = str(data.get("action") or "").strip().lower()
+    if action in {"approve", "reject"} and g.role not in {"manager", "admin"}:
+        return jsonify({"error": "Forbidden"}), 403
+    try:
+        _, demand = get_offer_by_id(offer_id=offer_id, org_id=g.org_id)
+        if not _manage_allowed(demand):
+            return jsonify({"error": "Forbidden"}), 403
+        payload = transition_offer(
+            offer_id=offer_id,
+            org_id=g.org_id,
+            actor_id=g.user_id,
+            action=action,
+            data=data,
+        )
+    except PipelineServiceError as error:
+        return _error_response(error)
+    return jsonify(payload)
 
 
 @bp.put("/pipeline/<int:job_id>/offer/<int:candidate_id>")

@@ -344,7 +344,15 @@ def test_offer_record_can_be_saved_without_changing_pipeline_shape(client, make_
         headers=_auth(token),
     ).get_json()
     assert offer["salary_range"] == "25-30K * 14"
-    assert offer["approval_status"] == "pending"
+    assert offer["approval_status"] == "draft"
+
+    submitted = client.post(
+        f"/api/offers/{offer['id']}/actions",
+        headers=_auth(token),
+        json={"action": "submit", "comment": "等待部门负责人确认"},
+    )
+    assert submitted.status_code == 200
+    assert submitted.get_json()["approval_status"] == "pending"
 
     board = client.get(f"/api/pipeline/{jid}/board", headers=_auth(token)).get_json()
     assert board["stage_order"] == [

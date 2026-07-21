@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
-import { Button, Input, Select, Spinner } from '../ui';
+import { Button, Input, Spinner } from '../ui';
 
 interface OfferDrawerProps {
   candidateId: number;
@@ -9,14 +10,17 @@ interface OfferDrawerProps {
   jobId: number;
 }
 
-const APPROVAL_STATUS = [
-  { value: 'draft', label: '草稿' },
-  { value: 'pending', label: '待审批' },
-  { value: 'approved', label: '已审批' },
-  { value: 'sent', label: '已发出' },
-  { value: 'accepted', label: '已接受' },
-  { value: 'declined', label: '已拒绝' },
-];
+const STATUS_LABELS: Record<string, string> = {
+  draft: '草稿',
+  pending: '待审批',
+  approved: '待发放',
+  sent: '等待候选人回复',
+  accepted: '待入职',
+  declined: '已拒绝',
+  withdrawn: '已撤回',
+  expired: '已过期',
+  onboarded: '已入职',
+};
 
 export function OfferDrawer({ candidateId, demandId, jobId }: OfferDrawerProps) {
   const { data, loading, error, reload } = useAsync(
@@ -27,7 +31,6 @@ export function OfferDrawer({ candidateId, demandId, jobId }: OfferDrawerProps) 
   );
   const [salaryRange, setSalaryRange] = useState('');
   const [onboardDate, setOnboardDate] = useState('');
-  const [approvalStatus, setApprovalStatus] = useState('draft');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -36,7 +39,6 @@ export function OfferDrawer({ candidateId, demandId, jobId }: OfferDrawerProps) 
     if (!data) return;
     setSalaryRange(data.salary_range ?? '');
     setOnboardDate(data.onboard_date ?? '');
-    setApprovalStatus(data.approval_status ?? 'draft');
     setNote(data.note ?? '');
   }, [data]);
 
@@ -47,7 +49,6 @@ export function OfferDrawer({ candidateId, demandId, jobId }: OfferDrawerProps) 
       const payload = {
         salary_range: salaryRange.trim(),
         onboard_date: onboardDate || null,
-        approval_status: approvalStatus,
         note: note.trim(),
       };
       if (demandId) {
@@ -82,6 +83,16 @@ export function OfferDrawer({ candidateId, demandId, jobId }: OfferDrawerProps) 
 
   return (
     <div className="mt-2 space-y-3 rounded-lg border border-success-100 bg-success-50 p-3">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="font-medium text-ink">
+          Offer 状态：{STATUS_LABELS[data?.status ?? data?.approval_status ?? 'draft'] ?? '草稿'}
+        </span>
+        {data?.id && (
+          <Link to="/offers" className="text-xs font-semibold text-success-700 hover:underline">
+            前往 Offer 管理
+          </Link>
+        )}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Input
           label="薪资范围"
@@ -96,17 +107,6 @@ export function OfferDrawer({ candidateId, demandId, jobId }: OfferDrawerProps) 
           onChange={(e) => setOnboardDate(e.target.value)}
         />
       </div>
-      <Select
-        label="审批状态"
-        value={approvalStatus}
-        onChange={(e) => setApprovalStatus(e.target.value)}
-      >
-        {APPROVAL_STATUS.map((status) => (
-          <option key={status.value} value={status.value}>
-            {status.label}
-          </option>
-        ))}
-      </Select>
       <textarea
         className="w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm text-ink placeholder:text-muted-soft focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
         rows={2}
@@ -115,9 +115,13 @@ export function OfferDrawer({ candidateId, demandId, jobId }: OfferDrawerProps) 
         onChange={(e) => setNote(e.target.value)}
       />
       {message && <p className="text-sm text-muted">{message}</p>}
-      <Button type="button" size="sm" variant="secondary" loading={saving} disabled={saving} onClick={handleSave}>
-        保存 Offer
-      </Button>
+      {(data?.status ?? data?.approval_status ?? 'draft') === 'draft' ? (
+        <Button type="button" size="sm" variant="secondary" loading={saving} disabled={saving} onClick={handleSave}>
+          保存 Offer 草稿
+        </Button>
+      ) : (
+        <p className="text-xs text-muted">Offer 已提交，审批和后续操作请前往 Offer 管理处理。</p>
+      )}
     </div>
   );
 }

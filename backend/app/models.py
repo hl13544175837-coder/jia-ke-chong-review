@@ -371,9 +371,49 @@ class OfferRecord(db.Model):
     onboard_date = db.Column(db.Date)
     approval_status = db.Column(db.String(40), default="draft")
     note = db.Column(db.Text)
+    approver_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    submitted_at = db.Column(db.DateTime)
+    approved_at = db.Column(db.DateTime)
+    sent_at = db.Column(db.DateTime)
+    responded_at = db.Column(db.DateTime)
+    withdrawn_at = db.Column(db.DateTime)
+    expires_at = db.Column(db.DateTime)
+    onboarded_at = db.Column(db.DateTime)
+    rejection_reason = db.Column(db.Text)
+    candidate_reply = db.Column(db.JSON)
+    salary_breakdown = db.Column(db.JSON)
+    version = db.Column(db.Integer, default=1, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=utc_now)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+    history = db.relationship(
+        "OfferEvent",
+        backref="offer",
+        cascade="all,delete-orphan",
+        order_by="OfferEvent.id",
+    )
+
+
+class OfferEvent(db.Model):
+    __table_args__ = (
+        db.Index("ix_offer_events_org_offer_created", "org_id", "offer_id", "created_at"),
+    )
+
+    __tablename__ = "offer_events"
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, default=1, nullable=False)
+    offer_id = db.Column(
+        db.Integer,
+        db.ForeignKey("offer_records.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    action = db.Column(db.String(40), nullable=False)
+    from_status = db.Column(db.String(40))
+    to_status = db.Column(db.String(40), nullable=False)
+    actor_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    comment = db.Column(db.Text)
+    detail = db.Column(db.JSON)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
 
 class InterviewAssignment(db.Model):

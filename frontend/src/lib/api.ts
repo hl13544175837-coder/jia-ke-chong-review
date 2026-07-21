@@ -50,6 +50,8 @@ import type {
   MatchResponse,
   MeResponse,
   NotificationListResponse,
+  OfferActionInput,
+  OfferListResponse,
   OfferRecord,
   PipelineBoard,
   PipelineHistory,
@@ -560,6 +562,23 @@ export const api = {
   },
   saveDemandOfferRecord(demandId: number, candidateId: number, payload: Partial<OfferRecord>): Promise<OfferRecord> {
     return request(`/pipeline/demands/${demandId}/offer/${candidateId}`, { method: 'PUT', body: payload });
+  },
+  listOffers(query: { status?: string; search?: string } = {}): Promise<OfferListResponse> {
+    const search = new URLSearchParams();
+    if (query.status) search.set('status', query.status);
+    if (query.search) search.set('search', query.search);
+    const suffix = search.size > 0 ? `?${search.toString()}` : '';
+    return request(`/offers${suffix}`);
+  },
+  getOffer(offerId: number): Promise<OfferRecord> {
+    return request(`/offers/${offerId}`);
+  },
+  runOfferAction(offerId: number, payload: OfferActionInput): Promise<OfferRecord> {
+    return request(`/offers/${offerId}/actions`, {
+      method: 'POST',
+      body: payload,
+      idempotencyKey: crypto.randomUUID(),
+    });
   },
 
   // ---- BI (manager/admin only) ----

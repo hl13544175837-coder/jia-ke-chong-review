@@ -350,6 +350,17 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `GET` | `/pipeline/demands/<demand_id>/board` | 登录且有 Demand 权限 | 具体 Demand 看板候选人卡片数据 |
 | `GET` | `/pipeline/demands/<demand_id>/history/<candidate_id>` | 登录且有 Demand/候选人权限 | 候选人在具体 Demand 下的 append-only 历史；job-only 变体仅在唯一解析时代理 |
 
+### 7.5.1 Offer 生命周期（当前代码候选）
+
+| 方法 | 路径 | 权限 | 作用 |
+|---|---|---|---|
+| `PUT` | `/pipeline/demands/<demand_id>/offer/<candidate_id>` | Demand owner/manager/admin | 新建或编辑 `draft`；请求体中的状态字段不会绕过审批，已提交草稿返回 409 |
+| `GET` | `/offers` | recruiter/manager/admin | 按组织和 Demand 可见范围列出 Offer；支持 `status` 和 `search` |
+| `GET` | `/offers/<offer_id>` | recruiter/manager/admin + Demand 读取权 | 返回候选人、需求、当前状态、回复和 append-only 操作历史 |
+| `POST` | `/offers/<offer_id>/actions` | Demand owner/manager/admin；审批/审批拒绝仅 manager/admin | 状态机动作：`submit/approve/reject/send/accept/decline/withdraw/expire/onboard/resend/follow_up`；支持 `Idempotency-Key`，关键动作写通用审计 |
+
+Offer 状态顺序为 `draft → pending → approved → sent → accepted → onboarded`，审批拒绝或候选人拒绝进入 `declined`，在途记录可进入 `withdrawn`，超时可进入 `expired`。确认入职与候选人主流程推进到 `onboarded` 在同一事务完成；失败整体回滚。面试官不可访问 Offer 管理接口。
+
 ### 7.6 Interview（当前代码候选）
 
 | 方法 | 路径 | 权限 | 作用 |
@@ -797,7 +808,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 发布通道另有一层不受运行时环境变量覆盖的边界：Makefile 只接受精确 `RC` / `GA`，并把发布通道写入镜像内 `.release-channel` 文件。entrypoint 先读取该标记；GA 镜像若被 K8S env 覆盖为 SIT 放行、自动迁移/空库初始化、公开注册或关闭安全头/限流，会在任何 DDL 之前拒绝启动。RC 镜像则保留本轮已授权的完全宽松测试配置。
 
-当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
+当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|

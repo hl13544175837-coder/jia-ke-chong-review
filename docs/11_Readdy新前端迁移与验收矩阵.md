@@ -47,7 +47,7 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 | `/candidates` 简历库 | recruiter/manager/admin | `/candidates`、`/resume/*`、匹配预览、批量入流程 | 搜索/筛选/详情/上传/负责人/加入 Demand 全部真实化 |
 | `/kanban` 进度看板 | recruiter/manager/admin | `/pipeline/demands/*` | 只能按明确 `demand_id` 看板；推进、修正和转 Demand 走后端事务 |
 | `/interviews` 面试管理 | recruiter/manager/admin | `/interviews`、`/interview/assignments`、取消、反馈、AI 面试 | 排期、取消、详情和反馈刷新后仍存在；任何反馈不自动推进主流程 |
-| `/offers` Offer 管理 | recruiter/manager/admin | 现有 Demand Offer 读写接口 | 保留 Readdy 视觉；补齐真实列表及必要的审批/发放/回复状态契约，不用 sessionStorage |
+| `/offers` Offer 管理 | recruiter/manager/admin | `/offers`、`/offers/<id>`、`/offers/<id>/actions`、Demand Offer 草稿接口 | **代码候选已接通**：真实列表、草稿、审批、发放、回复、撤回、入职和历史；不用 sessionStorage，待浏览器四角色验收 |
 | `/talent-map` | recruiter/manager/admin | `/talent-maps*` | 当前后端实验能力接真数据；写入口按后端 fail-closed 规则开放 |
 | `/analytics` | manager/admin | `/bi/overview`、`/bi/demand/*` | 展示进度、瓶颈和责任协同；删除个人排名、绩效和奖金式结论 |
 | `/ai-assistant` | recruiter/manager/admin | `/agent/tools`、会话、SSE chat | 复用真实会话；工具集不得包含主流程写操作 |
@@ -94,7 +94,7 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 ## 7. 已识别的接口缺口
 
 1. 网关登录后的真实角色：现有前端用环境变量默认角色，必须改为登录后读取 `/api/auth/me`。
-2. Offer：现有后端只有单 Demand/候选人的基础 OfferRecord，Readdy 需要列表、完整状态、审批/发放/回复/撤回/入职和历史；需要补模型、迁移、服务、RBAC、幂等、审计和测试。
+2. Offer：已补 `20260721_05` 迁移、`offer_events` 历史、完整状态机、列表/详情/动作 API、RBAC、组织隔离、幂等、审计和前端真实页面；还需在公司网关四角色环境完成现场验收。
 3. KPI 标准：Readdy 当前写 `localStorage`，后端没有持久化配置；需要新增组织级配置与审计。
 4. 总监审批：Readdy 当前是只读 mock。正式审批必须先明确后端业务事实；没有接口前只可展示真实待办，不可假装审批成功。
 5. 面试官“待筛选”：旧后端已支持面试 assignment/feedback，但没有可让面试官浏览全量简历的权限；页面必须按有效分配裁剪。
@@ -118,3 +118,11 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - 旧后端：437 个测试通过；2 个部署脚本测试因 shell 中变量后直接连接中文全角字符而失败。
 - Readdy：约 3.1 万行前端源码、25 个页面路由，主要业务页面直接依赖 15 份 mock 数据。
 - 上述失败均记录为迁移前基线，实施结束前必须修复并重新跑全量测试。
+
+## 10. 当前实施进度（2026-07-21）
+
+- 登录、公司网关身份、Readdy 主壳、工作台和 Readdy 路由别名已接入；旧的假角色选择已移除。
+- Offer 已形成真实数据库闭环。招聘专员可维护草稿和推进发放/回复/入职；只有 manager/admin 可审批；确认入职会同步把 Demand 下候选人推进到 `onboarded`。
+- Offer 的所有状态变化写入 `offer_events` 和通用 `events`；重复请求可用 `Idempotency-Key` 安全重放。
+- 当前 Alembic head 为 `20260721_05`；升级保留已有 `offer_records` 数据，新增生命周期列和历史表。
+- 仍未完成：KPI 标准持久化、全部 Readdy 业务页视觉替换、浏览器四角色全链路和公司 SIT 现场证据。因此本文整体状态仍为“实施中”。

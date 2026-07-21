@@ -427,6 +427,18 @@ def _ensure_workflow_enhancement_columns():
         if "evaluation_json" not in feedback_columns:
             db.session.execute(text("ALTER TABLE interview_feedback ADD COLUMN evaluation_json JSON"))
             changed = True
+
+    if "offer_records" in inspector.get_table_names():
+        from .models import OfferRecord
+
+        offer_columns = {
+            column["name"] for column in inspector.get_columns("offer_records")
+        }
+        for column in OfferRecord.__table__.columns:
+            if column.name in offer_columns or column.primary_key:
+                continue
+            db.session.execute(text(_add_column_sql("offer_records", column)))
+            changed = True
         if "reason_tags" not in feedback_columns:
             db.session.execute(text("ALTER TABLE interview_feedback ADD COLUMN reason_tags JSON"))
             changed = True
@@ -484,6 +496,7 @@ def _ensure_org_and_privacy_columns():
         "pipeline_stages",
         "candidate_dispositions",
         "offer_records",
+        "offer_events",
         "interview_assignments",
         "events",
         "audit_logs",
