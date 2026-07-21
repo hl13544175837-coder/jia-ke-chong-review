@@ -47,15 +47,16 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 | `/dashboard` 及统计抽屉 | 全部角色 | `/candidates`、`/demands`、`/interviews`、`/notifications`；manager/admin 可用 `/bi/overview` | 分区独立加载；失败不能显示伪造的 0 |
 | `/jobs` 招聘管理 | recruiter/manager/admin | `/demands`、`/jobs`、`/jobs/clarify`、匹配接口 | **路由语义已对齐**：Readdy `/jobs` 展示真实 Demand；岗位/JD 模板保留在二级 `/job-templates`，不作为第二套招聘主入口 |
 | `/candidates` 简历库 | recruiter/manager/admin | `/candidates`、`/resume/*`、匹配预览、批量入流程 | 搜索/筛选/详情/上传/负责人/加入 Demand 全部真实化 |
-| `/kanban` 进度看板 | recruiter/manager/admin | `/pipeline/demands/*` | 只能按明确 `demand_id` 看板；推进、修正和转 Demand 走后端事务 |
-| `/interviews` 面试管理 | recruiter/manager/admin | `/interviews`、`/interview/assignments`、取消、反馈、AI 面试 | 排期、取消、详情和反馈刷新后仍存在；任何反馈不自动推进主流程 |
+| `/kanban` 进度看板 | recruiter/manager/admin | `/pipeline/demands/*` | **代码候选已接通**：Demand 选择器 + KPI 卡 + 阶段列真实看板；推进走 `movePipeline`，淘汰/修正填原因弹窗，历史时间线真实；面试官无推进按钮；转 Demand 仍在旧 Pipeline 侧栏（限量口径） |
+| `/interviews` 面试管理 | recruiter/manager/admin | `/interviews`、`/interview/assignments`、取消、反馈、AI 面试 | **代码候选已接通**：统计卡、三维筛选、安排（Demand 带默认面试官、时间冲突高亮）、取消填原因、本人反馈复用 FeedbackForm；不触碰 pipeline 推进；角色收敛为 recruiter/manager/admin，面试官走 `/interviewer/*` |
 | `/offers` Offer 管理 | recruiter/manager/admin | `/offers`、`/offers/<id>`、`/offers/<id>/actions`、Demand Offer 草稿接口 | **代码候选已接通**：真实列表、草稿、审批、发放、回复、撤回、入职和历史；不用 sessionStorage，待浏览器四角色验收 |
 | `/talent-map` | recruiter/manager/admin | `/talent-maps*`、`/talent-map-companies/*`、`/talent-map-people/*` | **代码候选已接通**：正式路由、地图/公司/人选真实写入、筛选、公司优先级和人选接触状态持久化；招聘专员限本人，manager/admin 限本组织 |
-| `/analytics` | manager/admin | `/bi/overview`、`/bi/demand/*` | 展示进度、瓶颈和责任协同；删除个人排名、绩效和奖金式结论 |
-| `/ai-assistant` | recruiter/manager/admin | `/agent/tools`、会话、SSE chat | 复用真实会话；工具集不得包含主流程写操作 |
+| `/analytics` | manager/admin | `/bi/overview`、`/bi/demand/*` | **代码候选已接通**：团队 KPI + 漏斗 + Demand 下钻；无个人绩效排名/成本/渠道排名；月度趋势因无真实数据未编造 |
+| `/dashboard/hired` | recruiter/manager/admin | `/offers`（status=onboarded） | **代码候选已接通**：真实已入职视图（累计/本月/平均周期 + 入职记录表），不再是跳转占位 |
+| `/ai-assistant` | recruiter/manager/admin | `/agent/tools`、会话、SSE chat | **错误态已加固**：会话列表/详情/能力目录失败均可见并可重试；本地会话编号按工号隔离；复用真实会话；工具集不得包含主流程写操作 |
 | `/settings` | admin；个人设置全角色 | `/admin/users`、`/auth/change-password`、审计和系统接口 | Readdy 的静态开关改成真实配置或明确只读；角色权限由后端控制 |
 | `/interviewer/*` | interviewer | `/interview/assignments`、面试反馈、已分配候选人详情 | **代码候选已接通**：工作台、待筛选/反馈、我的面试、已分配候选人和参与岗位都由真实 assignment 裁剪；无全量库入口 |
-| `/director/*` | manager/admin | BI、Demand、Offer 审批/反馈事实 | **路由已接通**：驾驶舱复用真实工作台，进展/洞察复用 Demand BI，审批复用 Offer 后端状态机与审计 |
+| `/director/*` | manager/admin | BI、Demand、Offer 审批/反馈事实 | **代码候选已接通**：驾驶舱（biOverview 摘要+待审批计数）、进展（Demand 清单+biDemand 下钻）、洞察（按停滞/反馈积压/断流/HC 缺口主题组织，非换标题 BI 页）、审批（待审批队列+approve/reject 真实状态机） |
 | `/kpi-standards` | manager/admin | `/kpi-standards`、`/kpi-standards/reset` | **代码候选已接通**：组织级版本化持久化、校验、并发冲突、审计和恢复默认；不使用 localStorage，不生成个人排名 |
 
 ## 5. Readdy 当前假数据清理范围
@@ -132,4 +133,10 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - Readdy `/jobs` 已映射为真实用人需求（Demand）；旧岗位/JD 模板迁到 `/job-templates`，仍可从创建需求和岗位匹配流程到达。
 - Dashboard 的面试、Offer、已入职和招聘周期路由已映射到真实面试、Offer、Pipeline 和 Demand BI；面试官与总监的 Readdy 路由已按后端角色守卫接入。
 - 已从 Figma 文件 `PkZwN0jscEZXBXas5XdhKO` 的人才地图节点核对视觉真源；全局品牌色校准为 `#379f70` / `#e9f5f0`，人才地图改为横向地图和公司卡片、公司摘要、按需展开的真实写入面板。
-- 仍未完成：全部 Readdy 业务页视觉替换、浏览器四角色全链路和公司 SIT 现场证据。因此本文整体状态仍为“实施中”。
+- 简历库已按 Readdy 三段式（全部候选人/招聘流程中/人才池）嫁接：批量勾选加入 Demand 走真实 `batch-pipeline`，快速详情抽屉保留完整简历入口，范围统计失败显示错误和重试。
+- 招聘进度看板 `/kanban` 已从旧 Pipeline 页换成 Readdy 视觉真实看板：Demand 选择器、KPI 卡、阶段列、推进/淘汰/修正/历史全部走真实接口；面试官角色只读。
+- 面试管理 `/interviews` 已换成 Readdy 真实页面：安排（默认面试官+时间冲突提示）、取消（填原因）、本人反馈、查看反馈；不触碰主流程推进；角色收敛为 recruiter/manager/admin。
+- 已入职 `/dashboard/hired` 已形成真实视图：Offer 生命周期 `onboarded` 记录、累计/本月/平均周期摘要，不再是跳转占位。
+- 数据分析 `/analytics` 与总监四页已接通真实 BI/Offer：无个人绩效排名、无编造月度趋势；洞察页按风险主题组织。
+- AI 助手错误态已加固：会话列表/详情/能力目录失败可见可重试，本地会话编号按工号隔离。
+- 仍未完成：浏览器四角色全链路验收和公司 SIT 现场证据；`/settings` 的 Readdy 视觉未替换（现有真实管理页继续使用，无假开关）。因此本文整体状态仍为“实施中”。
