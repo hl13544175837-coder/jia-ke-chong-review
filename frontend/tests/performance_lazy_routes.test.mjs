@@ -24,8 +24,9 @@ assert.match(source, /<Suspense/, 'Lazy routes should be wrapped in Suspense');
   );
 });
 
-assert.doesNotMatch(
-  source,
+const demandRoutes = readFileSync(join(__dirname, '../src/features/demands/routes.tsx'), 'utf8');
+assert.match(
+  demandRoutes,
   /const TalentMapPage = lazy/,
-  'Unavailable talent map should not be part of the trial route bundle',
+  'Talent map should be loaded only when its connected route is visited',
 );

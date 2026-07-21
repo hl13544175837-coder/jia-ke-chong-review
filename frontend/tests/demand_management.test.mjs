@@ -26,8 +26,8 @@ assert.match(nav, /activePaths:\s*\[[\s\S]*'\/jobs'[\s\S]*\]/, 'Recruitment nav 
 const demandFeature = readSource('features/demands/index.ts');
 assert.match(
   demandFeature,
-  /topLevelPaths:\s*\[['"]\/demands['"]\]/,
-  'Only recruitment demands should occupy the top-level recruitment entry',
+  /topLevelPaths:\s*\[[\s\S]*['"]\/demands['"][\s\S]*['"]\/talent-map['"][\s\S]*\]/,
+  'Recruitment demands and the now-connected talent map should be top-level workspaces',
 );
 
 const routes = readSource('features/demands/routes.tsx');
@@ -53,7 +53,8 @@ const recruitmentTabs = readSource('components/recruitment/RecruitmentManagement
 assert.match(page, /招聘需求/, 'Demand page should identify the concrete recruitment unit');
 assert.match(page, /RecruitmentManagementTabs/, 'Demand page should reuse the shared recruitment tabs');
 assert.match(recruitmentTabs, /用人需求/, 'Recruitment tabs should expose the demand tab label');
-assert.doesNotMatch(recruitmentTabs, /岗位画像|人才地图/, 'Template and placeholder modules should not occupy trial tabs');
+assert.doesNotMatch(recruitmentTabs, /岗位画像/, 'Job templates should remain a contextual capability');
+assert.match(recruitmentTabs, /人才地图/, 'The real talent map should be reachable from recruitment tabs');
 assert.match(form, /提需求日期/, 'Demand form should capture when business raised the request');
 assert.match(form, /HR 接手日期/, 'Demand form may capture when HR accepted the request');
 assert.match(filters, /最新创建在前/, 'Demand list should default to newest-first sorting');

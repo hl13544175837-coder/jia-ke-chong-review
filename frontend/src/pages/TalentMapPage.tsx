@@ -17,7 +17,7 @@ import {
   Select,
   Spinner,
 } from '../components/ui';
-import type { JobListItem, TalentMap, TalentMapPerson } from '../types';
+import type { JobListItem, TalentMap, TalentMapCompany, TalentMapPerson } from '../types';
 import { parseTalentMapSelectValue, resolveActiveTalentMapId } from './talentMapState';
 
 const DEFAULT_COLUMNS = ['目标公司', '潜在人选', '重点关注', '已接触', '暂不合适'] as const;
@@ -47,7 +47,15 @@ function peopleForColumn(talentMap: TalentMap | null, column: string) {
   return talentMap.people.filter((person) => person.contact_status === column);
 }
 
-function PersonCard({ person }: { person: TalentMapPerson }) {
+function PersonCard({
+  person,
+  busy,
+  onStatusChange,
+}: {
+  person: TalentMapPerson;
+  busy: boolean;
+  onStatusChange: (person: TalentMapPerson, status: string) => void;
+}) {
   return (
     <div className="rounded-md border border-hairline bg-canvas p-3 shadow-apple-xs">
       <div className="flex items-start justify-between gap-2">
@@ -57,7 +65,19 @@ function PersonCard({ person }: { person: TalentMapPerson }) {
             {person.company_name || '未关联公司'} · {person.title || '未填写岗位'}
           </p>
         </div>
-        <Badge tone="glass">{person.contact_status}</Badge>
+        <select
+          aria-label={`更新${person.name}的接触状态`}
+          value={person.contact_status}
+          disabled={busy}
+          onChange={(event) => onStatusChange(person, event.target.value)}
+          className="h-7 rounded-md border border-hairline bg-canvas px-2 text-xs text-ink"
+        >
+          {CONTACT_STATUSES.map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         {person.tags.slice(0, 3).map((tag) => (
@@ -85,6 +105,8 @@ export function TalentMapPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [keywordFilter, setKeywordFilter] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const [mapName, setMapName] = useState('省总人才地图');
   const [mapJobId, setMapJobId] = useState('');
@@ -135,62 +157,117 @@ export function TalentMapPage() {
     event.preventDefault();
     if (!mapName.trim()) return;
     setMessage(null);
-    const created = await api.createTalentMap({
-      name: mapName.trim(),
-      job_id: mapJobId ? Number(mapJobId) : null,
-      department: mapDepartment.trim(),
-      board_json: { columns: [...DEFAULT_COLUMNS] },
-    });
-    setActiveMapId(created.id);
-    setMapName('省总人才地图');
-    setMapJobId('');
-    setMapDepartment('');
-    setMessage('人才地图已创建');
-    mapsAsync.reload();
+    setMutationError(null);
+    setBusyKey('map:create');
+    try {
+      const created = await api.createTalentMap({
+        name: mapName.trim(),
+        job_id: mapJobId ? Number(mapJobId) : null,
+        department: mapDepartment.trim(),
+        board_json: { columns: [...DEFAULT_COLUMNS] },
+      });
+      setActiveMapId(created.id);
+      setMapName('省总人才地图');
+      setMapJobId('');
+      setMapDepartment('');
+      setMessage('人才地图已创建');
+      mapsAsync.reload();
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : '创建人才地图失败');
+    } finally {
+      setBusyKey(null);
+    }
   }
 
   async function handleAddCompany(event: FormEvent) {
     event.preventDefault();
     if (!talentMap || !companyName.trim()) return;
     setMessage(null);
-    await api.createTalentMapCompany(talentMap.id, {
-      company_name: companyName.trim(),
-      city: companyCity.trim(),
-      priority: companyPriority,
-    });
-    setCompanyName('');
-    setCompanyCity('');
-    setCompanyPriority('high');
-    setMessage('目标公司已保存');
-    mapsAsync.reload();
-    mapAsync.reload();
+    setMutationError(null);
+    setBusyKey('company:create');
+    try {
+      await api.createTalentMapCompany(talentMap.id, {
+        company_name: companyName.trim(),
+        city: companyCity.trim(),
+        priority: companyPriority,
+      });
+      setCompanyName('');
+      setCompanyCity('');
+      setCompanyPriority('high');
+      setMessage('目标公司已保存');
+      mapsAsync.reload();
+      mapAsync.reload();
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : '保存目标公司失败');
+    } finally {
+      setBusyKey(null);
+    }
   }
 
   async function handleAddPerson(event: FormEvent) {
     event.preventDefault();
     if (!talentMap || !personName.trim()) return;
     setMessage(null);
-    await api.createTalentMapPerson(talentMap.id, {
-      company_id: personCompanyId ? Number(personCompanyId) : null,
-      name: personName.trim(),
-      title: personTitle.trim(),
-      city: personCity.trim(),
-      tags: tagsFromText(personTags),
-      contact_status: personStatus,
-      evaluation: personEvaluation.trim(),
-      salary_range: personSalary.trim(),
-    });
-    setPersonName('');
-    setPersonTitle('');
-    setPersonCompanyId('');
-    setPersonCity('');
-    setPersonTags('');
-    setPersonStatus('未接触');
-    setPersonEvaluation('');
-    setPersonSalary('');
-    setMessage('潜在人选已保存');
-    mapsAsync.reload();
-    mapAsync.reload();
+    setMutationError(null);
+    setBusyKey('person:create');
+    try {
+      await api.createTalentMapPerson(talentMap.id, {
+        company_id: personCompanyId ? Number(personCompanyId) : null,
+        name: personName.trim(),
+        title: personTitle.trim(),
+        city: personCity.trim(),
+        tags: tagsFromText(personTags),
+        contact_status: personStatus,
+        evaluation: personEvaluation.trim(),
+        salary_range: personSalary.trim(),
+      });
+      setPersonName('');
+      setPersonTitle('');
+      setPersonCompanyId('');
+      setPersonCity('');
+      setPersonTags('');
+      setPersonStatus('未接触');
+      setPersonEvaluation('');
+      setPersonSalary('');
+      setMessage('潜在人选已保存');
+      mapsAsync.reload();
+      mapAsync.reload();
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : '保存潜在人选失败');
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handlePersonStatusChange(person: TalentMapPerson, contact_status: string) {
+    setMessage(null);
+    setMutationError(null);
+    setBusyKey(`person:${person.id}`);
+    try {
+      await api.updateTalentMapPerson(person.id, { contact_status });
+      setMessage(`${person.name}的接触状态已保存`);
+      mapsAsync.reload();
+      mapAsync.reload();
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : '更新人选状态失败');
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleCompanyPriorityChange(company: TalentMapCompany, priority: string) {
+    setMessage(null);
+    setMutationError(null);
+    setBusyKey(`company:${company.id}`);
+    try {
+      await api.updateTalentMapCompany(company.id, { priority });
+      setMessage(`${company.company_name}的优先级已保存`);
+      mapAsync.reload();
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : '更新公司优先级失败');
+    } finally {
+      setBusyKey(null);
+    }
   }
 
   function clearFilters() {
@@ -224,6 +301,8 @@ export function TalentMapPage() {
           {message}
         </div>
       )}
+
+      {mutationError && <ErrorState message={`保存失败：${mutationError}`} />}
 
       {errorState && (
         <ErrorState
@@ -363,16 +442,31 @@ export function TalentMapPage() {
                                     .filter(Boolean)
                                     .join(' · ') || '暂无区域信息'}
                                 </p>
-                                <Badge tone="brand" className="mt-2">
-                                  {company.priority || 'medium'}
-                                </Badge>
+                                <select
+                                  aria-label={`更新${company.company_name}的优先级`}
+                                  value={company.priority || 'medium'}
+                                  disabled={busyKey === `company:${company.id}`}
+                                  onChange={(event) =>
+                                    handleCompanyPriorityChange(company, event.target.value)
+                                  }
+                                  className="mt-2 h-7 rounded-md border border-hairline bg-canvas px-2 text-xs text-ink"
+                                >
+                                  <option value="high">高优先级</option>
+                                  <option value="medium">中优先级</option>
+                                  <option value="low">低优先级</option>
+                                </select>
                               </div>
                             ))}
                           </div>
                         ) : (
                           <div className="space-y-2">
                             {peopleForColumn(talentMap, column).map((person) => (
-                              <PersonCard key={person.id} person={person} />
+                              <PersonCard
+                                key={person.id}
+                                person={person}
+                                busy={busyKey === `person:${person.id}`}
+                                onStatusChange={handlePersonStatusChange}
+                              />
                             ))}
                           </div>
                         )}
@@ -411,7 +505,21 @@ export function TalentMapPage() {
                             </div>
                           </td>
                           <td className="py-3 pr-3">
-                            <Badge tone="brand">{person.contact_status}</Badge>
+                            <select
+                              aria-label={`更新${person.name}的表格接触状态`}
+                              value={person.contact_status}
+                              disabled={busyKey === `person:${person.id}`}
+                              onChange={(event) =>
+                                handlePersonStatusChange(person, event.target.value)
+                              }
+                              className="h-8 rounded-md border border-hairline bg-canvas px-2 text-xs text-ink"
+                            >
+                              {CONTACT_STATUSES.map((status) => (
+                                <option key={status} value={status}>
+                                  {status}
+                                </option>
+                              ))}
+                            </select>
                           </td>
                           <td className="py-3 text-muted">{person.evaluation || '-'}</td>
                         </tr>
@@ -454,7 +562,7 @@ export function TalentMapPage() {
                   value={mapDepartment}
                   onChange={(event) => setMapDepartment(event.target.value)}
                 />
-                <Button type="submit" size="sm">
+                <Button type="submit" size="sm" loading={busyKey === 'map:create'}>
                   <Plus className="h-4 w-4" />
                   创建地图
                 </Button>
@@ -489,7 +597,13 @@ export function TalentMapPage() {
                   <option value="medium">中优先级</option>
                   <option value="low">低优先级</option>
                 </Select>
-                <Button type="submit" size="sm" variant="secondary" disabled={!talentMap}>
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!talentMap}
+                  loading={busyKey === 'company:create'}
+                >
                   <Building2 className="h-4 w-4" />
                   保存公司
                 </Button>
@@ -572,7 +686,13 @@ export function TalentMapPage() {
                     placeholder="例：销售团队管理经验强，建议优先接触"
                   />
                 </div>
-                <Button type="submit" size="sm" variant="secondary" disabled={!talentMap}>
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!talentMap}
+                  loading={busyKey === 'person:create'}
+                >
                   <Users className="h-4 w-4" />
                   保存人选
                 </Button>

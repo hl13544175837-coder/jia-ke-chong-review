@@ -62,15 +62,16 @@ assert.match(
   /to:\s*'\/demands'[\s\S]*label:\s*'用人需求'/,
   'Recruitment workspace should lead with recruitment demands',
 );
-assert.doesNotMatch(
+assert.match(
   recruitmentTabs,
-  /to:\s*'\/(?:jobs|talent-map)'/,
-  'Job portraits and talent maps should not occupy standalone recruitment tabs in the pilot',
+  /to:\s*'\/talent-map'/,
+  'The real talent map should be reachable from recruitment management',
 );
-assert.doesNotMatch(
+assert.doesNotMatch(recruitmentTabs, /to:\s*'\/jobs'/, 'Job portraits should stay contextual');
+assert.match(
   demandsFeature,
-  /topLevelPaths:\s*\[[\s\S]*'\/(?:jobs|talent-map)'[\s\S]*\]/,
-  'Only recruitment demands should be treated as a top-level recruitment workspace',
+  /topLevelPaths:\s*\[[\s\S]*'\/talent-map'[\s\S]*\]/,
+  'The connected talent map should be treated as a top-level recruitment workspace',
 );
 assert.match(
   app,

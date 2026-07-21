@@ -1,4 +1,4 @@
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, MapPinned } from 'lucide-react';
 import type { FeatureNavItem } from '../../app/featureRegistry';
 import { DEMAND_ROLES } from './permissions';
 
@@ -9,6 +9,13 @@ export const demandsNavItems: FeatureNavItem[] = [
     icon: ClipboardList,
     roles: DEMAND_ROLES,
     activePaths: ['/jobs'],
+    menuCode: 'demands',
+  },
+  {
+    to: '/talent-map',
+    label: '人才地图',
+    icon: MapPinned,
+    roles: DEMAND_ROLES,
     menuCode: 'demands',
   },
 ];

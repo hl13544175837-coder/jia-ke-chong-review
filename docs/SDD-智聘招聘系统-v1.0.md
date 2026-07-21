@@ -773,7 +773,7 @@ AI_HUMAN_REVIEW_REQUIRED=true
 | 岗位列表/编辑 | `JobsPage.tsx` | `api/jobs.py` | `jobs.jd_structured` |
 | JD AI 澄清 | `JobsPage.tsx` | `api/jobs.py` | LLM，只读或写结构化 |
 | 岗位匹配 | `JobsPage.tsx`, `JobMatchPage.tsx` | `services/match_service.py` | `candidate_tags`, `matches`, `job_matcher.py` |
-| 人才地图（实验代码） | `TalentMapPage.tsx` | `api/talent_maps.py` | P0 主导航隐藏、写入 fail closed，不属于试点验收面 |
+| 人才地图 | `TalentMapPage.tsx` | `api/talent_maps.py` | Readdy 全量替换范围已开放；招聘专员限本人地图，manager/admin 限本组织，所有写操作经后端审计 |
 | 候选人流程 | `PipelinePage.tsx`, `components/pipeline/*` | `api/pipeline.py`, `services/pipeline_service.py` | `candidate_demand_flows`, `pipeline_stages.demand_id`, `events` |
 | 新增招聘阶段 | `frontend/src/lib/pipelineStages.ts` | `models.py`, `api/pipeline.py` | 高风险，需测试 |
 | AI 面试 | `InterviewsPage.tsx`, `InterviewReportPage.tsx` | `api/interview.py`, `services/interview_workflow_service.py` | LLM + `interviews.demand_id`，P0 不回写主流程 |

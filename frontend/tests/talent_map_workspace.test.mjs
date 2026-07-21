@@ -29,36 +29,34 @@ async function importTsModule(path) {
 const app = readSource('App.tsx');
 const tabs = readSource('components/recruitment/RecruitmentManagementTabs.tsx');
 const demandsFeature = readSource('features/demands/index.ts');
+const demandsNav = readSource('features/demands/nav.ts');
+const demandsRoutes = readSource('features/demands/routes.tsx');
 const api = readSource('lib/api.ts');
 const types = readSource('types/index.ts');
-assert.ok(
-  existsSync(join(srcRoot, 'pages/TalentMapPage.tsx')),
-  'Talent map implementation may remain in source while its pilot entry is hidden',
-);
+assert.ok(existsSync(join(srcRoot, 'pages/TalentMapPage.tsx')), 'Talent map page should exist');
 const page = readSource('pages/TalentMapPage.tsx');
 
-assert.doesNotMatch(
-  app,
-  /path="\/talent-map"/,
-  'Pilot router should not expose the unavailable talent map route',
+assert.match(
+  demandsRoutes,
+  /path:\s*'\/talent-map'/,
+  'Feature router should expose the real talent map route',
 );
-
-assert.doesNotMatch(
-  app,
-  /TalentMapPage/,
-  'Pilot bundle should not register the unavailable talent map page',
+assert.match(demandsRoutes, /TalentMapPage/, 'Feature router should load TalentMapPage');
+assert.match(
+  demandsNav,
+  /to:\s*'\/talent-map'[\s\S]*label:\s*'人才地图'/,
+  'Main navigation should expose the talent map entry',
 );
-
-assert.doesNotMatch(
+assert.match(
   tabs,
   /to:\s*'\/talent-map'[\s\S]*label:\s*'人才地图'/,
-  'Recruitment management tabs should hide the unavailable talent map entry',
+  'Recruitment management tabs should expose the talent map entry',
 );
 
-assert.doesNotMatch(
+assert.match(
   demandsFeature,
   /topLevelPaths:\s*\[[\s\S]*'\/talent-map'[\s\S]*\]/,
-  'Talent map should not be treated as a pilot top-level page',
+  'Talent map should be treated as a top-level recruitment page',
 );
 
 assert.match(types, /interface TalentMap\b/, 'Shared types should expose TalentMap');
@@ -71,6 +69,7 @@ for (const name of [
   'getTalentMap',
   'updateTalentMap',
   'createTalentMapCompany',
+  'updateTalentMapCompany',
   'createTalentMapPerson',
   'updateTalentMapPerson',
 ]) {
@@ -81,6 +80,21 @@ assert.match(page, /RecruitmentManagementTabs/, 'Talent map page should reuse re
 assert.match(page, /公司筛选/, 'Talent map page should let HR filter by company');
 assert.match(page, /新增目标公司/, 'Talent map page should let HR add target companies');
 assert.match(page, /新增潜在人选/, 'Talent map page should let HR add talent leads');
+assert.match(
+  page,
+  /api\.updateTalentMapPerson\([\s\S]*contact_status/,
+  'Talent map page should persist lead status changes through the backend',
+);
+assert.match(
+  page,
+  /api\.updateTalentMapCompany\([\s\S]*priority/,
+  'Talent map page should persist target-company priority changes through the backend',
+);
+assert.doesNotMatch(
+  page,
+  /localStorage|sessionStorage|mock/i,
+  'Talent map business state must not use browser storage or mock data',
+);
 assert.match(
   page,
   /resolvedActiveMapId[\s\S]*api\.getTalentMap\(resolvedActiveMapId/,

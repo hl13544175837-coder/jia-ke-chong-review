@@ -23,10 +23,10 @@ assert.doesNotMatch(
   /bossFeature/,
   'BOSS should not be registered in the pilot navigation or route surface',
 );
-assert.doesNotMatch(
+assert.match(
   `${tabs}\n${demandsFeature}\n${app}`,
   /(?:to:\s*'\/talent-map'|path="\/talent-map"|TalentMapPage)/,
-  'Talent map should not have a discoverable pilot entry',
+  'The now-connected talent map should have a discoverable product entry',
 );
 assert.doesNotMatch(
   tabs,

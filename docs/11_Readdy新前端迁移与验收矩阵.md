@@ -3,6 +3,8 @@
 > 状态：实施中。本文是迁移过程的接线真源，不代替最终可运行产品。
 >
 > 代码基线：`origin/test` 的 `5e251a2`；新界面来源：本地 `readdy-export-12214982`。
+>
+> 范围说明：本次是 Readdy 新产品全量替换，早期 P0 试点文档中“人才地图不开放”的约束已被本次明确需求取代；正式开放仍必须满足真实 API、RBAC、组织隔离、审计和测试门禁。
 
 ## 1. 迁移目标
 
@@ -48,7 +50,7 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 | `/kanban` 进度看板 | recruiter/manager/admin | `/pipeline/demands/*` | 只能按明确 `demand_id` 看板；推进、修正和转 Demand 走后端事务 |
 | `/interviews` 面试管理 | recruiter/manager/admin | `/interviews`、`/interview/assignments`、取消、反馈、AI 面试 | 排期、取消、详情和反馈刷新后仍存在；任何反馈不自动推进主流程 |
 | `/offers` Offer 管理 | recruiter/manager/admin | `/offers`、`/offers/<id>`、`/offers/<id>/actions`、Demand Offer 草稿接口 | **代码候选已接通**：真实列表、草稿、审批、发放、回复、撤回、入职和历史；不用 sessionStorage，待浏览器四角色验收 |
-| `/talent-map` | recruiter/manager/admin | `/talent-maps*` | 当前后端实验能力接真数据；写入口按后端 fail-closed 规则开放 |
+| `/talent-map` | recruiter/manager/admin | `/talent-maps*`、`/talent-map-companies/*`、`/talent-map-people/*` | **代码候选已接通**：正式路由、地图/公司/人选真实写入、筛选、公司优先级和人选接触状态持久化；招聘专员限本人，manager/admin 限本组织 |
 | `/analytics` | manager/admin | `/bi/overview`、`/bi/demand/*` | 展示进度、瓶颈和责任协同；删除个人排名、绩效和奖金式结论 |
 | `/ai-assistant` | recruiter/manager/admin | `/agent/tools`、会话、SSE chat | 复用真实会话；工具集不得包含主流程写操作 |
 | `/settings` | admin；个人设置全角色 | `/admin/users`、`/auth/change-password`、审计和系统接口 | Readdy 的静态开关改成真实配置或明确只读；角色权限由后端控制 |
@@ -126,4 +128,5 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - Offer 的所有状态变化写入 `offer_events` 和通用 `events`；重复请求可用 `Idempotency-Key` 安全重放。
 - 当前 Alembic head 为 `20260721_06`；05 保留已有 `offer_records` 数据并新增生命周期/历史，06 新增组织级流程口径表。
 - KPI 标准已从浏览器假持久化迁入真实后端；主管/管理员可维护，跨组织隔离，版本冲突不会静默覆盖。
+- 人才地图已从隐藏试验页变为正式 Readdy 路由；地图、目标公司、潜在人选、筛选、优先级和接触状态都由后端持久化，不使用 mock 或浏览器业务存储。
 - 仍未完成：全部 Readdy 业务页视觉替换、浏览器四角色全链路和公司 SIT 现场证据。因此本文整体状态仍为“实施中”。

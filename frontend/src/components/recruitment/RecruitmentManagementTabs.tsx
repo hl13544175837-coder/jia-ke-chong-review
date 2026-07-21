@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, MapPinned } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
 const TABS = [
   { to: '/demands', label: '用人需求', icon: ClipboardList },
+  { to: '/talent-map', label: '人才地图', icon: MapPinned },
 ] as const;
 
 function isActivePath(pathname: string, to: string) {

@@ -442,6 +442,12 @@ export const api = {
   ): Promise<TalentMapCompany> {
     return request(`/talent-maps/${mapId}/companies`, { method: 'POST', body: payload });
   },
+  updateTalentMapCompany(
+    companyId: number,
+    payload: Partial<TalentMapCompanyInput>,
+  ): Promise<TalentMapCompany> {
+    return request(`/talent-map-companies/${companyId}`, { method: 'PATCH', body: payload });
+  },
   createTalentMapPerson(mapId: number, payload: TalentMapPersonInput): Promise<TalentMapPerson> {
     return request(`/talent-maps/${mapId}/people`, { method: 'POST', body: payload });
   },
