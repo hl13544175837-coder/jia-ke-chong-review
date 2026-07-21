@@ -1,17 +1,17 @@
 // 网关 OAuth 登录（替代原后端 /api/auth/login）。
 //
 // 流程：账号 + 密码(前端 MD5) → POST /pgs/oauth/login 拿不透明 token →
-//       GET /pgs/oauth/api/profile 拿姓名 → 组装会话（角色暂用默认值）。
+//       GET /pgs/oauth/api/profile 拿工号 → GET /api/auth/me 拿真实用户与角色。
 //
 // 说明：
 // - 网关 token 不是 JWT，前端不解码；过期由后端 401 触发登出（见 api.ts / auth.tsx）。
-// - profile 不返回应用角色，暂用 VITE_DEFAULT_ROLE 兜底联调；后续应改由
-//   后端 /zhipin-server/api/auth/me 按工号映射真实角色。
+// - profile 不返回应用角色，必须由后端 /auth/me 按工号返回真实角色。
 // - 登录后业务接口带同一个 Bearer token，网关鉴权后透传身份给后端。
 
 import { ApiError, setEmpCode } from './api';
+import { API_BASE } from './apiBase';
 import { md5 } from './md5';
-import type { LoginResponse, Role } from '../types';
+import type { LoginResponse, MeResponse, Role } from '../types';
 
 // 网关 OAuth 前缀。本地默认 '/pgs/oauth'（Vite 代理，见 vite.config.ts）；
 // 部署时由 frontend/Dockerfile 的 VITE_OAUTH_BASE_URL 注入网关绝对地址。
@@ -19,13 +19,7 @@ const OAUTH_BASE = ((import.meta.env.VITE_OAUTH_BASE_URL ?? '/pgs/oauth') as str
   .trim()
   .replace(/\/+$/, '') || '/pgs/oauth';
 
-// 临时默认角色（联调用）。profile 无角色，先统一给一个角色驱动菜单；
-// 上真实权限前改为后端 /auth/me 返回。可用 VITE_DEFAULT_ROLE 覆盖。
 const VALID_ROLES: Role[] = ['admin', 'manager', 'recruiter', 'interviewer'];
-const ENV_ROLE = ((import.meta.env.VITE_DEFAULT_ROLE ?? 'admin') as string).trim();
-const DEFAULT_ROLE: Role = (VALID_ROLES as string[]).includes(ENV_ROLE)
-  ? (ENV_ROLE as Role)
-  : 'admin';
 
 // 网关统一响应包：{ code, msg, data, succ, fail }
 interface GatewayEnvelope<T> {
@@ -99,11 +93,47 @@ async function gatewayProfile(token: string): Promise<{ name: string; empCode: s
   return { name, empCode };
 }
 
+async function backendIdentity(token: string, empCode: string): Promise<MeResponse> {
+  let resp: Response;
+  try {
+    resp = await fetch(`${API_BASE}/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(empCode ? { 'X-Emp-Code': empCode } : {}),
+      },
+    });
+  } catch (err) {
+    throw new ApiError(0, `网络错误：${(err as Error).message}`);
+  }
+
+  const body = (await resp.json().catch(() => ({}))) as Partial<MeResponse> & {
+    error?: string;
+  };
+  if (!resp.ok) {
+    throw new ApiError(resp.status, body.error || '获取智聘账号权限失败');
+  }
+  if (
+    typeof body.id !== 'number'
+    || !body.name
+    || !body.role
+    || !VALID_ROLES.includes(body.role)
+  ) {
+    throw new ApiError(502, '智聘账号信息不完整，请联系管理员');
+  }
+  return body as MeResponse;
+}
+
 // 对外：走网关完成登录，返回与原 LoginResponse 相同的会话结构。
 // 同时把网关工号存起来（随每个业务请求发给后端做当前用户身份）。
 export async function loginViaGateway(account: string, password: string): Promise<LoginResponse> {
   const token = await gatewayLogin(account, password);
-  const { name, empCode } = await gatewayProfile(token);
+  const { empCode } = await gatewayProfile(token);
+  const identity = await backendIdentity(token, empCode);
   if (empCode) setEmpCode(empCode);
-  return { token, role: DEFAULT_ROLE, name };
+  return {
+    token,
+    user_id: identity.id,
+    role: identity.role,
+    name: identity.name,
+  };
 }

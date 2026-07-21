@@ -67,7 +67,12 @@ def login():
         },
         current_app.config["JWT_SECRET"], algorithm="HS256"
     )
-    return jsonify({"token": token, "role": user.role, "name": user.name})
+    return jsonify({
+        "token": token,
+        "user_id": user.id,
+        "role": user.role,
+        "name": user.name,
+    })
 
 
 @bp.get("/auth/me")

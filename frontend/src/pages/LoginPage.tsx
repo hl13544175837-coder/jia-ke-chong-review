@@ -1,178 +1,169 @@
-// 登录页。Apple 风格 — 动态光晕背景 + 毛玻璃卡片。
-// 强化企业 HR 平台定位，仅限内部员工使用，不面向应聘者。
+// Readdy 最终登录界面，业务行为仍使用公司网关 OAuth 和后端真实角色。
 
-import { useRef, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  ArrowRight,
+  AlertCircle,
+  Briefcase,
+  FileSearch,
+  LayoutDashboard,
+  LockKeyhole,
+  UserRound,
+  UsersRound,
+} from 'lucide-react';
 import { ApiError, clearToken } from '../lib/api';
 import { loginViaGateway } from '../lib/gatewayAuth';
 import { useAuth } from '../lib/auth';
 import { defaultRouteForRole } from '../lib/nav';
-import { Button, Input, ErrorState } from '../components/ui';
-import { gsap, useGSAP, EASE, DUR, STAGGER } from '../lib/motion';
+
+const PRODUCT_POINTS = [
+  { icon: LayoutDashboard, label: '可视化工作台，实时掌握招聘进度' },
+  { icon: FileSearch, label: '智能简历解析，候选人管理一目了然' },
+  { icon: UsersRound, label: '多角色协作，面试官与招聘主管无缝配合' },
+];
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-
-  const scope = useRef<HTMLDivElement>(null);
-
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add(
-        {
-          reduce: '(prefers-reduced-motion: reduce)',
-          motion: '(prefers-reduced-motion: no-preference)',
-        },
-        (ctx) => {
-          const { reduce } = ctx.conditions as { reduce: boolean };
-          if (reduce) {
-            gsap.from('[data-anim]', { autoAlpha: 0, duration: DUR.fast });
-            return;
-          }
-          const tl = gsap.timeline();
-          tl.from('[data-anim="logo"]', {
-            autoAlpha: 0,
-            scale: 0.5,
-            duration: DUR.slow,
-            ease: EASE.apple,
-          })
-            .from(
-              '[data-anim="brand"]',
-              { autoAlpha: 0, y: 12, duration: DUR.base, stagger: STAGGER.base, ease: EASE.apple },
-              '-=0.35',
-            )
-            .from(
-              '[data-anim="card"]',
-              { autoAlpha: 0, y: 20, duration: DUR.base, ease: EASE.apple },
-              '-=0.25',
-            )
-            .from(
-              '[data-anim="footer"]',
-              { autoAlpha: 0, y: 8, duration: DUR.fast, ease: EASE.apple },
-              '-=0.3',
-            );
-        },
-      );
-    },
-    { scope },
-  );
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      // 清除残留旧 token，防止 API 请求带无效 token 触发 401
       clearToken();
-      // 走网关 OAuth 登录：账号 + 密码(前端 MD5) → token → profile 拿姓名
-      const res = await loginViaGateway(account, password);
-      login(res);
+      const result = await loginViaGateway(account.trim(), password);
+      login(result);
       navigate(defaultRouteForRole(), { replace: true });
     } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : '操作失败，请稍后重试。';
-      setError(message);
+      setError(err instanceof ApiError ? err.message : '操作失败，请稍后重试。');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div
-      ref={scope}
-      className="relative flex min-h-screen items-center justify-center overflow-hidden px-4"
-      style={{ background: 'linear-gradient(135deg, #f8f9fa 0%, #e8ecf1 30%, #f0f4ff 60%, #f8f9fa 100%)' }}
-    >
-      {/* Animated ambient light blobs */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-40 -left-20 h-[500px] w-[500px] animate-float rounded-full opacity-20"
-        style={{ background: 'radial-gradient(circle, #007AFF 0%, transparent 70%)', filter: 'blur(60px)' }}
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -bottom-40 -right-20 h-[500px] w-[500px] animate-float rounded-full opacity-15"
-        style={{ background: 'radial-gradient(circle, #AF52DE 0%, transparent 70%)', filter: 'blur(60px)', animationDelay: '2s' }}
-      />
+    <div className="flex min-h-screen bg-[#fbfaf7] text-[#292b2a]">
+      <section className="relative hidden w-1/2 overflow-hidden bg-gradient-to-br from-[#3d7b6b] via-[#2f695c] to-[#1f4d43] lg:flex">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,rgba(141,207,181,0.32),transparent_60%)]" />
+        <div className="absolute left-16 top-20 h-64 w-64 rounded-full border border-white/10" />
+        <div className="absolute bottom-32 right-20 h-48 w-48 rounded-full border border-white/10" />
 
-      {/* Subtle grid overlay */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-[0.15]"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px)',
-          backgroundSize: '40px 40px',
-          maskImage: 'radial-gradient(80% 60% at 50% 40%, #000 0%, transparent 100%)',
-          WebkitMaskImage: 'radial-gradient(80% 60% at 50% 40%, #000 0%, transparent 100%)',
-        }}
-      />
-
-      <div className="relative w-full max-w-sm">
-        {/* Logo + Brand */}
-        <div className="mb-8 flex flex-col items-center">
-          <div
-            data-anim="logo"
-            className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl text-lg font-bold text-white shadow-apple-lg"
-            style={{ background: 'linear-gradient(135deg, #007AFF, #5856D6)' }}
-          >
-            智
+        <div className="relative z-10 flex w-full flex-col justify-center px-16 xl:px-24">
+          <div className="mb-8 flex h-12 w-12 items-center justify-center rounded-xl bg-white/15 text-white">
+            <Briefcase className="h-6 w-6" aria-hidden="true" />
           </div>
-          <h1 data-anim="brand" className="font-display text-xl text-ink">
-            智聘 · 招聘管理系统
-          </h1>
-          <p data-anim="brand" className="mt-1 text-sm text-muted">
-            企业招聘管理平台 · 仅限内部员工使用
+          <h1 className="text-4xl font-bold tracking-tight text-white">TalentFlow</h1>
+          <p className="mt-4 max-w-lg text-lg leading-8 text-white/70">
+            智能招聘管理系统 — 让招聘流程更高效、更透明。从需求到入职，一站式协作平台。
           </p>
+
+          <div className="mt-16 space-y-4">
+            {PRODUCT_POINTS.map(({ icon: Icon, label }) => (
+              <div key={label} className="flex items-center gap-3 text-sm text-white/65">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10">
+                  <Icon className="h-4 w-4 text-white/85" aria-hidden="true" />
+                </span>
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
         </div>
+      </section>
 
-        {/* Glass card */}
-        <div data-anim="card" className="rounded-apple border border-hairline bg-white shadow-apple-lg p-6">
-          <h2 className="mb-2 text-base font-display text-ink">登录工作台</h2>
-          <p className="mb-5 text-sm text-muted">
-            请使用管理员分配的账号登录。
-          </p>
+      <main className="flex flex-1 items-center justify-center px-6 py-12 sm:px-10">
+        <div className="w-full max-w-md">
+          <div className="mb-10 text-center lg:hidden">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#3d7b6b] text-white">
+              <Briefcase className="h-6 w-6" aria-hidden="true" />
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight">TalentFlow</h1>
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              label="账号"
-              name="account"
-              type="text"
-              value={account}
-              onChange={(e) => setAccount(e.target.value)}
-              placeholder="工号 / 账号"
-              required
-              autoComplete="username"
-            />
-            <Input
-              label="密码"
-              name="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              autoComplete="current-password"
-            />
+          <div className="mb-8">
+            <h2 className="text-2xl font-semibold">欢迎回来</h2>
+            <p className="mt-1 text-[#777b78]">使用公司账号登录智聘招聘管理系统</p>
+          </div>
 
-            {error && <ErrorState message={error} />}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {error && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-lg border border-[#efb49f] bg-[#fff3ed] px-4 py-3 text-sm text-[#9b4a2f]"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{error}</span>
+              </div>
+            )}
 
-            <Button type="submit" className="w-full" loading={loading}>
-              登录
-            </Button>
+            <label className="block" htmlFor="account">
+              <span className="mb-1.5 block text-sm font-medium text-[#555a57]">公司账号</span>
+              <span className="relative block">
+                <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a0a39f]" aria-hidden="true" />
+                <input
+                  id="account"
+                  name="account"
+                  type="text"
+                  value={account}
+                  onChange={(event) => setAccount(event.target.value)}
+                  placeholder="工号 / 账号"
+                  autoComplete="username"
+                  required
+                  className="w-full rounded-lg border border-[#deded9] bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[#5b907f] focus:ring-2 focus:ring-[#dcebe5]"
+                />
+              </span>
+            </label>
+
+            <label className="block" htmlFor="password">
+              <span className="mb-1.5 flex items-center justify-between text-sm font-medium text-[#555a57]">
+                密码
+                <span className="text-xs font-normal text-[#6c8f82]">忘记密码请联系 IT 支持</span>
+              </span>
+              <span className="relative block">
+                <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a0a39f]" aria-hidden="true" />
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="输入密码"
+                  autoComplete="current-password"
+                  required
+                  className="w-full rounded-lg border border-[#deded9] bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[#5b907f] focus:ring-2 focus:ring-[#dcebe5]"
+                />
+              </span>
+            </label>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#3d7b6b] py-3 text-sm font-medium text-white transition hover:bg-[#326b5d] focus:outline-none focus:ring-2 focus:ring-[#a9cfc1] focus:ring-offset-2 disabled:cursor-wait disabled:opacity-65"
+            >
+              {loading ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  登录中...
+                </>
+              ) : (
+                <>
+                  登录
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </>
+              )}
+            </button>
           </form>
-        </div>
 
-        <p data-anim="footer" className="mt-6 text-center text-sm text-muted">
-          账号开通、密码重置请联系系统管理员。
-        </p>
-      </div>
+          <p className="mt-8 text-center text-xs text-[#9a9d99]">
+            仅限公司内部人员使用 · 请使用管理员分配的账号
+          </p>
+        </div>
+      </main>
     </div>
   );
 }

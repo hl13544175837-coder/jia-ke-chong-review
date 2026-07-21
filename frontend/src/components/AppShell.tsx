@@ -1,51 +1,48 @@
-// Authenticated layout: 主数据系统式企业后台壳子 + compact account menu.
-// 保留现有路由权限，只统一展示层结构与视觉。
+// Readdy 最终应用外壳：只负责真实用户、真实权限、真实通知和正式路由。
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, ArrowLeft, KeyRound, Bell, ChevronDown } from 'lucide-react';
+import {
+  AlertCircle,
+  Bell,
+  Briefcase,
+  Check,
+  ChevronDown,
+  KeyRound,
+  LogOut,
+  Menu,
+  PanelLeft,
+  RefreshCw,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import { navItemsForRole, navLabelForRole } from '../lib/nav';
+import { api } from '../lib/api';
+import { navItemsForRole, navLabelForRole, type NavItem } from '../lib/nav';
 import { usePermissions } from '../lib/permissions';
 import { cn } from '../lib/cn';
-import { Badge } from './ui';
+import { formatDate } from '../lib/formatDate';
 import { AccountSettings } from './AccountSettings';
 import { AgentChatProvider } from '../lib/agentChat';
-import { featureTopLevelPaths } from '../app/featureRegistry';
-import { gsap, useGSAP, EASE, DUR, STAGGER } from '../lib/motion';
-import type { Role } from '../types';
-import type { NavItem } from '../lib/nav';
+import type { NotificationItem, Role } from '../types';
 
 const ROLE_LABELS: Record<Role, string> = {
   recruiter: '招聘专员',
-  manager: '经理',
-  admin: '管理员',
+  manager: '招聘主管',
+  admin: '系统管理员',
   interviewer: '面试官',
 };
 
 function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  const cleaned = name.trim();
+  return cleaned ? cleaned.slice(0, 1).toUpperCase() : '?';
 }
 
-function restoreSidebarNavItems(sidebar: HTMLElement | null) {
-  if (!sidebar) return;
-  const navItems = sidebar.querySelectorAll<HTMLElement>('[data-shell="nav-item"]');
-  if (navItems.length === 0) return;
-  gsap.killTweensOf(navItems);
-  gsap.set(navItems, {
-    clearProps: 'opacity,visibility,transform',
-  });
-}
-
-function isPathActive(pathname: string, path: string) {
-  if (path === '/') return pathname === '/';
+function isPathActive(pathname: string, path: string): boolean {
+  if (path === '/') return pathname === '/' || pathname === '/dashboard';
   return pathname === path || pathname.startsWith(`${path}/`);
 }
 
-function isNavItemActive(item: NavItem, pathname: string, defaultActive: boolean) {
+function isNavItemActive(item: NavItem, pathname: string, defaultActive: boolean): boolean {
   return defaultActive || (item.activePaths ?? []).some((path) => isPathActive(pathname, path));
 }
 
@@ -54,277 +51,297 @@ export function AppShell() {
   const { hasMenu } = usePermissions();
   const navigate = useNavigate();
   const location = useLocation();
-  // 先按角色过滤，再叠加网关菜单权限（menuCode 已配置且用户无该 code 时隐藏；
-  // 权限未就绪或未配置 menuCode 时 hasMenu 返回 true，不影响现有菜单）。
+  const accountRef = useRef<HTMLDivElement>(null);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+
   const items = (role ? navItemsForRole(role) : []).filter((item) => hasMenu(item.menuCode));
+  const activeItem = items.find((item) => isPathActive(location.pathname, item.to));
+  const activeLabel = activeItem ? navLabelForRole(activeItem, role) : '工作台';
+  const unreadCount = notifications.filter((item) => !item.is_read).length;
 
-  const sidebarScope = useRef<HTMLElement>(null);
-  const mainScope = useRef<HTMLDivElement>(null);
-  const accountMenuRef = useRef<HTMLDivElement>(null);
-  const lastPathRef = useRef<string | null>(null);
-
-  const [showAccount, setShowAccount] = useState(false);
-  const [showAccountMenu, setShowAccountMenu] = useState(false);
-
-  const TOP_LEVEL_PATHS = new Set([
-    '/',
-    '/agent',
-    ...featureTopLevelPaths,
-    '/notifications',
-    '/pipeline',
-    '/interviews',
-    '/bi',
-    '/admin/settings',
-  ]);
-  const isTopLevel = TOP_LEVEL_PATHS.has(location.pathname);
-  const activeNavItem = items.find((item) =>
-    isNavItemActive(item, location.pathname, isPathActive(location.pathname, item.to)),
-  );
-  const activeTabLabel = activeNavItem ? navLabelForRole(activeNavItem, role) : '工作台';
+  const loadNotifications = useCallback(async () => {
+    setNotificationsLoading(true);
+    setNotificationsError(null);
+    try {
+      const result = await api.getNotifications(1, 8);
+      setNotifications(result.notifications);
+    } catch (error) {
+      setNotificationsError(error instanceof Error ? error.message : '通知加载失败');
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const sidebar = sidebarScope.current;
-    if (!sidebar) return;
+    void loadNotifications();
+  }, [loadNotifications]);
 
-    if (lastPathRef.current === null) {
-      lastPathRef.current = location.pathname;
-      return;
-    }
-    if (lastPathRef.current === location.pathname) return;
-    lastPathRef.current = location.pathname;
-
-    restoreSidebarNavItems(sidebar);
+  useEffect(() => {
+    setMobileMenuOpen(false);
+    setAccountOpen(false);
+    setNotificationOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
-    setShowAccountMenu(false);
-  }, [location.pathname]);
+    if (!accountOpen && !notificationOpen) return;
 
-  useEffect(() => {
-    if (!showAccountMenu) return;
-
-    function handlePointerDown(event: MouseEvent) {
-      if (!accountMenuRef.current?.contains(event.target as Node)) {
-        setShowAccountMenu(false);
-      }
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (!accountRef.current?.contains(target)) setAccountOpen(false);
+      if (!notificationRef.current?.contains(target)) setNotificationOpen(false);
     }
 
-    window.addEventListener('mousedown', handlePointerDown);
-    return () => window.removeEventListener('mousedown', handlePointerDown);
-  }, [showAccountMenu]);
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [accountOpen, notificationOpen]);
 
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add(
-        {
-          reduce: '(prefers-reduced-motion: reduce)',
-          motion: '(prefers-reduced-motion: no-preference)',
-        },
-        (ctx) => {
-          const { reduce } = ctx.conditions as { reduce: boolean };
-          if (reduce) {
-            gsap.from('[data-shell="logo"]', {
-              opacity: 0,
-              duration: DUR.fast,
-              clearProps: 'opacity',
-            });
-            return;
-          }
-          const tl = gsap.timeline();
-          tl.from('[data-shell="logo"]', {
-            autoAlpha: 0,
-            scale: 0.6,
-            duration: DUR.base,
-            ease: EASE.apple,
-          })
-            .from(
-              '[data-shell="nav-item"]',
-              {
-                x: -14,
-                duration: DUR.base,
-                stagger: STAGGER.base,
-                ease: EASE.apple,
-                clearProps: 'transform',
-                onComplete: () => restoreSidebarNavItems(sidebarScope.current),
-              },
-              '-=0.2',
-            );
-        },
-      );
-    },
-    { scope: sidebarScope },
-  );
+  async function markNotificationRead(notification: NotificationItem) {
+    if (!notification.is_read) {
+      await api.markNotificationsRead([notification.id]);
+      setNotifications((current) => current.map((item) => (
+        item.id === notification.id ? { ...item, is_read: true } : item
+      )));
+    }
+    setNotificationOpen(false);
+    if (notification.link) navigate(notification.link);
+  }
 
-  useGSAP(
-    () => {
-      if (typeof window !== 'undefined' &&
-          window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        return;
-      }
-      gsap.from(mainScope.current, {
-        autoAlpha: 0,
-        y: 10,
-        duration: DUR.base,
-        ease: EASE.apple,
-      });
-    },
-    { dependencies: [location.pathname], scope: mainScope },
-  );
+  async function markAllNotificationsRead() {
+    await api.markNotificationsRead();
+    setNotifications((current) => current.map((item) => ({ ...item, is_read: true })));
+  }
 
   function handleLogout() {
-    setShowAccountMenu(false);
     logout();
     navigate('/login', { replace: true });
   }
 
   return (
-    <div className="enterprise-shell">
-      <aside ref={sidebarScope} className="enterprise-sidebar">
-        <div className="enterprise-brand">
-          <div data-shell="logo" className="enterprise-brand-mark" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-          </div>
-          <span className="enterprise-brand-name">
-            智聘
+    <div data-ui="readdy-shell" className="flex min-h-screen bg-[#fbfaf7] text-[#292b2a]">
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          aria-label="关闭导航"
+          className="fixed inset-0 z-40 bg-black/35 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-[#ebeae5] bg-white transition-all duration-300 motion-reduce:transition-none lg:static',
+          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+          sidebarCollapsed ? 'w-20' : 'w-56',
+        )}
+      >
+        <div className={cn('flex h-16 items-center gap-3 border-b border-[#ebeae5] px-5', sidebarCollapsed && 'justify-center px-2')}>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#3d7b6b] text-white">
+            <Briefcase className="h-4 w-4" aria-hidden="true" />
           </span>
+          {!sidebarCollapsed && <span className="text-base font-bold tracking-wide">智聘</span>}
         </div>
-        <nav className="enterprise-nav" aria-label="主导航">
+
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-3" aria-label="主导航">
           {items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.to === '/'}
-              data-shell="nav-item"
-              className={({ isActive }) => {
-                const active = isNavItemActive(item, location.pathname, isActive);
-                return cn(
-                  'enterprise-nav-item',
-                  active && 'enterprise-nav-item-active',
-                );
-              }}
+              title={sidebarCollapsed ? navLabelForRole(item, role) : undefined}
+              className={({ isActive }) => cn(
+                'flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#b8d6cb]',
+                sidebarCollapsed && 'justify-center px-0',
+                isNavItemActive(item, location.pathname, isActive)
+                  ? 'bg-[#edf6f2] font-medium text-[#24594d]'
+                  : 'text-[#626763] hover:bg-[#f7f6f2] hover:text-[#292b2a]',
+              )}
             >
-              {() => {
-                const label = navLabelForRole(item, role);
-                return (
-                  <>
-                    <item.icon
-                      className="enterprise-nav-icon h-[18px] w-[18px]"
-                      strokeWidth={2}
-                    />
-                    <span className="enterprise-nav-label">{label}</span>
-                  </>
-                );
-              }}
+              <item.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} aria-hidden="true" />
+              {!sidebarCollapsed && <span>{navLabelForRole(item, role)}</span>}
             </NavLink>
           ))}
         </nav>
-        <div className="enterprise-sidebar-footer">
-          主数据系统式招聘工作台<br />
-          当前角色：{role ? ROLE_LABELS[role] : '未识别'}
+
+        <div className="border-t border-[#ebeae5] p-2.5">
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed((current) => !current)}
+            className={cn(
+              'hidden w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#777b78] transition-colors hover:bg-[#f7f6f2] hover:text-[#292b2a] lg:flex',
+              sidebarCollapsed && 'justify-center px-0',
+            )}
+            aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+          >
+            <PanelLeft className="h-[18px] w-[18px]" aria-hidden="true" />
+            {!sidebarCollapsed && <span>收起导航</span>}
+          </button>
         </div>
       </aside>
 
-      <div className="enterprise-main-column">
-        <header className="enterprise-topbar">
-          <div className="enterprise-topbar-context">
-            {!isTopLevel && (
-              <button
-                onClick={() => navigate(-1)}
-                className="flex items-center gap-1.5 rounded px-2 py-1 text-sm font-medium text-muted transition-colors hover:bg-surface-soft hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                aria-label="返回上一页"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                返回
-              </button>
-            )}
-            {isTopLevel && <span>招聘业务展示环境 · UI 统一版</span>}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[#ebeae5] bg-white/95 px-4 backdrop-blur sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              className="rounded-lg p-2 text-[#626763] hover:bg-[#f7f6f2] lg:hidden"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="打开导航"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{activeLabel}</p>
+              <p className="hidden truncate text-xs text-[#929590] sm:block">
+                {role ? ROLE_LABELS[role] : '账号权限加载中'}
+              </p>
+            </div>
           </div>
 
-          <div className="enterprise-topbar-actions">
-            <span className="enterprise-topbar-chip">
-              <span className="enterprise-flag-cn" aria-hidden="true">
-                🇨🇳
-              </span>
-              中国
-            </span>
-            <span className="enterprise-topbar-chip">中文 ▾</span>
-            <NavLink
-              to="/notifications"
-              title="通知中心"
-              aria-label="通知中心"
-              className={({ isActive }) =>
-                cn(
-                  'enterprise-topbar-chip enterprise-topbar-chip-hide-mobile rounded px-1.5 py-1 transition-colors hover:bg-surface-soft hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
-                  isActive && 'text-ink',
-                )
-              }
-            >
-              <Bell className="h-4 w-4" aria-hidden="true" />
-              消息
-            </NavLink>
-
-            <div ref={accountMenuRef} data-shell="account-menu" className="relative">
+          <div className="flex items-center gap-2">
+            <div ref={notificationRef} className="relative">
               <button
                 type="button"
-                onClick={() => setShowAccountMenu((open) => !open)}
-                className="enterprise-topbar-chip rounded px-1.5 py-1 transition-colors hover:bg-surface-soft hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                aria-haspopup="menu"
-                aria-expanded={showAccountMenu}
-                aria-label="账户菜单"
+                onClick={() => {
+                  setNotificationOpen((current) => !current);
+                  setAccountOpen(false);
+                }}
+                className="relative rounded-lg p-2 text-[#626763] transition-colors hover:bg-[#f7f6f2] hover:text-[#292b2a]"
+                aria-label={`通知${unreadCount ? `，${unreadCount} 条未读` : ''}`}
+                aria-expanded={notificationOpen}
               >
-                <span className="enterprise-avatar" aria-hidden="true">
-                  {initials(name ?? '')}
-                </span>
-                <span className="hidden max-w-36 min-w-0 items-center gap-2 sm:flex">
-                  <span className="truncate text-ink">{name}</span>
-                </span>
-                <ChevronDown
-                  className={cn('h-4 w-4 shrink-0 text-muted-soft transition-transform', showAccountMenu && 'rotate-180')}
-                  aria-hidden="true"
-                />
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d87751] px-1 text-[10px] font-semibold text-white">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </button>
 
-              {showAccountMenu && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-10 z-50 w-56 rounded-lg border border-hairline bg-canvas p-2 shadow-card-lg"
-                >
-                  <div className="border-b border-glass-border px-2 pb-2 pt-1">
-                    <div className="truncate text-sm font-medium text-ink">{name}</div>
-                    {role && (
-                      <div className="mt-1">
-                        <Badge tone="success">{ROLE_LABELS[role]}</Badge>
-                      </div>
+              {notificationOpen && (
+                <div className="absolute right-0 top-11 z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[#e4e3dd] bg-white shadow-xl">
+                  <div className="flex items-center justify-between border-b border-[#eeede8] px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold">通知</p>
+                      <p className="mt-0.5 text-xs text-[#8b8f8b]">{unreadCount} 条未读</p>
+                    </div>
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => void markAllNotificationsRead()}
+                        className="flex items-center gap-1 text-xs font-medium text-[#3d7b6b] hover:text-[#285e51]"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        全部已读
+                      </button>
                     )}
                   </div>
+
+                  <div className="max-h-96 overflow-y-auto">
+                    {notificationsLoading && (
+                      <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-[#8b8f8b]">
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        正在加载通知...
+                      </div>
+                    )}
+                    {!notificationsLoading && notificationsError && (
+                      <div className="px-4 py-8 text-center">
+                        <AlertCircle className="mx-auto h-5 w-5 text-[#c96c4a]" />
+                        <p className="mt-2 text-sm text-[#7b5141]">{notificationsError}</p>
+                        <button
+                          type="button"
+                          onClick={() => void loadNotifications()}
+                          className="mt-3 text-xs font-medium text-[#3d7b6b]"
+                        >
+                          重新加载
+                        </button>
+                      </div>
+                    )}
+                    {!notificationsLoading && !notificationsError && notifications.length === 0 && (
+                      <div className="px-4 py-10 text-center text-sm text-[#8b8f8b]">暂无通知</div>
+                    )}
+                    {!notificationsLoading && !notificationsError && notifications.map((notification) => (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        onClick={() => void markNotificationRead(notification)}
+                        className={cn(
+                          'flex w-full gap-3 border-b border-[#f0efe9] px-4 py-3 text-left transition-colors last:border-0 hover:bg-[#faf9f6]',
+                          !notification.is_read && 'bg-[#f5faf7]',
+                        )}
+                      >
+                        <span className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', notification.is_read ? 'bg-[#d8d8d3]' : 'bg-[#3d7b6b]')} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{notification.title}</span>
+                          {notification.body && <span className="mt-1 line-clamp-2 block text-xs leading-5 text-[#777b78]">{notification.body}</span>}
+                          <span className="mt-1.5 block text-[11px] text-[#a0a39f]">
+                            {notification.created_at ? formatDate(notification.created_at) : '刚刚'}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <NavLink
+                    to="/notifications"
+                    className="block border-t border-[#eeede8] px-4 py-3 text-center text-xs font-medium text-[#3d7b6b] hover:bg-[#faf9f6]"
+                  >
+                    查看全部通知
+                  </NavLink>
+                </div>
+              )}
+            </div>
+
+            <div ref={accountRef} className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setAccountOpen((current) => !current);
+                  setNotificationOpen(false);
+                }}
+                className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-[#f7f6f2]"
+                aria-haspopup="menu"
+                aria-expanded={accountOpen}
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e7f2ed] text-sm font-semibold text-[#2d6658]">
+                  {initials(name ?? '')}
+                </span>
+                <span className="hidden text-left sm:block">
+                  <span className="block max-w-32 truncate text-sm font-medium">{name}</span>
+                  <span className="block text-[11px] text-[#929590]">{role ? ROLE_LABELS[role] : ''}</span>
+                </span>
+                <ChevronDown className={cn('hidden h-4 w-4 text-[#929590] transition-transform sm:block', accountOpen && 'rotate-180')} />
+              </button>
+
+              {accountOpen && (
+                <div role="menu" className="absolute right-0 top-11 z-50 w-52 rounded-xl border border-[#e4e3dd] bg-white p-2 shadow-xl">
                   <button
                     type="button"
                     role="menuitem"
                     onClick={() => {
-                      setShowAccountMenu(false);
-                      setShowAccount(true);
+                      setAccountOpen(false);
+                      setShowAccountSettings(true);
                     }}
-                    className="mt-2 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm font-medium text-muted transition-colors hover:bg-surface-soft hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-[#626763] hover:bg-[#f7f6f2] hover:text-[#292b2a]"
                   >
-                    <KeyRound className="h-4 w-4" aria-hidden="true" />
+                    <KeyRound className="h-4 w-4" />
                     修改密码
                   </button>
                   <button
                     type="button"
                     role="menuitem"
                     onClick={handleLogout}
-                    className="mt-1 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm font-medium text-muted transition-colors hover:bg-surface-soft hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-[#b6533b] hover:bg-[#fff4ef]"
                   >
-                    <LogOut className="h-4 w-4" aria-hidden="true" />
+                    <LogOut className="h-4 w-4" />
                     退出登录
                   </button>
                 </div>
@@ -333,21 +350,25 @@ export function AppShell() {
           </div>
         </header>
 
-        <div className="enterprise-tabs">
-          <div className="enterprise-tab">Home</div>
-          <div className="enterprise-tab enterprise-tab-active">{activeTabLabel}</div>
-        </div>
+        {showAccountSettings && <AccountSettings onClose={() => setShowAccountSettings(false)} />}
 
-        {showAccount && <AccountSettings onClose={() => setShowAccount(false)} />}
-
-        <main className="enterprise-content">
-          <div ref={mainScope} className="w-full">
-            <AgentChatProvider>
-              <Outlet />
-            </AgentChatProvider>
-          </div>
+        <main className="min-w-0 flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
+          <AgentChatProvider>
+            <Outlet />
+          </AgentChatProvider>
         </main>
       </div>
+
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed left-[13.5rem] top-3 z-[60] rounded-lg bg-white p-2 text-[#626763] shadow lg:hidden"
+          aria-label="关闭菜单"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      )}
     </div>
   );
 }

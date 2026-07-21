@@ -88,11 +88,6 @@ assert.match(
   /to="\/notifications"/,
   'Top bar notification button should link to the notification center',
 );
-assert.match(
-  shell,
-  /'\/notifications'/,
-  'Notification center should be treated as a top-level shell path',
-);
 assert.doesNotMatch(
   shell,
   /data-shell="identity"/,
@@ -100,7 +95,7 @@ assert.doesNotMatch(
 );
 assert.match(
   shell,
-  /data-shell="account-menu"[\s\S]*aria-label="账户菜单"[\s\S]*修改密码[\s\S]*退出登录/,
+  /aria-haspopup="menu"[\s\S]*修改密码[\s\S]*退出登录/,
   'Password change and logout should live in one compact account menu instead of separate persistent top-bar buttons',
 );
 

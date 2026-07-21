@@ -6,19 +6,6 @@ import assert from 'node:assert/strict';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(join(__dirname, '../src/components/AppShell.tsx'), 'utf8');
 
-const navTweenStart = source.indexOf(".from(\n              '[data-shell=\"nav-item\"]'");
-const navTweenEnd = source.indexOf("'-=0.2'", navTweenStart);
-const navTweenBlock =
-  navTweenStart >= 0 && navTweenEnd > navTweenStart
-    ? source.slice(navTweenStart, navTweenEnd)
-    : '';
-
-assert.ok(navTweenBlock, 'AppShell should animate sidebar nav items explicitly');
-assert.ok(
-  !navTweenBlock.includes('autoAlpha'),
-  'Sidebar nav animation must not use autoAlpha because it can leave links visibility:hidden',
-);
-assert.ok(
-  source.includes("clearProps: 'opacity,visibility,transform'"),
-  'Route changes should clear sidebar nav opacity, visibility, and transform leftovers',
-);
+assert.match(source, /transition-all duration-300/, 'Readdy sidebar should animate open and collapse states');
+assert.match(source, /motion-reduce:transition-none/, 'Shell transitions should respect reduced-motion preferences');
+assert.doesNotMatch(source, /gsap\.from\(mainScope/, 'Route changes should not hide the whole content area with imperative animation');

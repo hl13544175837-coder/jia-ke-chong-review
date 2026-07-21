@@ -16,6 +16,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 const NAME_KEY = 'hireinsight_name';
 const ROLE_KEY = 'hireinsight_role';
+const USER_ID_KEY = 'hireinsight_user_id';
 
 interface Session {
   token: string;
@@ -61,10 +62,16 @@ function loadSession(): Session | null {
     clearToken();
     localStorage.removeItem(NAME_KEY);
     localStorage.removeItem(ROLE_KEY);
+    localStorage.removeItem(USER_ID_KEY);
     return null;
   }
   const payload = decodeJwt(token);
-  const userId = payload && typeof payload.user_id === 'number' ? payload.user_id : null;
+  const cachedUserId = Number(localStorage.getItem(USER_ID_KEY));
+  const userId = Number.isInteger(cachedUserId) && cachedUserId > 0
+    ? cachedUserId
+    : payload && typeof payload.user_id === 'number'
+      ? payload.user_id
+      : null;
   const role = (localStorage.getItem(ROLE_KEY) as Role | null) ?? null;
   const name = localStorage.getItem(NAME_KEY);
   if (!role || !name) {
@@ -86,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearToken();
       localStorage.removeItem(NAME_KEY);
       localStorage.removeItem(ROLE_KEY);
+      localStorage.removeItem(USER_ID_KEY);
     }
   }, [session]);
 
@@ -100,9 +108,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setToken(res.token);
         localStorage.setItem(NAME_KEY, res.name);
         localStorage.setItem(ROLE_KEY, res.role);
+        localStorage.setItem(USER_ID_KEY, String(res.user_id));
         const payload = decodeJwt(res.token);
         const userId =
-          payload && typeof payload.user_id === 'number' ? payload.user_id : null;
+          res.user_id
+          ?? (payload && typeof payload.user_id === 'number' ? payload.user_id : null);
         setSession({ token: res.token, role: res.role, name: res.name, userId });
       },
       logout: () => {
@@ -110,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearEmpCode();
         localStorage.removeItem(NAME_KEY);
         localStorage.removeItem(ROLE_KEY);
+        localStorage.removeItem(USER_ID_KEY);
         setSession(null);
       },
     }),

@@ -51,6 +51,7 @@
 | 11 | [07 上线部署前关键清单](./07_上线部署前关键清单_给AI执行.md) | 部署前 AI 可执行硬门槛（含 schema/数据迁移边界） | 服务器部署执行前逐项核对 |
 | 12 | [ADR-0002 demand-scoped recruiting flow](./adr/0002-demand-scoped-recruiting-flow.md) | Job/Demand 分层、demand-scoped 事实、兼容与回滚决策 | 修改需求、流程、面试、Offer、BI 或迁移时必读 |
 | 13 | [adr/0001-modular-monolith-by-sidebar-feature](./adr/0001-modular-monolith-by-sidebar-feature.md) | 模块化单体架构决策，不拆微服务/微前端 | 涉及架构边界、模块拆分时读 |
+| 14 | [11 Readdy 新前端迁移与验收矩阵](./11_Readdy新前端迁移与验收矩阵.md) | Readdy 页面与旧后端、公司鉴权、Apollo、角色权限和真实数据的接线真源 | 新前端迁移、接口补齐和分阶段验收时必读 |
 
 ---
 

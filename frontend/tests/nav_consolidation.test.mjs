@@ -96,12 +96,6 @@ assert.match(
 
 assert.match(
   shell,
-  /'\/admin\/settings'/,
-  'System settings should be treated as a top-level shell path',
-);
-
-assert.match(
-  shell,
   /isNavItemActive/,
   'App shell should support explicit active path groups for consolidated nav entries',
 );

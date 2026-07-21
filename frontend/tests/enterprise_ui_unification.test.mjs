@@ -47,10 +47,10 @@ const styles = readSource('index.css');
 });
 
 const shell = readSource('components/AppShell.tsx');
-assert.match(shell, /enterprise-shell/, 'AppShell should use the enterprise admin shell');
-assert.match(shell, /enterprise-sidebar/, 'AppShell should render the enterprise sidebar');
-assert.match(shell, /enterprise-tabs/, 'AppShell should expose the top tab strip from the reference admin UI');
-assert.match(shell, /主数据系统式/, 'AppShell should document the reference admin style in user-facing context');
+assert.match(shell, /data-ui="readdy-shell"/, 'AppShell should use the approved Readdy shell');
+assert.match(shell, /智聘/, 'AppShell should retain the product brand');
+assert.match(shell, /navItemsForRole/, 'AppShell should retain role-aware navigation');
+assert.match(shell, /usePermissions/, 'AppShell should retain company menu permissions');
 
 const candidates = readSource('features/candidates/pages/CandidatesPage.tsx');
 assert.match(candidates, /EnterprisePage/, 'Candidate library should use the shared enterprise page wrapper');

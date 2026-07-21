@@ -3,21 +3,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const appShell = readFileSync(resolve('src/components/AppShell.tsx'), 'utf8');
-const css = readFileSync(resolve('src/index.css'), 'utf8');
 
-const flagChipPattern =
-  /<span className="enterprise-flag-cn" aria-hidden="true">\s*🇨🇳\s*<\/span>\s*中国/;
-
-assert.match(
+assert.doesNotMatch(
   appShell,
-  flagChipPattern,
-  'topbar China locale chip should show the China flag emoji before 中国',
+  /enterprise-flag-cn|中文\s*▾/,
+  'Readdy top bar should not show a fake locale selector that has no real language-switch behavior',
 );
-
-const flagRuleMatch = css.match(/\.enterprise-flag-cn\s*\{[^}]+\}/);
-assert.ok(flagRuleMatch, 'enterprise-flag-cn CSS rule should exist');
-
-const flagRule = flagRuleMatch[0];
-assert.match(flagRule, /display:\s*inline-flex;/, 'flag should be centered as inline content');
-assert.doesNotMatch(flagRule, /border-top:\s*6px solid #e11d2f;/, 'flag should not be drawn as a red-white bicolor');
-assert.doesNotMatch(flagRule, /border-bottom:\s*6px solid #fff;/, 'flag should not be drawn as a red-white bicolor');
+assert.match(appShell, /通知/, 'Readdy top bar should reserve its utility area for working product actions');
+assert.match(appShell, /账户|修改密码/, 'Readdy top bar should expose the real account menu');
