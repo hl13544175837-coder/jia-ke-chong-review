@@ -111,7 +111,7 @@ export function DemandsPage() {
               icon={ClipboardList}
               title="暂无可复用职位 / JD"
               description="先补一份职位与 JD 模板，再回来创建具体部门、城市和 HC 的招聘需求。"
-              action={<Link to="/jobs"><Button size="sm" variant="secondary">新建岗位（职位 / JD）</Button></Link>}
+              action={<Link to="/job-templates"><Button size="sm" variant="secondary">新建岗位（职位 / JD）</Button></Link>}
             />
           ) : (
             <DemandForm

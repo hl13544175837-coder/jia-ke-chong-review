@@ -45,7 +45,7 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 |---|---|---|---|
 | `/login` | 未登录 | 网关 OAuth + `/auth/me` | 保留 Readdy 视觉，换成真实登录、错误态和会话恢复 |
 | `/dashboard` 及统计抽屉 | 全部角色 | `/candidates`、`/demands`、`/interviews`、`/notifications`；manager/admin 可用 `/bi/overview` | 分区独立加载；失败不能显示伪造的 0 |
-| `/jobs` 招聘管理 | recruiter/manager/admin | `/demands`、`/jobs`、`/jobs/clarify`、匹配接口 | Readdy 的 requisition 对应 Demand；岗位画像作为 Demand 的二级能力 |
+| `/jobs` 招聘管理 | recruiter/manager/admin | `/demands`、`/jobs`、`/jobs/clarify`、匹配接口 | **路由语义已对齐**：Readdy `/jobs` 展示真实 Demand；岗位/JD 模板保留在二级 `/job-templates`，不作为第二套招聘主入口 |
 | `/candidates` 简历库 | recruiter/manager/admin | `/candidates`、`/resume/*`、匹配预览、批量入流程 | 搜索/筛选/详情/上传/负责人/加入 Demand 全部真实化 |
 | `/kanban` 进度看板 | recruiter/manager/admin | `/pipeline/demands/*` | 只能按明确 `demand_id` 看板；推进、修正和转 Demand 走后端事务 |
 | `/interviews` 面试管理 | recruiter/manager/admin | `/interviews`、`/interview/assignments`、取消、反馈、AI 面试 | 排期、取消、详情和反馈刷新后仍存在；任何反馈不自动推进主流程 |
@@ -129,4 +129,5 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - 当前 Alembic head 为 `20260721_06`；05 保留已有 `offer_records` 数据并新增生命周期/历史，06 新增组织级流程口径表。
 - KPI 标准已从浏览器假持久化迁入真实后端；主管/管理员可维护，跨组织隔离，版本冲突不会静默覆盖。
 - 人才地图已从隐藏试验页变为正式 Readdy 路由；地图、目标公司、潜在人选、筛选、优先级和接触状态都由后端持久化，不使用 mock 或浏览器业务存储。
+- Readdy `/jobs` 已映射为真实用人需求（Demand）；旧岗位/JD 模板迁到 `/job-templates`，仍可从创建需求和岗位匹配流程到达。
 - 仍未完成：全部 Readdy 业务页视觉替换、浏览器四角色全链路和公司 SIT 现场证据。因此本文整体状态仍为“实施中”。

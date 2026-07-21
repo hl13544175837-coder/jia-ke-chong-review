@@ -13,6 +13,11 @@ export const demandsRoutes: FeatureRoute[] = [
     roles: DEMAND_ROLES,
   },
   {
+    path: '/jobs',
+    element: <DemandsPage />,
+    roles: DEMAND_ROLES,
+  },
+  {
     path: '/demands/:id',
     element: <DemandDetailPage />,
     roles: DEMAND_ROLES,

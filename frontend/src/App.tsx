@@ -113,7 +113,7 @@ function AppRoutes() {
           }
         />
         <Route
-          path="/jobs"
+          path="/job-templates"
           element={
             <RequireRole
               allow={['recruiter', 'manager', 'admin']}

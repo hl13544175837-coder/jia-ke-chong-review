@@ -3,12 +3,14 @@ import { ClipboardList, MapPinned } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
 const TABS = [
-  { to: '/demands', label: '用人需求', icon: ClipboardList },
+  { to: '/demands', label: '用人需求', icon: ClipboardList, activePaths: ['/jobs'] },
   { to: '/talent-map', label: '人才地图', icon: MapPinned },
 ] as const;
 
-function isActivePath(pathname: string, to: string) {
-  return pathname === to || pathname.startsWith(`${to}/`);
+function isActivePath(pathname: string, to: string, activePaths: readonly string[] = []) {
+  return [to, ...activePaths].some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
 }
 
 export function RecruitmentManagementTabs() {
@@ -20,7 +22,7 @@ export function RecruitmentManagementTabs() {
       className="flex flex-wrap gap-2 border-b border-hairline bg-white px-3 py-2"
     >
       {TABS.map((tab) => {
-        const active = isActivePath(pathname, tab.to);
+        const active = isActivePath(pathname, tab.to, 'activePaths' in tab ? tab.activePaths : []);
         return (
           <Link
             key={tab.to}

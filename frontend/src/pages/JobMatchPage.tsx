@@ -457,7 +457,7 @@ export function JobMatchPage() {
     return (
       <div>
         <Link
-          to="/jobs"
+          to="/job-templates"
           className="mb-4 inline-flex items-center gap-1 text-sm text-muted hover:text-body"
         >
           ← 返回招聘岗位
@@ -474,7 +474,7 @@ export function JobMatchPage() {
       {/* Breadcrumb + header */}
       <div>
         <nav className="mb-2 flex items-center gap-1.5 text-sm text-muted">
-          <Link to="/jobs" className="hover:text-body hover:underline">
+          <Link to="/job-templates" className="hover:text-body hover:underline">
             招聘岗位
           </Link>
           <span className="text-muted-soft">›</span>

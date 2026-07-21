@@ -8,7 +8,7 @@ export const demandsNavItems: FeatureNavItem[] = [
     label: '招聘管理',
     icon: ClipboardList,
     roles: DEMAND_ROLES,
-    activePaths: ['/jobs'],
+    activePaths: ['/jobs', '/job-templates'],
     menuCode: 'demands',
   },
   {

@@ -75,8 +75,8 @@ assert.match(
 );
 assert.match(
   app,
-  /path="\/jobs"/,
-  'Job portrait maintenance should remain available to contextual demand flows',
+  /path="\/job-templates"/,
+  'Job portrait maintenance should remain available as a contextual secondary route',
 );
 
 assert.match(
