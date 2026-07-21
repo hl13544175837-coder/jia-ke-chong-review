@@ -30,6 +30,7 @@ const InterviewListPage = lazy(() => import('./pages/InterviewListPage').then((m
 const InterviewsPage = lazy(() => import('./pages/InterviewsPage').then((module) => ({ default: module.InterviewsPage })));
 const OffersPage = lazy(() => import('./pages/OffersPage').then((module) => ({ default: module.OffersPage })));
 const KpiStandardsPage = lazy(() => import('./pages/KpiStandardsPage').then((module) => ({ default: module.KpiStandardsPage })));
+const InterviewerScopePage = lazy(() => import('./pages/InterviewerScopePage').then((module) => ({ default: module.InterviewerScopePage })));
 const InterviewReportPage = lazy(() => import('./pages/InterviewReportPage').then((module) => ({ default: module.InterviewReportPage })));
 const BiPage = lazy(() => import('./pages/BiPage').then((module) => ({ default: module.BiPage })));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage').then((module) => ({ default: module.UsersPage })));
@@ -73,6 +74,102 @@ function AppRoutes() {
       <Route element={<RequireAuth />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route
+          path="/dashboard/interviews"
+          element={
+            <RequireRole
+              allow={['recruiter', 'interviewer', 'manager', 'admin']}
+              element={<InterviewListPage />}
+            />
+          }
+        />
+        <Route
+          path="/dashboard/offers"
+          element={
+            <RequireRole
+              allow={['recruiter', 'manager', 'admin']}
+              element={<OffersPage />}
+            />
+          }
+        />
+        <Route
+          path="/dashboard/hired"
+          element={
+            <RequireRole
+              allow={['recruiter', 'manager', 'admin']}
+              element={<Navigate to="/pipeline?stage=onboarded" replace />}
+            />
+          }
+        />
+        <Route
+          path="/dashboard/cycle"
+          element={
+            <RequireRole
+              allow={['recruiter', 'manager', 'admin']}
+              element={<BiPage />}
+            />
+          }
+        />
+        <Route
+          path="/interviewer/dashboard"
+          element={
+            <RequireRole allow={['interviewer']} element={<DashboardPage />} />
+          }
+        />
+        <Route
+          path="/interviewer/interviews"
+          element={
+            <RequireRole allow={['interviewer']} element={<InterviewListPage />} />
+          }
+        />
+        <Route
+          path="/interviewer/screening"
+          element={
+            <RequireRole allow={['interviewer']} element={<InterviewListPage />} />
+          }
+        />
+        <Route
+          path="/interviewer/candidates"
+          element={
+            <RequireRole
+              allow={['interviewer']}
+              element={<InterviewerScopePage view="candidates" />}
+            />
+          }
+        />
+        <Route
+          path="/interviewer/jobs"
+          element={
+            <RequireRole
+              allow={['interviewer']}
+              element={<InterviewerScopePage view="jobs" />}
+            />
+          }
+        />
+        <Route
+          path="/director/cockpit"
+          element={
+            <RequireRole allow={['manager', 'admin']} element={<DashboardPage />} />
+          }
+        />
+        <Route
+          path="/director/progress"
+          element={
+            <RequireRole allow={['manager', 'admin']} element={<BiPage />} />
+          }
+        />
+        <Route
+          path="/director/insights"
+          element={
+            <RequireRole allow={['manager', 'admin']} element={<BiPage />} />
+          }
+        />
+        <Route
+          path="/director/approvals"
+          element={
+            <RequireRole allow={['manager', 'admin']} element={<OffersPage />} />
+          }
+        />
         <Route
           path="/agent"
           element={

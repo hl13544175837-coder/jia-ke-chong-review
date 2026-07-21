@@ -54,8 +54,8 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 | `/analytics` | manager/admin | `/bi/overview`、`/bi/demand/*` | 展示进度、瓶颈和责任协同；删除个人排名、绩效和奖金式结论 |
 | `/ai-assistant` | recruiter/manager/admin | `/agent/tools`、会话、SSE chat | 复用真实会话；工具集不得包含主流程写操作 |
 | `/settings` | admin；个人设置全角色 | `/admin/users`、`/auth/change-password`、审计和系统接口 | Readdy 的静态开关改成真实配置或明确只读；角色权限由后端控制 |
-| `/interviewer/*` | interviewer | 面试安排、反馈、候选人 journey | 只展示当前面试官被分配的事实；移除“切换身份”和全量库入口 |
-| `/director/*` | manager | BI、Demand、Offer/反馈事实 | 作为 manager 的管理视图；审批能力必须有后端事实和审计后才能可写 |
+| `/interviewer/*` | interviewer | `/interview/assignments`、面试反馈、已分配候选人详情 | **代码候选已接通**：工作台、待筛选/反馈、我的面试、已分配候选人和参与岗位都由真实 assignment 裁剪；无全量库入口 |
+| `/director/*` | manager/admin | BI、Demand、Offer 审批/反馈事实 | **路由已接通**：驾驶舱复用真实工作台，进展/洞察复用 Demand BI，审批复用 Offer 后端状态机与审计 |
 | `/kpi-standards` | manager/admin | `/kpi-standards`、`/kpi-standards/reset` | **代码候选已接通**：组织级版本化持久化、校验、并发冲突、审计和恢复默认；不使用 localStorage，不生成个人排名 |
 
 ## 5. Readdy 当前假数据清理范围
@@ -130,4 +130,5 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - KPI 标准已从浏览器假持久化迁入真实后端；主管/管理员可维护，跨组织隔离，版本冲突不会静默覆盖。
 - 人才地图已从隐藏试验页变为正式 Readdy 路由；地图、目标公司、潜在人选、筛选、优先级和接触状态都由后端持久化，不使用 mock 或浏览器业务存储。
 - Readdy `/jobs` 已映射为真实用人需求（Demand）；旧岗位/JD 模板迁到 `/job-templates`，仍可从创建需求和岗位匹配流程到达。
+- Dashboard 的面试、Offer、已入职和招聘周期路由已映射到真实面试、Offer、Pipeline 和 Demand BI；面试官与总监的 Readdy 路由已按后端角色守卫接入。
 - 仍未完成：全部 Readdy 业务页视觉替换、浏览器四角色全链路和公司 SIT 现场证据。因此本文整体状态仍为“实施中”。

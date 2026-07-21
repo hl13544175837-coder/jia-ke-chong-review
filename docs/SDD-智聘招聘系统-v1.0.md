@@ -192,6 +192,10 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `/upload` | `UploadPage` | recruiter / manager / admin |
 | `/jobs` | `DemandsPage` （Readdy 招聘管理别名） | recruiter / manager / admin |
 | `/job-templates` | `JobsPage` （岗位/JD 二级能力） | recruiter / manager / admin |
+| `/interviewer/dashboard`, `/interviewer/interviews`, `/interviewer/screening` | `DashboardPage`, `InterviewListPage` | interviewer |
+| `/interviewer/candidates`, `/interviewer/jobs` | `InterviewerScopePage` （仅 assignment 范围） | interviewer |
+| `/director/cockpit`, `/director/progress`, `/director/insights` | `DashboardPage`, `BiPage` | manager / admin |
+| `/director/approvals` | `OffersPage` （真实 Offer 状态机） | manager / admin |
 | `/jobs/:id/match` | `JobMatchPage` | recruiter / manager / admin |
 | `/talent-map` | `TalentMapPage` | recruiter / manager / admin |
 | `/pipeline` | `PipelinePage` | recruiter / manager / admin |
