@@ -54,7 +54,7 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 | `/settings` | admin；个人设置全角色 | `/admin/users`、`/auth/change-password`、审计和系统接口 | Readdy 的静态开关改成真实配置或明确只读；角色权限由后端控制 |
 | `/interviewer/*` | interviewer | 面试安排、反馈、候选人 journey | 只展示当前面试官被分配的事实；移除“切换身份”和全量库入口 |
 | `/director/*` | manager | BI、Demand、Offer/反馈事实 | 作为 manager 的管理视图；审批能力必须有后端事实和审计后才能可写 |
-| `/kpi-standards` | manager/admin | 暂无独立持久化 API | 先设计后端配置表/API/权限/审计，再替换当前 localStorage |
+| `/kpi-standards` | manager/admin | `/kpi-standards`、`/kpi-standards/reset` | **代码候选已接通**：组织级版本化持久化、校验、并发冲突、审计和恢复默认；不使用 localStorage，不生成个人排名 |
 
 ## 5. Readdy 当前假数据清理范围
 
@@ -95,7 +95,7 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 
 1. 网关登录后的真实角色：现有前端用环境变量默认角色，必须改为登录后读取 `/api/auth/me`。
 2. Offer：已补 `20260721_05` 迁移、`offer_events` 历史、完整状态机、列表/详情/动作 API、RBAC、组织隔离、幂等、审计和前端真实页面；还需在公司网关四角色环境完成现场验收。
-3. KPI 标准：Readdy 当前写 `localStorage`，后端没有持久化配置；需要新增组织级配置与审计。
+3. KPI 标准：已补 `20260721_06` 迁移、组织级版本化配置、manager/admin RBAC、审计、恢复默认和 Readdy 真实页面；健康阈值已明确改为 Demand 流程健康，不是专员绩效。
 4. 总监审批：Readdy 当前是只读 mock。正式审批必须先明确后端业务事实；没有接口前只可展示真实待办，不可假装审批成功。
 5. 面试官“待筛选”：旧后端已支持面试 assignment/feedback，但没有可让面试官浏览全量简历的权限；页面必须按有效分配裁剪。
 6. Dashboard 月度趋势和分析导出：现有 BI 以 Demand 当前运营为主；新增统计必须保持可解释口径，不生成个人绩效排名。
@@ -124,5 +124,6 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - 登录、公司网关身份、Readdy 主壳、工作台和 Readdy 路由别名已接入；旧的假角色选择已移除。
 - Offer 已形成真实数据库闭环。招聘专员可维护草稿和推进发放/回复/入职；只有 manager/admin 可审批；确认入职会同步把 Demand 下候选人推进到 `onboarded`。
 - Offer 的所有状态变化写入 `offer_events` 和通用 `events`；重复请求可用 `Idempotency-Key` 安全重放。
-- 当前 Alembic head 为 `20260721_05`；升级保留已有 `offer_records` 数据，新增生命周期列和历史表。
-- 仍未完成：KPI 标准持久化、全部 Readdy 业务页视觉替换、浏览器四角色全链路和公司 SIT 现场证据。因此本文整体状态仍为“实施中”。
+- 当前 Alembic head 为 `20260721_06`；05 保留已有 `offer_records` 数据并新增生命周期/历史，06 新增组织级流程口径表。
+- KPI 标准已从浏览器假持久化迁入真实后端；主管/管理员可维护，跨组织隔离，版本冲突不会静默覆盖。
+- 仍未完成：全部 Readdy 业务页视觉替换、浏览器四角色全链路和公司 SIT 现场证据。因此本文整体状态仍为“实施中”。

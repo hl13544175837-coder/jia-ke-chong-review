@@ -45,6 +45,8 @@ import type {
   JobListItem,
   JobDetail,
   JdClarifyResponse,
+  KpiStandardConfig,
+  KpiStandardResponse,
   LoginRequest,
   LoginResponse,
   MatchResponse,
@@ -577,6 +579,25 @@ export const api = {
     return request(`/offers/${offerId}/actions`, {
       method: 'POST',
       body: payload,
+      idempotencyKey: crypto.randomUUID(),
+    });
+  },
+
+  // ---- Organization recruiting process standards (manager/admin only) ----
+  getKpiStandards(): Promise<KpiStandardResponse> {
+    return request('/kpi-standards');
+  },
+  saveKpiStandards(version: number, config: KpiStandardConfig): Promise<KpiStandardResponse> {
+    return request('/kpi-standards', {
+      method: 'PUT',
+      body: { version, config },
+      idempotencyKey: crypto.randomUUID(),
+    });
+  },
+  resetKpiStandards(version: number): Promise<KpiStandardResponse> {
+    return request('/kpi-standards/reset', {
+      method: 'POST',
+      body: { version },
       idempotencyKey: crypto.randomUUID(),
     });
   },

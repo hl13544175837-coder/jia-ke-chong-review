@@ -661,6 +661,39 @@ export interface OfferActionInput {
   onboard_date?: string;
 }
 
+export interface KpiBlockCategory {
+  id: string;
+  name: string;
+  keywords: string[];
+}
+
+export interface KpiRiskThresholds {
+  high_if_status_paused_or_closed: boolean;
+  high_if_zero_fill_and_blocked: boolean;
+  attention_hc_gap_ratio: number;
+  attention_if_blocked: boolean;
+  deadline_warning_days: number;
+}
+
+export interface KpiProcessHealthThresholds {
+  green_threshold: number;
+  yellow_threshold: number;
+}
+
+export interface KpiStandardConfig {
+  block_categories: KpiBlockCategory[];
+  risk_thresholds: KpiRiskThresholds;
+  process_health_thresholds: KpiProcessHealthThresholds;
+}
+
+export interface KpiStandardResponse {
+  config: KpiStandardConfig;
+  version: number;
+  updated_by: number | null;
+  updated_by_name: string | null;
+  updated_at: string | null;
+}
+
 // Map of stage -> count. Keys are PipelineStage values.
 export type PipelineCounts = Partial<Record<PipelineStage, number>>;
 

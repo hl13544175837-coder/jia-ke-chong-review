@@ -2,7 +2,7 @@
 
 > **状态（2026-07-11）：** demand-scoped P0 已形成合并前代码候选。把候选 fast-forward 推到 CFPD `test` 只更新代码源，不代表 Libra 已构建或 SIT 已部署。RC/SIT entrypoint 支持真正空库的显式 bootstrap 和已有库的 `alembic -c /app/backend/alembic.ini upgrade head`；`GA`/生产对两者默认关闭，生产仍严格执行本手册的备份、唯一 migration job 和回滚门禁。
 
-> **当前代码边界：** 当前 additive 链为 Demand Expand `20260710_01` → 面试唯一性 `20260711_02` → Demand 默认面试官 `20260711_03` → 需求编号唯一性 `20260711_04` → Offer 生命周期 `20260721_05`，head 为 `20260721_05`，仍没有 Strict revision；SQLite 已有 upgrade/downgrade 往返用例，MySQL/PostgreSQL 尚无同引擎证据。当前 backfill 只能回填到已存在的 Demand，不自动创建 B 类“历史迁移需求”；当 B 类不为 0 时必须先交付并评审专用创建迁移，不得手填 SQL。在 Strict revision、B 类处理和同引擎验证补齐前，Phase D 结论必须是 NO-GO。
+> **当前代码边界：** 当前 additive 链为 Demand Expand `20260710_01` → 面试唯一性 `20260711_02` → Demand 默认面试官 `20260711_03` → 需求编号唯一性 `20260711_04` → Offer 生命周期 `20260721_05` → 组织级流程口径 `20260721_06`，head 为 `20260721_06`，仍没有 Strict revision；SQLite 已有 upgrade/downgrade 往返用例，MySQL/PostgreSQL 尚无同引擎证据。当前 backfill 只能回填到已存在的 Demand，不自动创建 B 类“历史迁移需求”；当 B 类不为 0 时必须先交付并评审专用创建迁移，不得手填 SQL。在 Strict revision、B 类处理和同引擎验证补齐前，Phase D 结论必须是 NO-GO。
 
 > `ALLOW_INSECURE_SIT_STARTUP=true` 只跳过当前可丢弃数据 SIT 的生产启动配置自检。它不跳过 Alembic、请求编号唯一约束、Demand 停写、verify 或本手册的数据归属对账，也不让 `LOCAL_SCHEMA_COMPAT` 在 `FLASK_DEBUG=false` 时获得建表权限。
 
@@ -102,7 +102,7 @@ mysql --host=<host> --user=<user> <restore_db> < <backup_id>.sql
    alembic current
    ```
 
-4. 确认 `alembic current == 20260721_05`，检查 Demand/flow 表、nullable `demand_id`、`current_demand_id`、面试 `primary_slot`、Demand `default_interviewer_id`、`(org_id, request_no)` 唯一索引和 FK，以及 `offer_records` 生命周期列和 `offer_events` 历史表。
+4. 确认 `alembic current == 20260721_06`，检查 Demand/flow 表、nullable `demand_id`、`current_demand_id`、面试 `primary_slot`、Demand `default_interviewer_id`、`(org_id, request_no)` 唯一索引和 FK、`offer_records` 生命周期列、`offer_events` 历史表及 `kpi_standards` 组织唯一索引。
 5. revision `20260711_02` 使用 `lower(trim(status))` 识别历史取消态，再检测重复有效主面试安排和重复 `assignment_id` 反馈；发现冲突即中止并输出冲突组，不自动选择保留行。清理获得业务批准后再重跑；成功后建立 `(org_id,demand_id,candidate_id,primary_slot)` 与 `feedback.assignment_id` 两个唯一索引。
 6. revision `20260711_03` 只增加可空默认面试官外键，旧 Demand 不猜测人员；revision `20260711_04` 将空编号补为 `LEGACY-DEMAND-<id>`、对非空编号去首尾空格/转大写/截至 80 字符，并在建唯一索引前检测同组织冲突；冲突未经业务批准不得继续。该数据规范化不可由 downgrade 逆向还原。
 7. 运行 `verify_demand_scope.py` 并确认 `assignment_slot_conflicts=[]`、`request_no_issues=[]`、`default_interviewer_mismatches=[]`：有效 primary 的 `primary_slot` 必须等于 `round_sequence`，辅助或已取消任务的 slot 必须为空；停用默认面试官进入 `default_interviewer_warnings` 供人工换人，不与跨组织/孤儿引用混合。
@@ -190,7 +190,7 @@ python3 backend/scripts/verify_demand_scope.py --database <database> --output <v
 ### 8.2 切换
 
 1. 由唯一 migration job 应用 strict revision（实际 revision ID 以代码为准），将核心 Demand 归属约束收紧。
-2. 部署 Demand-scoped 后端与前端。`/api/health` 只做进程 liveness；应用版本、`alembic current == 20260721_05`、唯一索引和受控 API 必须作为独立部署门禁核对。
+2. 部署 Demand-scoped 后端与前端。`/api/health` 只做进程 liveness；应用版本、`alembic current == 20260721_06`、唯一索引和受控 API 必须作为独立部署门禁核对。
 3. 记录 cutover marker，至少包含：
 
    ```text
@@ -269,7 +269,7 @@ libra_commit_id:
 backend_version_or_image_digest:
 frontend_asset_hash:
 alembic_before:
-alembic_after:  # 本代码候选应为 20260721_05；Strict 后以实际 revision 为准
+alembic_after:  # 本代码候选应为 20260721_06；Strict 后以实际 revision 为准
 
 audit_report_path_sha256:
 approved_mapping_path_sha256:

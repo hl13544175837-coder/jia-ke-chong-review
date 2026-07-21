@@ -416,6 +416,17 @@ class OfferEvent(db.Model):
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
 
+class KpiStandard(db.Model):
+    __tablename__ = "kpi_standards"
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, nullable=False, unique=True, index=True)
+    config_json = db.Column(db.JSON, nullable=False)
+    version = db.Column(db.Integer, default=1, nullable=False)
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
 class InterviewAssignment(db.Model):
     __table_args__ = (
         db.Index(
