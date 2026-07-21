@@ -70,8 +70,18 @@ function AppRoutes() {
       />
       <Route element={<RequireAuth />}>
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route
           path="/agent"
+          element={
+            <RequireRole
+              allow={['recruiter', 'manager', 'admin']}
+              element={<AgentPage />}
+            />
+          }
+        />
+        <Route
+          path="/ai-assistant"
           element={
             <RequireRole
               allow={['recruiter', 'manager', 'admin']}
@@ -128,6 +138,15 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/kanban"
+          element={
+            <RequireRole
+              allow={['recruiter', 'manager', 'admin']}
+              element={<PipelinePage />}
+            />
+          }
+        />
+        <Route
           path="/interviews"
           element={
             <RequireRole
@@ -161,11 +180,21 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/analytics"
+          element={
+            <RequireRole allow={['manager', 'admin']} element={<BiPage />} />
+          }
+        />
+        <Route
           path="/admin/users"
           element={<RequireRole allow={['admin']} element={<UsersPage />} />}
         />
         <Route
           path="/admin/settings"
+          element={<RequireRole allow={['admin']} element={<SystemSettingsPage />} />}
+        />
+        <Route
+          path="/settings"
           element={<RequireRole allow={['admin']} element={<SystemSettingsPage />} />}
         />
         <Route

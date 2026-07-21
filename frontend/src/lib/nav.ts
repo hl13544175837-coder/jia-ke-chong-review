@@ -92,7 +92,7 @@ export function navLabelForRole(item: NavItem, role: Role | null): string {
   return item.labelByRole?.[role] ?? item.label;
 }
 
-// Default landing route after login. All roles land on the dashboard (/).
+// Default landing route after login. All roles land on the Readdy dashboard.
 export function defaultRouteForRole(): string {
-  return '/';
+  return '/dashboard';
 }

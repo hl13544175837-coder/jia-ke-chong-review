@@ -1,5 +1,4 @@
-// 工作台 — 登录后的角色化默认落地页。
-// Apple 风格：毛玻璃 KPI 卡片、渐变图标、弹簧动效。
+// Readdy 工作台：保留旧后端真实数据、角色边界和分区错误态。
 
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -44,15 +43,15 @@ const ROLE_INFO: Record<Role, RoleInfo> = {
     duty: '管理招聘需求与候选人，跟进筛选、面试和 Offer',
     icon: UserCog,
     accent: 'bg-blue-50 text-accent-blue',
-    gradient: 'linear-gradient(135deg, #007AFF, #5856D6)',
+    gradient: 'linear-gradient(135deg, #3d7b6b, #285e51)',
     action: { to: '/upload', label: '上传简历' },
   },
   manager: {
-    label: '经理',
+    label: '招聘主管',
     duty: '关注团队招聘进度与卡点，协调责任人完成需求',
     icon: LineChart,
     accent: 'bg-purple-50 text-accent-purple',
-    gradient: 'linear-gradient(135deg, #AF52DE, #5856D6)',
+    gradient: 'linear-gradient(135deg, #c47b55, #9a5c3e)',
     action: { to: '/bi', label: '查看进度与卡点' },
   },
   admin: {
@@ -60,7 +59,7 @@ const ROLE_INFO: Record<Role, RoleInfo> = {
     duty: '保障账号、权限与招聘流程稳定运行',
     icon: ShieldCheck,
     accent: 'bg-brand-50 text-ink',
-    gradient: 'linear-gradient(135deg, #111111, #374151)',
+    gradient: 'linear-gradient(135deg, #4f5b56, #303b37)',
     action: { to: '/bi', label: '查看进度与卡点' },
   },
   interviewer: {
@@ -68,7 +67,7 @@ const ROLE_INFO: Record<Role, RoleInfo> = {
     duty: '处理分配给我的面试安排与反馈',
     icon: ClipboardCheck,
     accent: 'bg-teal-50 text-teal-700',
-    gradient: 'linear-gradient(135deg, #5AC8FA, #34C759)',
+    gradient: 'linear-gradient(135deg, #5d897c, #3d7b6b)',
     action: { to: '/interviews', label: '查看我的面试' },
   },
 };
@@ -337,24 +336,24 @@ function KpiCard({
   accent?: string;
 }) {
   return (
-    <Card variant="elevated" className="overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-[#e8e7e1] bg-white shadow-[0_1px_2px_rgba(24,35,31,0.03)] transition-shadow hover:shadow-[0_8px_24px_rgba(24,35,31,0.07)]">
       <div className="relative px-5 py-5">
         {accent && (
           <div
-            className="absolute -right-3 -top-3 h-14 w-14 rounded-full opacity-8"
+            className="absolute -right-3 -top-3 h-14 w-14 rounded-full opacity-[0.08]"
             style={{ background: accent }}
           />
         )}
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
-        <div className="mt-2 font-display text-3xl text-ink tabular-nums">
+        <p className="text-xs font-medium tracking-wide text-[#777b78]">{label}</p>
+        <div className="mt-2 text-3xl font-bold tabular-nums text-[#292b2a]">
           {value === null ? (
-            <span className="text-muted-soft">—</span>
+            <span className="text-[#aaaDA9]">—</span>
           ) : (
             <AnimatedNumber value={value} />
           )}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -702,30 +701,30 @@ export function DashboardPage() {
     : errors.candidates ?? errors.jobs;
 
   return (
-    <div className="space-y-8">
+    <div data-ui="readdy-dashboard" className="space-y-6">
       {/* A. 角色欢迎横幅 */}
       <Reveal as="section" y={12} stagger={0.1}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             <div
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white shadow-apple-md"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white shadow-sm"
               style={{ background: info.gradient }}
             >
               <RoleIcon className="h-6 w-6" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="font-display text-3xl leading-tight text-ink">
+              <h1 className="text-2xl font-bold leading-tight text-[#292b2a]">
                 欢迎回来，{name}
               </h1>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge tone="glass">{info.label}</Badge>
-                <p className="text-sm text-muted">{info.duty}</p>
+                <p className="text-sm text-[#777b78]">{info.duty}</p>
               </div>
             </div>
           </div>
           <Link
             to={info.action.to}
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-5 text-sm font-semibold text-white transition-all duration-200 hover:brightness-110 active:scale-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 shadow-apple-sm"
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:brightness-110 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#b8d6cb] focus-visible:ring-offset-2"
             style={{ background: info.gradient }}
           >
             {info.action.label}
