@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Building2, Map, Plus, Search, Users } from 'lucide-react';
+import { Building2, Map, Plus, Search, Users, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
 import { RecruitmentManagementTabs } from '../components/recruitment/RecruitmentManagementTabs';
@@ -107,6 +107,8 @@ export function TalentMapPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [composer, setComposer] = useState<'map' | 'company' | 'person' | null>(null);
+  const [activeCompanyId, setActiveCompanyId] = useState<number | null>(null);
 
   const [mapName, setMapName] = useState('省总人才地图');
   const [mapJobId, setMapJobId] = useState('');
@@ -152,6 +154,17 @@ export function TalentMapPage() {
     [resolvedActiveMapId, filters.company, filters.city, filters.status, filters.keyword],
   );
   const talentMap = mapAsync.data;
+  const activeCompany = useMemo(() => {
+    if (!talentMap || talentMap.companies.length === 0) return null;
+    return talentMap.companies.find((company) => company.id === activeCompanyId)
+      ?? talentMap.companies[0];
+  }, [activeCompanyId, talentMap]);
+
+  useEffect(() => {
+    if (activeCompany?.id !== activeCompanyId) {
+      setActiveCompanyId(activeCompany?.id ?? null);
+    }
+  }, [activeCompany, activeCompanyId]);
 
   async function handleCreateMap(event: FormEvent) {
     event.preventDefault();
@@ -171,6 +184,7 @@ export function TalentMapPage() {
       setMapJobId('');
       setMapDepartment('');
       setMessage('人才地图已创建');
+      setComposer(null);
       mapsAsync.reload();
     } catch (error) {
       setMutationError(error instanceof Error ? error.message : '创建人才地图失败');
@@ -195,6 +209,7 @@ export function TalentMapPage() {
       setCompanyCity('');
       setCompanyPriority('high');
       setMessage('目标公司已保存');
+      setComposer(null);
       mapsAsync.reload();
       mapAsync.reload();
     } catch (error) {
@@ -230,6 +245,7 @@ export function TalentMapPage() {
       setPersonEvaluation('');
       setPersonSalary('');
       setMessage('潜在人选已保存');
+      setComposer(null);
       mapsAsync.reload();
       mapAsync.reload();
     } catch (error) {
@@ -288,13 +304,40 @@ export function TalentMapPage() {
         : null;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="招聘管理"
-        description="围绕岗位沉淀目标公司、潜在人选和市场挖掘状态"
-      />
-
+    <div className="space-y-6" data-ui="figma-talent-map">
       <RecruitmentManagementTabs />
+
+      <PageHeader
+        title="人才地图"
+        description="围绕岗位沉淀目标公司、潜在人选和市场挖掘状态"
+        actions={(
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="secondary" onClick={() => setComposer('map')}>
+              <Map className="h-4 w-4" />
+              新建地图
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!talentMap}
+              onClick={() => setComposer('person')}
+            >
+              <Users className="h-4 w-4" />
+              新增人选
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!talentMap}
+              onClick={() => setComposer('company')}
+            >
+              <Building2 className="h-4 w-4" />
+              新增公司
+            </Button>
+          </div>
+        )}
+      />
 
       {message && (
         <div className="rounded-md border border-success-100 bg-success-50 px-4 py-3 text-sm text-success-700">
@@ -311,7 +354,90 @@ export function TalentMapPage() {
         />
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+      <section aria-label="地图范围" className="space-y-2">
+        <p className="text-xs font-medium text-muted">地图范围</p>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {maps.map((item) => {
+            const active = item.id === resolvedActiveMapId;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveMapId(item.id)}
+                className={`min-w-[158px] rounded-xl border bg-white px-5 py-3 text-left transition-colors ${active ? 'border-[#a0dabe] shadow-[0_0_0_1px_#bde6d3]' : 'border-[#f3f2ed] hover:border-[#d8e9df]'}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-semibold text-[#171616]">{item.name}</span>
+                  <span className="rounded bg-[#f8f7f4] px-1.5 py-0.5 text-[11px] text-[#959190]">
+                    {item.companies_count} 家
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[10px] text-[#747170]">{item.people_count} 位人选已收录</p>
+              </button>
+            );
+          })}
+          {!mapsAsync.loading && maps.length === 0 && (
+            <button
+              type="button"
+              onClick={() => setComposer('map')}
+              className="min-w-[158px] rounded-xl border border-dashed border-[#a0dabe] bg-[#f4fbf7] px-5 py-3 text-left text-sm font-medium text-[#1d6b42]"
+            >
+              <Plus className="mb-2 h-4 w-4" />
+              创建第一张地图
+            </button>
+          )}
+        </div>
+      </section>
+
+      {talentMap && (
+        <section aria-label="目标公司视图" className="space-y-3">
+          <p className="text-xs font-medium text-muted">目标公司视图</p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {talentMap.companies.map((company) => {
+              const active = company.id === activeCompany?.id;
+              const mappedPeople = talentMap.people.filter((person) => person.company_id === company.id).length;
+              return (
+                <button
+                  key={company.id}
+                  type="button"
+                  onClick={() => setActiveCompanyId(company.id)}
+                  className={`min-w-[158px] rounded-xl border bg-white px-5 py-3 text-left transition-colors ${active ? 'border-[#a0dabe] shadow-[0_0_0_1px_#bde6d3]' : 'border-[#f3f2ed] hover:border-[#d8e9df]'}`}
+                >
+                  <p className="truncate text-sm font-semibold text-[#171616]">{company.company_name}</p>
+                  <div className="mt-1.5 flex items-center gap-2 text-[10px] text-[#747170]">
+                    <span>{mappedPeople} 位人选</span>
+                    <span className="h-1 flex-1 overflow-hidden rounded-full bg-[#f3f2ed]">
+                      <span
+                        className="block h-full rounded-full bg-[#81caa6]"
+                        style={{ width: `${Math.min(100, mappedPeople * 12)}%` }}
+                      />
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {activeCompany && (
+            <div className="flex items-start gap-4 rounded-xl border border-[#f3f2ed] bg-white p-4">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#e9f5f0] text-[#1d6b42]">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="font-semibold text-[#171616]">{activeCompany.company_name}</h2>
+                <p className="mt-1 text-sm text-[#575454]">
+                  {activeCompany.note || [activeCompany.city, activeCompany.region, activeCompany.industry].filter(Boolean).join(' · ') || '暂无公司摘要'}
+                </p>
+                <p className="mt-2 text-xs text-[#959190]">
+                  来自真实人才地图 · 已映射 {talentMap.people.filter((person) => person.company_id === activeCompany.id).length} 位人选
+                </p>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      <div className="space-y-4">
         <Card variant="elevated">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -532,7 +658,26 @@ export function TalentMapPage() {
           </CardBody>
         </Card>
 
-        <div className="space-y-4">
+        {composer && (
+          <section className="rounded-xl border border-[#d8e9df] bg-[#f4fbf7] p-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-[#171616]">
+                  {composer === 'map' ? '新建人才地图' : composer === 'company' ? '新增目标公司' : '新增潜在人选'}
+                </p>
+                <p className="mt-1 text-xs text-[#747170]">保存后立即写入后端数据库</p>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭新增面板"
+                onClick={() => setComposer(null)}
+                className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-white hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-w-3xl">
+          {composer === 'map' && (
           <Card>
             <CardHeader>
               <CardTitle>新建人才地图</CardTitle>
@@ -569,7 +714,9 @@ export function TalentMapPage() {
               </form>
             </CardBody>
           </Card>
+          )}
 
+          {composer === 'company' && (
           <Card>
             <CardHeader>
               <CardTitle>新增目标公司</CardTitle>
@@ -610,7 +757,9 @@ export function TalentMapPage() {
               </form>
             </CardBody>
           </Card>
+          )}
 
+          {composer === 'person' && (
           <Card>
             <CardHeader>
               <CardTitle>新增潜在人选</CardTitle>
@@ -699,7 +848,10 @@ export function TalentMapPage() {
               </form>
             </CardBody>
           </Card>
-        </div>
+          )}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

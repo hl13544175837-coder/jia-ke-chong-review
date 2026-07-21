@@ -8,10 +8,10 @@
 
 :root {
   /* ── Enterprise admin reference tokens ───────────── */
-  --enterprise-brand: #00c07b;
-  --enterprise-brand-dark: #009e66;
-  --enterprise-brand-soft: #e6f8f1;
-  --enterprise-brand-faint: #f2fffa;
+  --enterprise-brand: #379f70;
+  --enterprise-brand-dark: #2c805a;
+  --enterprise-brand-soft: #e9f5f0;
+  --enterprise-brand-faint: #f4fbf7;
   --enterprise-page: #f1f3f7;
   --enterprise-panel: #f8f9fb;
   --enterprise-line: #e5e9ef;

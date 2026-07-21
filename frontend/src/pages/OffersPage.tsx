@@ -404,7 +404,7 @@ export function OffersPage() {
     () => api.listDemands({ status: 'all', page: 1, page_size: 100, sort: 'created_at_desc' }),
     [],
   );
-  const offers = offersAsync.data?.items ?? [];
+  const offers = useMemo(() => offersAsync.data?.items ?? [], [offersAsync.data?.items]);
   const activeConfig = TAB_CONFIG.find((item) => item.key === activeTab)!;
   const filtered = activeConfig.statuses.length === 0
     ? offers
