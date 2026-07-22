@@ -17,7 +17,7 @@ const candidateCard = readSource('components/pipeline/CandidateCard.tsx');
 
 assert.match(
   jobMatchPage,
-  /`\/pipeline\?demand=\$\{demandId\}&candidate=\$\{item\.candidate_id\}`/,
+  /`\/kanban\?demand=\$\{demandId\}&candidate=\$\{item\.candidate_id\}`/,
   'Joined match rows should link directly to the exact demand pipeline and candidate',
 );
 

@@ -403,10 +403,15 @@ Offer 状态顺序为 `draft → pending → approved → sent → accepted → 
 | `PATCH` | `/admin/users/<user_id>` | admin | 先完整校验再修改角色/启停；变化会递增 `token_version` 撤销旧 token，事实与审计同事务提交 |
 | `POST` | `/admin/users/<user_id>/reset-password` | admin | 重置密码并递增 `token_version`；密码事实与审计同事务提交 |
 | `GET` | `/agent/tools` | recruiter/manager/admin | AI 助手工具清单 |
-| `GET` | `/agent/conversations` | recruiter/manager/admin | 当前用户 AI 对话列表 |
-| `GET` | `/agent/conversations/<conversation_id>` | recruiter/manager/admin，且仅本人会话 | AI 对话详情 |
-| `POST` | `/agent/chat` | recruiter/manager/admin | SSE 流式 AI 对话 |
-| `POST` | `/agent/execute` | recruiter/manager/admin + 工具 RBAC | 保留兼容执行入口，但当前工具目录不含推进、淘汰、Offer、转派或关闭 Demand 的主流程写工具 |
+| `GET` | `/agent/conversations` | recruiter/manager/admin | 当前用户+当前组织的 AI 对话分页列表；支持 `archived/page/per_page` |
+| `POST` | `/agent/conversations` | recruiter/manager/admin | 新建当前用户+当前组织的会话 |
+| `GET` | `/agent/conversations/<conversation_id>` | recruiter/manager/admin，且仅本人本组织会话 | AI 对话详情 |
+| `PATCH` | `/agent/conversations/<conversation_id>` | recruiter/manager/admin，且仅本人本组织会话 | 重命名或归档/恢复 |
+| `DELETE` | `/agent/conversations/<conversation_id>` | recruiter/manager/admin，且仅本人本组织会话 | 软归档，不删除审计事实 |
+| `POST` | `/agent/chat` | recruiter/manager/admin | SSE 流式 AI 对话；已归档会话返回 409；成败均写脱敏调用日志 |
+| `POST` | `/agent/execute` | recruiter/manager/admin + 工具 RBAC | 保留兼容执行入口，但当前工具目录不含推进、淘汰、Offer、转派或关闭 Demand 的主流程写工具；成败均写脱敏调用日志 |
+| `GET` | `/agent/call-logs` | admin | 当前组织 AI 调用日志分页/筛选；只保存模型、耗时、状态、工具名和目标 ID 等最小审计元数据，不保存候选人对话输入、输出、思考或工具结果正文 |
+| `GET` | `/agent/call-logs/<log_id>` | admin | 当前组织 AI 调用日志详情 |
 
 ### 7.8 当前 Demand API 契约（代码已实现，环境待验收）
 
@@ -823,7 +828,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 发布通道另有一层不受运行时环境变量覆盖的边界：Makefile 只接受精确 `RC` / `GA`，并把发布通道写入镜像内 `.release-channel` 文件。entrypoint 先读取该标记；GA 镜像若被 K8S env 覆盖为 SIT 放行、自动迁移/空库初始化、公开注册或关闭安全头/限流，会在任何 DDL 之前拒绝启动。RC 镜像则保留本轮已授权的完全宽松测试配置。
 
-当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
+当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|

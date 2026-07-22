@@ -20,7 +20,8 @@ assert.match(page, /先不加入需求/, 'Demand selection should remain optiona
 assert.doesNotMatch(page, /按岗位查看/, 'Job filter should not sound like a second page entry');
 assert.doesNotMatch(page, /不按岗位筛选/, 'Job filter placeholder should use plainer wording');
 
-assert.match(page, /高匹配候选人/, 'High-score metric should be framed as high-fit candidates');
+assert.match(page, /有技能标签/, 'Candidate summary should show a directly observable backend fact');
+assert.doesNotMatch(page, /高匹配候选人/, 'A frontend score threshold must not be framed as matching truth');
 assert.doesNotMatch(page, /当前页高分候选人/, 'High-score metric should not imply a confusing page-only KPI');
 
 assert.match(page, /候选人列表/, 'Candidate table should be named by the object users are reviewing');

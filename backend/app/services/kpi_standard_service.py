@@ -23,15 +23,11 @@ DEFAULT_KPI_CONFIG = {
         {"id": "other", "name": "其他原因", "keywords": []},
     ],
     "risk_thresholds": {
-        "high_if_status_paused_or_closed": True,
-        "high_if_zero_fill_and_blocked": True,
-        "attention_hc_gap_ratio": 0.5,
-        "attention_if_blocked": True,
         "deadline_warning_days": 14,
-    },
-    "process_health_thresholds": {
-        "green_threshold": 70,
-        "yellow_threshold": 40,
+        "stale_stage_days": 7,
+        "no_recommendation_days": 7,
+        "low_interview_candidate_threshold": 20,
+        "open_too_long_days": 60,
     },
 }
 
@@ -50,6 +46,22 @@ class KpiStandardError(Exception):
         return payload
 
 
+def _merge_with_defaults(config):
+    merged = deepcopy(DEFAULT_KPI_CONFIG)
+    if not isinstance(config, dict):
+        return merged
+    for section in (
+        "block_categories",
+        "risk_thresholds",
+    ):
+        value = config.get(section)
+        if isinstance(value, dict) and isinstance(merged.get(section), dict):
+            merged[section].update(value)
+        elif value is not None:
+            merged[section] = deepcopy(value)
+    return merged
+
+
 def _payload(row):
     if row is None:
         return {
@@ -61,7 +73,7 @@ def _payload(row):
         }
     updater = db.session.get(User, row.updated_by)
     return {
-        "config": deepcopy(row.config_json),
+        "config": validate_kpi_config(_merge_with_defaults(row.config_json)),
         "version": row.version,
         "updated_by": row.updated_by,
         "updated_by_name": updater.name if updater else None,
@@ -71,6 +83,14 @@ def _payload(row):
 
 def get_kpi_standards(org_id):
     return _payload(KpiStandard.query.filter_by(org_id=org_id).first())
+
+
+def get_effective_kpi_config(org_id):
+    """Return one validated organization config, including new default keys."""
+    row = KpiStandard.query.filter_by(org_id=org_id).first()
+    if row is None:
+        return deepcopy(DEFAULT_KPI_CONFIG)
+    return validate_kpi_config(_merge_with_defaults(row.config_json))
 
 
 def _number(value, *, minimum, maximum, field, fields):
@@ -134,20 +154,6 @@ def validate_kpi_config(config):
     if not isinstance(risk, dict):
         fields["risk_thresholds"] = "必须是对象"
         risk = {}
-    for key in (
-        "high_if_status_paused_or_closed",
-        "high_if_zero_fill_and_blocked",
-        "attention_if_blocked",
-    ):
-        if not isinstance(risk.get(key), bool):
-            fields[f"risk_thresholds.{key}"] = "必须是开关值"
-    gap_ratio = _number(
-        risk.get("attention_hc_gap_ratio"),
-        minimum=0,
-        maximum=1,
-        field="risk_thresholds.attention_hc_gap_ratio",
-        fields=fields,
-    )
     warning_days = _number(
         risk.get("deadline_warning_days"),
         minimum=1,
@@ -155,27 +161,43 @@ def validate_kpi_config(config):
         field="risk_thresholds.deadline_warning_days",
         fields=fields,
     )
-
-    health = config.get("process_health_thresholds")
-    if not isinstance(health, dict):
-        fields["process_health_thresholds"] = "必须是对象"
-        health = {}
-    green = _number(
-        health.get("green_threshold"),
-        minimum=0,
-        maximum=100,
-        field="process_health_thresholds.green_threshold",
+    stale_stage_days = _number(
+        risk.get("stale_stage_days", DEFAULT_KPI_CONFIG["risk_thresholds"]["stale_stage_days"]),
+        minimum=1,
+        maximum=365,
+        field="risk_thresholds.stale_stage_days",
         fields=fields,
     )
-    yellow = _number(
-        health.get("yellow_threshold"),
-        minimum=0,
-        maximum=100,
-        field="process_health_thresholds.yellow_threshold",
+    no_recommendation_days = _number(
+        risk.get(
+            "no_recommendation_days",
+            DEFAULT_KPI_CONFIG["risk_thresholds"]["no_recommendation_days"],
+        ),
+        minimum=1,
+        maximum=365,
+        field="risk_thresholds.no_recommendation_days",
         fields=fields,
     )
-    if green <= yellow:
-        fields["process_health_thresholds.green_threshold"] = "绿色阈值必须大于黄色阈值"
+    low_interview_candidate_threshold = _number(
+        risk.get(
+            "low_interview_candidate_threshold",
+            DEFAULT_KPI_CONFIG["risk_thresholds"]["low_interview_candidate_threshold"],
+        ),
+        minimum=1,
+        maximum=10000,
+        field="risk_thresholds.low_interview_candidate_threshold",
+        fields=fields,
+    )
+    open_too_long_days = _number(
+        risk.get(
+            "open_too_long_days",
+            DEFAULT_KPI_CONFIG["risk_thresholds"]["open_too_long_days"],
+        ),
+        minimum=1,
+        maximum=3650,
+        field="risk_thresholds.open_too_long_days",
+        fields=fields,
+    )
 
     if fields:
         raise KpiStandardError(
@@ -188,15 +210,13 @@ def validate_kpi_config(config):
     return {
         "block_categories": normalized_categories,
         "risk_thresholds": {
-            "high_if_status_paused_or_closed": risk["high_if_status_paused_or_closed"],
-            "high_if_zero_fill_and_blocked": risk["high_if_zero_fill_and_blocked"],
-            "attention_hc_gap_ratio": gap_ratio,
-            "attention_if_blocked": risk["attention_if_blocked"],
             "deadline_warning_days": int(warning_days),
-        },
-        "process_health_thresholds": {
-            "green_threshold": int(green),
-            "yellow_threshold": int(yellow),
+            "stale_stage_days": int(stale_stage_days),
+            "no_recommendation_days": int(no_recommendation_days),
+            "low_interview_candidate_threshold": int(
+                low_interview_candidate_threshold
+            ),
+            "open_too_long_days": int(open_too_long_days),
         },
     }
 

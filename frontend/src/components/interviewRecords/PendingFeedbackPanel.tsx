@@ -44,8 +44,8 @@ export function PendingFeedbackPanel({
               const active = activeKey === key;
               const detailLink = canOpenPipeline
                 ? item.demand_id
-                  ? `/pipeline?demand=${item.demand_id}&candidate=${item.candidate_id}`
-                  : `/pipeline?job=${item.job_id}&candidate=${item.candidate_id}`
+                  ? `/kanban?demand=${item.demand_id}&candidate=${item.candidate_id}`
+                  : `/kanban?job=${item.job_id}&candidate=${item.candidate_id}`
                 : `/candidates/${item.candidate_id}`;
               return (
                 <div

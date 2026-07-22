@@ -4,9 +4,10 @@
 // listOffers / getDemandPipelineHistory，不引用任何 mock。
 
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
+  ArrowRightLeft,
   History,
   KanbanSquare,
   RefreshCw,
@@ -65,6 +66,15 @@ function formatDemandOption(demand: RecruitmentDemand) {
 
 function offerKey(demandId: number, candidateId: number) {
   return `${demandId}:${candidateId}`;
+}
+
+function parsePositiveParam(value: string | null) {
+  if (value === null) return { provided: false, value: null as number | null };
+  const parsed = Number(value);
+  return {
+    provided: true,
+    value: Number.isInteger(parsed) && parsed > 0 ? parsed : null,
+  };
 }
 
 function ModalShell({
@@ -169,7 +179,7 @@ function RejectModal({
             className="mt-2 min-h-20 w-full rounded-lg border border-[#dadcd6] px-3 py-2 text-sm outline-none focus:border-[#3d7b6b]"
             value={note}
             onChange={(event) => setNote(event.target.value)}
-            maxLength={500}
+            maxLength={240}
           />
         </label>
         {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -259,6 +269,89 @@ function CorrectModal({
   );
 }
 
+function TransferModal({
+  candidate,
+  targets,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  candidate: PipelineBoardCandidate;
+  targets: RecruitmentDemand[];
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (targetDemandId: number, reason: string) => void | Promise<void>;
+}) {
+  const [targetDemandId, setTargetDemandId] = useState('');
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirm() {
+    const targetId = Number(targetDemandId);
+    if (!targetDemandId || !Number.isFinite(targetId)) {
+      setError('请选择目标招聘需求');
+      return;
+    }
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      setError('请填写转需原因');
+      return;
+    }
+    setError(null);
+    await onSubmit(targetId, trimmedReason);
+  }
+
+  return (
+    <ModalShell
+      title={`转移 ${candidate.name_masked} 到其他需求`}
+      description="原需求保留为「已转出」，目标需求从「待筛选」开始；转出不会计入淘汰。"
+      onClose={onClose}
+    >
+      <div className="space-y-4 px-6 py-6">
+        <label className="block text-sm font-medium text-[#454946]">
+          目标招聘需求
+          <select
+            className="mt-2 h-10 w-full rounded-lg border border-[#dadcd6] bg-white px-3 text-sm outline-none focus:border-[#3d7b6b]"
+            value={targetDemandId}
+            onChange={(event) => {
+              setTargetDemandId(event.target.value);
+              setError(null);
+            }}
+          >
+            <option value="">选择目标需求</option>
+            {targets.map((demand) => (
+              <option key={demand.id} value={demand.id}>{formatDemandOption(demand)}</option>
+            ))}
+          </select>
+        </label>
+        {targets.length === 0 && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            暂无其他可用需求，请先到招聘管理创建或恢复需求。
+          </p>
+        )}
+        <label className="block text-sm font-medium text-[#454946]">
+          转需原因（必填）
+          <textarea
+            className="mt-2 min-h-20 w-full rounded-lg border border-[#dadcd6] px-3 py-2 text-sm outline-none focus:border-[#3d7b6b]"
+            value={reason}
+            onChange={(event) => {
+              setReason(event.target.value);
+              setError(null);
+            }}
+            maxLength={500}
+            placeholder="例如：候选人更符合另一条招聘需求"
+          />
+        </label>
+        {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      </div>
+      <div className="flex justify-end gap-3 border-t border-[#ecece8] px-6 py-4">
+        <Button variant="secondary" onClick={onClose} disabled={busy}>取消</Button>
+        <Button onClick={() => void confirm()} loading={busy} disabled={targets.length === 0}>确认转需</Button>
+      </div>
+    </ModalShell>
+  );
+}
+
 // 候选人阶段历史弹窗：真实时间线，来自 getDemandPipelineHistory。
 function HistoryModal({
   demandId,
@@ -322,27 +415,36 @@ function CandidateCard({
   candidate,
   offer,
   canMove,
+  canTransfer,
   busy,
   onAdvance,
   onReject,
   onCorrect,
+  onTransfer,
   onHistory,
+  highlighted,
 }: {
   candidate: PipelineBoardCandidate;
   offer: OfferRecord | null;
   canMove: boolean;
+  canTransfer: boolean;
   busy: boolean;
   onAdvance: () => void;
   onReject: () => void;
   onCorrect: () => void;
+  onTransfer: () => void;
   onHistory: () => void;
+  highlighted?: boolean;
 }) {
   const next = NEXT_STAGE[candidate.stage];
   const terminal = isTerminalStage(candidate.stage);
   const offerMeta = offer ? OFFER_STATUS_META[offer.status || offer.approval_status] : null;
 
   return (
-    <div className="rounded-xl border border-[#e8e7e1] bg-white p-3 shadow-sm">
+    <div className={cn(
+      'rounded-xl border border-[#e8e7e1] bg-white p-3 shadow-sm',
+      highlighted && 'ring-2 ring-[#3d7b6b] ring-offset-2',
+    )}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#eef4f1] text-xs font-bold text-[#3d7b6b]">
@@ -388,9 +490,15 @@ function CandidateCard({
             淘汰
           </Button>
         )}
-        {canMove && (
+        {canMove && candidate.stage !== 'transferred' && (
           <Button size="sm" variant="ghost" onClick={onCorrect} disabled={busy}>
             修正
+          </Button>
+        )}
+        {canTransfer && !terminal && (
+          <Button size="sm" variant="ghost" onClick={onTransfer} disabled={busy}>
+            <ArrowRightLeft className="h-3.5 w-3.5" />
+            转到其他需求
           </Button>
         )}
         <Button size="sm" variant="ghost" onClick={onHistory}>
@@ -405,26 +513,93 @@ function CandidateCard({
 export function KanbanPage() {
   const { role } = useAuth();
   const toast = useToast();
-  // 面试官角色仅可查看进度，不显示推进/淘汰/修正按钮。
-  const canMove = role !== 'interviewer';
-
-  const [selectedDemandId, setSelectedDemandId] = useState<number | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const demandParam = parsePositiveParam(searchParams.get('demand'));
+  const jobParam = parsePositiveParam(searchParams.get('job'));
+  const candidateParam = parsePositiveParam(searchParams.get('candidate'));
+  const requestedDemandId = demandParam.value;
+  const requestedJobId = jobParam.value;
+  const highlightedCandidateId = candidateParam.value;
+  const rawStage = searchParams.get('stage');
+  const requestedStage = STAGES.some((stage) => stage.key === rawStage)
+    ? rawStage as PipelineStage
+    : null;
+  const invalidScopeParam =
+    (demandParam.provided && requestedDemandId === null)
+    || (!demandParam.provided && jobParam.provided && requestedJobId === null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [rejectTarget, setRejectTarget] = useState<PipelineBoardCandidate | null>(null);
   const [correctTarget, setCorrectTarget] = useState<PipelineBoardCandidate | null>(null);
+  const [transferTarget, setTransferTarget] = useState<PipelineBoardCandidate | null>(null);
   const [historyTarget, setHistoryTarget] = useState<PipelineBoardCandidate | null>(null);
 
   const demandsAsync = useAsync(
     () => api.listDemands({ status: 'all', page: 1, page_size: 100 }),
     [],
   );
+  const explicitDemandAsync = useAsync<RecruitmentDemand | null>(
+    () => requestedDemandId !== null
+      ? api.getDemand(requestedDemandId)
+      : Promise.resolve(null),
+    [requestedDemandId],
+  );
   const demandItems = demandsAsync.data?.items ?? [];
-  const effectiveDemandId =
-    selectedDemandId ?? (demandItems.length > 0 ? demandItems[0].id : null);
-  const effectiveDemand =
-    effectiveDemandId !== null
-      ? demandItems.find((demand) => demand.id === effectiveDemandId) ?? null
-      : null;
+  const hasCompleteVisibleDemandList =
+    demandsAsync.data !== null && demandsAsync.data.total === demandItems.length;
+  const requestedDemandFromList = requestedDemandId !== null
+    ? demandItems.find((demand) => demand.id === requestedDemandId) ?? null
+    : null;
+  const requestedDemand = requestedDemandId !== null
+    ? explicitDemandAsync.data?.id === requestedDemandId
+      ? explicitDemandAsync.data
+      : requestedDemandFromList
+    : null;
+  const selectableDemands = requestedDemand !== null
+    && !demandItems.some((demand) => demand.id === requestedDemand.id)
+    ? [requestedDemand, ...demandItems]
+    : demandItems;
+  const requestedJobDemands = requestedJobId !== null
+    ? demandItems.filter((demand) => demand.job_id === requestedJobId)
+    : [];
+  const effectiveDemand = invalidScopeParam
+    ? null
+    : requestedDemandId !== null
+      ? requestedDemand
+      : requestedJobId !== null
+        ? hasCompleteVisibleDemandList && requestedJobDemands.length === 1
+          ? requestedJobDemands[0]
+          : null
+        : demandItems[0] ?? null;
+  const effectiveDemandId = effectiveDemand?.id ?? null;
+  const demandResolutionError = !demandsAsync.loading
+    && !demandsAsync.error
+    && (requestedDemandId === null || !explicitDemandAsync.loading)
+    ? demandParam.provided && requestedDemandId === null
+      ? '链接中的招聘需求编号无效，系统不会默认选择其他需求。请从下拉列表重新选择。'
+      : !demandParam.provided && jobParam.provided && requestedJobId === null
+        ? '链接中的岗位编号无效，系统不会默认选择其他需求。请从下拉列表重新选择。'
+        : requestedDemandId !== null && requestedDemand === null
+      ? '该招聘需求不存在或你无权查看，请从下拉列表选择可访问的需求。'
+      : requestedDemandId === null && requestedJobId !== null && !hasCompleteVisibleDemandList
+        ? '这个旧岗位链接无法在当前列表中安全确认唯一需求，系统不会替你猜。请选择具体招聘需求。'
+        : requestedDemandId === null && requestedJobId !== null && requestedJobDemands.length > 1
+          ? '这个岗位对应多条招聘需求，系统不会替你猜。请选择具体招聘需求。'
+          : requestedDemandId === null && requestedJobId !== null && requestedJobDemands.length === 0
+            ? '这个岗位没有可访问的招聘需求，请从下拉列表重新选择。'
+            : null
+    : null;
+  const stageResolutionError = rawStage !== null && requestedStage === null
+    ? '链接中的阶段无效，已保留当前需求但不会猜测要定位的阶段。'
+    : null;
+  const isDemandWritable = Boolean(
+    effectiveDemand && ['pending', 'active'].includes(effectiveDemand.status),
+  );
+  // 阶段推进要求 Demand 可写；转需只要求来源 flow 仍活跃，目标 Demand 另行限制。
+  const canMove = role !== 'interviewer' && isDemandWritable;
+  const canTransfer = role !== 'interviewer';
+  const transferTargets = selectableDemands.filter(
+    (demand) => demand.id !== effectiveDemandId && ['pending', 'active'].includes(demand.status),
+  );
 
   const boardAsync = useAsync(
     () =>
@@ -450,6 +625,14 @@ export function KanbanPage() {
     () => boardAsync.data?.candidates ?? [],
     [boardAsync.data],
   );
+  const highlightedCandidateMissing = Boolean(
+    candidateParam.provided
+    && highlightedCandidateId !== null
+    && effectiveDemandId !== null
+    && !boardAsync.loading
+    && !boardAsync.error
+    && !candidates.some((candidate) => candidate.candidate_id === highlightedCandidateId),
+  );
   const byStage = useMemo(() => {
     const map: Partial<Record<PipelineStage, PipelineBoardCandidate[]>> = {};
     for (const stage of STAGES) map[stage.key] = [];
@@ -465,8 +648,8 @@ export function KanbanPage() {
     toStage: PipelineStage,
     note?: string,
     disposition?: CandidateDispositionInput,
-  ) {
-    if (effectiveDemandId === null) return;
+  ): Promise<boolean> {
+    if (effectiveDemandId === null || !isDemandWritable) return false;
     setBusyId(candidateId);
     try {
       const res = await api.movePipeline({
@@ -478,8 +661,30 @@ export function KanbanPage() {
       });
       toast.success(`${res.name_masked || '候选人'} 已更新至「${stageLabel(toStage)}」`);
       boardAsync.reload();
+      return true;
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : '操作失败，请重试');
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function transferCandidate(targetDemandId: number, reason: string) {
+    if (effectiveDemandId === null || transferTarget === null) return;
+    setBusyId(transferTarget.candidate_id);
+    try {
+      await api.transferPipeline({
+        candidate_id: transferTarget.candidate_id,
+        from_demand_id: effectiveDemandId,
+        to_demand_id: targetDemandId,
+        reason,
+      });
+      toast.success(`${transferTarget.name_masked || '候选人'} 已转入目标需求；原需求保留已转出记录`);
+      setTransferTarget(null);
+      boardAsync.reload();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '转需失败，请重试');
     } finally {
       setBusyId(null);
     }
@@ -553,9 +758,19 @@ export function KanbanPage() {
             id="kanban-demand-select"
             className="h-10 min-w-0 rounded-lg border border-[#dadcd6] bg-white px-3 text-sm text-[#292b2a] outline-none focus:border-[#3d7b6b] sm:min-w-[380px]"
             value={effectiveDemandId ?? ''}
-            onChange={(event) => setSelectedDemandId(Number(event.target.value))}
+            onChange={(event) => {
+              setSearchParams({
+                demand: event.target.value,
+                ...(requestedStage ? { stage: requestedStage } : {}),
+              });
+              setRejectTarget(null);
+              setCorrectTarget(null);
+              setTransferTarget(null);
+              setHistoryTarget(null);
+            }}
           >
-            {demandItems.map((demand) => (
+            {effectiveDemandId === null && <option value="">请选择具体招聘需求</option>}
+            {selectableDemands.map((demand) => (
               <option key={demand.id} value={demand.id}>
                 {formatDemandOption(demand)}
               </option>
@@ -566,6 +781,42 @@ export function KanbanPage() {
               负责人 {effectiveDemand.owner_hr_name || '未分配'} · {effectiveDemand.job_city || '城市未填'}
             </span>
           )}
+        </div>
+      )}
+
+      {demandResolutionError && (
+        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {demandResolutionError}
+        </div>
+      )}
+      {stageResolutionError && (
+        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {stageResolutionError}
+        </div>
+      )}
+      {highlightedCandidateMissing && (
+        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          高亮的候选人不在当前需求流程中，可能已转入其他需求或你无权查看；系统不会替你切换需求。
+        </div>
+      )}
+
+      {effectiveDemand && !isDemandWritable && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          当前需求状态为「{effectiveDemand.status}」，不能推进、淘汰或修正阶段；仍可查看历史，活动候选人可转入其他可用需求。
+        </div>
+      )}
+
+      {offersAsync.error && (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium">Offer 状态加载失败</p>
+            <p className="mt-1 text-xs text-amber-800">
+              候选人流程仍可查看，但卡片上的 Offer 状态暂时不完整：{offersAsync.error.message}
+            </p>
+          </div>
+          <Button type="button" size="sm" variant="secondary" onClick={offersAsync.reload}>
+            重试 Offer 状态
+          </Button>
         </div>
       )}
 
@@ -621,7 +872,13 @@ export function KanbanPage() {
                 {MAIN_STAGES.map((stage) => (
                   <section
                     key={stage.key}
-                    className={cn('rounded-xl border p-3', stage.bg, stage.border)}
+                    id={`kanban-stage-${stage.key}`}
+                    className={cn(
+                      'rounded-xl border p-3',
+                      stage.bg,
+                      stage.border,
+                      requestedStage === stage.key && 'ring-2 ring-[#3d7b6b] ring-offset-2',
+                    )}
                     aria-label={`${stage.label}阶段`}
                   >
                     <header className="mb-3 flex items-center justify-between">
@@ -642,6 +899,7 @@ export function KanbanPage() {
                             offerByCandidate.get(offerKey(effectiveDemandId, candidate.candidate_id)) ?? null
                           }
                           canMove={canMove}
+                          canTransfer={canTransfer}
                           busy={busyId === candidate.candidate_id}
                           onAdvance={() => {
                             const next = NEXT_STAGE[candidate.stage];
@@ -649,7 +907,9 @@ export function KanbanPage() {
                           }}
                           onReject={() => setRejectTarget(candidate)}
                           onCorrect={() => setCorrectTarget(candidate)}
+                          onTransfer={() => setTransferTarget(candidate)}
                           onHistory={() => setHistoryTarget(candidate)}
+                          highlighted={candidate.candidate_id === highlightedCandidateId}
                         />
                       ))}
                       {(byStage[stage.key] ?? []).length === 0 && (
@@ -668,7 +928,13 @@ export function KanbanPage() {
                   {TERMINAL_STAGES.filter((stage) => countOf(stage.key) > 0).map((stage) => (
                     <section
                       key={stage.key}
-                      className={cn('rounded-xl border p-3', stage.bg, stage.border)}
+                      id={`kanban-stage-${stage.key}`}
+                      className={cn(
+                        'rounded-xl border p-3',
+                        stage.bg,
+                        stage.border,
+                        requestedStage === stage.key && 'ring-2 ring-[#3d7b6b] ring-offset-2',
+                      )}
                       aria-label={`${stage.label}阶段`}
                     >
                       <header className="mb-3 flex items-center justify-between">
@@ -687,11 +953,14 @@ export function KanbanPage() {
                             candidate={candidate}
                             offer={null}
                             canMove={canMove}
+                            canTransfer={canTransfer}
                             busy={busyId === candidate.candidate_id}
                             onAdvance={() => undefined}
                             onReject={() => setRejectTarget(candidate)}
                             onCorrect={() => setCorrectTarget(candidate)}
+                            onTransfer={() => setTransferTarget(candidate)}
                             onHistory={() => setHistoryTarget(candidate)}
+                            highlighted={candidate.candidate_id === highlightedCandidateId}
                           />
                         ))}
                       </div>
@@ -710,8 +979,8 @@ export function KanbanPage() {
           busy={busyId === rejectTarget.candidate_id}
           onClose={() => setRejectTarget(null)}
           onSubmit={async (disposition, note) => {
-            await moveCandidate(rejectTarget.candidate_id, 'rejected', note, disposition);
-            setRejectTarget(null);
+            const moved = await moveCandidate(rejectTarget.candidate_id, 'rejected', note, disposition);
+            if (moved) setRejectTarget(null);
           }}
         />
       )}
@@ -721,9 +990,18 @@ export function KanbanPage() {
           busy={busyId === correctTarget.candidate_id}
           onClose={() => setCorrectTarget(null)}
           onSubmit={async (target, note) => {
-            await moveCandidate(correctTarget.candidate_id, target, note);
-            setCorrectTarget(null);
+            const moved = await moveCandidate(correctTarget.candidate_id, target, note);
+            if (moved) setCorrectTarget(null);
           }}
+        />
+      )}
+      {transferTarget && effectiveDemandId !== null && (
+        <TransferModal
+          candidate={transferTarget}
+          targets={transferTargets}
+          busy={busyId === transferTarget.candidate_id}
+          onClose={() => setTransferTarget(null)}
+          onSubmit={transferCandidate}
         />
       )}
       {historyTarget && effectiveDemandId !== null && (

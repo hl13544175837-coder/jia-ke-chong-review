@@ -284,6 +284,24 @@ def _create_revision_02_database(path, rows, *, nullable_org_id=False):
             id INTEGER PRIMARY KEY,
             org_id INTEGER NOT NULL
         );
+        CREATE TABLE conversations (
+            id INTEGER PRIMARY KEY,
+            org_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            title VARCHAR(200),
+            created_at DATETIME,
+            updated_at DATETIME
+        );
+        CREATE TABLE conversation_messages (
+            id INTEGER PRIMARY KEY,
+            org_id INTEGER NOT NULL,
+            conversation_id INTEGER NOT NULL,
+            role VARCHAR(20) NOT NULL,
+            content TEXT NOT NULL,
+            tool_calls JSON,
+            thoughts JSON,
+            created_at DATETIME
+        );
         CREATE TABLE recruitment_demands (
             id INTEGER PRIMARY KEY,
             org_id INTEGER {org_nullability},
@@ -330,7 +348,7 @@ def test_request_no_migration_backfills_normalizes_and_adds_unique_index(tmp_pat
     ]
     assert connection.execute(
         "SELECT version_num FROM alembic_version"
-    ).fetchone()[0] == "20260721_06"
+    ).fetchone()[0] == "20260722_07"
     connection.close()
 
     engine = create_engine(f"sqlite:///{path}")

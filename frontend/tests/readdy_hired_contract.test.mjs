@@ -16,7 +16,8 @@ assert.ok(!page.includes('localStorage'), '不得用浏览器存储业务数据'
 assert.match(page, /data-ui="readdy-hired"/, '应有可验收的页面标识');
 assert.match(page, /累计入职人数/, '应有累计入职摘要');
 assert.match(page, /本月入职人数/, '应有本月入职摘要');
-assert.match(page, /平均招聘周期/, '应有平均周期摘要');
+assert.match(page, /平均 Offer 至入职周期/, '应准确说明该周期从 Offer 记录开始');
+assert.doesNotMatch(page, /平均招聘周期|招聘周期（天）/, '不能把 Offer 创建到入职冒充完整招聘周期');
 assert.match(page, /入职记录/, '应有入职记录表');
 
 // 状态覆盖：错误重试 + 真实空态
@@ -25,9 +26,10 @@ assert.match(page, /onRetry=\{offersAsync\.reload\}/, '错误态应可重试');
 assert.match(page, /暂无已入职记录/, '应有真实空态');
 assert.match(page, /EmptyState/, '空态应使用统一组件');
 
-// 数据行为：入职日期与周期来自真实字段
+// 数据行为：入职日期与 Offer 至入职周期来自真实字段
 assert.match(page, /onboarded_at/, '入职日期应来自 onboarded_at');
-assert.match(page, /daysBetween/, '招聘周期应由真实时间差计算');
+assert.match(page, /daysBetween/, 'Offer 至入职周期应由真实时间差计算');
+assert.match(page, /Offer 记录创建到确认入职/, '页面应解释周期起止点');
 assert.match(page, /\/candidates\//, '姓名应链接到候选人详情');
 
 console.log('readdy_hired_contract: OK');

@@ -69,7 +69,7 @@ assert.match(biPage, /已淘汰/, 'Rejected candidates should remain visible');
 assert.match(biPage, /已转出/, 'Transferred candidates should be shown separately');
 assert.match(
   biPage,
-  /`\/pipeline\?demand=\$\{demandId\}&stage=\$\{stage\.key\}`/,
+  /`\/kanban\?demand=\$\{demandId\}&stage=\$\{stage\.key\}`/,
   'Every funnel number should drill into the selected demand and stage',
 );
 assert.match(

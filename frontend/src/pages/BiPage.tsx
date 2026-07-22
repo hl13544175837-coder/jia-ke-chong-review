@@ -153,7 +153,7 @@ function DemandMetrics({ demandId }: { demandId: number }) {
           description="先把候选人加入该需求的流程，阶段、面试、Offer 和 HC 进度才会在这里出现。"
           action={(
             <Link
-              to={`/pipeline?demand=${demandId}`}
+              to={`/kanban?demand=${demandId}`}
               className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--enterprise-brand)] px-5 text-sm font-semibold text-on-primary hover:bg-[var(--enterprise-brand-dark)]"
             >
               去候选人流程 <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -200,7 +200,7 @@ function DemandMetrics({ demandId }: { demandId: number }) {
             {FUNNEL_STAGES.map((stage) => (
               <Link
                 key={stage.key}
-                to={`/pipeline?demand=${demandId}&stage=${stage.key}`}
+                to={`/kanban?demand=${demandId}&stage=${stage.key}`}
                 className="group rounded-lg border border-hairline bg-surface-soft px-3 py-3 transition hover:border-[var(--enterprise-brand)] hover:bg-surface-card"
               >
                 <div className="flex items-center justify-between gap-2">
@@ -277,7 +277,7 @@ function DemandMetrics({ demandId }: { demandId: number }) {
                 {metrics.stage_age.slice(0, 8).map((item) => (
                   <Link
                     key={`${item.candidate_id}-${item.stage}`}
-                    to={`/pipeline?demand=${demandId}&stage=${item.stage}&candidate=${item.candidate_id}`}
+                    to={`/kanban?demand=${demandId}&stage=${item.stage}&candidate=${item.candidate_id}`}
                     className="flex items-center justify-between gap-4 py-3 hover:text-[var(--enterprise-brand-dark)]"
                   >
                     <div className="min-w-0">

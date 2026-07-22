@@ -443,7 +443,7 @@ TOOLS: List[Dict[str, Any]] = [
 # 2b) 匹配工具：AI 只能提议运行匹配，经用户确认后执行
 # =============================================================================
 def _write_run_match(job_id: int = None, actor_id: int = None,
-                     actor_role: str = None, **_) -> Dict[str, Any]:
+                     actor_role: str = None, commit: bool = True, **_) -> Dict[str, Any]:
     """为岗位运行候选人匹配并持久化结果。"""
     from ..middleware.events import record_event
     if not job_id:
@@ -459,9 +459,10 @@ def _write_run_match(job_id: int = None, actor_id: int = None,
         int(job_id),
         top_n=10,
         candidate_query=_scoped_candidate_query(actor_id, actor_role),
+        commit=commit,
     )
     record_event("match.run", entity_id=int(job_id), entity_type="job",
-                 payload={"count": len(ranked)})
+                 payload={"count": len(ranked)}, commit=commit)
     return {"job_id": int(job_id), "job_title": job.title, "ranking": ranked}
 
 
@@ -558,38 +559,54 @@ def get_agent_architecture_dashboard() -> Dict[str, Any]:
     }
 
 
-def execute_write_tool(name: str, args: Dict[str, Any], user_id: int, role: str) -> Dict[str, Any]:
+def execute_write_tool(
+    name: str,
+    args: Dict[str, Any],
+    user_id: int,
+    role: str,
+    commit: bool = True,
+) -> Dict[str, Any]:
     """在请求上下文内执行写工具（供 /api/agent/execute 调用）。做 RBAC 校验。"""
     tool = _WRITE_TOOL_MAP.get(name)
     clean_args = dict(args or {})
     if not tool:
-        result = {"ok": False, "error": f"未知写工具：{name}"}
-        _record_agent_write_event(user_id, name, clean_args, result)
+        result = {"ok": False, "error": "未知写工具"}
+        _record_agent_write_event(user_id, "unknown", clean_args, result, commit=commit)
         return result
     if role not in tool["rbac"]:
         result = {"ok": False, "error": f"当前角色「{role}」无权执行此操作"}
-        _record_agent_write_event(user_id, name, clean_args, result)
+        _record_agent_write_event(user_id, name, clean_args, result, commit=commit)
         return result
     try:
         clean_args["actor_id"] = user_id
         clean_args["actor_role"] = role
+        clean_args["commit"] = commit
         result = tool["execute"](**clean_args)
         if isinstance(result, dict) and result.get("error"):
+            db.session.rollback()
             wrapped = {"ok": False, "error": result["error"]}
-            _record_agent_write_event(user_id, name, args or {}, wrapped)
+            _record_agent_write_event(user_id, name, args or {}, wrapped, commit=commit)
             return wrapped
         wrapped = {"ok": True, "result": result}
-        _record_agent_write_event(user_id, name, args or {}, wrapped)
+        _record_agent_write_event(user_id, name, args or {}, wrapped, commit=commit)
         return wrapped
     except Exception as e:
-        logger.exception("写工具 %s 执行失败", name)
+        logger.error("写工具 %s 执行失败", name)
         db.session.rollback()
-        wrapped = {"ok": False, "error": f"执行失败：{e}"}
-        _record_agent_write_event(user_id, name, args or {}, wrapped)
+        if not commit:
+            raise
+        wrapped = {"ok": False, "error": "执行失败，请稍后重试"}
+        _record_agent_write_event(user_id, name, args or {}, wrapped, commit=True)
         return wrapped
 
 
-def _record_agent_write_event(user_id: int, tool_name: str, args: Dict[str, Any], result: Dict[str, Any]) -> None:
+def _record_agent_write_event(
+    user_id: int,
+    tool_name: str,
+    args: Dict[str, Any],
+    result: Dict[str, Any],
+    commit: bool = True,
+) -> None:
     from ..middleware.events import record_event
 
     target_ids = {
@@ -621,6 +638,7 @@ def _record_agent_write_event(user_id: int, tool_name: str, args: Dict[str, Any]
         failure_reason=str(error)[:240] if error else None,
         source="ai",
         severity="info" if ok else "warning",
+        commit=commit,
     )
 
 

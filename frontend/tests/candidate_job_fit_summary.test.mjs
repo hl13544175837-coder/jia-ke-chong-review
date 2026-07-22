@@ -49,8 +49,20 @@ assert.match(
   'Job fit summary should show missing requirements',
 );
 
-assert.match(
+assert.doesNotMatch(
   candidatesPage,
   /建议初筛|谨慎推进|暂不建议/,
-  'Job fit summary should expose a simple recommendation for HR',
+  'Candidate rows must not invent an HR recommendation from frontend score thresholds',
+);
+
+assert.doesNotMatch(
+  candidatesPage,
+  /function fitRecommendation|score >= 75|score >= 45|highScoreCount|高匹配候选人/,
+  'Frontend-only score bands must not be presented as matching truth',
+);
+
+assert.match(
+  candidatesPage,
+  /有技能标签/,
+  'The summary metric may show a directly observable backend fact instead of a local quality judgement',
 );

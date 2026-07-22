@@ -109,3 +109,21 @@ def test_fresh_schema_contains_demand_scope_expand_columns(app):
         for table_name, required in expected_columns.items():
             actual = {column["name"] for column in inspector.get_columns(table_name)}
             assert required.issubset(actual), table_name
+
+
+def test_schema_compat_adds_feedback_reason_tags_without_offer_table(app):
+    from app import _ensure_workflow_enhancement_columns
+
+    with app.app_context():
+        db.session.execute(db.text("DROP TABLE offer_events"))
+        db.session.execute(db.text("DROP TABLE offer_records"))
+        db.session.execute(db.text("ALTER TABLE interview_feedback DROP COLUMN reason_tags"))
+        db.session.commit()
+
+        _ensure_workflow_enhancement_columns()
+
+        columns = {
+            column["name"]
+            for column in inspect(db.engine).get_columns("interview_feedback")
+        }
+        assert "reason_tags" in columns

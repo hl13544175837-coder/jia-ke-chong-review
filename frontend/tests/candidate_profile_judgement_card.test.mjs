@@ -14,8 +14,8 @@ const candidateProfile = readSource('features/candidates/pages/CandidateProfileP
 
 assert.match(
   candidateProfile,
-  /function CandidateJudgementCard/,
-  'Candidate profile should retain its evidence-based judgement card inside match analysis',
+  /function CandidateEvidenceCard/,
+  'Candidate profile should render a factual evidence card inside match analysis',
 );
 
 assert.match(
@@ -26,26 +26,26 @@ assert.match(
 
 assert.match(
   candidateProfile,
-  /候选人判断/,
-  'The match-analysis tab should be framed around an HR decision, not a raw skill chart',
+  /简历事实摘要/,
+  'The match-analysis tab should distinguish resume facts from an HR decision',
+);
+
+assert.doesNotMatch(
+  candidateProfile,
+  /推荐判断|建议优先初筛|建议人工复核|先补关键经历|暂无明显风险|highSkills/,
+  'The frontend must not turn locally chosen skill thresholds into a screening recommendation',
 );
 
 assert.match(
   candidateProfile,
-  /推荐判断/,
-  'The judgement card should expose a clear recommendation line',
+  /结构化信息来自后端解析结果/,
+  'The evidence card should state that its facts come from the backend parsing result',
 );
 
-assert.match(
+assert.doesNotMatch(
   candidateProfile,
-  /核心亮点/,
-  'The judgement card should summarize top strengths before showing raw tags',
-);
-
-assert.match(
-  candidateProfile,
-  /待确认风险/,
-  'The judgement card should make risk checks explicit',
+  /hiddenSkillCount > 12|Number\(skill\.score \|\| 0\) >= 4|highSkills\.length >=/,
+  'The frontend must not embed screening thresholds in the candidate evidence view',
 );
 
 assert.match(

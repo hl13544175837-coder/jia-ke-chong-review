@@ -25,14 +25,12 @@ const NotificationCenterPage = lazy(() => import('./pages/NotificationCenterPage
 const UploadPage = lazy(() => import('./pages/UploadPage').then((module) => ({ default: module.UploadPage })));
 const JobsPage = lazy(() => import('./pages/JobsPage').then((module) => ({ default: module.JobsPage })));
 const JobMatchPage = lazy(() => import('./pages/JobMatchPage').then((module) => ({ default: module.JobMatchPage })));
-const PipelinePage = lazy(() => import('./pages/PipelinePage').then((module) => ({ default: module.PipelinePage })));
 const InterviewListPage = lazy(() => import('./pages/InterviewListPage').then((module) => ({ default: module.InterviewListPage })));
 const InterviewsPage = lazy(() => import('./pages/InterviewsPage').then((module) => ({ default: module.InterviewsPage })));
 const OffersPage = lazy(() => import('./pages/OffersPage').then((module) => ({ default: module.OffersPage })));
 const KpiStandardsPage = lazy(() => import('./pages/KpiStandardsPage').then((module) => ({ default: module.KpiStandardsPage })));
 const InterviewerScopePage = lazy(() => import('./pages/InterviewerScopePage').then((module) => ({ default: module.InterviewerScopePage })));
 const InterviewReportPage = lazy(() => import('./pages/InterviewReportPage').then((module) => ({ default: module.InterviewReportPage })));
-const BiPage = lazy(() => import('./pages/BiPage').then((module) => ({ default: module.BiPage })));
 const HiredPage = lazy(() => import('./pages/HiredPage').then((module) => ({ default: module.HiredPage })));
 const KanbanPage = lazy(() => import('./pages/KanbanPage').then((module) => ({ default: module.KanbanPage })));
 const ReaddyInterviewsPage = lazy(() => import('./pages/ReaddyInterviewsPage').then((module) => ({ default: module.ReaddyInterviewsPage })));
@@ -70,6 +68,11 @@ function HomeRedirect() {
   return <Navigate to={role ? defaultRouteForRole() : '/login'} replace />;
 }
 
+function DashboardInterviewsRoute() {
+  const { role } = useAuth();
+  return role === 'interviewer' ? <InterviewListPage /> : <ReaddyInterviewsPage />;
+}
+
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
   return (
@@ -87,7 +90,7 @@ function AppRoutes() {
           element={
             <RequireRole
               allow={['recruiter', 'interviewer', 'manager', 'admin']}
-              element={<InterviewListPage />}
+              element={<DashboardInterviewsRoute />}
             />
           }
         />
@@ -113,8 +116,8 @@ function AppRoutes() {
           path="/dashboard/cycle"
           element={
             <RequireRole
-              allow={['recruiter', 'manager', 'admin']}
-              element={<BiPage />}
+              allow={['manager', 'admin']}
+              element={<AnalyticsPage />}
             />
           }
         />
@@ -246,7 +249,7 @@ function AppRoutes() {
           element={
             <RequireRole
               allow={['recruiter', 'manager', 'admin']}
-              element={<PipelinePage />}
+              element={<KanbanPage />}
             />
           }
         />
@@ -298,13 +301,7 @@ function AppRoutes() {
         <Route
           path="/bi"
           element={
-            <RequireRole allow={['manager', 'admin']} element={<BiPage />} />
-          }
-        />
-        <Route
-          path="/analytics"
-          element={
-            <RequireRole allow={['manager', 'admin']} element={<BiPage />} />
+            <RequireRole allow={['manager', 'admin']} element={<AnalyticsPage />} />
           }
         />
         <Route

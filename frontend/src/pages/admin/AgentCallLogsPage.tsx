@@ -1,6 +1,6 @@
 // 管理员 AI 调用日志审计页。
 // 展示每次 AI 调用（chat / tool_write）的模型、token、耗时、状态、工具链，
-// 支持筛选与分页，点击展开查看完整输入/输出/思考过程。
+// 支持筛选与分页；隐私最小化，不展示或保存候选人对话原文。
 
 import { useState } from 'react';
 import {
@@ -53,7 +53,7 @@ export function AgentCallLogsPage() {
     <div className="space-y-6">
       <PageHeader
         title="AI 调用日志"
-        description="审计每次 AI 调用的输入输出、模型、token、耗时与工具链 · 仅管理员可见"
+        description="审计模型、耗时、状态与工具元数据；不保存候选人对话原文 · 仅管理员可见"
         eyebrow={<Badge tone="glass">审计</Badge>}
       />
 
@@ -63,7 +63,7 @@ export function AgentCallLogsPage() {
         <StatCard
           icon={Zap}
           label="总 token"
-          value={String(stats.totalTokens)}
+          value={stats.totalTokens === null ? '—' : String(stats.totalTokens)}
         />
         <StatCard
           icon={Clock}
@@ -125,7 +125,7 @@ export function AgentCallLogsPage() {
           <EmptyState
             icon={Search}
             title="暂无调用记录"
-            description="AI 助手产生调用后，这里会显示每次调用的详细日志。"
+            description="AI 助手产生调用后，这里会显示不含对话原文的审计元数据。"
           />
         ) : (
           <div className="divide-y divide-hairline-soft">
@@ -168,6 +168,9 @@ function LogRow({
     ? new Date(log.created_at).toLocaleString('zh-CN', { hour12: false })
     : '—';
   const toolCalls = Array.isArray(log.tool_calls) ? log.tool_calls : [];
+  const tokenLabel = log.prompt_tokens === null && log.completion_tokens === null
+    ? 'token 未提供'
+    : `${log.prompt_tokens ?? '?'}+${log.completion_tokens ?? '?'} tok`;
 
   return (
     <div className="px-5 py-3">
@@ -188,11 +191,10 @@ function LogRow({
         <Badge tone="glass">{KIND_LABEL[log.kind] ?? log.kind}</Badge>
         <span className="shrink-0 text-xs text-muted">{created}</span>
         <span className="min-w-0 flex-1 truncate text-sm text-body">
-          {log.input_text ?? '（无输入）'}
+          {log.kind === 'tool_write' ? '用户确认的 AI 写操作' : 'AI 对话调用'}
         </span>
         <span className="shrink-0 text-xs text-muted-soft">
-          {log.model ?? '—'} · {log.prompt_tokens ?? 0}+{log.completion_tokens ?? 0} tok ·{' '}
-          {log.duration_ms ?? '—'}ms
+          {log.model ?? '—'} · {tokenLabel} · {log.duration_ms ?? '—'}ms
         </span>
       </button>
 
@@ -208,47 +210,10 @@ function LogRow({
                     key={i}
                     className="block rounded bg-surface-soft px-2 py-1 text-xs text-body"
                   >
-                    {typeof tc === 'object' && tc !== null
-                      ? JSON.stringify(tc)
-                      : String(tc)}
+                    {formatToolCallSummary(tc)}
                   </code>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* 输入 */}
-          {log.input_text && (
-            <div>
-              <p className="mb-1 text-xs font-medium text-muted-soft">输入</p>
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-surface-soft p-3 text-xs leading-6 text-body">
-                {log.input_text}
-              </pre>
-            </div>
-          )}
-
-          {/* 输出 */}
-          {log.output_text && (
-            <div>
-              <p className="mb-1 text-xs font-medium text-muted-soft">输出</p>
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-surface-soft p-3 text-xs leading-6 text-body">
-                {log.output_text}
-              </pre>
-            </div>
-          )}
-
-          {/* 思考过程 */}
-          {Array.isArray(log.thoughts) && log.thoughts.length > 0 && (
-            <div>
-              <p className="mb-1 text-xs font-medium text-muted-soft">思考过程</p>
-              <ul className="space-y-0.5 text-xs text-body">
-                {(log.thoughts as string[]).map((t, i) => (
-                  <li key={i} className="flex gap-2">
-                    <span className="text-muted-soft">·</span>
-                    <span>{t}</span>
-                  </li>
-                ))}
-              </ul>
             </div>
           )}
 
@@ -270,6 +235,23 @@ function LogRow({
       )}
     </div>
   );
+}
+
+function formatToolCallSummary(value: unknown) {
+  if (!value || typeof value !== 'object') return '已记录工具调用';
+  const item = value as Record<string, unknown>;
+  const labels = [typeof item.tool === 'string' ? item.tool : '工具调用'];
+  const targetIds = item.target_ids;
+  if (targetIds && typeof targetIds === 'object') {
+    for (const [key, target] of Object.entries(targetIds as Record<string, unknown>)) {
+      if (typeof target === 'number' || typeof target === 'string') {
+        labels.push(`${key}=${target}`);
+      }
+    }
+  }
+  if (typeof item.status === 'string') labels.push(item.status);
+  if (typeof item.ok === 'boolean') labels.push(item.ok ? '成功' : '失败');
+  return labels.join(' · ');
 }
 
 function StatCard({
@@ -304,11 +286,16 @@ function StatCard({
 
 function computeStats(items: AgentCallLogItem[]) {
   let totalTokens = 0;
+  let hasCompleteTokenData = items.length > 0;
   let totalDuration = 0;
   let durationCount = 0;
   let errorCount = 0;
   for (const it of items) {
-    totalTokens += (it.prompt_tokens ?? 0) + (it.completion_tokens ?? 0);
+    if (it.prompt_tokens === null || it.completion_tokens === null) {
+      hasCompleteTokenData = false;
+    } else {
+      totalTokens += it.prompt_tokens + it.completion_tokens;
+    }
     if (it.duration_ms !== null) {
       totalDuration += it.duration_ms;
       durationCount += 1;
@@ -316,7 +303,7 @@ function computeStats(items: AgentCallLogItem[]) {
     if (it.status !== 'ok') errorCount += 1;
   }
   return {
-    totalTokens,
+    totalTokens: hasCompleteTokenData ? totalTokens : null,
     avgDurationMs: durationCount > 0 ? Math.round(totalDuration / durationCount) : null,
     errorCount,
   };

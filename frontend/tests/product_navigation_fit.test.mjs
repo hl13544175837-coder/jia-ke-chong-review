@@ -33,6 +33,16 @@ assert.ok(
     nav.indexOf("label: '候选人流程'") < nav.indexOf("label: '进度看板'"),
   'Sidebar should follow the HR workflow without adding interview as a second workbench',
 );
+assert.match(
+  nav,
+  /to:\s*'\/kanban'[\s\S]*label:\s*'候选人流程'/,
+  '候选人流程主导航必须进入 Readdy 新看板',
+);
+assert.doesNotMatch(
+  nav,
+  /to:\s*'\/pipeline'[\s\S]*label:\s*'候选人流程'/,
+  '旧 Pipeline 页面不能继续作为正式主导航',
+);
 
 assert.doesNotMatch(
   nav,

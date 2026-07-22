@@ -1,5 +1,7 @@
+import pytest
+
 from app import db
-from app.models import Job
+from app.models import Job, TalentMap
 
 
 def _auth(token):
@@ -151,3 +153,24 @@ def test_talent_maps_are_scoped_to_owner_unless_manager_or_admin(client, make_us
     manager_detail = client.get(f"/api/talent-maps/{talent_map_id}", headers=_auth(manager_token))
     assert manager_detail.status_code == 200
     assert manager_detail.get_json()["name"] == "销售总监人才地图"
+
+
+def test_talent_map_write_rolls_back_when_audit_event_fails(
+    client, make_user, app, monkeypatch
+):
+    _, token = make_user("talent-audit@example.com", role="recruiter")
+
+    def fail_audit(*_args, **_kwargs):
+        raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr("app.api.talent_maps.record_event", fail_audit)
+
+    with pytest.raises(RuntimeError, match="audit unavailable"):
+        client.post(
+            "/api/talent-maps",
+            headers=_auth(token),
+            json={"name": "不应半提交的人才地图"},
+        )
+
+    with app.app_context():
+        assert TalentMap.query.count() == 0

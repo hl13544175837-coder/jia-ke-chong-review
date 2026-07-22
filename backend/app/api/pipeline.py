@@ -2,7 +2,7 @@ from flask import Blueprint, g, jsonify, request
 from sqlalchemy import func
 
 from .. import db
-from ..middleware.auth import require_auth
+from ..middleware.auth import require_auth, require_role
 from ..models import Candidate, InterviewAssignment, PipelineStage, RecruitmentDemand
 from ..services.demand_context_service import (
     DemandContextError,
@@ -285,9 +285,8 @@ def get_offer(candidate_id, job_id=None, demand_id=None):
 
 @bp.get("/offers")
 @require_auth
+@require_role("recruiter", "manager", "admin")
 def list_offers():
-    if g.role == "interviewer":
-        return jsonify({"error": "Forbidden"}), 403
     statuses = [item for item in request.args.get("status", "").split(",") if item]
     return jsonify(
         list_offer_records(

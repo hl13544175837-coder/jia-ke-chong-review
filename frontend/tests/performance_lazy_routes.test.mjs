@@ -11,8 +11,8 @@ assert.match(source, /<Suspense/, 'Lazy routes should be wrapped in Suspense');
 
 [
   'AgentPage',
-  'BiPage',
-  'PipelinePage',
+  'AnalyticsPage',
+  'KanbanPage',
   'InterviewListPage',
   'InterviewsPage',
   'JobMatchPage',

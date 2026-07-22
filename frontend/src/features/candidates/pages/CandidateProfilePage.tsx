@@ -1,4 +1,4 @@
-// 候选人档案页（HR 视角）— 展示候选人判断卡片、核心技能证据和简历结构化内容。
+// 候选人档案页（HR 视角）— 展示后端返回的简历事实、技能证据和结构化内容。
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -41,11 +41,11 @@ const RADAR_FILL = 'rgba(17, 17, 17, 0.08)';
 const RADAR_GRID_STROKE = '#e5e7eb';   // hairline
 const RADAR_TICK_FILL = '#6b7280';     // muted
 const CORE_SKILL_LIMIT = 8;
-const JUDGEMENT_SKILL_LIMIT = 6;
+const EVIDENCE_SKILL_LIMIT = 6;
 const CANDIDATE_RESUME_TABS: Array<{ key: CandidateResumeTab; label: string; hint: string }> = [
   { key: 'original', label: '原始简历', hint: '事实真源' },
   { key: 'structured', label: '结构化画像', hint: '可编辑辅助信息' },
-  { key: 'match', label: '匹配分析', hint: 'AI 建议' },
+  { key: 'match', label: '匹配分析', hint: '后端结果' },
 ];
 
 function sortSkillTags(tags: CandidateTag[]): CandidateTag[] {
@@ -141,7 +141,7 @@ function uniqueLines(lines: string[], limit: number): string[] {
   return Array.from(new Set(lines.filter(Boolean))).slice(0, limit);
 }
 
-function CandidateJudgementCard({
+function CandidateEvidenceCard({
   resumeJson,
   source,
   tags,
@@ -155,66 +155,45 @@ function CandidateJudgementCard({
   hiddenSkillCount: number;
 }) {
   const info = getExtractedInfo(resumeJson);
-  const visibleSkills = coreTags.slice(0, JUDGEMENT_SKILL_LIMIT);
-  const highSkills = visibleSkills.filter((skill) => Number(skill.score || 0) >= 4);
+  const visibleSkills = coreTags.slice(0, EVIDENCE_SKILL_LIMIT);
   const latestExperience = structuredSummary(info.experience ?? info.work_experience, ['position', 'company', 'duration']);
   const education = structuredSummary(info.education, ['school', 'degree', 'major']);
   const summary = textFromValue(info.summary);
 
-  const recommendation =
-    visibleSkills.length === 0
-      ? { label: '资料待补全', tone: 'neutral' as const, note: '缺少可判断的核心技能，建议先补齐简历信息。' }
-      : highSkills.length >= 3 && latestExperience
-        ? { label: '建议优先初筛', tone: 'success' as const, note: '核心技能和经历线索较集中，适合进入人工初筛。' }
-        : highSkills.length >= 1
-          ? { label: '建议人工复核', tone: 'warning' as const, note: '已有部分有效信号，但还需要结合目标岗位确认。' }
-          : { label: '先补关键经历', tone: 'neutral' as const, note: '技能强度不突出，建议先确认项目和岗位相关经历。' };
-
-  const highlights = uniqueLines([
-    highSkills.length > 0 ? `高分技能：${highSkills.slice(0, 3).map((skill) => skill.tag).join('、')}` : '',
+  const facts = uniqueLines([
     latestExperience ? `最近经历：${latestExperience}` : '',
     education ? `教育背景：${education}` : '',
     source?.target_job_title ? `来源岗位：${source.target_job_title}` : '',
-    summary ? `摘要：${summary}` : '',
-  ], 3);
-
-  const risks = uniqueLines([
-    hiddenSkillCount > 12 ? 'AI 抽取标签较多，建议按目标岗位二次筛选。' : '',
-    highSkills.length === 0 && visibleSkills.length > 0 ? '缺少 4 分以上核心技能，需要人工确认真实强项。' : '',
-    !latestExperience ? '最近工作经历不清晰，建议补充或查看原简历。' : '',
-    !source?.target_job_title ? '暂未绑定目标岗位，当前判断只能作为通用画像参考。' : '',
+    summary ? `简历摘要：${summary}` : '',
   ], 3);
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>候选人判断</CardTitle>
+        <CardTitle>简历事实摘要</CardTitle>
       </CardHeader>
       <CardBody className="space-y-5">
         <div className="rounded-md border border-hairline bg-surface-soft px-3 py-3">
-          <p className="text-xs font-medium text-muted">推荐判断</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge tone={recommendation.tone}>{recommendation.label}</Badge>
-            <span className="text-xs text-muted-soft">基于核心技能和简历结构化信息</span>
-          </div>
-          <p className="mt-2 text-sm leading-6 text-body">{recommendation.note}</p>
+          <p className="text-sm leading-6 text-body">
+            结构化信息来自后端解析结果；技能分、标签和字段只用于辅助核对，不代表推进、淘汰或录用结论。
+          </p>
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-medium text-ink">核心亮点</p>
-          {highlights.length > 0 ? (
+          <p className="mb-2 text-sm font-medium text-ink">已提取信息</p>
+          {facts.length > 0 ? (
             <ul className="space-y-1.5 text-sm leading-6 text-body">
-              {highlights.map((item) => (
+              {facts.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-soft">暂无足够亮点，建议先补充简历信息。</p>
+            <p className="text-sm text-muted-soft">后端暂未返回可展示的结构化经历信息，请查看原始简历。</p>
           )}
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-medium text-ink">核心技能</p>
+          <p className="mb-2 text-sm font-medium text-ink">技能标签（后端解析）</p>
           {visibleSkills.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {visibleSkills.map((skill) => (
@@ -225,19 +204,6 @@ function CandidateJudgementCard({
             </div>
           ) : (
             <p className="text-sm text-muted-soft">暂无技能标签</p>
-          )}
-        </div>
-
-        <div>
-          <p className="mb-2 text-sm font-medium text-ink">待确认风险</p>
-          {risks.length > 0 ? (
-            <ul className="space-y-1.5 text-sm leading-6 text-body">
-              {risks.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-soft">暂无明显风险，建议结合目标岗位复核。</p>
           )}
         </div>
 
@@ -1339,7 +1305,7 @@ function CandidatePipelineActionPanel({
                 </Button>
               )}
               <Link
-                to={`/pipeline?demand=${pipeline.demand_id}&candidate=${candidateId}&stage=${pipeline.stage}`}
+                to={`/kanban?demand=${pipeline.demand_id}&candidate=${candidateId}&stage=${pipeline.stage}`}
                 className="inline-flex h-8 items-center justify-center rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
               >
                 查看流程详情
@@ -1812,7 +1778,7 @@ export function CandidateProfilePage() {
               jobId={selectedPipeline?.job_id ?? null}
               jobTitle={selectedPipeline?.job_title}
             >
-              <CandidateJudgementCard
+              <CandidateEvidenceCard
                 resumeJson={resume_json}
                 source={source}
                 tags={tags}

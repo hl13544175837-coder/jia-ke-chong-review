@@ -113,7 +113,7 @@ assert.match(
 
 assert.match(
   pendingPanel,
-  /canOpenPipeline[\s\S]*`\/pipeline\?demand=\$\{item\.demand_id\}&candidate=\$\{item\.candidate_id\}`[\s\S]*`\/candidates\/\$\{item\.candidate_id\}`/,
+  /canOpenPipeline[\s\S]*`\/kanban\?demand=\$\{item\.demand_id\}&candidate=\$\{item\.candidate_id\}`[\s\S]*`\/candidates\/\$\{item\.candidate_id\}`/,
   'Pending feedback cards should preserve demand context while sending interviewers to candidate detail',
 );
 

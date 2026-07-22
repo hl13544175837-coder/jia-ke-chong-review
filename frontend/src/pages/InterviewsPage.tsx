@@ -178,7 +178,7 @@ function SetupPhase({ onStart }: SetupProps) {
           {demandId && !boardAsync.loading && !boardAsync.error && demandCandidates.length === 0 && (
             <p className="text-xs text-muted">
               该需求暂无进行中候选人，请先到
-              <Link to={`/pipeline?demand=${selectedDemandId}`} className="font-semibold text-ink hover:underline">
+              <Link to={`/kanban?demand=${selectedDemandId}`} className="font-semibold text-ink hover:underline">
                 候选人流程
               </Link>
               加入或查看候选人。

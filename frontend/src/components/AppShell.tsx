@@ -64,7 +64,7 @@ export function AppShell() {
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
 
   const items = (role ? navItemsForRole(role) : []).filter((item) => hasMenu(item.menuCode));
-  const activeItem = items.find((item) => isPathActive(location.pathname, item.to));
+  const activeItem = items.find((item) => isNavItemActive(item, location.pathname, isPathActive(location.pathname, item.to)));
   const activeLabel = activeItem ? navLabelForRole(activeItem, role) : '工作台';
   const unreadCount = notifications.filter((item) => !item.is_read).length;
 

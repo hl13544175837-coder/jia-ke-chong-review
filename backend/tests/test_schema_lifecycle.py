@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
@@ -201,6 +203,92 @@ def test_bootstrap_empty_database_passes_demand_scope_schema_verification(tmp_pa
     assert report["schema_revision"]["ok"] is True
     assert report["schema_errors"] == []
     assert report["ok"] is True
+
+
+def test_verifier_reports_missing_revision_07_agent_storage_schema(tmp_path):
+    """The head revision alone is insufficient without its AI storage contract."""
+    bootstrap = _load_bootstrap_module()
+    verifier = _load_demand_scope_verifier()
+    db_path = tmp_path / "missing-agent-storage-schema.db"
+    database_url = _database_url(db_path)
+    bootstrap.bootstrap_database(database_url, allow_empty=True)
+
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text(
+            "DROP INDEX ix_conversations_org_user_archived_updated"
+        ))
+        connection.execute(text(
+            "DROP INDEX ix_conversation_messages_org_conversation"
+        ))
+        connection.execute(text("ALTER TABLE conversations DROP COLUMN archived"))
+        connection.execute(text(
+            "ALTER TABLE conversation_messages DROP COLUMN org_id"
+        ))
+        connection.execute(text("ALTER TABLE agent_call_logs DROP COLUMN output_text"))
+        connection.execute(text("DROP INDEX ix_agent_call_logs_org_created"))
+        connection.execute(text(
+            "DROP INDEX ix_agent_call_logs_org_conversation_created"
+        ))
+        connection.execute(text("DROP INDEX ix_agent_call_logs_org_user_created"))
+
+        context = MigrationContext.configure(connection)
+        operations = Operations(context)
+        with operations.batch_alter_table("offer_records") as batch_op:
+            batch_op.drop_constraint(
+                "uq_offer_records_org_demand_candidate",
+                type_="unique",
+            )
+        operations.create_index(
+            "uq_offer_records_org_demand_candidate",
+            "offer_records",
+            ["org_id", "demand_id", "candidate_id"],
+            unique=False,
+        )
+    engine.dispose()
+
+    report = verifier.verify_database(database_url)
+
+    assert {
+        "missing_column:conversations.archived",
+        "missing_column:conversation_messages.org_id",
+        "missing_column:agent_call_logs.output_text",
+        "missing_index:conversations.ix_conversations_org_user_archived_updated",
+        "missing_index:conversation_messages."
+        "ix_conversation_messages_org_conversation",
+        "missing_index:agent_call_logs.ix_agent_call_logs_org_created",
+        "missing_index:agent_call_logs."
+        "ix_agent_call_logs_org_conversation_created",
+        "missing_index:agent_call_logs.ix_agent_call_logs_org_user_created",
+        "non_unique_index:offer_records.uq_offer_records_org_demand_candidate",
+    }.issubset(report["schema_errors"])
+
+
+def test_verifier_reports_all_revision_07_agent_storage_tables_missing_at_head(
+    tmp_path,
+):
+    bootstrap = _load_bootstrap_module()
+    verifier = _load_demand_scope_verifier()
+    db_path = tmp_path / "all-agent-storage-tables-missing.db"
+    database_url = _database_url(db_path)
+    bootstrap.bootstrap_database(database_url, allow_empty=True)
+
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE agent_call_logs"))
+        connection.execute(text("DROP TABLE conversation_messages"))
+        connection.execute(text("DROP TABLE conversations"))
+    engine.dispose()
+
+    report = verifier.verify_database(database_url)
+
+    assert {
+        "missing_table:conversations",
+        "missing_table:conversation_messages",
+        "missing_table:agent_call_logs",
+    }.issubset(report["schema_errors"])
+    assert report["schema_revision"]["ok"] is True
+    assert report["ok"] is False
 
 
 def test_bootstrap_rejects_partial_schema_without_filling_missing_tables(tmp_path):

@@ -42,6 +42,20 @@ def _can_manage_map(talent_map):
     return talent_map.owner_hr_id == g.user_id
 
 
+def _commit_with_event(action, *, entity_id, entity_type):
+    try:
+        record_event(
+            action,
+            entity_id=entity_id,
+            entity_type=entity_type,
+            commit=False,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+
 def _map_query_for_current_user():
     query = TalentMap.query.filter(TalentMap.org_id == g.org_id)
     if g.role == "recruiter":
@@ -235,8 +249,12 @@ def create_talent_map():
     if error:
         return jsonify({"error": error}), 403 if "无权" in error else 404
     db.session.add(talent_map)
-    db.session.commit()
-    record_event("talent_map.created", entity_id=talent_map.id, entity_type="talent_map")
+    db.session.flush()
+    _commit_with_event(
+        "talent_map.created",
+        entity_id=talent_map.id,
+        entity_type="talent_map",
+    )
     return jsonify(_map_payload(talent_map)), 201
 
 
@@ -265,8 +283,11 @@ def update_talent_map(map_id):
     error = _apply_map_fields(talent_map, request.get_json() or {})
     if error:
         return jsonify({"error": error}), 403 if "无权" in error else 404
-    db.session.commit()
-    record_event("talent_map.updated", entity_id=talent_map.id, entity_type="talent_map")
+    _commit_with_event(
+        "talent_map.updated",
+        entity_id=talent_map.id,
+        entity_type="talent_map",
+    )
     return jsonify(_map_payload(talent_map))
 
 
@@ -286,8 +307,12 @@ def create_talent_map_company(map_id):
     company = TalentMapCompany(org_id=g.org_id, map_id=talent_map.id, company_name=company_name)
     _apply_company_fields(company, data)
     db.session.add(company)
-    db.session.commit()
-    record_event("talent_map_company.created", entity_id=company.id, entity_type="talent_map_company")
+    db.session.flush()
+    _commit_with_event(
+        "talent_map_company.created",
+        entity_id=company.id,
+        entity_type="talent_map_company",
+    )
     return jsonify(_company_payload(company)), 201
 
 
@@ -301,8 +326,11 @@ def update_talent_map_company(company_id):
     if not _can_manage_map(company.talent_map):
         return jsonify({"error": "Forbidden"}), 403
     _apply_company_fields(company, request.get_json() or {})
-    db.session.commit()
-    record_event("talent_map_company.updated", entity_id=company.id, entity_type="talent_map_company")
+    _commit_with_event(
+        "talent_map_company.updated",
+        entity_id=company.id,
+        entity_type="talent_map_company",
+    )
     return jsonify(_company_payload(company))
 
 
@@ -324,8 +352,12 @@ def create_talent_map_person(map_id):
     if error:
         return jsonify({"error": error}), 404
     db.session.add(person)
-    db.session.commit()
-    record_event("talent_map_person.created", entity_id=person.id, entity_type="talent_map_person")
+    db.session.flush()
+    _commit_with_event(
+        "talent_map_person.created",
+        entity_id=person.id,
+        entity_type="talent_map_person",
+    )
     return jsonify(_person_payload(person)), 201
 
 
@@ -341,6 +373,9 @@ def update_talent_map_person(person_id):
     error = _apply_person_fields(person, request.get_json() or {})
     if error:
         return jsonify({"error": error}), 404
-    db.session.commit()
-    record_event("talent_map_person.updated", entity_id=person.id, entity_type="talent_map_person")
+    _commit_with_event(
+        "talent_map_person.updated",
+        entity_id=person.id,
+        entity_type="talent_map_person",
+    )
     return jsonify(_person_payload(person))

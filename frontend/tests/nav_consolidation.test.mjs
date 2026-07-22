@@ -99,6 +99,11 @@ assert.match(
   /isNavItemActive/,
   'App shell should support explicit active path groups for consolidated nav entries',
 );
+assert.match(
+  shell,
+  /items\.find\(\(item\) => isNavItemActive\(item, location\.pathname, isPathActive\(location\.pathname, item\.to\)\)\)/,
+  'Compatibility routes should use activePaths for the page header as well as sidebar highlighting',
+);
 
 assert.ok(
   existsSync(join(srcRoot, 'pages/admin/SystemSettingsPage.tsx')),

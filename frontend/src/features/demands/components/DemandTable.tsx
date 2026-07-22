@@ -26,7 +26,7 @@ function StageMetric({ demand, stage, label, value }: {
 }) {
   return (
     <Link
-      to={`/pipeline?demand=${demand.id}&stage=${stage}`}
+      to={`/kanban?demand=${demand.id}&stage=${stage}`}
       className="inline-flex min-w-14 flex-col rounded-md px-2 py-1 text-center hover:bg-surface-soft focus:outline-none focus:ring-2 focus:ring-ink"
       aria-label={`${label} ${value} 人，查看候选人`}
     >

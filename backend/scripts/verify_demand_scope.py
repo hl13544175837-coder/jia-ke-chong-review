@@ -22,7 +22,7 @@ except ImportError:  # Direct execution: python backend/scripts/verify_demand_sc
     from audit_demand_scope import FACT_SPECS, fact_context
 
 
-EXPECTED_REVISION = "20260721_06"
+EXPECTED_REVISION = "20260722_07"
 EXPECTED_COLUMNS = {
     "recruitment_demands": {
         "city",
@@ -45,7 +45,62 @@ EXPECTED_COLUMNS = {
         "primary_slot",
     },
     "interview_feedback": {"demand_id", "assignment_id"},
-    "offer_records": {"demand_id"},
+    "offer_records": {
+        "demand_id",
+        "approver_id",
+        "submitted_at",
+        "approved_at",
+        "sent_at",
+        "responded_at",
+        "withdrawn_at",
+        "expires_at",
+        "onboarded_at",
+        "rejection_reason",
+        "candidate_reply",
+        "salary_breakdown",
+        "version",
+    },
+    "conversations": {"org_id", "title_source", "archived"},
+    "conversation_messages": {"org_id"},
+    "agent_call_logs": {
+        "id",
+        "org_id",
+        "conversation_id",
+        "message_id",
+        "user_id",
+        "role",
+        "kind",
+        "model",
+        "prompt_tokens",
+        "completion_tokens",
+        "duration_ms",
+        "status",
+        "error_msg",
+        "tool_calls",
+        "thoughts",
+        "input_text",
+        "output_text",
+        "created_at",
+    },
+    "offer_events": {
+        "org_id",
+        "offer_id",
+        "action",
+        "from_status",
+        "to_status",
+        "actor_id",
+        "comment",
+        "detail",
+        "created_at",
+    },
+    "kpi_standards": {
+        "org_id",
+        "config_json",
+        "version",
+        "updated_by",
+        "created_at",
+        "updated_at",
+    },
     "candidate_dispositions": {"demand_id"},
     "events": {"demand_id"},
     "notifications": {"demand_id"},
@@ -69,12 +124,56 @@ EXPECTED_UNIQUE_INDEXES = {
     "interview_feedback": {
         "uq_interview_feedback_assignment_id": ("assignment_id",),
     },
+    "kpi_standards": {
+        "ix_kpi_standards_org_id": ("org_id",),
+    },
+    "offer_records": {
+        "uq_offer_records_org_demand_candidate": (
+            "org_id",
+            "demand_id",
+            "candidate_id",
+        ),
+    },
 }
 EXPECTED_INDEXES = {
     "recruitment_demands": {
         "ix_recruitment_demands_org_default_interviewer": (
             "org_id",
             "default_interviewer_id",
+        ),
+    },
+    "offer_events": {
+        "ix_offer_events_org_offer_created": (
+            "org_id",
+            "offer_id",
+            "created_at",
+        ),
+    },
+    "conversations": {
+        "ix_conversations_org_user_archived_updated": (
+            "org_id",
+            "user_id",
+            "archived",
+            "updated_at",
+        ),
+    },
+    "conversation_messages": {
+        "ix_conversation_messages_org_conversation": (
+            "org_id",
+            "conversation_id",
+        ),
+    },
+    "agent_call_logs": {
+        "ix_agent_call_logs_org_created": ("org_id", "created_at"),
+        "ix_agent_call_logs_org_conversation_created": (
+            "org_id",
+            "conversation_id",
+            "created_at",
+        ),
+        "ix_agent_call_logs_org_user_created": (
+            "org_id",
+            "user_id",
+            "created_at",
         ),
     },
 }
@@ -92,8 +191,6 @@ EXPECTED_FOREIGN_KEYS = {
     },
 }
 DEFAULT_INTERVIEWER_ROLES = {"interviewer", "manager", "admin"}
-
-
 def _safe(value):
     if isinstance(value, (date, datetime)):
         return value.isoformat()
@@ -145,19 +242,37 @@ def verify_database(database_url):
             table = metadata.tables.get(table_name)
             if table is None:
                 continue
-            actual_indexes = {index.name: index for index in table.indexes}
+            actual_indexes = {
+                index.get("name"): index
+                for index in inspector.get_indexes(table_name)
+                if index.get("name")
+            }
+            actual_unique_constraints = {
+                constraint.get("name"): constraint
+                for constraint in inspector.get_unique_constraints(table_name)
+                if constraint.get("name")
+            }
             for index_name, expected_columns in expected_indexes.items():
+                constraint = actual_unique_constraints.get(index_name)
+                if constraint is not None:
+                    actual_columns = tuple(constraint.get("column_names") or ())
+                    if actual_columns != expected_columns:
+                        schema_errors.append(
+                            f"index_columns_mismatch:{table_name}.{index_name}"
+                        )
+                    continue
+
                 index = actual_indexes.get(index_name)
                 if index is None:
                     schema_errors.append(
                         f"missing_unique_index:{table_name}.{index_name}"
                     )
                     continue
-                if not index.unique:
+                if not index.get("unique"):
                     schema_errors.append(
                         f"non_unique_index:{table_name}.{index_name}"
                     )
-                actual_columns = tuple(column.name for column in index.columns)
+                actual_columns = tuple(index.get("column_names") or ())
                 if actual_columns != expected_columns:
                     schema_errors.append(
                         f"index_columns_mismatch:{table_name}.{index_name}"
@@ -166,7 +281,11 @@ def verify_database(database_url):
             table = metadata.tables.get(table_name)
             if table is None:
                 continue
-            actual_indexes = {index.name: index for index in table.indexes}
+            actual_indexes = {
+                index.get("name"): index
+                for index in inspector.get_indexes(table_name)
+                if index.get("name")
+            }
             for index_name, expected_columns in expected_indexes.items():
                 index = actual_indexes.get(index_name)
                 if index is None:
@@ -174,11 +293,11 @@ def verify_database(database_url):
                         f"missing_index:{table_name}.{index_name}"
                     )
                     continue
-                if index.unique:
+                if index.get("unique"):
                     schema_errors.append(
                         f"unexpected_unique_index:{table_name}.{index_name}"
                     )
-                actual_columns = tuple(column.name for column in index.columns)
+                actual_columns = tuple(index.get("column_names") or ())
                 if actual_columns != expected_columns:
                     schema_errors.append(
                         f"index_columns_mismatch:{table_name}.{index_name}"

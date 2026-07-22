@@ -668,22 +668,16 @@ export interface KpiBlockCategory {
 }
 
 export interface KpiRiskThresholds {
-  high_if_status_paused_or_closed: boolean;
-  high_if_zero_fill_and_blocked: boolean;
-  attention_hc_gap_ratio: number;
-  attention_if_blocked: boolean;
   deadline_warning_days: number;
-}
-
-export interface KpiProcessHealthThresholds {
-  green_threshold: number;
-  yellow_threshold: number;
+  stale_stage_days: number;
+  no_recommendation_days: number;
+  low_interview_candidate_threshold: number;
+  open_too_long_days: number;
 }
 
 export interface KpiStandardConfig {
   block_categories: KpiBlockCategory[];
   risk_thresholds: KpiRiskThresholds;
-  process_health_thresholds: KpiProcessHealthThresholds;
 }
 
 export interface KpiStandardResponse {

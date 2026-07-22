@@ -76,22 +76,6 @@ function ScorePill({ score }: { score: number }) {
   return <Badge tone={scoreTone(score)}>{score} 分</Badge>;
 }
 
-function fitRecommendation(score: number, missingCount: number) {
-  if (score >= 75 && missingCount <= 1) {
-    return { label: '建议初筛', tone: 'success' as const };
-  }
-  if (score >= 45) {
-    return { label: '谨慎推进', tone: 'warning' as const };
-  }
-  return { label: '暂不建议', tone: 'neutral' as const };
-}
-
-function fitScoreTone(score: number) {
-  if (score >= 75) return 'success';
-  if (score >= 45) return 'warning';
-  return 'neutral';
-}
-
 function ParseStatusPill({ status }: { status?: ParseStatus }) {
   if (!status) return null;
   const tone = status === 'failed' ? 'danger' : status === 'ok' ? 'success' : 'warning';
@@ -180,13 +164,11 @@ function JobFitSummary({
 
   const matched = Array.isArray(jobFit.matched_tags) ? jobFit.matched_tags : [];
   const missing = Array.isArray(jobFit.missing_tags) ? jobFit.missing_tags : [];
-  const recommendation = fitRecommendation(jobFit.score, missing.length);
 
   return (
     <div className="max-w-[460px] space-y-2">
       <div className="flex flex-wrap gap-1.5">
-        <Badge tone={fitScoreTone(jobFit.score)}>匹配 {jobFit.score}%</Badge>
-        <Badge tone={recommendation.tone}>{recommendation.label}</Badge>
+        <Badge tone="info">后端匹配 {jobFit.score}%</Badge>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {matched.length > 0 ? (
@@ -512,7 +494,9 @@ export function CandidatesPage() {
     && visibleCandidateIds.every((id) => selectedCandidateSet.has(id));
 
   const uniqueTagCount = tagOptions.length;
-  const highScoreCount = candidates.filter((c) => (c.max_score ?? 0) >= 4).length;
+  const taggedCandidateCount = candidates.filter(
+    (candidate) => candidateTags(candidate).length > 0,
+  ).length;
   const hasActiveFilters =
     searchQuery.trim() !== '' ||
     cityFilter !== 'all' ||
@@ -631,7 +615,7 @@ export function CandidatesPage() {
         metrics={
           <>
             <EnterpriseMetric label="简历总量" value={<AnimatedNumber value={totalCandidates} />} tone="success" />
-            <EnterpriseMetric label="高匹配候选人" value={<AnimatedNumber value={highScoreCount} />} />
+            <EnterpriseMetric label="有技能标签" value={<AnimatedNumber value={taggedCandidateCount} />} />
             <EnterpriseMetric
               label={selectedDemand ? '当前页匹配结果' : '可筛选技能'}
               value={<AnimatedNumber value={selectedDemand ? matchByCandidateId.size : uniqueTagCount} />}

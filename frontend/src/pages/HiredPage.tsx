@@ -86,16 +86,19 @@ export function HiredPage() {
     const thisMonth = hired.filter(
       (offer) => offer.onboarded_at && isSameMonth(offer.onboarded_at, now),
     );
-    const cycles = hired
+    const offerToOnboardDays = hired
       .map((offer) => daysBetween(offer.created_at, offer.onboarded_at))
       .filter((days): days is number => days !== null);
-    const avgCycle = cycles.length > 0
-      ? Math.round(cycles.reduce((sum, days) => sum + days, 0) / cycles.length)
+    const avgOfferToOnboardDays = offerToOnboardDays.length > 0
+      ? Math.round(
+          offerToOnboardDays.reduce((sum, days) => sum + days, 0)
+          / offerToOnboardDays.length,
+        )
       : null;
     return {
       total: hired.length,
       thisMonth: thisMonth.length,
-      avgCycle,
+      avgOfferToOnboardDays,
     };
   }, [hired]);
 
@@ -126,7 +129,7 @@ export function HiredPage() {
     <div className="space-y-6" data-ui="readdy-hired">
       <PageHeader
         title="已入职"
-        description={`共 ${stats.total} 人完成入职${stats.avgCycle !== null ? `，平均招聘周期 ${stats.avgCycle} 天` : ''}`}
+        description={`共 ${stats.total} 人完成入职${stats.avgOfferToOnboardDays !== null ? `，平均 Offer 至入职周期 ${stats.avgOfferToOnboardDays} 天` : ''}`}
         actions={(
           <Button type="button" size="sm" variant="secondary" onClick={offersAsync.reload}>
             刷新
@@ -139,8 +142,8 @@ export function HiredPage() {
         <SummaryCard icon={CalendarCheck2} value={stats.thisMonth} label="本月入职人数" />
         <SummaryCard
           icon={Clock3}
-          value={stats.avgCycle !== null ? `${stats.avgCycle} 天` : '—'}
-          label="平均招聘周期（创建 Offer 到入职）"
+          value={stats.avgOfferToOnboardDays !== null ? `${stats.avgOfferToOnboardDays} 天` : '—'}
+          label="平均 Offer 至入职周期（Offer 记录创建到确认入职）"
         />
       </div>
 
@@ -173,12 +176,12 @@ export function HiredPage() {
                     <th className="px-5 py-3 text-xs font-medium text-muted">部门</th>
                     <th className="px-5 py-3 text-xs font-medium text-muted">需求编号</th>
                     <th className="px-5 py-3 text-xs font-medium text-muted">入职日期</th>
-                    <th className="px-5 py-3 text-xs font-medium text-muted">招聘周期（天）</th>
+                    <th className="px-5 py-3 text-xs font-medium text-muted">Offer 至入职（天）</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-hairline">
                   {hired.map((offer: OfferRecord) => {
-                    const cycle = daysBetween(offer.created_at, offer.onboarded_at);
+                    const offerToOnboard = daysBetween(offer.created_at, offer.onboarded_at);
                     return (
                       <tr key={offer.id} className="transition-colors hover:bg-surface-soft/60">
                         <td className="px-5 py-3.5">
@@ -202,7 +205,7 @@ export function HiredPage() {
                         <td className="px-5 py-3.5 text-sm text-ink">
                           {formatDate(offer.onboarded_at ?? offer.onboard_date)}
                         </td>
-                        <td className="px-5 py-3.5 text-sm text-ink">{cycle !== null ? cycle : '—'}</td>
+                        <td className="px-5 py-3.5 text-sm text-ink">{offerToOnboard !== null ? offerToOnboard : '—'}</td>
                       </tr>
                     );
                   })}

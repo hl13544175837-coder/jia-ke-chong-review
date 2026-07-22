@@ -20,12 +20,6 @@ import { API_BASE } from './apiBase';
 
 // ---- Wire types ----------------------------------------------------------
 
-// One conversation turn as sent back to the backend for multi-turn context.
-export interface ChatTurn {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 // A single tool advertised by GET /api/agent/tools.
 export interface AgentTool {
   name: string;
@@ -116,20 +110,21 @@ export async function executeWriteTool(
 
 export interface StreamChatParams {
   message: string;
-  history: ChatTurn[];
   conversationId?: number | null;
   signal?: AbortSignal;
 }
 
-// POST the message + history and invoke `onEvent` for each parsed SSE event.
+// POST the new message and persisted conversation id. The server owns the
+// conversation history; do not present browser-built history as its source of truth.
+// Invokes `onEvent` for each parsed SSE event.
 // Resolves when the stream ends; rejects on network/HTTP failure or abort.
 // Parsing handles SSE chunks that split mid-event across reads by buffering the
 // trailing partial block until the next chunk completes it.
 export async function streamChat(
-  { message, history, conversationId, signal }: StreamChatParams,
+  { message, conversationId, signal }: StreamChatParams,
   onEvent: (event: AgentEvent) => void
 ): Promise<void> {
-  const body: Record<string, unknown> = { message, history };
+  const body: Record<string, unknown> = { message };
   if (conversationId) body.conversation_id = conversationId;
   const resp = await fetch(`${API_BASE}/agent/chat`, {
     method: 'POST',

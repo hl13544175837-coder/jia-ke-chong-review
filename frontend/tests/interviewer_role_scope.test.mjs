@@ -20,7 +20,7 @@ const appShell = readSource('components/AppShell.tsx');
 const feedbackForm = readSource('components/interview/FeedbackForm.tsx');
 const candidateListRolesBlock = candidatePermissions.match(/CANDIDATE_LIST_ROLES[\s\S]*?\];/)?.[0] ?? '';
 const candidateDetailRolesBlock = candidatePermissions.match(/CANDIDATE_DETAIL_ROLES[\s\S]*?\];/)?.[0] ?? '';
-const pipelineNavBlock = nav.match(/to:\s*'\/pipeline'[\s\S]*?\n\s*\},/)?.[0] ?? '';
+const pipelineNavBlock = nav.match(/to:\s*'\/kanban'[\s\S]*?\n\s*\},/)?.[0] ?? '';
 const agentNavBlock = nav.match(/to:\s*'\/agent'[\s\S]*?\n\s*\},/)?.[0] ?? '';
 
 assert.match(

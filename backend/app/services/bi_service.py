@@ -20,6 +20,7 @@ from ..models import (
 from ..time_utils import utc_now
 from .demand_context_service import OPEN_DEMAND_STATUSES
 from .interview_workflow_service import active_assignment_filter
+from .kpi_standard_service import get_effective_kpi_config
 from .pipeline_service import latest_demand_stage_subquery, normalize_pipeline_stage
 
 
@@ -294,7 +295,21 @@ def _demand_summary(metrics):
     }
 
 
-def _demand_alerts(demand_record, metrics, *, stale_days=7):
+def _block_category(alert, config):
+    text = f"{alert.get('title') or ''} {alert.get('detail') or ''}".lower()
+    fallback = None
+    for category in config["block_categories"]:
+        if category["id"] == "other":
+            fallback = category
+        if any(keyword.lower() in text for keyword in category["keywords"]):
+            return {"id": category["id"], "name": category["name"]}
+    category = fallback or config["block_categories"][-1]
+    return {"id": category["id"], "name": category["name"]}
+
+
+def _demand_alerts(demand_record, metrics, *, config):
+    thresholds = config["risk_thresholds"]
+    stale_days = thresholds["stale_stage_days"]
     demand = metrics["demand"]
     demand_id = demand["id"]
     job_id = demand["job_id"]
@@ -331,7 +346,7 @@ def _demand_alerts(demand_record, metrics, *, stale_days=7):
                 "stage": item["stage"],
                 "stage_label": item["stage_label"],
                 "age_days": item["age_days"],
-                "action_path": f"/pipeline?demand={demand_id}&candidate={item['candidate_id']}",
+                "action_path": f"/kanban?demand={demand_id}&candidate={item['candidate_id']}",
             }
         )
 
@@ -352,7 +367,7 @@ def _demand_alerts(demand_record, metrics, *, stale_days=7):
                 "stage": "interview",
                 "stage_label": STAGE_LABELS["interview"],
                 "age_days": item["overdue_days"],
-                "action_path": f"/pipeline?demand={demand_id}&candidate={item['candidate_id']}",
+                "action_path": f"/kanban?demand={demand_id}&candidate={item['candidate_id']}",
             }
         )
 
@@ -370,16 +385,33 @@ def _demand_alerts(demand_record, metrics, *, stale_days=7):
                 "candidate_id": None,
                 "stage": None,
                 "age_days": overdue_days,
-                "action_path": f"/pipeline?demand={demand_id}",
+                "action_path": f"/kanban?demand={demand_id}",
             }
         )
+    elif demand_record.target_date:
+        remaining_days = (demand_record.target_date - today).days
+        if remaining_days <= thresholds["deadline_warning_days"]:
+            alerts.append(
+                {
+                    "kind": "demand_deadline_warning",
+                    "priority": "medium",
+                    "title": f"{title}即将到达目标日期",
+                    "detail": f"距离目标日期还有 {remaining_days} 天，请确认当前推进计划",
+                    "demand_id": demand_id,
+                    "job_id": job_id,
+                    "candidate_id": None,
+                    "stage": None,
+                    "age_days": remaining_days,
+                    "action_path": f"/kanban?demand={demand_id}",
+                }
+            )
 
     start_date = demand_record.accepted_at or demand_record.requested_at
     if (
         metrics["funnel"]["pipeline_total"] == 0
         and not metrics["hc"]["completion_suggested"]
         and start_date
-        and (today - start_date).days >= stale_days
+        and (today - start_date).days >= thresholds["no_recommendation_days"]
     ):
         waiting_days = (today - start_date).days
         has_history = metrics["funnel"]["funnel_total"] > 0
@@ -403,7 +435,7 @@ def _demand_alerts(demand_record, metrics, *, stale_days=7):
                 "candidate_id": None,
                 "stage": None,
                 "age_days": waiting_days,
-                "action_path": f"/pipeline?demand={demand_id}",
+                "action_path": f"/kanban?demand={demand_id}",
             }
         )
 
@@ -419,7 +451,7 @@ def _demand_alerts(demand_record, metrics, *, stale_days=7):
                 "candidate_id": None,
                 "stage": "onboarded",
                 "age_days": 0,
-                "action_path": f"/pipeline?demand={demand_id}",
+                "action_path": f"/kanban?demand={demand_id}",
             }
         )
 
@@ -427,6 +459,7 @@ def _demand_alerts(demand_record, metrics, *, stale_days=7):
     for alert in alerts:
         alert["owner_hr_id"] = responsibility["owner_hr_id"]
         alert["owner_name"] = responsibility["owner_name"]
+        alert["block_category"] = _block_category(alert, config)
 
     return alerts
 
@@ -446,6 +479,7 @@ def _aggregate_funnel(metrics_rows):
 def build_team_operational_overview(org_id):
     """Build the manager/admin collaboration view from Demand-owned facts."""
 
+    config = get_effective_kpi_config(org_id)
     demands = (
         RecruitmentDemand.query.filter(RecruitmentDemand.org_id == org_id)
         .order_by(RecruitmentDemand.created_at.desc(), RecruitmentDemand.id.desc())
@@ -460,7 +494,7 @@ def build_team_operational_overview(org_id):
     alerts = []
     for demand, metrics in zip(demands, metrics_rows):
         if metrics["demand"]["status"] in OPEN_DEMAND_STATUSES:
-            alerts.extend(_demand_alerts(demand, metrics))
+            alerts.extend(_demand_alerts(demand, metrics, config=config))
     priority_order = {"high": 0, "medium": 1, "low": 2}
     alerts.sort(
         key=lambda item: (

@@ -1,5 +1,8 @@
 from datetime import date
 
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 
 def _auth(token, **extra):
     return {"Authorization": f"Bearer {token}", **extra}
@@ -204,6 +207,7 @@ def test_offer_state_machine_and_org_role_boundaries(client, make_user, app):
     )
     _, manager_token = make_user("offer-manager-2@example.com", role="manager")
     _, interviewer_token = make_user("offer-interviewer@example.com", role="interviewer")
+    _, unknown_role_token = make_user("offer-unknown@example.com", role="auditor")
     _, other_org_manager_token = make_user(
         "offer-other-org@example.com",
         role="manager",
@@ -226,6 +230,9 @@ def test_offer_state_machine_and_org_role_boundaries(client, make_user, app):
 
     interviewer_list = client.get("/api/offers", headers=_auth(interviewer_token))
     assert interviewer_list.status_code == 403
+    assert client.get(
+        "/api/offers", headers=_auth(unknown_role_token)
+    ).status_code == 403
     assert client.get(
         f"/api/offers/{offer['id']}",
         headers=_auth(other_org_manager_token),
@@ -273,3 +280,131 @@ def test_offer_list_reports_legacy_unmapped_rows_without_crashing(client, make_u
         "total": 0,
         "unmapped_total": 1,
     }
+
+
+def test_first_offer_insert_race_returns_conflict_without_overwriting_winner(
+    client,
+    make_user,
+    app,
+    monkeypatch,
+):
+    recruiter_id, recruiter_token = make_user(
+        "offer-race-owner@example.com",
+        role="recruiter",
+    )
+    demand_id, job_id, candidate_id = _seed_offer_candidate(app, recruiter_id)
+
+    with app.app_context():
+        from app import db
+        from app.models import OfferRecord
+
+        winner = OfferRecord(
+            org_id=1,
+            candidate_id=candidate_id,
+            demand_id=demand_id,
+            job_id=job_id,
+            salary_range="并发赢家草稿",
+            approval_status="draft",
+            note="先写入的请求",
+            created_by=recruiter_id,
+        )
+        db.session.add(winner)
+        db.session.commit()
+        winner_id = winner.id
+
+        session_class = type(db.session())
+        original_execute = session_class.execute
+        hid_existing_offer_once = False
+
+        def execute_with_stale_first_offer_read(session, statement, *args, **kwargs):
+            nonlocal hid_existing_offer_once
+            sql = str(statement).lower()
+            if not hid_existing_offer_once and "from offer_records" in sql:
+                hid_existing_offer_once = True
+
+                class _NoOfferFound:
+                    @staticmethod
+                    def scalar_one_or_none():
+                        return None
+
+                return _NoOfferFound()
+            return original_execute(session, statement, *args, **kwargs)
+
+        monkeypatch.setattr(session_class, "execute", execute_with_stale_first_offer_read)
+
+    response = client.put(
+        f"/api/pipeline/demands/{demand_id}/offer/{candidate_id}",
+        headers=_auth(recruiter_token),
+        json={"salary_range": "并发输家草稿", "note": "不应覆盖"},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "offer_already_exists"
+    assert "刷新" in response.get_json()["error"]
+
+    with app.app_context():
+        from app import db
+        from app.models import OfferEvent, OfferRecord
+
+        offers = OfferRecord.query.filter_by(
+            org_id=1,
+            demand_id=demand_id,
+            candidate_id=candidate_id,
+        ).all()
+        assert len(offers) == 1
+        assert offers[0].id == winner_id
+        assert offers[0].salary_range == "并发赢家草稿"
+        assert offers[0].note == "先写入的请求"
+        assert OfferEvent.query.filter_by(offer_id=winner_id).count() == 0
+        assert db.session.execute(db.text("SELECT 1")).scalar_one() == 1
+
+
+def test_unrelated_offer_integrity_error_is_not_mislabeled(
+    client,
+    make_user,
+    app,
+    monkeypatch,
+):
+    recruiter_id, recruiter_token = make_user(
+        "offer-unrelated-integrity@example.com",
+        role="recruiter",
+    )
+    demand_id, _, candidate_id = _seed_offer_candidate(app, recruiter_id)
+    unrelated = IntegrityError(
+        "INSERT INTO offer_records ...",
+        {},
+        RuntimeError("NOT NULL constraint failed: offer_records.job_id"),
+    )
+
+    with app.app_context():
+        from app import db
+        from app.models import OfferRecord
+
+        session_class = type(db.session())
+        original_flush = session_class.flush
+
+        def raise_unrelated_integrity_error(session, *args, **kwargs):
+            if any(isinstance(item, OfferRecord) for item in session.new):
+                raise unrelated
+            return original_flush(session, *args, **kwargs)
+
+        monkeypatch.setattr(
+            session_class,
+            "flush",
+            raise_unrelated_integrity_error,
+        )
+
+    with pytest.raises(IntegrityError) as captured:
+        client.put(
+            f"/api/pipeline/demands/{demand_id}/offer/{candidate_id}",
+            headers=_auth(recruiter_token),
+            json={"salary_range": "30000"},
+        )
+    assert captured.value is unrelated
+
+    with app.app_context():
+        from app import db
+        from app.models import OfferRecord
+
+        assert OfferRecord.query.count() == 0
+        assert db.session.execute(db.text("SELECT 1")).scalar_one() == 1

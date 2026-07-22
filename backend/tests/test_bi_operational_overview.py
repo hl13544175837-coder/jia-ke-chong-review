@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 
 from app import db
@@ -7,7 +8,9 @@ from app.models import (
     Job,
     PipelineStage,
     RecruitmentDemand,
+    KpiStandard,
 )
+from app.services.kpi_standard_service import DEFAULT_KPI_CONFIG
 
 
 def _auth(token):
@@ -233,7 +236,7 @@ def test_team_overview_keeps_sibling_demands_separate(client, make_user, app):
     assert feedback_alerts[0]["owner_name"] == "专员A"
     assert all(
         item["action_path"].startswith(
-            f"/pipeline?demand={item['demand_id']}"
+            f"/kanban?demand={item['demand_id']}"
         )
         for item in payload["alerts"]
     )
@@ -341,6 +344,98 @@ def test_team_overview_empty_state_is_successful_and_not_fabricated(
         "archived_total": 0,
         "funnel_total": 0,
     }
+
+
+def test_saved_process_standards_drive_bi_alerts_and_demand_risk(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "overview-config-owner@example.com", name="专员"
+    )
+    manager_id, manager_token = make_user(
+        "overview-config-manager@example.com", role="manager", name="经理"
+    )
+    with app.app_context():
+        config = deepcopy(DEFAULT_KPI_CONFIG)
+        config["block_categories"] = [
+            {"id": "stale", "name": "流程停滞", "keywords": ["停留"]},
+            {"id": "other", "name": "其他原因", "keywords": []},
+        ]
+        config["risk_thresholds"].update({
+            "deadline_warning_days": 3,
+            "stale_stage_days": 1,
+            "no_recommendation_days": 1,
+            "low_interview_candidate_threshold": 1,
+            "open_too_long_days": 3,
+        })
+        db.session.add(KpiStandard(
+            org_id=1,
+            config_json=config,
+            version=1,
+            updated_by=manager_id,
+        ))
+        job = Job(org_id=1, title="配置生效岗位", jd_text="x", owner_hr_id=owner_id)
+        db.session.add(job)
+        db.session.flush()
+        active = RecruitmentDemand(
+            org_id=1,
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no="REQ-CONFIG-ACTIVE",
+            job_title_snapshot="配置生效需求",
+            status="active",
+            requested_at=date.today() - timedelta(days=4),
+            accepted_at=date.today() - timedelta(days=4),
+            target_date=date.today() + timedelta(days=2),
+        )
+        empty = RecruitmentDemand(
+            org_id=1,
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no="REQ-CONFIG-EMPTY",
+            job_title_snapshot="等待推荐需求",
+            status="active",
+            requested_at=date.today() - timedelta(days=2),
+            accepted_at=date.today() - timedelta(days=2),
+            target_date=date.today() + timedelta(days=30),
+        )
+        db.session.add_all([active, empty])
+        db.session.flush()
+        candidate = Candidate(
+            org_id=1,
+            owner_hr_id=owner_id,
+            current_demand_id=active.id,
+            name_masked="配置候选人",
+            resume_json={},
+        )
+        db.session.add(candidate)
+        db.session.flush()
+        db.session.add(PipelineStage(
+            org_id=1,
+            candidate_id=candidate.id,
+            demand_id=active.id,
+            job_id=job.id,
+            stage="pending",
+            updated_by=owner_id,
+            ts=datetime.now(UTC).replace(tzinfo=None) - timedelta(days=2),
+        ))
+        db.session.commit()
+        active_id = active.id
+
+    overview = client.get("/api/bi/overview", headers=_auth(manager_token))
+    assert overview.status_code == 200
+    alerts = overview.get_json()["alerts"]
+    stale = next(item for item in alerts if item["kind"] == "stale_pipeline")
+    assert stale["block_category"] == {"id": "stale", "name": "流程停滞"}
+    assert any(item["kind"] == "hr_no_recommendation" for item in alerts)
+    deadline = next(item for item in alerts if item["kind"] == "demand_deadline_warning")
+    assert deadline["age_days"] == 2
+
+    demand = client.get(f"/api/demands/{active_id}", headers=_auth(owner_token))
+    assert demand.status_code == 200
+    assert {"low_interview_conversion", "open_too_long"}.issubset(
+        demand.get_json()["risk_flags"]
+    )
 
 
 def test_team_overview_surfaces_demand_health_and_collaboration_alerts(
@@ -453,7 +548,7 @@ def test_team_overview_surfaces_demand_health_and_collaboration_alerts(
     for kind, demand_id in expected.items():
         assert alerts_by_kind[kind]["demand_id"] == demand_id
         assert alerts_by_kind[kind]["action_path"].startswith(
-            f"/pipeline?demand={demand_id}"
+            f"/kanban?demand={demand_id}"
         )
     assert not any(
         item["kind"] == "no_active_candidates"

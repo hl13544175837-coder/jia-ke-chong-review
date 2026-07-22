@@ -42,10 +42,11 @@ export const NAV_ITEMS: NavItem[] = [
   },
   ...featureNavItems,
   {
-    to: '/pipeline',
+    to: '/kanban',
     label: '候选人流程',
     icon: KanbanSquare,
     roles: ['recruiter', 'manager', 'admin'],
+    activePaths: ['/pipeline'],
     menuCode: 'pipeline',
   },
   {

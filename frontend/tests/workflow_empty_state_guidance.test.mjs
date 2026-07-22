@@ -119,7 +119,7 @@ assert.match(
 );
 assert.match(
   interviewAssignment,
-  /to=\{`\/pipeline\?demand=\$\{selectedDemandId\}`\}/,
+  /to=\{`\/kanban\?demand=\$\{selectedDemandId\}`\}/,
   'Interview assignment should link back to the exact demand pipeline when no interview-stage candidate exists',
 );
 assert.match(

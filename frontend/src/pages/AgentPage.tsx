@@ -1,7 +1,7 @@
 // AI 助手 — 智能体对话页。
 // 通过 fetch + ReadableStream 消费后端 SSE 流，逐步展示智能体的完整工作过程：
 // 思考(thought) → 调用工具(tool_call) → 拿到数据(tool_result) → 流式回答(token)。
-// 维护多轮 history，每次请求带上历史消息实现连续对话。
+// 会话上下文由服务端按 conversation_id 持久化，前端只发送本次提问。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -15,11 +15,9 @@ import {
   toolMeta,
   type AgentEvent,
   type AgentTool,
-  type ChatTurn,
 } from '../lib/agent';
 import {
   useAgentChat,
-  type Message,
   type UserMessage,
   type AssistantMessage,
   type WriteProposal,
@@ -74,6 +72,7 @@ export function AgentPage() {
     conversationId,
     setConversationId,
     conversations,
+    archivedConversations,
     conversationsError,
     conversationLoadError,
     clearConversationLoadError,
@@ -88,40 +87,6 @@ export function AgentPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  // Build the history payload (user/assistant pairs) from completed turns.
-  // 多轮上下文回传 tool_calls/thoughts 摘要（控 token），让 LLM 知道上一轮查了什么、
-  // 想了什么，避免重复调工具或上下文断裂（对应计划 T10）。
-  const buildHistory = useCallback((msgs: Message[]): ChatTurn[] => {
-    const turns: ChatTurn[] = [];
-    for (const m of msgs) {
-      if (m.kind === 'user') {
-        turns.push({ role: 'user', content: m.text });
-      } else if (m.status === 'done' && (m.answer || m.toolCalls.length || m.thoughts.length)) {
-        // 把上一轮的工具调用与思考摘要附在回答前，供 LLM 续接上下文
-        const parts: string[] = [];
-        if (m.thoughts.length) {
-          parts.push(`[上轮思考] ${m.thoughts.slice(-3).join('；')}`);
-        }
-        if (m.toolCalls.length) {
-          const toolSummary = m.toolCalls
-            .slice(-4)
-            .map((c) => {
-              const argBrief = Object.entries(c.args)
-                .slice(0, 2)
-                .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
-                .join(',');
-              return `${c.tool}(${argBrief})`;
-            })
-            .join('；');
-          parts.push(`[上轮工具调用] ${toolSummary}`);
-        }
-        if (m.answer) parts.push(m.answer);
-        turns.push({ role: 'assistant', content: parts.join('\n') });
-      }
-    }
-    return turns;
-  }, []);
 
   // Mutate the in-flight assistant message (always the last one) per event.
   const applyEvent = useCallback((assistantId: number, ev: AgentEvent) => {
@@ -195,9 +160,6 @@ export function AgentPage() {
         status: 'streaming',
       };
 
-      // History is everything *before* this new exchange.
-      const history = buildHistory(messages);
-
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setInput('');
       setStreaming(true);
@@ -207,7 +169,7 @@ export function AgentPage() {
 
       try {
         await streamChat(
-          { message: text, history, conversationId, signal: controller.signal },
+          { message: text, conversationId, signal: controller.signal },
           (ev) => {
             if (ev.type === 'conversation_started') {
               setConversationId(ev.id);
@@ -246,10 +208,8 @@ export function AgentPage() {
     },
     [
       streaming,
-      messages,
       conversationId,
       setConversationId,
-      buildHistory,
       applyEvent,
       abortRef,
       setInput,
@@ -385,11 +345,11 @@ export function AgentPage() {
               <h1 className="text-2xl font-display text-ink">AI 助手</h1>
               <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-soft px-2.5 py-0.5 text-xs font-medium text-muted">
                 <Sparkles className="h-3 w-3" />
-                DeepSeek v4 驱动
+                AI 辅助
               </span>
             </div>
             <p className="text-sm text-muted">
-              用自然语言查询候选人、岗位、匹配、流程和团队报表 · 涉及写入时必须人工确认
+              用自然语言查询候选人、岗位、匹配、流程和团队报表 · 结果需人工判断，写入必须人工确认
             </p>
           </div>
         </div>
@@ -416,12 +376,14 @@ export function AgentPage() {
             )}
             <ConversationSidebar
               conversations={conversations}
+              archivedConversations={archivedConversations}
               currentId={conversationId}
               streaming={streaming}
               onSwitch={switchConversation}
               onCreate={() => createNewConversation()}
               onRename={renameConversation}
-              onDelete={(id) => archiveConversation(id, true)}
+              onArchive={(id) => archiveConversation(id, true)}
+              onRestore={(id) => archiveConversation(id, false)}
             />
           </div>
         )}
@@ -498,24 +460,30 @@ export function AgentPage() {
 
 function ConversationSidebar({
   conversations,
+  archivedConversations,
   currentId,
   streaming,
   onSwitch,
   onCreate,
   onRename,
-  onDelete,
+  onArchive,
+  onRestore,
 }: {
   conversations: ConversationSummary[];
+  archivedConversations: ConversationSummary[];
   currentId: number | null;
   streaming: boolean;
   onSwitch: (id: number) => void;
   onCreate: () => void;
   onRename: (id: number, title: string) => void;
-  onDelete: (id: number) => void;
+  onArchive: (id: number) => void;
+  onRestore: (id: number) => void;
 }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
   const [menuId, setMenuId] = useState<number | null>(null);
+  const [view, setView] = useState<'active' | 'archived'>('active');
+  const visibleConversations = view === 'active' ? conversations : archivedConversations;
 
   function startRename(c: ConversationSummary) {
     setEditingId(c.id);
@@ -533,9 +501,26 @@ function ConversationSidebar({
   return (
     <aside className="flex w-64 shrink-0 flex-col rounded-lg border border-hairline bg-surface-soft">
       <div className="flex items-center justify-between border-b border-hairline px-3 py-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-soft">
-          会话历史
-        </span>
+        <div className="flex items-center gap-1" role="tablist" aria-label="会话状态">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'active'}
+            onClick={() => setView('active')}
+            className={cn('rounded px-1.5 py-0.5 text-xs font-semibold', view === 'active' ? 'bg-surface-card text-ink' : 'text-muted-soft')}
+          >
+            当前
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'archived'}
+            onClick={() => setView('archived')}
+            className={cn('rounded px-1.5 py-0.5 text-xs font-semibold', view === 'archived' ? 'bg-surface-card text-ink' : 'text-muted-soft')}
+          >
+            已归档
+          </button>
+        </div>
         <button
           type="button"
           onClick={onCreate}
@@ -548,14 +533,13 @@ function ConversationSidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
-        {conversations.length === 0 ? (
+        {visibleConversations.length === 0 ? (
           <p className="px-3 py-6 text-center text-xs text-muted-soft">
-            还没有会话
-            <br />
-            点击上方 + 开始
+            {view === 'active' ? '还没有当前会话' : '没有已归档会话'}
+            {view === 'active' && <><br />点击上方 + 开始</>}
           </p>
         ) : (
-          conversations.map((c) => {
+          visibleConversations.map((c) => {
             const active = c.id === currentId;
             const editing = editingId === c.id;
             return (
@@ -584,7 +568,7 @@ function ConversationSidebar({
                   <button
                     type="button"
                     onClick={() => onSwitch(c.id)}
-                    disabled={streaming || active}
+                    disabled={streaming || active || view === 'archived'}
                     className="flex w-full items-start gap-2 text-left disabled:cursor-default"
                   >
                     <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
@@ -594,28 +578,42 @@ function ConversationSidebar({
 
                 {/* 操作菜单触发 */}
                 {!editing && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuId(menuId === c.id ? null : c.id);
-                    }}
-                    className={cn(
-                      'absolute right-1 top-1.5 flex h-5 w-5 items-center justify-center rounded text-muted opacity-0 transition-opacity hover:bg-surface-strong hover:text-ink',
-                      'group-hover:opacity-100',
-                      menuId === c.id && 'opacity-100',
-                    )}
-                    title="更多操作"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
+                  view === 'archived' ? (
+                    <button
+                      type="button"
+                      onClick={() => onRestore(c.id)}
+                      disabled={streaming}
+                      className="absolute right-1 top-1.5 rounded px-1.5 py-0.5 text-xs text-brand-700 hover:bg-surface-strong disabled:opacity-40"
+                      title="恢复会话"
+                    >
+                      恢复
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={streaming}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuId(menuId === c.id ? null : c.id);
+                      }}
+                      className={cn(
+                        'absolute right-1 top-1.5 flex h-5 w-5 items-center justify-center rounded text-muted opacity-0 transition-opacity hover:bg-surface-strong hover:text-ink disabled:opacity-40',
+                        'group-hover:opacity-100',
+                        menuId === c.id && 'opacity-100',
+                      )}
+                      title="更多操作"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  )
                 )}
 
                 {/* 下拉菜单 */}
-                {menuId === c.id && !editing && (
+                {view === 'active' && menuId === c.id && !editing && (
                   <div className="absolute right-1 top-7 z-10 w-28 rounded-md border border-hairline bg-canvas py-1 shadow-card">
                     <button
                       type="button"
+                      disabled={streaming}
                       onClick={() => startRename(c)}
                       className="flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-body hover:bg-surface-soft"
                     >
@@ -623,10 +621,11 @@ function ConversationSidebar({
                     </button>
                     <button
                       type="button"
+                      disabled={streaming}
                       onClick={() => {
                         setMenuId(null);
                         if (confirm(`删除会话「${c.title}」？删除后可在归档列表恢复。`)) {
-                          onDelete(c.id);
+                          onArchive(c.id);
                         }
                       }}
                       className="flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-danger-700 hover:bg-danger-50"

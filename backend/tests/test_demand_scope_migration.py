@@ -165,6 +165,24 @@ def _create_legacy_database(path, scenario="one", all_facts=False):
             interviewer_id INTEGER NOT NULL,
             created_at DATETIME
         );
+        CREATE TABLE conversations (
+            id INTEGER PRIMARY KEY,
+            org_id INTEGER NOT NULL DEFAULT 1,
+            user_id INTEGER NOT NULL,
+            title VARCHAR(200),
+            created_at DATETIME,
+            updated_at DATETIME
+        );
+        CREATE TABLE conversation_messages (
+            id INTEGER PRIMARY KEY,
+            org_id INTEGER NOT NULL DEFAULT 1,
+            conversation_id INTEGER NOT NULL,
+            role VARCHAR(20) NOT NULL,
+            content TEXT NOT NULL,
+            tool_calls JSON,
+            thoughts JSON,
+            created_at DATETIME
+        );
         """
     )
     connection.executemany(
@@ -263,7 +281,7 @@ def test_alembic_expand_is_additive_revisioned_and_idempotent(tmp_path):
     )
     with engine.connect() as connection:
         assert connection.execute(text("SELECT COUNT(*) FROM pipeline_stages")).scalar_one() == 1
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260721_06"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260722_07"
     engine.dispose()
 
 
@@ -292,7 +310,7 @@ def test_interview_uniqueness_revision_adds_primary_slot_and_unique_indexes(tmp_
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260721_06"
+        ).scalar_one() == "20260722_07"
     engine.dispose()
 
 
@@ -600,8 +618,8 @@ def test_verify_checks_revision_completeness_and_job_consistency(tmp_path):
     verified = verify.verify_database(url)
     assert verified["ok"] is True
     assert verified["schema_revision"] == {
-        "current": "20260721_06",
-        "expected": "20260721_06",
+        "current": "20260722_07",
+        "expected": "20260722_07",
         "ok": True,
     }
     assert verified["unmapped_total"] == 0
@@ -644,6 +662,26 @@ def test_verify_reports_missing_demand_request_no_unique_index(tmp_path):
         "missing_unique_index:recruitment_demands."
         "uq_recruitment_demands_org_request_no"
     ) in report["schema_errors"]
+
+
+def test_verify_reports_missing_offer_lifecycle_and_kpi_schema(tmp_path):
+    path = tmp_path / "missing-readdy-schema.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    connection = sqlite3.connect(path)
+    connection.execute("DROP TABLE offer_events")
+    connection.execute("DROP TABLE kpi_standards")
+    connection.execute("ALTER TABLE offer_records DROP COLUMN submitted_at")
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(
+        _database_url(path)
+    )
+
+    assert "missing_table:offer_events" in report["schema_errors"]
+    assert "missing_table:kpi_standards" in report["schema_errors"]
+    assert "missing_column:offer_records.submitted_at" in report["schema_errors"]
 
 
 def test_verify_reports_missing_default_interviewer_index_and_foreign_key(
@@ -690,7 +728,7 @@ def test_verify_reports_nullable_and_unnormalized_request_numbers(tmp_path):
     command.downgrade(config, "20260711_03")
     connection = sqlite3.connect(path)
     connection.execute(
-        "UPDATE alembic_version SET version_num = '20260721_06'"
+        "UPDATE alembic_version SET version_num = '20260722_07'"
     )
     connection.execute(
         "CREATE UNIQUE INDEX uq_recruitment_demands_org_request_no "

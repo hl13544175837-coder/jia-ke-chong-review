@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from .. import db
 from ..middleware.events import record_event
@@ -31,6 +32,12 @@ LEGACY_INTERVIEW_STAGES = {"interview_first", "interview_second", "interview_fin
 PIPELINE_STAGE_ORDER = STAGE_ORDER + ["rejected", "transferred"]
 TERMINAL_STAGES = {"onboarded", "rejected", "transferred"}
 WRITABLE_DEMAND_STATUSES = {"pending", "active"}
+OFFER_UNIQUE_CONSTRAINT = "uq_offer_records_org_demand_candidate"
+SQLITE_OFFER_UNIQUE_COLUMNS = (
+    "offer_records.org_id",
+    "offer_records.demand_id",
+    "offer_records.candidate_id",
+)
 
 
 @dataclass
@@ -41,6 +48,25 @@ class PipelineServiceError(Exception):
 
     def as_payload(self):
         return {"error": self.message, "code": self.code}
+
+
+def _is_offer_unique_violation(error):
+    original = getattr(error, "orig", None)
+    constraint_name = getattr(
+        getattr(original, "diag", None),
+        "constraint_name",
+        None,
+    )
+    if constraint_name == OFFER_UNIQUE_CONSTRAINT:
+        return True
+
+    message = str(original or error).lower().replace("`", "").replace('"', "")
+    if OFFER_UNIQUE_CONSTRAINT.lower() in message:
+        return True
+    return (
+        "unique constraint failed" in message
+        and all(column in message for column in SQLITE_OFFER_UNIQUE_COLUMNS)
+    )
 
 
 def normalize_pipeline_stage(stage):
@@ -1054,6 +1080,22 @@ def save_offer_record(*, demand_id, candidate_id, org_id, actor_id, data, commit
         else:
             db.session.flush()
         return offer_payload(offer, demand=demand, candidate_id=candidate.id)
+    except IntegrityError as error:
+        if commit:
+            db.session.rollback()
+            if _is_offer_unique_violation(error):
+                existing = OfferRecord.query.filter_by(
+                    org_id=org_id,
+                    demand_id=demand_id,
+                    candidate_id=candidate_id,
+                ).first()
+                if existing is not None:
+                    raise PipelineServiceError(
+                        "Offer 已被其他请求创建，请刷新后继续编辑",
+                        409,
+                        "offer_already_exists",
+                    ) from error
+        raise
     except Exception:
         if commit:
             db.session.rollback()

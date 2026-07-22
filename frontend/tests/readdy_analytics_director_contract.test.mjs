@@ -72,6 +72,21 @@ assert.match(approvals, /拒绝时必须填写原因/);
 
 // The shared drill-down is the only place calling the demand-level BI API.
 assert.match(widgets, /api\.biDemand\(demandId\)/);
+assert.match(
+  widgets,
+  /`\/kanban\?demand=\$\{demandId\}&stage=\$\{stage\.key\}`/,
+  '单需求阶段数字必须下钻到新 Readdy 看板的对应 Demand/阶段',
+);
+assert.match(
+  widgets,
+  /`\/kanban\?demand=\$\{demandId\}&stage=\$\{item\.stage\}&candidate=\$\{item\.candidate_id\}`/,
+  '停滞候选人必须下钻到对应 Demand 和候选人卡片',
+);
+assert.match(
+  widgets,
+  /`\/interviews\?demand=\$\{demandId\}&candidate=\$\{item\.candidate_id\}&focus=pending`/,
+  '待补反馈必须下钻到对应面试任务',
+);
 
 // API surface used by the graft must exist with the expected names.
 assert.match(api, /biOverview\(/);

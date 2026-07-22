@@ -359,6 +359,12 @@ class CandidateDisposition(db.Model):
 class OfferRecord(db.Model):
     __table_args__ = (
         db.Index("ix_offer_records_org_demand_candidate", "org_id", "demand_id", "candidate_id"),
+        db.UniqueConstraint(
+            "org_id",
+            "demand_id",
+            "candidate_id",
+            name="uq_offer_records_org_demand_candidate",
+        ),
     )
 
     __tablename__ = "offer_records"
@@ -534,11 +540,23 @@ class IdempotencyRecord(db.Model):
 
 
 class Conversation(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_conversations_org_user_archived_updated",
+            "org_id",
+            "user_id",
+            "archived",
+            "updated_at",
+        ),
+    )
+
     __tablename__ = "conversations"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     title = db.Column(db.String(200), default="新对话")
+    title_source = db.Column(db.String(20), default="auto", nullable=False)
+    archived = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
     messages = db.relationship(
@@ -550,6 +568,14 @@ class Conversation(db.Model):
 
 
 class ConversationMessage(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_conversation_messages_org_conversation",
+            "org_id",
+            "conversation_id",
+        ),
+    )
+
     __tablename__ = "conversation_messages"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
@@ -563,6 +589,54 @@ class ConversationMessage(db.Model):
     tool_calls = db.Column(db.JSON)
     thoughts = db.Column(db.JSON)
     created_at = db.Column(db.DateTime, default=utc_now)
+
+
+class AgentCallLog(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_agent_call_logs_org_created",
+            "org_id",
+            "created_at",
+        ),
+        db.Index(
+            "ix_agent_call_logs_org_conversation_created",
+            "org_id",
+            "conversation_id",
+            "created_at",
+        ),
+        db.Index(
+            "ix_agent_call_logs_org_user_created",
+            "org_id",
+            "user_id",
+            "created_at",
+        ),
+    )
+
+    __tablename__ = "agent_call_logs"
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, default=1, nullable=False)
+    conversation_id = db.Column(
+        db.Integer,
+        db.ForeignKey("conversations.id", ondelete="SET NULL"),
+    )
+    message_id = db.Column(
+        db.Integer,
+        db.ForeignKey("conversation_messages.id", ondelete="SET NULL"),
+    )
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    role = db.Column(db.String(20), nullable=False)
+    kind = db.Column(db.String(30), nullable=False)
+    model = db.Column(db.String(120))
+    prompt_tokens = db.Column(db.Integer)
+    completion_tokens = db.Column(db.Integer)
+    duration_ms = db.Column(db.Integer)
+    status = db.Column(db.String(20), nullable=False)
+    error_msg = db.Column(db.Text)
+    tool_calls = db.Column(db.JSON)
+    thoughts = db.Column(db.JSON)
+    input_text = db.Column(db.Text)
+    output_text = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
 
 class InterviewFeedback(db.Model):

@@ -25,7 +25,7 @@ import type {
   KpiStandardConfig,
 } from '../types';
 
-type SectionKey = 'categories' | 'risk' | 'health';
+type SectionKey = 'categories' | 'risk';
 
 function copyConfig(config: KpiStandardConfig): KpiStandardConfig {
   return JSON.parse(JSON.stringify(config)) as KpiStandardConfig;
@@ -59,28 +59,6 @@ function NumberField({
       />
       {suffix && <span className="text-sm text-[#777b78]">{suffix}</span>}
     </div>
-  );
-}
-
-function Toggle({
-  checked,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center gap-3 text-sm text-[#4f5551]">
-      <input
-        type="checkbox"
-        className="h-4 w-4 rounded border-[#cfd3cd] accent-[#3d7b6b]"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      {label}
-    </label>
   );
 }
 
@@ -132,7 +110,6 @@ export function KpiStandardsPage() {
   const [expanded, setExpanded] = useState<Record<SectionKey, boolean>>({
     categories: true,
     risk: true,
-    health: true,
   });
 
   useEffect(() => {
@@ -144,13 +121,12 @@ export function KpiStandardsPage() {
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term || !config) return { categories: true, risk: true, health: true };
+    if (!term || !config) return { categories: true, risk: true };
     return {
       categories: config.block_categories.some((category) => (
         `${category.name} ${category.keywords.join(' ')}`.toLowerCase().includes(term)
       )),
-      risk: ['风险', 'hc', 'deadline', '暂停', '阻塞'].some((item) => item.toLowerCase().includes(term)),
-      health: ['流程', '健康', '阈值', '绿色', '黄色'].some((item) => item.includes(term)),
+      risk: ['预警', '阈值', '停滞', '推荐', '面试', '开放', 'deadline'].some((item) => item.toLowerCase().includes(term)),
     };
   }, [config, search]);
 
@@ -238,14 +214,13 @@ export function KpiStandardsPage() {
   }
 
   const risk = config.risk_thresholds;
-  const health = config.process_health_thresholds;
 
   return (
     <div data-ui="readdy-kpi-standards" className="mx-auto max-w-5xl space-y-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-[#3d7b6b]" /><h1 className="text-2xl font-bold text-[#292b2a]">招聘流程口径配置</h1></div>
-          <p className="mt-2 text-sm text-[#777b78]">用于 Demand 风险、阻塞原因和流程健康提醒；不用于个人排名或绩效评价。</p>
+          <p className="mt-2 text-sm text-[#777b78]">用于 Demand 卡点归类和流程预警；不用于个人排名或绩效评价。</p>
           <p className="mt-1 text-xs text-[#969a97]">当前版本 {version} · {standardsAsync.data?.updated_by_name ? `最近由 ${standardsAsync.data.updated_by_name} 更新` : '尚未自定义'}</p>
         </div>
         <div className="flex gap-2">
@@ -305,51 +280,23 @@ export function KpiStandardsPage() {
 
         {visible.risk && (
           <Section
-            title="Demand 风险等级判定"
-            description="仅用于提醒招聘协同卡点，不计算个人绩效"
-            badge={`Deadline ${risk.deadline_warning_days} 天预警`}
+            title="Demand 流程预警阈值"
+            description="每个数值都直接驱动 Demand 卡点或 BI 预警，不计算个人绩效"
+            badge={`5 项真实阈值`}
             open={expanded.risk}
             onToggle={() => setExpanded((current) => ({ ...current, risk: !current.risk }))}
           >
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-4 rounded-xl bg-red-50/60 p-4">
-                <h3 className="text-sm font-semibold text-red-800">高风险：满足任一条件</h3>
-                <Toggle checked={risk.high_if_status_paused_or_closed} label="Demand 状态为已暂停或已关闭" onChange={(checked) => update({ ...config, risk_thresholds: { ...risk, high_if_status_paused_or_closed: checked } })} />
-                <Toggle checked={risk.high_if_zero_fill_and_blocked} label="HC 零入职且存在阻塞候选人" onChange={(checked) => update({ ...config, risk_thresholds: { ...risk, high_if_zero_fill_and_blocked: checked } })} />
-              </div>
-              <div className="space-y-4 rounded-xl bg-amber-50/70 p-4">
-                <h3 className="text-sm font-semibold text-amber-800">需关注：未命中高风险后判断</h3>
-                <Toggle checked={risk.attention_if_blocked} label="存在阻塞时启用 HC 缺口判断" onChange={(checked) => update({ ...config, risk_thresholds: { ...risk, attention_if_blocked: checked } })} />
-                <label className="block text-sm text-[#555b57]">HC 缺口比例达到</label>
-                <NumberField value={risk.attention_hc_gap_ratio} min={0} max={1} step={0.05} onChange={(value) => update({ ...config, risk_thresholds: { ...risk, attention_hc_gap_ratio: value } })} />
-                <label className="block text-sm text-[#555b57]">Deadline 剩余天数</label>
-                <NumberField value={risk.deadline_warning_days} min={1} max={90} suffix="天内预警" onChange={(value) => update({ ...config, risk_thresholds: { ...risk, deadline_warning_days: value } })} />
-              </div>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div><p className="mb-2 text-sm font-medium text-[#4f5551]">目标日期预警天数</p><NumberField value={risk.deadline_warning_days} min={1} max={90} suffix="天内" onChange={(value) => update({ ...config, risk_thresholds: { ...risk, deadline_warning_days: value } })} /></div>
+              <div><p className="mb-2 text-sm font-medium text-[#4f5551]">阶段停滞天数</p><NumberField value={risk.stale_stage_days} min={1} max={365} suffix="天" onChange={(value) => update({ ...config, risk_thresholds: { ...risk, stale_stage_days: value } })} /></div>
+              <div><p className="mb-2 text-sm font-medium text-[#4f5551]">无推荐预警天数</p><NumberField value={risk.no_recommendation_days} min={1} max={365} suffix="天" onChange={(value) => update({ ...config, risk_thresholds: { ...risk, no_recommendation_days: value } })} /></div>
+              <div><p className="mb-2 text-sm font-medium text-[#4f5551]">低面试转化候选人阈值</p><NumberField value={risk.low_interview_candidate_threshold} min={1} max={10000} suffix="人" onChange={(value) => update({ ...config, risk_thresholds: { ...risk, low_interview_candidate_threshold: value } })} /></div>
+              <div><p className="mb-2 text-sm font-medium text-[#4f5551]">需求开放过久天数</p><NumberField value={risk.open_too_long_days} min={1} max={3650} suffix="天" onChange={(value) => update({ ...config, risk_thresholds: { ...risk, open_too_long_days: value } })} /></div>
             </div>
           </Section>
         )}
 
-        {visible.health && (
-          <Section
-            title="流程健康度阈值"
-            description="作用于 Demand 流程提醒，不生成专员健康分、个人排名或绩效结论"
-            badge={`绿 ${health.green_threshold}% · 黄 ${health.yellow_threshold}%`}
-            open={expanded.health}
-            onToggle={() => setExpanded((current) => ({ ...current, health: !current.health }))}
-          >
-            <div className="grid gap-5 sm:grid-cols-3">
-              <div><p className="mb-2 text-sm font-medium text-[#4f5551]">绿色正常线</p><NumberField value={health.green_threshold} min={0} max={100} suffix="% 以上" onChange={(value) => update({ ...config, process_health_thresholds: { ...health, green_threshold: value } })} /></div>
-              <div><p className="mb-2 text-sm font-medium text-[#4f5551]">黄色警戒线</p><NumberField value={health.yellow_threshold} min={0} max={100} suffix="% 以上" onChange={(value) => update({ ...config, process_health_thresholds: { ...health, yellow_threshold: value } })} /></div>
-              <div className="rounded-xl bg-[#f6f7f3] p-4 text-xs leading-6 text-[#606662]">
-                <p><span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-[#3d7b6b]" />≥ {health.green_threshold}% 正常</p>
-                <p><span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-amber-500" />{health.yellow_threshold}%–{Math.max(health.green_threshold - 1, health.yellow_threshold)}% 警戒</p>
-                <p><span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-red-500" />&lt; {health.yellow_threshold}% 高风险</p>
-              </div>
-            </div>
-          </Section>
-        )}
-
-        {!visible.categories && !visible.risk && !visible.health && (
+        {!visible.categories && !visible.risk && (
           <Card className="p-8 text-center text-sm text-[#777b78]">没有匹配的配置项</Card>
         )}
       </div>

@@ -286,7 +286,7 @@ export function InterviewAssignmentPanel({
                 </Select>
                 {demandId && demandCandidates.length === 0 && (
                   <Link
-                    to={`/pipeline?demand=${selectedDemandId}`}
+                    to={`/kanban?demand=${selectedDemandId}`}
                     className="mt-1 inline-flex text-xs font-semibold text-ink hover:underline"
                   >
                     该需求暂无“面试中”候选人，去候选人流程查看

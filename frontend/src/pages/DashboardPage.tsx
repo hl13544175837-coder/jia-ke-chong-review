@@ -52,7 +52,7 @@ const ROLE_INFO: Record<Role, RoleInfo> = {
     icon: LineChart,
     accent: 'bg-purple-50 text-accent-purple',
     gradient: 'linear-gradient(135deg, #c47b55, #9a5c3e)',
-    action: { to: '/bi', label: '查看进度与卡点' },
+    action: { to: '/analytics', label: '查看进度与卡点' },
   },
   admin: {
     label: '管理员',
@@ -60,7 +60,7 @@ const ROLE_INFO: Record<Role, RoleInfo> = {
     icon: ShieldCheck,
     accent: 'bg-brand-50 text-ink',
     gradient: 'linear-gradient(135deg, #4f5b56, #303b37)',
-    action: { to: '/bi', label: '查看进度与卡点' },
+    action: { to: '/analytics', label: '查看进度与卡点' },
   },
   interviewer: {
     label: '面试官',
@@ -98,7 +98,7 @@ const WORKFLOW_ACTIONS: WorkflowAction[] = [
     roles: ['recruiter', 'manager', 'admin'],
   },
   {
-    to: '/pipeline',
+    to: '/kanban',
     label: '跟进候选人流程',
     desc: '推进初筛、面试、Offer、淘汰沉淀',
     icon: KanbanSquare,
@@ -112,7 +112,7 @@ const WORKFLOW_ACTIONS: WorkflowAction[] = [
     roles: ['interviewer'],
   },
   {
-    to: '/bi',
+    to: '/analytics',
     label: '查看进度看板',
     desc: '查看需求进度、卡点和责任协同',
     icon: BarChart3,
@@ -135,9 +135,9 @@ const WORKFLOW_ACTIONS: WorkflowAction[] = [
 ];
 
 const ACTION_ORDER_BY_ROLE: Record<Role, string[]> = {
-  recruiter: ['/upload', '/demands', '/pipeline'],
-  manager: ['/bi', '/pipeline', '/agent'],
-  admin: ['/bi', '/admin/settings', '/agent'],
+  recruiter: ['/upload', '/demands', '/kanban'],
+  manager: ['/analytics', '/kanban', '/agent'],
+  admin: ['/analytics', '/admin/settings', '/agent'],
   interviewer: ['/interviewer/interviews'],
 };
 
@@ -605,7 +605,7 @@ function RecruiterTodoPanel({ stats }: { stats: DashboardStats }) {
         y={14}
       >
         <TodoCard
-          to="/pipeline?stage=business_review"
+          to="/kanban?stage=business_review"
           label="业务待反馈"
           value={businessReview}
           desc="推动用人部门确认"
@@ -613,7 +613,7 @@ function RecruiterTodoPanel({ stats }: { stats: DashboardStats }) {
           tone={businessReview && businessReview > 0 ? 'warning' : 'success'}
         />
         <TodoCard
-          to="/pipeline?stage=interview"
+          to="/kanban?stage=interview"
           label="面试中跟进"
           value={interview}
           desc="关注候选人当前进展"
@@ -629,7 +629,7 @@ function RecruiterTodoPanel({ stats }: { stats: DashboardStats }) {
           tone={feedbackPending && feedbackPending > 0 ? 'warning' : 'success'}
         />
         <TodoCard
-          to="/pipeline?stage=offer"
+          to="/kanban?stage=offer"
           label="Offer跟进"
           value={offer}
           desc="跟进发放与入职"

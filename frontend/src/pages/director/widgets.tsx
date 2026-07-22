@@ -25,6 +25,7 @@ import {
 } from '../../components/ui';
 import type {
   BiDemandOperationalMetrics,
+  BiFunnel,
   BiManagerAlert,
   BiOperationalFunnel,
 } from '../../types';
@@ -81,8 +82,15 @@ export function KpiCard({
   );
 }
 
-// Horizontal funnel bars for the org-level operational funnel.
-export function OverviewFunnelBars({ funnel }: { funnel: BiOperationalFunnel }) {
+// Horizontal funnel bars. A demand-scoped rendering links each stage to the
+// exact Readdy Kanban context; the organization-wide rendering stays read-only.
+export function OverviewFunnelBars({
+  funnel,
+  demandId,
+}: {
+  funnel: BiOperationalFunnel | BiFunnel;
+  demandId?: number;
+}) {
   const max = Math.max(
     1,
     ...OVERVIEW_FUNNEL_STAGES.map((stage) => funnelStageCount(funnel, stage.key)),
@@ -100,8 +108,8 @@ export function OverviewFunnelBars({ funnel }: { funnel: BiOperationalFunnel }) 
           'bg-[#8a7bb8]',
           'bg-[#4f9e6e]',
         ];
-        return (
-          <div key={stage.key} className="flex items-center gap-3">
+        const content = (
+          <>
             <span className="w-20 shrink-0 whitespace-nowrap text-xs text-[#5f6561]">
               {stage.label}
             </span>
@@ -118,7 +126,18 @@ export function OverviewFunnelBars({ funnel }: { funnel: BiOperationalFunnel }) 
             <span className="w-12 text-right text-xs font-medium text-[#777b78]">
               {value} 人
             </span>
-          </div>
+          </>
+        );
+        return demandId ? (
+          <Link
+            key={stage.key}
+            to={`/kanban?demand=${demandId}&stage=${stage.key}`}
+            className="flex items-center gap-3 rounded-lg transition-colors hover:bg-[#fafbf8] focus:outline-none focus:ring-2 focus:ring-[#b8d6cb]"
+          >
+            {content}
+          </Link>
+        ) : (
+          <div key={stage.key} className="flex items-center gap-3">{content}</div>
         );
       })}
       <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-[#efefeb] pt-3 text-xs text-[#777b78]">
@@ -282,6 +301,16 @@ export function DemandDrilldown({ demandId }: { demandId: number }) {
         </div>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>需求阶段分布</CardTitle>
+          <p className="mt-1 text-xs text-[#858a86]">点击阶段可进入该 Demand 的新看板继续下钻</p>
+        </CardHeader>
+        <CardBody>
+          <OverviewFunnelBars funnel={metrics.funnel} demandId={demandId} />
+        </CardBody>
+      </Card>
+
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card>
           <CardHeader>
@@ -294,7 +323,11 @@ export function DemandDrilldown({ demandId }: { demandId: number }) {
             ) : (
               <div className="divide-y divide-[#efefeb]">
                 {metrics.stage_age.slice(0, 6).map((item) => (
-                  <div key={`${item.candidate_id}-${item.stage}`} className="flex items-center justify-between gap-4 py-2.5">
+                  <Link
+                    key={`${item.candidate_id}-${item.stage}`}
+                    to={`/kanban?demand=${demandId}&stage=${item.stage}&candidate=${item.candidate_id}`}
+                    className="flex items-center justify-between gap-4 rounded-lg py-2.5 transition-colors hover:bg-[#fafbf8] focus:outline-none focus:ring-2 focus:ring-[#b8d6cb]"
+                  >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-[#292b2a]">{item.candidate_name}</p>
                       <p className="mt-0.5 text-xs text-[#858a86]">
@@ -302,7 +335,7 @@ export function DemandDrilldown({ demandId }: { demandId: number }) {
                       </p>
                     </div>
                     <Badge tone={item.age_days >= 7 ? 'warning' : 'neutral'}>{item.age_days} 天</Badge>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}
@@ -324,7 +357,11 @@ export function DemandDrilldown({ demandId }: { demandId: number }) {
             ) : (
               <div className="divide-y divide-[#efefeb]">
                 {metrics.outstanding_feedback.items.slice(0, 6).map((item) => (
-                  <div key={item.assignment_id} className="flex items-center justify-between gap-4 py-2.5">
+                  <Link
+                    key={item.assignment_id}
+                    to={`/interviews?demand=${demandId}&candidate=${item.candidate_id}&focus=pending`}
+                    className="flex items-center justify-between gap-4 rounded-lg py-2.5 transition-colors hover:bg-[#fafbf8] focus:outline-none focus:ring-2 focus:ring-[#b8d6cb]"
+                  >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-[#292b2a]">{item.candidate_name}</p>
                       <p className="mt-0.5 text-xs text-[#858a86]">
@@ -332,7 +369,7 @@ export function DemandDrilldown({ demandId }: { demandId: number }) {
                       </p>
                     </div>
                     <Badge tone="warning">超时 {item.overdue_days} 天</Badge>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

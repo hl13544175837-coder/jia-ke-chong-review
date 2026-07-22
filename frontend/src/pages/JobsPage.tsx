@@ -195,7 +195,7 @@ function JobDetailSummary({ job }: { job: JobListItem | null }) {
         items={[
           { label: '城市', value: job.city || '未设置' },
           { label: '部门', value: job.department || '未设置' },
-          { label: '流程入口', value: <Link className="enterprise-row-title" to={`/pipeline?job=${job.id}`}>查看候选人流程</Link> },
+          { label: '流程入口', value: <Link className="enterprise-row-title" to={`/kanban?job=${job.id}`}>查看候选人流程</Link> },
           { label: '匹配入口', value: <Link className="enterprise-row-title" to={`/jobs/${job.id}/match`}>匹配候选人</Link> },
         ]}
       />
@@ -896,7 +896,7 @@ export function JobsPage() {
                                   匹配候选人
                                 </Link>
                                 <Link
-                                  to={`/pipeline?job=${job.id}`}
+                                  to={`/kanban?job=${job.id}`}
                                   className="text-xs font-medium text-muted hover:text-ink hover:underline"
                                 >
                                   查看候选人流程

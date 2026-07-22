@@ -56,7 +56,13 @@ class MatchService:
         results = self._compute_rankings(job_id, candidate_query=candidate_query)
         return results[:top_n]
 
-    def rank_for_job(self, job_id: int, top_n: int = 20, candidate_query=None) -> list:
+    def rank_for_job(
+        self,
+        job_id: int,
+        top_n: int = 20,
+        candidate_query=None,
+        commit: bool = True,
+    ) -> list:
         """
         岗找人：给定 job_id，从候选人池返回按匹配分排序的列表，并持久化结果。
         复用 base_agent/job_matcher.py 的 parse_job_skills + match_resume_to_job。
@@ -78,5 +84,5 @@ class MatchService:
                 score=r["score"],
                 reason=f"匹配标签: {r['matched_tags'][:3]}"
             ))
-        db.session.commit()
+        db.session.commit() if commit else db.session.flush()
         return results[:top_n]

@@ -150,7 +150,7 @@ export function DemandDetailPage() {
               ['已入职', demand.metrics.onboarded_count, 'onboarded'],
               ['已转出', demand.metrics.transferred_count, 'transferred'],
             ].map(([label, value, stage]) => (
-              <Link key={String(label)} to={`/pipeline?demand=${demand.id}&stage=${stage}`} className="rounded-md bg-surface-soft p-3 hover:ring-1 hover:ring-hairline">
+              <Link key={String(label)} to={`/kanban?demand=${demand.id}&stage=${stage}`} className="rounded-md bg-surface-soft p-3 hover:ring-1 hover:ring-hairline">
                 <p className="text-xs text-muted">{label}</p><p className="mt-1 text-xl font-semibold text-ink">{value}</p>
               </Link>
             ))}

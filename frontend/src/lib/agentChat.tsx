@@ -21,7 +21,6 @@ import type { ConversationSummary } from '../types';
 // 本地会话编号按当前登录用户隔离：不同账号共用同一浏览器时互不串会话。
 // 工号在网关登录时写入（见 api.ts 的 EMP_CODE_KEY），无工号时退化为匿名空间。
 const STORAGE_KEY_CONV_BASE = 'zhipin:agent:conversation_id';
-const STORAGE_KEY_CONV_LIST_BASE = 'zhipin:agent:recent_conversations';
 
 function userStorageKey(base: string): string {
   const empCode = (getEmpCode() ?? '').trim();
@@ -93,6 +92,7 @@ interface AgentChatValue {
   hydrateMessagesFromDb: (dbMessages: ConversationMessageItem[]) => void;
   // 会话列表与管理（跨路由保留）
   conversations: ConversationSummary[];
+  archivedConversations: ConversationSummary[];
   reloadConversations: () => Promise<void>;
   switchConversation: (id: number) => Promise<void>;
   createNewConversation: (title?: string) => Promise<number>;
@@ -133,14 +133,6 @@ function writeStoredConversationId(id: number | null) {
   }
 }
 
-function writeStoredRecentConversations(ids: number[]) {
-  try {
-    localStorage.setItem(userStorageKey(STORAGE_KEY_CONV_LIST_BASE), JSON.stringify(ids.slice(0, 20)));
-  } catch {
-    // ignore
-  }
-}
-
 async function authFetch<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     headers: authHeaders(),
@@ -155,10 +147,11 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const [conversationId, setConversationIdState] = useState<number | null>(
-    () => readStoredConversationId(),
-  );
+  // Do not activate the cached id until its server record is checked below.
+  // This prevents a stale archived id from ever being used as a chat target.
+  const [conversationId, setConversationIdState] = useState<number | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [archivedConversations, setArchivedConversations] = useState<ConversationSummary[]>([]);
   const [conversationsError, setConversationsError] = useState<string | null>(null);
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -204,19 +197,23 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reloadConversations = useCallback(async () => {
-    try {
-      const data = await api.listConversations({ archived: false, per_page: 100 });
-      setConversations(data.items ?? []);
-      setConversationsError(null);
-      // 记录最近会话 id 列表到 localStorage，便于刷新后恢复
-      const ids = (data.items ?? []).map((c) => c.id);
-      writeStoredRecentConversations(ids);
-    } catch (error) {
-      // 列表加载失败不阻断对话，但必须让用户知道并可重试
-      setConversationsError(
-        error instanceof Error ? error.message : '会话列表加载失败',
-      );
+    const [active, archived] = await Promise.allSettled([
+      api.listConversations({ archived: false, per_page: 100 }),
+      api.listConversations({ archived: true, per_page: 100 }),
+    ]);
+    const errors: string[] = [];
+    if (active.status === 'fulfilled') {
+      setConversations(active.value.items ?? []);
+    } else {
+      errors.push(`当前会话：${active.reason instanceof Error ? active.reason.message : '加载失败'}`);
     }
+    if (archived.status === 'fulfilled') {
+      setArchivedConversations(archived.value.items ?? []);
+    } else {
+      errors.push(`已归档会话：${archived.reason instanceof Error ? archived.reason.message : '加载失败'}`);
+    }
+    // 任一分组失败都明确展示，重试会同时刷新两个真实列表。
+    setConversationsError(errors.length ? errors.join('；') : null);
   }, []);
 
   const clearConversationLoadError = useCallback(() => {
@@ -251,6 +248,7 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
 
   const createNewConversation = useCallback(
     async (title?: string): Promise<number> => {
+      if (streaming) throw new Error('生成中，暂不能新建会话');
       const created = await api.createConversation(title);
       await reloadConversations();
       setMessages([]);
@@ -258,23 +256,32 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
       setConversationId(created.id);
       return created.id;
     },
-    [reloadConversations, setConversationId],
+    [streaming, reloadConversations, setConversationId],
   );
 
   const renameConversation = useCallback(
     async (id: number, title: string) => {
+      if (streaming) return;
       await api.updateConversation(id, { title });
       await reloadConversations();
     },
-    [reloadConversations],
+    [streaming, reloadConversations],
   );
 
   const archiveConversation = useCallback(
     async (id: number, archived: boolean) => {
+      if (streaming) return;
       await api.updateConversation(id, { archived });
+      // 归档当前会话后立即丢弃其活动引用和视图，不能继续往已归档会话发送。
+      if (archived && id === conversationId) {
+        conversationCache.current.delete(id);
+        setConversationId(null);
+        setMessages([]);
+        setInput('');
+      }
       await reloadConversations();
     },
-    [reloadConversations],
+    [streaming, conversationId, reloadConversations, setConversationId],
   );
 
   // 切换会话前，把当前会话消息缓存起来（供切回时快速恢复）
@@ -290,11 +297,21 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
     reloadConversations();
     const stored = readStoredConversationId();
     if (!stored) return;
-    loadConversationMessages(stored)
-      .then((dbMessages) => {
+    authFetch<{ archived?: boolean; messages: ConversationMessageItem[] }>(
+      `${API_BASE}/agent/conversations/${stored}`,
+    )
+      .then((data) => {
         if (!cancelled) {
-          setConversationIdState(stored);
-          hydrateMessagesFromDb(dbMessages);
+          // A cached id may have been archived in another tab. It is never a
+          // valid active target, so discard it before users can send a turn.
+          if (data.archived) {
+            setConversationId(null);
+            setMessages([]);
+            setConversationLoadError('该历史会话已归档，请先恢复后再继续对话');
+            return;
+          }
+          setConversationId(stored);
+          hydrateMessagesFromDb(data.messages ?? []);
         }
       })
       .catch(() => {
@@ -307,7 +324,7 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [hydrateMessagesFromDb, loadConversationMessages, reloadConversations, setConversationId]);
+  }, [hydrateMessagesFromDb, reloadConversations, setConversationId]);
 
   return (
     <AgentChatContext.Provider
@@ -325,6 +342,7 @@ export function AgentChatProvider({ children }: { children: ReactNode }) {
         loadConversationMessages,
         hydrateMessagesFromDb,
         conversations,
+        archivedConversations,
         reloadConversations,
         switchConversation,
         createNewConversation,

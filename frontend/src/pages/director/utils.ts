@@ -1,7 +1,7 @@
 // Shared constants and formatters for the Readdy analytics/director graft.
 // Pure helpers only (no components) so React fast-refresh stays clean.
 
-import type { BiOperationalFunnel, DemandStatus } from '../../types';
+import type { BiFunnel, BiOperationalFunnel, DemandStatus } from '../../types';
 
 export const DIRECTOR_PURPOSE_LABEL =
   '仅用于进度、瓶颈和当前责任协同，不用于绩效考核';
@@ -41,11 +41,11 @@ export type OverviewFunnelStageKey =
   (typeof OVERVIEW_FUNNEL_STAGES)[number]['key'];
 
 export function funnelStageCount(
-  funnel: BiOperationalFunnel,
+  funnel: BiOperationalFunnel | BiFunnel,
   stage: OverviewFunnelStageKey,
 ): number {
   const value = funnel[stage];
-  return Number.isFinite(value) ? value : 0;
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 export function safeNum(value: number | undefined | null): number {

@@ -333,14 +333,19 @@ def demand_metrics(demand):
     }
 
 
-def risk_flags(demand, metrics):
+def risk_flags(demand, metrics, config=None):
+    if config is None:
+        from .kpi_standard_service import get_effective_kpi_config
+
+        config = get_effective_kpi_config(demand.org_id)
+    thresholds = config["risk_thresholds"]
     flags = []
     today = date.today()
     if demand.target_date and demand.target_date < today and demand.status in OPEN_STATUSES:
         flags.append("overdue")
     if metrics["business_review_count"] > 0:
         flags.append("business_feedback_pending")
-    if metrics["recommended_count"] >= 20:
+    if metrics["recommended_count"] >= thresholds["low_interview_candidate_threshold"]:
         historical_interviews = (
             PipelineStage.query.join(
                 Candidate,
@@ -360,16 +365,22 @@ def risk_flags(demand, metrics):
             flags.append("low_interview_conversion")
     if demand.requested_at and demand.status in OPEN_STATUSES:
         age_days = (today - demand.requested_at).days
-        if age_days >= 60:
+        if age_days >= thresholds["open_too_long_days"]:
             flags.append("open_too_long")
     if metrics["recommended_count"] == 0 and demand.status in OPEN_STATUSES:
         start_date = demand.accepted_at or demand.requested_at
-        if start_date and (today - start_date).days >= 7:
+        if start_date and (
+            today - start_date
+        ).days >= thresholds["no_recommendation_days"]:
             flags.append("hr_no_recommendation")
     return flags
 
 
-def demand_payload(demand, *, include_jd=False):
+def demand_payload(demand, *, include_jd=False, config=None):
+    from .kpi_standard_service import get_effective_kpi_config
+
+    if config is None:
+        config = get_effective_kpi_config(demand.org_id)
     job = demand.job
     owner = db.session.get(User, demand.owner_hr_id) if demand.owner_hr_id else None
     default_interviewer = None
@@ -411,7 +422,11 @@ def demand_payload(demand, *, include_jd=False):
         "completion_suggested": (
             metrics["onboarded_count"] >= max(1, int(demand.headcount or 1))
         ),
-        "risk_flags": risk_flags(demand, metrics),
+        "risk_flags": risk_flags(
+            demand,
+            metrics,
+            config=config,
+        ),
         "created_at": demand.created_at.isoformat() if demand.created_at else None,
         "updated_at": demand.updated_at.isoformat() if demand.updated_at else None,
     }
@@ -463,6 +478,8 @@ def apply_list_filters(query, args):
 
 
 def paginate_demands(query, args):
+    from .kpi_standard_service import get_effective_kpi_config
+
     page = max(1, args.get("page", default=1, type=int) or 1)
     page_size = args.get("page_size", default=20, type=int) or 20
     page_size = min(100, max(1, page_size))
@@ -473,8 +490,9 @@ def paginate_demands(query, args):
         query = query.order_by(RecruitmentDemand.created_at.desc(), RecruitmentDemand.id.desc())
     total = query.order_by(None).count()
     items = query.offset((page - 1) * page_size).limit(page_size).all()
+    config = get_effective_kpi_config(items[0].org_id) if items else None
     return {
-        "items": [demand_payload(item) for item in items],
+        "items": [demand_payload(item, config=config) for item in items],
         "total": total,
         "page": page,
         "page_size": page_size,

@@ -15,10 +15,31 @@ def _custom_config():
             "attention_hc_gap_ratio": 0.6,
             "attention_if_blocked": True,
             "deadline_warning_days": 10,
+            "stale_stage_days": 5,
+            "no_recommendation_days": 4,
+            "low_interview_candidate_threshold": 12,
+            "open_too_long_days": 45,
         },
         "process_health_thresholds": {
             "green_threshold": 75,
             "yellow_threshold": 45,
+        },
+    }
+
+
+def _effective_custom_config():
+    config = _custom_config()
+    return {
+        "block_categories": config["block_categories"],
+        "risk_thresholds": {
+            key: config["risk_thresholds"][key]
+            for key in (
+                "deadline_warning_days",
+                "stale_stage_days",
+                "no_recommendation_days",
+                "low_interview_candidate_threshold",
+                "open_too_long_days",
+            )
         },
     }
 
@@ -39,10 +60,7 @@ def test_kpi_standards_are_org_scoped_versioned_and_audited(client, make_user, a
     defaults = client.get("/api/kpi-standards", headers=_auth(manager_token))
     assert defaults.status_code == 200
     assert defaults.get_json()["version"] == 0
-    assert defaults.get_json()["config"]["process_health_thresholds"] == {
-        "green_threshold": 70,
-        "yellow_threshold": 40,
-    }
+    assert "process_health_thresholds" not in defaults.get_json()["config"]
 
     saved = client.put(
         "/api/kpi-standards",
@@ -56,12 +74,12 @@ def test_kpi_standards_are_org_scoped_versioned_and_audited(client, make_user, a
 
     after_refresh = client.get("/api/kpi-standards", headers=_auth(admin_token))
     assert after_refresh.status_code == 200
-    assert after_refresh.get_json()["config"] == _custom_config()
+    assert after_refresh.get_json()["config"] == _effective_custom_config()
 
     other_org = client.get("/api/kpi-standards", headers=_auth(other_org_manager_token))
     assert other_org.status_code == 200
     assert other_org.get_json()["version"] == 0
-    assert other_org.get_json()["config"] != _custom_config()
+    assert other_org.get_json()["config"] != _effective_custom_config()
 
     stale = client.put(
         "/api/kpi-standards",
@@ -116,5 +134,4 @@ def test_kpi_standards_reject_unauthorized_and_invalid_writes(client, make_user)
     assert set(response.get_json()["fields"]) == {
         "block_categories.0.name",
         "risk_thresholds.deadline_warning_days",
-        "process_health_thresholds.green_threshold",
     }
