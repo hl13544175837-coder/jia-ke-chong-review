@@ -36,7 +36,7 @@ RUN VITE_API_BASE_URL="$VITE_API_BASE_URL" \
 FROM ${NGINX_BASE_IMAGE}
 RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx
 RUN sed -i 's/^user/#user/' /etc/nginx/nginx.conf && \
-    sed -i 's!/var/run/nginx.pid!/tmp/nginx.pid!' /etc/nginx/nginx.conf && \
+    sed -i 's#^[[:space:]]*pid[[:space:]].*;#pid /tmp/nginx.pid;#' /etc/nginx/nginx.conf && \
     sed -i 's/^worker_processes.*/worker_processes 2;/' /etc/nginx/nginx.conf
 COPY --chown=nginx:nginx --from=build-stage /app/dist /usr/share/nginx/html
 COPY --chown=nginx:nginx frontend/nginx.conf /etc/nginx/conf.d/default.conf
