@@ -204,7 +204,7 @@ cd backend
 python seed_dev.py
 ```
 
-清空并重新写入本地验收数据：7 个试用账号、10 个候选人、4 个岗位、4 个开放 Demand、10 条 Demand Flow、1 条面试官待反馈任务和 1 条草稿 Offer；所有演示 Pipeline / Interview 均带明确 `demand_id`。不需要 LLM Key。
+清空并重新写入本地验收数据：7 个试用账号、10 个候选人、4 个岗位、4 个开放 Demand、10 条 Demand Flow、1 条面试官待反馈任务和 5 条 Demand-scoped Offer。Offer 覆盖 1 条草稿、1 条待审批（存储状态 `pending`，已写 `submitted_at`）和 3 条已入职；每条已入职 Offer 都带提交、审批、发送、候选人接受和入职时间，以及对应的 OfferEvent 生命周期。所有演示 Pipeline / Interview / Offer 均带明确且一致的 `org_id`、`job_id`、`demand_id` 与候选人关联。重复执行 seed 会先清空再写回同一组验收数据。不需要 LLM Key。
 
 如果准备给真实 HR 小范围试点，不要用 `seed_dev.py` 重置。先 dry-run 看清理范围：
 

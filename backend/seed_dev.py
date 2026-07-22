@@ -586,21 +586,133 @@ def seed():
             created_by=hr2.id,
             created_at=_dt(1),
         ))
-        db.session.add(OfferRecord(
-            org_id=1,
-            candidate_id=c2.id,
-            job_id=job2.id,
-            demand_id=demands_by_job_id[job2.id].id,
-            salary_range="25k-32k · 14薪",
-            approval_status="draft",
-            note="本地 Offer 页面验收数据",
-            approver_id=manager.id,
-            salary_breakdown=[{"item": "月薪", "value": "25k-32k"}],
-            version=1,
-            created_by=hr2.id,
-            created_at=_dt(2),
-            updated_at=_dt(1),
-        ))
+        # ── 6.1 OFFER LIFECYCLES ─────────────────────────────────────────────
+        # Keep the seeded offer records aligned with the demand-scoped pipeline:
+        # one draft, one pending approval, and three completed onboardings.
+        def add_offer_event(offer, action, from_status, to_status, actor_id, created_at):
+            db.session.add(OfferEvent(
+                org_id=offer.org_id,
+                offer_id=offer.id,
+                action=action,
+                from_status=from_status,
+                to_status=to_status,
+                actor_id=actor_id,
+                created_at=created_at,
+            ))
+
+        def add_offer(candidate, job, status, *, created_days_ago, note):
+            demand = demands_by_job_id[job.id]
+            offer = OfferRecord(
+                org_id=demand.org_id,
+                candidate_id=candidate.id,
+                job_id=job.id,
+                demand_id=demand.id,
+                salary_range="25k-32k · 14薪",
+                approval_status=status,
+                note=note,
+                salary_breakdown=[{"item": "月薪", "value": "25k-32k"}],
+                version=1,
+                created_by=demand.owner_hr_id,
+                created_at=_dt(created_days_ago),
+                updated_at=_dt(created_days_ago),
+            )
+            db.session.add(offer)
+            db.session.flush()
+            add_offer_event(
+                offer,
+                "saved",
+                "draft",
+                "draft",
+                offer.created_by,
+                _dt(created_days_ago),
+            )
+            return offer
+
+        # Offer-stage candidates make the draft list and approval queue useful.
+        add_offer(c2, job2, "draft", created_days_ago=2, note="本地 Offer 草稿验收数据")
+        pending_offer = add_offer(
+            c10, job4, "pending", created_days_ago=3, note="本地 Offer 待审批验收数据"
+        )
+        pending_offer.approver_id = manager.id
+        pending_offer.submitted_at = _dt(1)
+        pending_offer.updated_at = _dt(1)
+        add_offer_event(
+            pending_offer,
+            "submitted",
+            "draft",
+            "pending",
+            pending_offer.created_by,
+            _dt(1),
+        )
+
+        # These candidates are already in the onboarded stage, so their Offer
+        # records include every persisted lifecycle timestamp and event.
+        for candidate, job, onboarded_days_ago in [
+            (c1, job1, 10),
+            (c3, job3, 8),
+            (c7, job3, 2),
+        ]:
+            offer = add_offer(
+                candidate,
+                job,
+                "onboarded",
+                created_days_ago=onboarded_days_ago + 8,
+                note="本地已入职 Offer 验收数据",
+            )
+            offer.approver_id = manager.id
+            offer.submitted_at = _dt(onboarded_days_ago + 6)
+            offer.approved_at = _dt(onboarded_days_ago + 5)
+            offer.sent_at = _dt(onboarded_days_ago + 4)
+            offer.responded_at = _dt(onboarded_days_ago + 2)
+            offer.onboarded_at = _dt(onboarded_days_ago)
+            offer.onboard_date = _dt(onboarded_days_ago).date()
+            offer.expires_at = _dt(onboarded_days_ago - 10)
+            offer.candidate_reply = {
+                "answer": "accepted",
+                "note": "候选人已确认入职",
+                "replied_at": offer.responded_at.isoformat(),
+            }
+            offer.updated_at = offer.onboarded_at
+            add_offer_event(
+                offer,
+                "submitted",
+                "draft",
+                "pending",
+                offer.created_by,
+                offer.submitted_at,
+            )
+            add_offer_event(
+                offer,
+                "approved",
+                "pending",
+                "approved",
+                offer.approver_id,
+                offer.approved_at,
+            )
+            add_offer_event(
+                offer,
+                "sent",
+                "approved",
+                "sent",
+                offer.created_by,
+                offer.sent_at,
+            )
+            add_offer_event(
+                offer,
+                "accepted",
+                "sent",
+                "accepted",
+                offer.created_by,
+                offer.responded_at,
+            )
+            add_offer_event(
+                offer,
+                "onboarded",
+                "accepted",
+                "onboarded",
+                offer.created_by,
+                offer.onboarded_at,
+            )
         db.session.flush()
 
         # ── 7. EVENTS ─────────────────────────────────────────────────────────

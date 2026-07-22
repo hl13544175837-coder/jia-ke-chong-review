@@ -18,4 +18,3 @@ assert.match(page, /来自真实人才地图/, '公司摘要应说明数据真�
 assert.match(page, /composer === 'company'/, '新增公司表单应按需展开');
 assert.match(page, /composer === 'person'/, '新增人选表单应按需展开');
 assert.match(page, /composer === 'map'/, '新建地图表单应按需展开');
-

@@ -17,6 +17,7 @@ import { defaultRouteForRole } from './lib/nav';
 import { featureRoutes } from './app/featureRegistry';
 import { ToastProvider } from './components/ui';
 import type { Role } from './types';
+import { AccessDeniedPage } from './pages/AccessDeniedPage';
 
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
@@ -54,11 +55,12 @@ function RequireAuth() {
   return <AppShell />;
 }
 
-// Restrict a route to specific roles; otherwise bounce to the role's home.
+// Restrict a route to specific roles; keep the URL and explain denied access.
 function RequireRole({ allow, element }: { allow: Role[]; element: ReactElement }) {
   const { role } = useAuth();
+  const location = useLocation();
   if (role && !allow.includes(role)) {
-    return <Navigate to={defaultRouteForRole()} replace />;
+    return <AccessDeniedPage currentRole={role} allowedRoles={allow} requestedPath={location.pathname} />;
   }
   return element;
 }

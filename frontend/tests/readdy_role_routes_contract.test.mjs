@@ -50,4 +50,3 @@ assert.match(page, /api\.listInterviewAssignments\(\)/, '面试官范围应来�
 assert.match(page, /view === 'candidates'/, '页面应提供已分配候选人视图');
 assert.match(page, /view === 'jobs'/, '页面应提供参与岗位视图');
 assert.doesNotMatch(page, /localStorage|sessionStorage|mock/i, '面试官业务不得使用模拟或浏览器业务存储');
-
