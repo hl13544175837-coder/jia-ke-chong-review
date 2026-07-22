@@ -21,7 +21,9 @@
 
 本 README 里的功能介绍用于了解系统能力，不等于生产上线完成证明。涉及真实 HR 试点、服务器部署、数据清理、LLM 合规或备份恢复时，必须再看 [docs/06_试点上线检查清单.md](docs/06_试点上线检查清单.md) 和 [docs/07_上线部署前关键清单](docs/07_上线部署前关键清单_给AI执行.md)，并由负责人确认后执行。
 
-> **2026-07-11 收口状态口径**：本代码树已完成 `demand_id` P0、数据库生命周期、面试轮次唯一性、Demand 维度 BI、错误态保真、运行配置与可恢复清理的合并前收口，并补齐 Demand 默认面试官口子、需求编号唯一性和视口级操作弹窗，可作为 CFPD `test` 的下一代码候选。Git 推送只改变代码源，不等于 Libra 已构建或 SIT 已部署；环境状态必须分别用 CFPD ref、Libra CommitID/镜像、schema revision、测试站资产和受控 API 证据确认。本轮不引入 OA/Consul、微服务或依赖大版本升级。
+> **2026-07-22 当前候选状态**：本地 Codex 功能候选 `codex/readdy-test-product` 基于远端 `test` `5e251a2`，功能候选 SHA `5ef064a`。当前未 push、未进入 Libra 构建/部署、未在 SIT 生效；本地候选不等于 SIT 已部署，环境状态必须分别用 CFPD ref、Libra CommitID/镜像、schema revision、测试站资产和受控 API 证据确认。
+>
+> **2026-07-11 历史收口状态口径**：当时代码树已完成 `demand_id` P0、数据库生命周期、面试轮次唯一性、Demand 维度 BI、错误态保真、运行配置与可恢复清理的合并前收口，并补齐 Demand 默认面试官口子、需求编号唯一性和视口级操作弹窗；`codex/premerge-p0-closeout-20260711` 曾作为 CFPD `test` 的下一代码候选。本轮当时不引入 OA/Consul、微服务或依赖大版本升级。
 
 > **2026-07-13 更新（服务注册中心）**：`test` 分支已新增可选的 Consul / Eureka 服务注册能力，由配置动态切换，**默认关闭**（`CONSUL_ENABLED` / `EUREKA_ENABLED` 均为 false 时不注册，仍走 K8S 原生服务发现）。这更新了上方 2026-07-11 口径中“不引入 Consul”关于注册中心的部分：此前顾虑的“Gunicorn 多 worker 重复注册”已由 `backend/gunicorn.conf.py` 的 master 单点注册钩子解决。是否在 SIT 真正启用、以及 HTTP/TTL 健康检查模式的选择，仍需负责人结合网络可达性确认。详见 [DEPLOYMENT.md](DEPLOYMENT.md) 的「服务注册中心（Consul / Eureka）」。
 

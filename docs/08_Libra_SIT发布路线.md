@@ -2,7 +2,9 @@
 
 > 适用场景：用户说“发布到 test”“发布到 SIT”“test-zhipin 没变化”“公司服务器 test 没更新”时，先按本文执行，不要重新猜发布链路。
 
-> **2026-07-11 状态**：`codex/premerge-p0-closeout-20260711` 已形成基于 CFPD `test` 的代码候选。即使代码已 fast-forward 推到 CFPD `test`，也只代表发布平台可读取该代码，不代表已触发 Libra 构建或 SIT 部署。SIT 演示数据允许清空或重建；实际状态仍以 CFPD ref、Libra CommitID/镜像、部署日志、schema revision、测试站资产和受控 API 为准。
+> **2026-07-22 当前状态**：本地 Codex 功能候选 `codex/readdy-test-product` 基于远端 `test` `5e251a2`，功能候选 SHA `5ef064a`。当前未 push、未进入 Libra 构建/部署、未在 SIT 生效；本地候选不等于 SIT 已部署。实际环境状态仍以 CFPD ref、Libra CommitID/镜像、部署日志、schema revision、测试站资产和受控 API 为准。
+>
+> **2026-07-11 历史状态**：`codex/premerge-p0-closeout-20260711` 当时已形成基于 CFPD `test` 的代码候选。即使代码 fast-forward 推到 CFPD `test`，也只代表发布平台可读取该代码，不代表已触发 Libra 构建或 SIT 部署。SIT 演示数据允许清空或重建。
 
 > **当前 RC 运行口径**：SIT 是项目负责人单人使用的可丢弃数据测试环境。RC server 镜像会显式跳过生产启动配置门禁，关闭应用安全头/限流，开放注册与 CORS，同时保持 `FLASK_DEBUG=false`。这不改变 CFPD ref、Libra 部署证据、schema 和业务冒烟的验收要求，也不授权导入真实候选人数据。
 

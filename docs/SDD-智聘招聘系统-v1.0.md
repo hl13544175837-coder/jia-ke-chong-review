@@ -3,7 +3,9 @@
 > As-built SDD = 根据当前已实现系统反推的系统设计文档。
 > 本文用于后续迭代开发、模块定位、影响范围评估和交接，不等同于最初立项时的需求文档。
 >
-> **2026-07-11 状态说明：** Demand 维度招聘流及本轮 P0 硬化已在 `codex/premerge-p0-closeout-20260711` 形成代码候选。Git 推送、Libra 构建、K8S 部署和测试站运行态必须分别取证；本文不声称 SIT 已运行本候选。环境是否完整具备该能力，仍以后端受控 API、schema revision、部署记录和页面现场验收为准。
+> **2026-07-22 当前状态：** 本地 Codex 功能候选 `codex/readdy-test-product` 基于远端 `test` `5e251a2`，功能候选 SHA `5ef064a`。当前未 push、未进入 Libra 构建/部署、未在 SIT 生效；本文不声称 SIT 已运行本候选。环境是否完整具备该能力，仍以后端受控 API、schema revision、部署记录和页面现场验收为准。
+>
+> **2026-07-11 历史状态：** Demand 维度招聘流及当轮 P0 硬化曾在 `codex/premerge-p0-closeout-20260711` 形成代码候选；该记录不是当前候选指针。
 
 ## 1. 文档基准
 
@@ -11,8 +13,8 @@
 |---|---|
 | 系统名称 | 智聘 · 招聘管理系统 |
 | 文档类型 | 当前代码候选 As-built 与尚未完成的环境/Strict 门禁合并文档 |
-| 代码基准 | `codex/premerge-p0-closeout-20260711` 与 ADR-0002；环境运行态另以 CFPD/Libra/SIT 证据为准 |
-| 本地项目路径 | `/Users/yenns/Desktop/智聘` |
+| 代码基准 | 本地 Codex 功能候选 `codex/readdy-test-product`，基于远端 `test` `5e251a2`，功能候选 SHA `5ef064a`；当前未 push、未 Libra、未 SIT；设计决策见 ADR-0002 |
+| 本地项目路径 | `/Users/yenns/Documents/新版招聘/zhipin-mvp` |
 | 主要用途 | 后续按模块指定改动时，用来快速判断要改哪些文件、影响哪些接口/表/流程 |
 | 文档生成日期 | 2026-06-19；Demand As-built 更新于 2026-07-11 |
 

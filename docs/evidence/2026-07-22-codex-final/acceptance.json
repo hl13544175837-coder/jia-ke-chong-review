@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-07-22",
+  "timezone": "Asia/Shanghai",
+  "scope": "local_codex_final_acceptance",
+  "candidate": {
+    "branch": "codex/readdy-test-product",
+    "base_ref": "origin/test",
+    "base_sha": "5e251a295cc12a0e3f0f8eb893684b4fe71cc083",
+    "functional_sha": "5ef064a9f1874d176271ffe3dbcc2c580e912795"
+  },
+  "environment": {
+    "browser_base_url": "http://127.0.0.1:5174",
+    "backend_url": "http://127.0.0.1:5001",
+    "oauth_bridge_url": "http://127.0.0.1:5100",
+    "database_path": "/private/tmp/zhipin-codex-cef8386.db",
+    "alembic_head": "20260722_07"
+  },
+  "data_snapshot": {
+    "offers": {
+      "total": 5,
+      "by_status": {
+        "draft": 1,
+        "pending": 1,
+        "onboarded": 3
+      }
+    },
+    "null_demand_id_counts": {
+      "candidate_demand_flows": 0,
+      "pipeline_stages": 0,
+      "offer_records": 0
+    }
+  },
+  "browser_acceptance": {
+    "real_pages": true,
+    "roles": {
+      "admin": ["kanban", "settings"],
+      "manager": ["director_cockpit", "candidates", "offer_approvals", "hired"],
+      "recruiter": ["candidates", "kanban", "interviews", "offers", "hired", "talent_map", "ai_assistant"],
+      "interviewer": ["my_interviews", "access_denied"]
+    },
+    "unauthorized_routes_checked": true,
+    "unauthorized_content_leaked": false,
+    "business_write_actions_submitted": false,
+    "fresh_delivery_tab_console_error_count": 0,
+    "narrow_viewport": {
+      "surface": "candidate_quickview",
+      "viewport_width_px": 390,
+      "surface_width_px": 382,
+      "passed": true
+    }
+  },
+  "runtime_health": {
+    "backend_http_status": 200,
+    "frontend_http_status": 200,
+    "oauth_bridge_verified_by_role_logins": true
+  },
+  "automation": {
+    "frontend_tests": {"passed": true, "count": 90},
+    "frontend_typecheck": {"passed": true},
+    "frontend_lint": {"passed": true},
+    "frontend_build": {"passed": true},
+    "backend_tests": {"passed": true, "count": 490},
+    "base_agent_tests": {"passed": true, "count": 6}
+  },
+  "screenshots": [
+    "admin-kanban.jpg",
+    "admin-settings.jpg",
+    "manager-director-cockpit.jpg",
+    "manager-candidates.jpg",
+    "manager-approvals.jpg",
+    "manager-hired.jpg",
+    "interviewer-my-interviews.jpg",
+    "interviewer-access-denied.jpg",
+    "mobile-candidate-quickview.jpg"
+  ],
+  "publication": {
+    "pushed": false,
+    "libra_built": false,
+    "libra_deployed": false,
+    "sit_deployed": false
+  }
+}
