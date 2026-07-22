@@ -258,12 +258,21 @@ def test_alembic_expand_is_additive_revisioned_and_idempotent(tmp_path):
     inspector = inspect(engine)
     assert inspector.has_table("candidate_demand_flows")
     assert "current_demand_id" in {column["name"] for column in inspector.get_columns("candidates")}
-    assert {"demand_id", "round_sequence", "is_primary"}.issubset(
+    assert {
+        "demand_id",
+        "round_sequence",
+        "is_primary",
+        "response_status",
+        "response_reason",
+        "responded_at",
+        "access_token_version",
+    }.issubset(
         {column["name"] for column in inspector.get_columns("interview_assignments")}
     )
+    assert inspector.has_table("interview_notification_deliveries")
     with engine.connect() as connection:
         assert connection.execute(text("SELECT COUNT(*) FROM pipeline_stages")).scalar_one() == 1
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260711_04"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260722_05"
     engine.dispose()
 
 
@@ -292,7 +301,7 @@ def test_interview_uniqueness_revision_adds_primary_slot_and_unique_indexes(tmp_
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260711_04"
+        ).scalar_one() == "20260722_05"
     engine.dispose()
 
 
@@ -600,8 +609,8 @@ def test_verify_checks_revision_completeness_and_job_consistency(tmp_path):
     verified = verify.verify_database(url)
     assert verified["ok"] is True
     assert verified["schema_revision"] == {
-        "current": "20260711_04",
-        "expected": "20260711_04",
+        "current": "20260722_05",
+        "expected": "20260722_05",
         "ok": True,
     }
     assert verified["unmapped_total"] == 0

@@ -410,8 +410,51 @@ class InterviewAssignment(db.Model):
     location = db.Column(db.String(240), default="")
     note = db.Column(db.Text)
     status = db.Column(db.String(40), default="scheduled")
+    response_status = db.Column(db.String(20), default="pending", nullable=False)
+    response_reason = db.Column(db.Text)
+    responded_at = db.Column(db.DateTime)
+    access_token_version = db.Column(db.Integer, default=0, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=utc_now)
+    notification_delivery = db.relationship(
+        "InterviewNotificationDelivery",
+        back_populates="assignment",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class InterviewNotificationDelivery(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_interview_notification_deliveries_org_status",
+            "org_id",
+            "status",
+        ),
+    )
+
+    __tablename__ = "interview_notification_deliveries"
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, default=1, nullable=False)
+    assignment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("interview_assignments.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    recipient_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    channel = db.Column(db.String(40), default="wecom_webhook", nullable=False)
+    status = db.Column(db.String(20), default="pending", nullable=False)
+    attempts = db.Column(db.Integer, default=0, nullable=False)
+    last_error = db.Column(db.String(240))
+    response_code = db.Column(db.Integer)
+    sent_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    assignment = db.relationship(
+        "InterviewAssignment",
+        back_populates="notification_delivery",
+    )
 
 
 class Event(db.Model):

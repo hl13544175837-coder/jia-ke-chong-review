@@ -1,14 +1,15 @@
 from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
+from ..middleware.rate_limit import rate_limit
 from ..services.interview_service import PreScreenService
 from ..services.interview_workflow_service import (
     InterviewAssignmentWorkflowError,
     active_assignment_filter,
     assignment_is_cancelled,
+    assignment_is_inactive,
     cancel_interview_assignment,
     can_manage_interview_context,
     can_read_interview_context,
@@ -16,7 +17,16 @@ from ..services.interview_workflow_service import (
     feedback_assignment,
     load_assignment_for_update,
     normalize_assignment_datetime,
+    respond_to_interview_assignment,
     resolve_interview_context,
+    submit_interview_feedback,
+)
+from ..services.interview_notification_service import (
+    InterviewAccessError,
+    dispatch_interview_notification,
+    interview_access_payload,
+    serialize_interview_notification_delivery,
+    validate_interview_access_token,
 )
 from ..services.demand_context_service import (
     DemandContextError,
@@ -25,7 +35,7 @@ from ..services.demand_context_service import (
     visible_demand_query,
 )
 from .. import db
-from ..models import Candidate, Interview, InterviewAssignment, Job, Notification
+from ..models import Candidate, Interview, InterviewAssignment, Job
 from ..time_utils import utc_now
 from .access import (
     same_org,
@@ -214,7 +224,7 @@ def _assignment_payload(item):
         )
     feedback_submitted = feedback_query.first() is not None
     scheduled_at = normalize_assignment_datetime(item.scheduled_at)
-    assignment_active = not assignment_is_cancelled(item.status)
+    assignment_active = not assignment_is_inactive(item.status)
     is_overdue = bool(
         assignment_active
         and scheduled_at
@@ -237,6 +247,12 @@ def _assignment_payload(item):
         "location": item.location or "",
         "note": item.note or "",
         "status": item.status or "scheduled",
+        "response_status": item.response_status or "pending",
+        "response_reason": item.response_reason,
+        "responded_at": item.responded_at.isoformat() if item.responded_at else None,
+        "notification_delivery": serialize_interview_notification_delivery(
+            item.notification_delivery
+        ),
         "feedback_submitted": feedback_submitted,
         "is_overdue": is_overdue,
         "created_by_name": creator.name if creator else None,
@@ -254,6 +270,53 @@ def _assignment_workflow_error_response(exc):
         "code": exc.code,
         **exc.details,
     }), exc.status_code
+
+
+def _access_error_response(exc):
+    return jsonify({"error": exc.message, "code": exc.code}), exc.status_code
+
+
+def _feedback_submission_response(result):
+    return {
+        "id": result.feedback.id,
+        "status": "ok",
+        "deduplicated": result.deduplicated,
+        "round_completed": result.round_completed,
+        "next_action": result.next_action,
+    }
+
+
+def _json_payload():
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def _parse_feedback_score(value):
+    if value is None:
+        return None
+    try:
+        score = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("score must be an integer between 1 and 5") from exc
+    if score < 1 or score > 5:
+        raise ValueError("score must be between 1 and 5")
+    return score
+
+
+def _public_interview_context(data, *, lock=False):
+    access = validate_interview_access_token(data.get("token"), lock=lock)
+    assignment = access.assignment
+    g.user_id = access.interviewer.id
+    g.org_id = assignment.org_id
+    g.role = "interviewer"
+    g.audit_source = "interview_access_link"
+    context = resolve_interview_context(
+        org_id=assignment.org_id,
+        candidate_id=assignment.candidate_id,
+        demand_id=assignment.demand_id,
+        job_id=assignment.job_id,
+    )
+    return access, context
 
 
 @bp.post("/interview/start")
@@ -461,8 +524,7 @@ def interview_guide():
 @bp.post("/interview/feedback")
 @require_auth
 def submit_feedback():
-    from ..models import Candidate, InterviewFeedback
-    data = request.get_json() or {}
+    data = _json_payload()
     if not data.get("candidate_id") or not data.get("round") or not (
         data.get("demand_id") or data.get("job_id")
     ):
@@ -477,14 +539,10 @@ def submit_feedback():
         )
     except DemandContextError as exc:
         return _context_error_response(exc)
-    score = data.get("score")
-    if score is not None:
-        try:
-            score = int(score)
-        except (TypeError, ValueError):
-            return jsonify({"error": "score must be an integer between 1 and 5"}), 400
-        if score < 1 or score > 5:
-            return jsonify({"error": "score must be between 1 and 5"}), 400
+    try:
+        score = _parse_feedback_score(data.get("score"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     assignment = feedback_assignment(
         org_id=g.org_id,
         interviewer_id=g.user_id,
@@ -502,94 +560,24 @@ def submit_feedback():
         g.user_id, g.role, g.org_id, context, data["round"]
     ):
         return jsonify({"error": "Forbidden"}), 403
-    existing = InterviewFeedback.query.filter_by(
-        org_id=g.org_id,
-        assignment_id=assignment.id,
-    ).first()
-    if existing is not None:
-        completed = bool(assignment.is_primary)
-        return jsonify({"id": existing.id, "status": "ok", "deduplicated": True,
-                        "round_completed": completed,
-                        "next_action": "awaiting_hr_decision" if completed else "awaiting_primary_feedback"}), 200
-    fb = InterviewFeedback(
-        candidate_id=data["candidate_id"], job_id=context.job.id,
-        demand_id=context.demand_id,
-        assignment_id=assignment.id,
-        org_id=g.org_id,
-        round=data["round"], interviewer_id=g.user_id,
-        score=score, passed=data.get("passed"),
-        strengths=data.get("strengths"), concerns=data.get("concerns"),
-        reason_tags=_sanitize_reason_tags(data.get("reason_tags")),
-        evaluation_json=_sanitize_evaluation(data.get("evaluation")),
-        note=data.get("note"))
-    db.session.add(fb)
-    round_completed = bool(assignment.is_primary)
-    assignment.status = "completed" if round_completed else "feedback_submitted"
-    if round_completed:
-        owner_id = context.demand.owner_hr_id
-        if owner_id:
-            db.session.add(Notification(
-                org_id=g.org_id,
-                user_id=owner_id,
-                demand_id=context.demand_id,
-                type="interview_feedback_ready",
-                title="主面试官已反馈，待 HR 确认下一步",
-                body=(
-                    f"{context.candidate.name_masked or '候选人'}的"
-                    f"第 {assignment.round_sequence} 轮主面试反馈已完成。"
-                ),
-                link=(
-                    f"/interviews?demand={context.demand_id}"
-                    f"&candidate={context.candidate.id}"
-                ),
-            ))
-    assignment_id = assignment.id
     try:
-        record_event(
-            "interview.feedback",
-            entity_id=data["candidate_id"],
-            entity_type="candidate",
-            demand_id=context.demand_id,
-            payload={
-                "job_id": context.job.id,
-                "demand_id": context.demand_id,
-                "assignment_id": assignment.id,
-                "round": data["round"],
-                "score": data.get("score"),
-                "passed": data.get("passed"),
-            },
-            commit=False,
+        result = submit_interview_feedback(
+            context=context,
+            assignment=assignment,
+            interviewer_id=g.user_id,
+            score=score,
+            passed=data.get("passed"),
+            strengths=data.get("strengths"),
+            concerns=data.get("concerns"),
+            reason_tags=_sanitize_reason_tags(data.get("reason_tags")),
+            evaluation=_sanitize_evaluation(data.get("evaluation")),
+            note=data.get("note"),
         )
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        if assignment_id is not None:
-            existing = InterviewFeedback.query.filter_by(
-                org_id=g.org_id,
-                assignment_id=assignment_id,
-            ).first()
-            if existing is not None:
-                return jsonify({
-                    "id": existing.id,
-                    "status": "ok",
-                    "deduplicated": True,
-                    "round_completed": round_completed,
-                    "next_action": (
-                        "awaiting_hr_decision"
-                        if round_completed
-                        else "awaiting_primary_feedback"
-                    ),
-                }), 200
-        return jsonify({
-            "error": "反馈写入冲突，请刷新后重试",
-            "code": "feedback_conflict",
-        }), 409
-    except Exception:
-        db.session.rollback()
-        raise
-    return jsonify({"id": fb.id, "status": "ok", "deduplicated": False,
-                    "round_completed": round_completed,
-                    "next_action": "awaiting_hr_decision" if round_completed else "awaiting_primary_feedback"}), 201
+    except InterviewAssignmentWorkflowError as exc:
+        return _assignment_workflow_error_response(exc)
+    return jsonify(_feedback_submission_response(result)), (
+        200 if result.deduplicated else 201
+    )
 
 
 @bp.get("/interview/feedback")
@@ -845,9 +833,148 @@ def create_assignment():
         )
     except InterviewAssignmentWorkflowError as exc:
         return _assignment_workflow_error_response(exc)
+    if not deduplicated:
+        dispatch_interview_notification(assignment.id)
     payload = _assignment_payload(assignment)
     payload["deduplicated"] = deduplicated
     return jsonify(payload), 200 if deduplicated else 201
+
+
+@bp.post("/interview/assignment/respond")
+@require_auth
+def respond_assignment():
+    data = _json_payload()
+    assignment_id = data.get("assignment_id")
+    if not isinstance(assignment_id, int) or isinstance(assignment_id, bool):
+        return jsonify({"error": "assignment_id required"}), 400
+    assignment = load_assignment_for_update(
+        org_id=g.org_id,
+        assignment_id=assignment_id,
+    )
+    if assignment is None:
+        return jsonify({
+            "error": "面试任务不存在或不属于当前面试官",
+            "code": "assignment_not_found",
+        }), 404
+    try:
+        assignment, deduplicated = respond_to_interview_assignment(
+            assignment=assignment,
+            interviewer_id=g.user_id,
+            decision=data.get("decision"),
+            reason=data.get("reason"),
+        )
+    except InterviewAssignmentWorkflowError as exc:
+        return _assignment_workflow_error_response(exc)
+    payload = _assignment_payload(assignment)
+    payload["deduplicated"] = deduplicated
+    return jsonify(payload)
+
+
+@bp.post("/interview/assignment/notification/retry")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def retry_assignment_notification():
+    data = _json_payload()
+    assignment_id = data.get("assignment_id")
+    if not isinstance(assignment_id, int) or isinstance(assignment_id, bool):
+        return jsonify({"error": "assignment_id required"}), 400
+    assignment = InterviewAssignment.query.filter_by(
+        id=assignment_id,
+        org_id=g.org_id,
+    ).first()
+    if assignment is None:
+        return jsonify({
+            "error": "面试任务不存在",
+            "code": "assignment_not_found",
+        }), 404
+    try:
+        context = resolve_interview_context(
+            org_id=g.org_id,
+            candidate_id=assignment.candidate_id,
+            demand_id=assignment.demand_id,
+            job_id=assignment.job_id,
+        )
+    except DemandContextError as exc:
+        return _context_error_response(exc)
+    if not can_manage_interview_context(g.user_id, g.role, g.org_id, context):
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    if assignment_is_inactive(assignment.status):
+        return jsonify({
+            "error": "面试任务已结束，不能重新发送通知",
+            "code": "assignment_inactive",
+        }), 409
+    dispatch_interview_notification(assignment.id)
+    return jsonify(_assignment_payload(assignment))
+
+
+@bp.post("/interview/access/get")
+@rate_limit("interview.public_access")
+def get_public_interview_access():
+    data = _json_payload()
+    try:
+        access, _ = _public_interview_context(data)
+    except InterviewAccessError as exc:
+        return _access_error_response(exc)
+    except DemandContextError as exc:
+        return _context_error_response(exc)
+    return jsonify(interview_access_payload(access))
+
+
+@bp.post("/interview/access/respond")
+@rate_limit("interview.public_access")
+def respond_public_interview_access():
+    data = _json_payload()
+    try:
+        access, _ = _public_interview_context(data, lock=True)
+        assignment, deduplicated = respond_to_interview_assignment(
+            assignment=access.assignment,
+            interviewer_id=access.interviewer.id,
+            decision=data.get("decision"),
+            reason=data.get("reason"),
+        )
+    except InterviewAccessError as exc:
+        return _access_error_response(exc)
+    except DemandContextError as exc:
+        return _context_error_response(exc)
+    except InterviewAssignmentWorkflowError as exc:
+        return _assignment_workflow_error_response(exc)
+    payload = interview_access_payload(access)
+    payload["deduplicated"] = deduplicated
+    return jsonify(payload)
+
+
+@bp.post("/interview/access/feedback")
+@rate_limit("interview.public_access")
+def submit_public_interview_feedback():
+    data = _json_payload()
+    try:
+        score = _parse_feedback_score(data.get("score"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    try:
+        access, context = _public_interview_context(data, lock=True)
+        assignment = access.assignment
+        result = submit_interview_feedback(
+            context=context,
+            assignment=assignment,
+            interviewer_id=access.interviewer.id,
+            score=score,
+            passed=data.get("passed"),
+            strengths=data.get("strengths"),
+            concerns=data.get("concerns"),
+            reason_tags=_sanitize_reason_tags(data.get("reason_tags")),
+            evaluation=_sanitize_evaluation(data.get("evaluation")),
+            note=data.get("note"),
+        )
+    except InterviewAccessError as exc:
+        return _access_error_response(exc)
+    except DemandContextError as exc:
+        return _context_error_response(exc)
+    except InterviewAssignmentWorkflowError as exc:
+        return _assignment_workflow_error_response(exc)
+    return jsonify(_feedback_submission_response(result)), (
+        200 if result.deduplicated else 201
+    )
 
 
 @bp.patch("/interview/assignments/<int:assignment_id>/cancel")
