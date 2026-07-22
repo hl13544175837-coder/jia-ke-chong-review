@@ -200,10 +200,15 @@ def _build_interview_guide(candidate, job, round_name, demand_id=None):
 
 
 def _assignment_payload(item):
-    from ..models import Candidate, InterviewFeedback, User
+    from ..models import Candidate, InterviewFeedback, RecruitmentDemand, User
 
     candidate = db.session.get(Candidate, item.candidate_id)
     job = db.session.get(Job, item.job_id)
+    demand = (
+        db.session.get(RecruitmentDemand, item.demand_id)
+        if item.demand_id is not None
+        else None
+    )
     interviewer = db.session.get(User, item.interviewer_id)
     creator = db.session.get(User, item.created_by) if item.created_by else None
     feedback_query = InterviewFeedback.query.filter_by(
@@ -237,6 +242,7 @@ def _assignment_payload(item):
         "name_masked": candidate.name_masked if candidate else None,
         "job_id": item.job_id,
         "demand_id": item.demand_id,
+        "demand_request_no": demand.request_no if demand else None,
         "job_title": job.title if job else None,
         "round": item.round,
         "round_sequence": item.round_sequence or 1,
