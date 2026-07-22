@@ -60,12 +60,12 @@ assert.doesNotMatch(
 );
 assert.match(
   dashboard,
-  /interviewer:\s*\['\/interviews'\]/,
+  /interviewer:\s*\['\/interviewer\/interviews'\]/,
   'Interviewer dashboard quick actions should be narrowed to My Interviews',
 );
 assert.match(
   dashboard,
-  /action:\s*\{\s*to:\s*'\/interviews',\s*label:\s*'查看我的面试'/,
+  /action:\s*\{\s*to:\s*'\/interviewer\/interviews',\s*label:\s*'查看我的面试'/,
   'Interviewer primary dashboard action should land on My Interviews',
 );
 assert.match(
@@ -112,6 +112,11 @@ assert.doesNotMatch(
   appShell,
   /我的面试 · 反馈填写/,
   'App shell should not repeat interviewer task guidance in a persistent sidebar identity card',
+);
+assert.match(
+  appShell,
+  /role === 'interviewer'\s*\?\s*<Outlet\s*\/>\s*:\s*\(\s*<AgentChatProvider>/,
+  'Interviewer shell must not preload the unauthorized AI conversation provider',
 );
 assert.match(
   dashboard,

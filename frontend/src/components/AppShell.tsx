@@ -353,9 +353,11 @@ export function AppShell() {
         {showAccountSettings && <AccountSettings onClose={() => setShowAccountSettings(false)} />}
 
         <main className="min-w-0 flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
-          <AgentChatProvider>
-            <Outlet />
-          </AgentChatProvider>
+          {role === 'interviewer' ? <Outlet /> : (
+            <AgentChatProvider>
+              <Outlet />
+            </AgentChatProvider>
+          )}
         </main>
       </div>
 

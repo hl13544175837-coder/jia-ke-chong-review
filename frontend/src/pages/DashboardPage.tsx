@@ -68,7 +68,7 @@ const ROLE_INFO: Record<Role, RoleInfo> = {
     icon: ClipboardCheck,
     accent: 'bg-teal-50 text-teal-700',
     gradient: 'linear-gradient(135deg, #5d897c, #3d7b6b)',
-    action: { to: '/interviews', label: '查看我的面试' },
+    action: { to: '/interviewer/interviews', label: '查看我的面试' },
   },
 };
 
@@ -105,7 +105,7 @@ const WORKFLOW_ACTIONS: WorkflowAction[] = [
     roles: ['recruiter', 'manager', 'admin'],
   },
   {
-    to: '/interviews',
+    to: '/interviewer/interviews',
     label: '我的面试',
     desc: '查看安排并填写反馈',
     icon: ClipboardCheck,
@@ -138,7 +138,7 @@ const ACTION_ORDER_BY_ROLE: Record<Role, string[]> = {
   recruiter: ['/upload', '/demands', '/pipeline'],
   manager: ['/bi', '/pipeline', '/agent'],
   admin: ['/bi', '/admin/settings', '/agent'],
-  interviewer: ['/interviews'],
+  interviewer: ['/interviewer/interviews'],
 };
 
 function workflowActionsForRole(role: Role): WorkflowAction[] {

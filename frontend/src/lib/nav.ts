@@ -56,7 +56,7 @@ export const NAV_ITEMS: NavItem[] = [
     menuCode: 'pipeline',
   },
   {
-    to: '/interviews',
+    to: '/interviewer/interviews',
     label: '我的面试',
     icon: ClipboardCheck,
     roles: ['interviewer'],

@@ -10,6 +10,10 @@ assert.match(page, /data-ui="readdy-offers"/);
 assert.match(page, /api\.listOffers/);
 assert.match(page, /api\.saveDemandOfferRecord/);
 assert.match(page, /api\.runOfferAction/);
+assert.match(page, /disabled=\{!canCreateOffer\}/, 'Demand 加载失败或没有可用 Demand 时不得打开空 Offer 表单');
+assert.match(page, /重试加载需求/, 'Demand 次级接口失败时应提供重试');
+assert.match(page, /重新加载候选人/, '候选人次级接口失败时应提供重试');
+assert.match(page, /boardAsync\.loading \|\| !!boardAsync\.error \|\| !candidateId/, '候选人未就绪时不得保存空 Offer 草稿');
 assert.match(page, /role === 'manager' \|\| role === 'admin'/);
 assert.doesNotMatch(page, /mocks\/offers|sessionStorage|zhipin-current-role|initialOffers/);
 

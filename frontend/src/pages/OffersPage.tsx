@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Check,
   Clock3,
@@ -210,6 +211,15 @@ function OfferForm({
             ))}
           </select>
           {boardAsync.error && <span className="mt-1 block text-xs text-red-600">{boardAsync.error.message}</span>}
+          {!offer && boardAsync.error && (
+            <button
+              type="button"
+              className="mt-2 text-xs font-medium text-[#2f6c5c] hover:underline"
+              onClick={boardAsync.reload}
+            >
+              重新加载候选人
+            </button>
+          )}
           {!offer && demandId && !boardAsync.loading && !boardAsync.error && eligibleCandidates.length === 0 && (
             <span className="mt-1 block text-xs text-[#777b78]">该需求暂时没有进入 Offer 阶段的候选人</span>
           )}
@@ -231,7 +241,13 @@ function OfferForm({
       </div>
       <div className="flex justify-end gap-3 border-t border-[#ecece8] px-6 py-4">
         <Button variant="secondary" onClick={onClose} disabled={saving}>取消</Button>
-        <Button onClick={save} loading={saving}>保存草稿</Button>
+        <Button
+          onClick={save}
+          loading={saving}
+          disabled={!offer && (boardAsync.loading || !!boardAsync.error || !candidateId)}
+        >
+          保存草稿
+        </Button>
       </div>
     </ModalShell>
   );
@@ -416,6 +432,10 @@ export function OffersPage() {
       : offers.filter((offer) => tab.statuses.includes(offerStatus(offer))).length,
   ])), [offers]);
   const canApprove = role === 'manager' || role === 'admin';
+  const activeDemandCount = (demandsAsync.data?.items ?? []).filter(
+    (item) => ['pending', 'active'].includes(item.status),
+  ).length;
+  const canCreateOffer = !demandsAsync.loading && !demandsAsync.error && activeDemandCount > 0;
 
   async function openDetail(offer: OfferRecord) {
     try {
@@ -448,8 +468,27 @@ export function OffersPage() {
           <h1 className="text-2xl font-bold text-[#292b2a]">Offer 管理</h1>
           <p className="mt-1 text-sm text-[#777b78]">管理审批、发放、候选人回复与入职，所有操作都会留痕</p>
         </div>
-        <Button onClick={() => { setEditing(null); setShowForm(true); }}><Plus className="h-4 w-4" />新建 Offer</Button>
+        <Button
+          disabled={!canCreateOffer}
+          onClick={() => { setEditing(null); setShowForm(true); }}
+        >
+          <Plus className="h-4 w-4" />
+          {demandsAsync.loading ? '加载需求中…' : '新建 Offer'}
+        </Button>
       </div>
+
+      {!demandsAsync.loading && demandsAsync.error && (
+        <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+          <p className="text-sm font-medium text-red-800">招聘需求加载失败，暂时不能新建 Offer。</p>
+          <p className="mt-1 text-xs text-red-700">{demandsAsync.error.message}</p>
+          <Button className="mt-3" size="sm" variant="secondary" onClick={demandsAsync.reload}>重试加载需求</Button>
+        </div>
+      )}
+      {!demandsAsync.loading && !demandsAsync.error && activeDemandCount === 0 && (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
+          当前没有可用的招聘需求。请先到 <Link className="font-medium underline" to="/jobs">招聘管理</Link> 创建或恢复需求，再新建 Offer。
+        </div>
+      )}
 
       <Card className="overflow-hidden border-[#e8e7e1]">
         {(offersAsync.data?.unmapped_total ?? 0) > 0 && (

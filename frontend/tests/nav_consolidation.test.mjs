@@ -38,7 +38,7 @@ assert.doesNotMatch(
   '岗位管理 should not remain as a separate top-level sidebar item after recruitment consolidation',
 );
 
-const interviewNavBlock = nav.match(/\{\s*to:\s*'\/interviews'[\s\S]*?\n\s*\},/)?.[0] ?? '';
+const interviewNavBlock = nav.match(/\{\s*to:\s*'\/interviewer\/interviews'[\s\S]*?\n\s*\},/)?.[0] ?? '';
 
 assert.match(
   interviewNavBlock,
