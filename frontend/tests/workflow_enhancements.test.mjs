@@ -17,6 +17,7 @@ function readSource(path) {
   'components/interviewRecords/MyInterviewsPanel.tsx',
   'components/interview/InterviewGuidePanel.tsx',
   'components/candidate/DecisionSummaryPanel.tsx',
+  'pages/PublicInterviewAccessPage.tsx',
 ].forEach((path) => {
   assert.ok(existsSync(join(srcRoot, path)), `${path} should exist`);
 });
@@ -48,6 +49,11 @@ assert.match(api, /cancelInterviewAssignment/);
 assert.match(api, /listInterviewAssignments/);
 assert.match(api, /listInterviewers/);
 assert.match(api, /getInterviewGuide/);
+assert.match(api, /respondInterviewAssignment/);
+assert.match(api, /retryInterviewAssignmentNotification/);
+assert.match(api, /getPublicInterviewAccess/);
+assert.match(api, /submitPublicInterviewFeedback/);
+assert.match(api, /includeAuth:\s*false/);
 
 const interviewPage = readSource('pages/InterviewListPage.tsx');
 assert.match(interviewPage, /InterviewAssignmentPanel/);
@@ -61,10 +67,29 @@ assert.match(assignmentPanel, /面试官/);
 assert.match(assignmentPanel, /会议链接/);
 assert.match(assignmentPanel, /取消安排/);
 assert.match(assignmentPanel, /api\.cancelInterviewAssignment/);
+assert.match(assignmentPanel, /企微通知已发送/);
+assert.match(assignmentPanel, /重发企微通知/);
+assert.match(assignmentPanel, /response_reason/);
 
 const myInterviewsPanel = readSource('components/interviewRecords/MyInterviewsPanel.tsx');
 assert.match(myInterviewsPanel, /我的面试/);
 assert.match(myInterviewsPanel, /超时待反馈/);
+assert.match(myInterviewsPanel, /确认参加/);
+assert.match(myInterviewsPanel, /无法参加/);
+assert.match(myInterviewsPanel, /response_status === 'accepted'/);
+
+const publicInterviewAccess = readSource('pages/PublicInterviewAccessPage.tsx');
+assert.match(publicInterviewAccess, /此链接仅能处理这一条面试任务/);
+assert.match(publicInterviewAccess, /api\.respondPublicInterviewAccess/);
+assert.match(publicInterviewAccess, /api\.submitPublicInterviewFeedback/);
+assert.match(publicInterviewAccess, /填写评分和评价/);
+
+const app = readSource('App.tsx');
+assert.match(app, /path="\/interview-access" element=\{<PublicInterviewAccessPage \/>\}/);
+
+const packageJson = readFileSync(join(__dirname, '../package.json'), 'utf8');
+assert.match(packageJson, /@rolldown\/binding-linux-x64-musl/);
+assert.match(packageJson, /lightningcss-linux-x64-musl/);
 
 const feedbackForm = readSource('components/interview/FeedbackForm.tsx');
 assert.match(feedbackForm, /评价维度/);

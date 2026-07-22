@@ -27,6 +27,7 @@ import { ToastProvider } from './components/ui';
 import type { Role } from './types';
 
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })));
+const PublicInterviewAccessPage = lazy(() => import('./pages/PublicInterviewAccessPage').then((module) => ({ default: module.PublicInterviewAccessPage })));
 
 // Gate for the authenticated app area.
 function RequireAuth() {
@@ -61,6 +62,7 @@ function AppRoutes() {
         path="/login"
         element={isAuthenticated ? <HomeRedirect /> : <LoginPage />}
       />
+      <Route path="/interview-access" element={<PublicInterviewAccessPage />} />
       <Route element={<RequireAuth />}>
         <Route path="/" element={<DashboardPage />} />
         <Route
