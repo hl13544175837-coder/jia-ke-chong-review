@@ -477,7 +477,7 @@ class Event(db.Model):
     user_agent = db.Column(db.Text)
     result = db.Column(db.String(20), default="success", nullable=False)
     failure_reason = db.Column(db.String(240))
-    source = db.Column(db.String(20), default="ui", nullable=False)
+    source = db.Column(db.String(64), default="ui", nullable=False)
     severity = db.Column(db.String(20), default="info", nullable=False)
     ts = db.Column(db.DateTime, default=utc_now)
 
