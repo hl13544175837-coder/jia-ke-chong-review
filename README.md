@@ -72,6 +72,7 @@
 - 候选人一期只允许一条进行中流程；转需求必须在同一事务中将来源记为 `transferred`、目标从 `pending` 开始，并跟随目标 Demand 负责人；`transferred` 不是 `rejected`
 - 主流程只保留“面试中”；一面/二面/终面/加面是轮次任务。主面试官反馈只完成本轮，后续推进或淘汰由 HR/经理/管理员确认
 - 正式安排选中 Demand 后会带出其默认面试官，HR 可搜索换人；最终任务以当次选定账号为准
+- 创建面试安排后按配置向企业微信或通用 Webhook 发送任务；面试官可通过短期签名链接免登录接单、拒绝并提交本轮反馈，HR 可查看投递状态并重试失败通知
 - 面试官选项独立加载；即使人员列表暂时失败，已有面试任务和待反馈记录仍可查看，只暂停新安排并提供局部重试
 - 候选人负责人转派改为选择招聘专员姓名并填写转派原因，不再要求输入用户 ID
 
@@ -121,9 +122,24 @@
 | 前端 | React 18.3 · Vite 8 · TypeScript 5.9 · Tailwind 3.4 · GSAP 3.15 · recharts 3.8 · React Router 6 |
 | 后端 | Flask 3.1 · SQLAlchemy 2.0 · SQLite/MySQL/PostgreSQL · PyJWT |
 | AI | LangGraph 1.2 · DeepSeek v4 (OpenAI 兼容) · pdfplumber · python-docx |
-| 数据 | SQLite（开发）/ MySQL（公司试点）/ PostgreSQL（兼容） |
+| 数据 | MySQL 8.0.32（本地全容器基线）/ SQLite（轻量开发）/ PostgreSQL（兼容） |
 
 ## 🚀 快速开始
+
+### 0. 本地全容器（推荐）
+
+只需安装 Docker Desktop 或 Docker Engine + Compose v2；前端、后端、MySQL 8.0.32 和企业微信模拟接收器都在容器内运行：
+
+```powershell
+pwsh -File .\scripts\start-local.ps1
+```
+
+启动后访问 `http://127.0.0.1:15173`。宿主机仅绑定回环地址和高位端口：前端 `15173`、后端 `15001`、MySQL `13306`、通知模拟器 `19090`。脚本会生成被 Git 忽略的本地 `.env`，并准备以下闭环验收账号：
+
+- 招聘专员：`hr.local@example.test` / `ZhipinLocal2026!`
+- 面试官：`interviewer.local@example.test` / `ZhipinLocal2026!`
+
+完整运行、停止和通知配置见 [RUNNING.md](RUNNING.md)。下面的 Python/Node 步骤仅用于不走容器的二次开发。
 
 ### 环境要求
 - Python 3.11–3.13（推荐及容器基线 3.12）· Node.js 20.19–20.x 或 22.12+ · npm 10+
