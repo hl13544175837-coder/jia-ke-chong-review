@@ -289,6 +289,7 @@ def test_webhook_access_link_accepts_task_and_submits_feedback(
         },
     )
     assert assignment.status_code == 201
+    assert assignment.get_json()["demand_request_no"] == "REQ-IV-LINK"
     assert assignment.get_json()["notification_delivery"]["status"] == "sent"
     assert delivered["url"] == "https://wecom-gateway.example.test/interviews"
     assert delivered["headers"]["Idempotency-Key"].startswith(
