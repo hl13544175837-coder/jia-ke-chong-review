@@ -257,6 +257,25 @@ npm run build    # 验证生产构建；frontend/dist/ 是生成物，不提交
 
 开发时只保留一个前端地址：`http://localhost:5173`。如果 5173 被占用，Vite 会直接报错，不会自动跳到 5174/5175。
 
+### 公司网关不可达时的本地四角色验收
+
+普通开发仍使用上面的 `npm run dev`。只有需要在公司网关不可达的本机完整点击登录页、验证四角色路由时，才额外开启本地 OAuth 验收桥。该桥只接受本文列出的 `@mvp.local` 试用账号，调用本地后端生成真实 JWT，不创建业务假数据，也不会修改或替代正式公司的 `gatewayAuth.ts` 登录链路。
+
+先确保后端已在 `:5001` 启动并执行过 `seed_dev.py`，再开两个终端：
+
+```bash
+cd frontend
+npm run dev:oauth-bridge
+```
+
+```bash
+cd frontend
+npm run dev:local-acceptance
+# 打开 http://localhost:5174
+```
+
+`dev:local-acceptance` 会显式把业务 `/api` 指向本地 `:5001`，避免 `frontend/.env.development` 把本地验收误接到远端 SIT。登录账号填写 `admin01`、`manager01`、`hr01` 或 `interviewer01`，密码仍为 `Zhipin2026`。正式构建和 SIT 不使用这两个本地命令，仍走公司网关及原冻结链路。
+
 ## 临时外链试用
 
 给内部同事临时试看时，可以用 Cloudflare Tunnel 或 localtunnel 把本机 `5173` 暴露出去。前端开发服务已允许 `.trycloudflare.com` 和 `.loca.lt` 临时域名访问。

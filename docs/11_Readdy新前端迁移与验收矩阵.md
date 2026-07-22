@@ -1,6 +1,6 @@
 # Readdy 新前端迁移与验收矩阵
 
-> 状态：实施中。本文是迁移过程的接线真源，不代替最终可运行产品。
+> 状态：本地代码与四角色浏览器候选已收口，待推送 CFPD `test` 并完成公司 SIT 现场验收。本文是迁移过程的接线真源，不代替已部署环境证明。
 >
 > 代码基线：`origin/test` 的 `5e251a2`；新界面来源：本地 `readdy-export-12214982`。
 >
@@ -21,7 +21,7 @@
 | 公司登录 | `frontend/src/lib/gatewayAuth.ts` | 保留网关账号密码登录和 profile 查询，不使用 Readdy 的定时器假登录 |
 | 会话与身份 | `frontend/src/lib/auth.tsx`、`frontend/src/lib/api.ts` | 保留 Bearer token 与 `X-Emp-Code`；登录后以 `/api/auth/me` 的后端角色为准 |
 | 菜单/按钮权限 | `frontend/src/lib/permissions.tsx` | 保留 `clientId=zhipin` 的网关菜单和按钮 code；后端 RBAC 仍是最终安全边界 |
-| Apollo | `backend/app/services/apollo_config.py` 及启动配置 | `appId` 固定 `zhipin`；密钥只来自 Apollo、环境变量或 CI |
+| Apollo | `backend/apollo_config.py` 及 `run.py` / `gunicorn.conf.py` 启动配置 | `appId` 固定 `zhipin`；密钥只来自 Apollo、环境变量或 CI |
 | 公司第三方 token | `backend/app/services/third_party_service.py` | 保留 `mcp.sso.token` 登录及 `yhToken`、`goToken`、`omgToken` 交换 |
 | 招聘流程 | `demand_service`、`pipeline_service` | Job 是岗位画像，Demand 是具体招聘任务；所有流程事实按 `demand_id` 归属 |
 | 权限和隔离 | `backend/app/middleware/auth.py` 与各业务服务 | 保留 admin / manager / recruiter / interviewer 四角色、`org_id` 和负责人范围 |
@@ -49,13 +49,13 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 | `/candidates` 简历库 | recruiter/manager/admin | `/candidates`、`/resume/*`、匹配预览、批量入流程 | 搜索/筛选/详情/上传/负责人/加入 Demand 全部真实化 |
 | `/kanban` 进度看板 | recruiter/manager/admin | `/pipeline/demands/*` | **代码候选已接通**：Demand 选择器 + KPI 卡 + 阶段列真实看板；推进走 `movePipeline`，淘汰/修正填原因弹窗，历史时间线真实；面试官无推进按钮；转 Demand 仍在旧 Pipeline 侧栏（限量口径） |
 | `/interviews` 面试管理 | recruiter/manager/admin | `/interviews`、`/interview/assignments`、取消、反馈、AI 面试 | **代码候选已接通**：统计卡、三维筛选、安排（Demand 带默认面试官、时间冲突高亮）、取消填原因、本人反馈复用 FeedbackForm；不触碰 pipeline 推进；角色收敛为 recruiter/manager/admin，面试官走 `/interviewer/*` |
-| `/offers` Offer 管理 | recruiter/manager/admin | `/offers`、`/offers/<id>`、`/offers/<id>/actions`、Demand Offer 草稿接口 | **代码候选已接通**：真实列表、草稿、审批、发放、回复、撤回、入职和历史；不用 sessionStorage，待浏览器四角色验收 |
+| `/offers` Offer 管理 | recruiter/manager/admin | `/offers`、`/offers/<id>`、`/offers/<id>/actions`、Demand Offer 草稿接口 | **本地候选已验收**：真实列表、草稿、审批、发放、回复、撤回、入职和历史；Demand 加载失败或无可用 Demand 时禁止打开空表单，候选人加载失败可重试；不用 sessionStorage |
 | `/talent-map` | recruiter/manager/admin | `/talent-maps*`、`/talent-map-companies/*`、`/talent-map-people/*` | **代码候选已接通**：正式路由、地图/公司/人选真实写入、筛选、公司优先级和人选接触状态持久化；招聘专员限本人，manager/admin 限本组织 |
 | `/analytics` | manager/admin | `/bi/overview`、`/bi/demand/*` | **代码候选已接通**：团队 KPI + 漏斗 + Demand 下钻；无个人绩效排名/成本/渠道排名；月度趋势因无真实数据未编造 |
 | `/dashboard/hired` | recruiter/manager/admin | `/offers`（status=onboarded） | **代码候选已接通**：真实已入职视图（累计/本月/平均周期 + 入职记录表），不再是跳转占位 |
 | `/ai-assistant` | recruiter/manager/admin | `/agent/tools`、会话、SSE chat | **错误态已加固**：会话列表/详情/能力目录失败均可见并可重试；本地会话编号按工号隔离；复用真实会话；工具集不得包含主流程写操作 |
 | `/settings` | admin；个人设置全角色 | `/admin/users`、`/auth/change-password`、审计和系统接口 | Readdy 的静态开关改成真实配置或明确只读；角色权限由后端控制 |
-| `/interviewer/*` | interviewer | `/interview/assignments`、面试反馈、已分配候选人详情 | **代码候选已接通**：工作台、待筛选/反馈、我的面试、已分配候选人和参与岗位都由真实 assignment 裁剪；无全量库入口 |
+| `/interviewer/*` | interviewer | `/interview/assignments`、面试反馈、已分配候选人详情 | **本地候选已验收**：工作台、我的面试、已分配候选人和参与岗位都由真实 assignment 裁剪；所有面试官入口统一指向 `/interviewer/interviews`，无全量库或 AI 会话预加载 |
 | `/director/*` | manager/admin | BI、Demand、Offer 审批/反馈事实 | **代码候选已接通**：驾驶舱（biOverview 摘要+待审批计数）、进展（Demand 清单+biDemand 下钻）、洞察（按停滞/反馈积压/断流/HC 缺口主题组织，非换标题 BI 页）、审批（待审批队列+approve/reject 真实状态机） |
 | `/kpi-standards` | manager/admin | `/kpi-standards`、`/kpi-standards/reset` | **代码候选已接通**：组织级版本化持久化、校验、并发冲突、审计和恢复默认；不使用 localStorage，不生成个人排名 |
 
@@ -96,10 +96,10 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 
 ## 7. 已识别的接口缺口
 
-1. 网关登录后的真实角色：现有前端用环境变量默认角色，必须改为登录后读取 `/api/auth/me`。
+1. 网关登录后的真实角色：已改为登录后读取 `/api/auth/me`；本地四角色通过 OAuth 验收桥复用同一前端调用链，正式公司网关仍待 SIT 现场验证。
 2. Offer：已补 `20260721_05` 迁移、`offer_events` 历史、完整状态机、列表/详情/动作 API、RBAC、组织隔离、幂等、审计和前端真实页面；还需在公司网关四角色环境完成现场验收。
 3. KPI 标准：已补 `20260721_06` 迁移、组织级版本化配置、manager/admin RBAC、审计、恢复默认和 Readdy 真实页面；健康阈值已明确改为 Demand 流程健康，不是专员绩效。
-4. 总监审批：Readdy 当前是只读 mock。正式审批必须先明确后端业务事实；没有接口前只可展示真实待办，不可假装审批成功。
+4. 总监审批：已接入真实 Offer 待审批队列和后端状态机；页面不再使用只读 mock，也不会假装审批成功。
 5. 面试官“待筛选”：旧后端已支持面试 assignment/feedback，但没有可让面试官浏览全量简历的权限；页面必须按有效分配裁剪。
 6. Dashboard 月度趋势和分析导出：现有 BI 以 Demand 当前运营为主；新增统计必须保持可解释口径，不生成个人绩效排名。
 
@@ -122,7 +122,7 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - Readdy：约 3.1 万行前端源码、25 个页面路由，主要业务页面直接依赖 15 份 mock 数据。
 - 上述失败均记录为迁移前基线，实施结束前必须修复并重新跑全量测试。
 
-## 10. 当前实施进度（2026-07-21）
+## 10. 当前实施进度（2026-07-22）
 
 - 登录、公司网关身份、Readdy 主壳、工作台和 Readdy 路由别名已接入；旧的假角色选择已移除。
 - Offer 已形成真实数据库闭环。招聘专员可维护草稿和推进发放/回复/入职；只有 manager/admin 可审批；确认入职会同步把 Demand 下候选人推进到 `onboarded`。
@@ -139,4 +139,9 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - 已入职 `/dashboard/hired` 已形成真实视图：Offer 生命周期 `onboarded` 记录、累计/本月/平均周期摘要，不再是跳转占位。
 - 数据分析 `/analytics` 与总监四页已接通真实 BI/Offer：无个人绩效排名、无编造月度趋势；洞察页按风险主题组织。
 - AI 助手错误态已加固：会话列表/详情/能力目录失败可见可重试，本地会话编号按工号隔离。
-- 仍未完成：浏览器四角色全链路验收和公司 SIT 现场证据；`/settings` 的 Readdy 视觉未替换（现有真实管理页继续使用，无假开关）。因此本文整体状态仍为“实施中”。
+- 本地四角色已通过真实浏览器登录和路由验收：管理员、招聘经理、招聘专员、面试官均走登录页；直接输入越权 URL 会回到各自工作台。面试官“我的面试”入口已修正为 `/interviewer/interviews`，且不再后台请求无权 AI 会话接口。
+- 本地反向操作已验证：Demand 暂停后恢复、候选人推进后修正回原阶段、完整 append-only 历史保留；同 Job 两条 Demand 使用明确 `demand_id` 后详情与看板隔离。旧演示库的 NULL `demand_id` 行仍属于 Strict cutover 前兼容数据，不宣称已完成生产回填。
+- Offer 次级数据失败保护已补齐；本地无可用 Demand 时按钮禁用并给出下一步，候选人列表失败时可重试且不能保存空草稿。
+- 本地验收环境固定使用 Python 3.12、`:5001` 后端、`:5100` OAuth 验收桥和 `:5174` 前端；正式构建与 SIT 不使用验收桥。
+- 关键截图和结果记录见 [`evidence/2026-07-22/README.md`](./evidence/2026-07-22/README.md)。
+- 仍未完成：CFPD `test` 推送、Libra 构建/部署、公司网关、Apollo/MCP Token 和 SIT 四角色现场证据；`/settings` 继续使用现有真实管理页，未做纯视觉重写。不能把本地通过表述成 SIT 已上线。
