@@ -416,6 +416,51 @@ def test_declined_access_task_releases_slot_for_reassignment(client, make_user, 
     assert declined_item["response_reason"] == "时间冲突，无法参加"
 
 
+def test_notification_failure_keeps_assignment_and_redacts_webhook_url(
+    client, make_user, app, monkeypatch
+):
+    owner_id, owner_token = make_user(
+        "iv-notify-fail-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "iv-notify-fail-interviewer@example.com", role="interviewer"
+    )
+    _, demand_id, candidate_id = _seed_demand_flow(app, owner_id, "NOTIFY-FAIL")
+    app.config.update(
+        PUBLIC_APP_BASE_URL="https://hiring.example.test",
+        INTERVIEW_NOTIFICATION_WEBHOOK_URL=(
+            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret-value"
+        ),
+    )
+    from app.services import interview_notification_service
+
+    def fail_webhook(*args, **kwargs):
+        raise interview_notification_service.requests.ConnectionError(
+            "failed: https://qyapi.weixin.qq.com/?key=secret-value"
+        )
+
+    monkeypatch.setattr(
+        interview_notification_service.requests,
+        "post",
+        fail_webhook,
+    )
+    assignment = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": candidate_id,
+            "demand_id": demand_id,
+            "round": "round_1",
+            "interviewer_id": interviewer_id,
+        },
+    )
+    assert assignment.status_code == 201
+    delivery = assignment.get_json()["notification_delivery"]
+    assert delivery["status"] == "failed"
+    assert delivery["last_error"] == "企业微信通知服务请求失败"
+    assert "secret-value" not in delivery["last_error"]
+
+
 def test_assignment_audit_failure_rolls_back_assignment_and_notification(
     client, make_user, app, monkeypatch
 ):

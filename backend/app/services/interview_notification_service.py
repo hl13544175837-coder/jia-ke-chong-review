@@ -276,6 +276,16 @@ def _wecom_payload(assignment, access_url):
     return {"msgtype": "markdown", "markdown": {"content": content}}
 
 
+def _delivery_failure_message(exc):
+    if isinstance(exc, InterviewAccessError):
+        return exc.message
+    if isinstance(exc, requests.Timeout):
+        return "企业微信通知服务响应超时"
+    if isinstance(exc, requests.RequestException):
+        return "企业微信通知服务请求失败"
+    return "企业微信通知服务返回内容无效"
+
+
 def dispatch_interview_notification(assignment_id):
     assignment = db.session.get(InterviewAssignment, assignment_id)
     if assignment is None:
@@ -344,7 +354,7 @@ def dispatch_interview_notification(assignment_id):
                 )
     except (requests.RequestException, ValueError, InterviewAccessError) as exc:
         delivery.status = "failed"
-        delivery.last_error = str(exc)[:240] or "面试通知发送失败"
+        delivery.last_error = _delivery_failure_message(exc)
         record_event(
             "interview.notification_failed",
             entity_id=assignment.candidate_id,
