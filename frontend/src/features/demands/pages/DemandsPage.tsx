@@ -187,7 +187,7 @@ export function DemandsPage() {
     <div className="space-y-6">
       <PageHeader
         title="招聘需求"
-        description="点击表头或信息可筛选，查看详情在右侧打开，列表位置不会丢失。"
+        description="表头用于筛选；点击行内负责人、HC、阶段和状态会在右侧打开对应详情，列表位置不会丢失。"
         actions={(
           <Button type="button" onClick={() => setCreateDrawerOpen(true)}>
             <Plus className="h-4 w-4" aria-hidden="true" />

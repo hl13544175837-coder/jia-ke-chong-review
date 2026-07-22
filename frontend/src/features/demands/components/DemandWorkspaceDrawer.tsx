@@ -327,6 +327,11 @@ export function DemandWorkspaceDrawer({
   const progressContext: Extract<DemandDrawerContext, { kind: 'stage' }> = activeContext.kind === 'stage'
     ? activeContext
     : { kind: 'stage', stage: 'all', label: '全部' };
+  const kanbanHref = activeContext.kind === 'stage'
+    ? activeContext.stage === 'all'
+      ? `/kanban?demand=${demand.id}`
+      : `/kanban?demand=${demand.id}&stage=${activeContext.stage}`
+    : null;
 
   return (
     <DrawerShell
@@ -339,8 +344,8 @@ export function DemandWorkspaceDrawer({
       description={`${contextTitle(activeContext)} · ${demand.job_department || '部门未记录'} · ${demand.job_city || '城市未记录'}`}
       footer={(
         <>
-          {activeContext.kind === 'stage' && (
-            <Link to={`/kanban?demand=${demand.id}&stage=${activeContext.stage}`}>
+          {kanbanHref && (
+            <Link to={kanbanHref}>
               <Button type="button" variant="secondary" size="sm">进入完整候选人看板<ArrowUpRight className="h-3.5 w-3.5" /></Button>
             </Link>
           )}

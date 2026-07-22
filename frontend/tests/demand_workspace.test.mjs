@@ -79,7 +79,8 @@ assert.match(filters, /department/, 'Demand filters should support department');
 assert.match(filters, /owner_hr_id/, 'Demand filters should support owner');
 
 assert.match(table, /<table/, 'Demand results should render as a table');
-assert.match(table, /pipeline_stage: filterStage/, 'Stage numbers should filter the server-backed demand list');
+assert.match(table, /aria-label="按候选人阶段筛选"/, 'The stage column header should filter the server-backed demand list');
+assert.match(table, /onOpen\(demand, \{ kind: 'stage', stage, label \}\)/, 'Stage numbers should open demand-scoped stage details in place');
 assert.match(table, /Pagination/, 'Demand results should paginate');
 assert.match(table, /data-ui="demand-details-trigger"/, 'Each row should keep an explicit demand detail action');
 assert.match(table, /onOpenDemand\(demand, \{ kind: 'overview' \}\)/, 'The detail action should open demand detail in place');

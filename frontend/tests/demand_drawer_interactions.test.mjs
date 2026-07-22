@@ -38,13 +38,18 @@ assert.doesNotMatch(table, /from 'react-router-dom'/, 'Demand table clicks shoul
 assert.match(table, /onOpenDemand/, 'Demand table should delegate all high-value clicks to one drawer controller');
 assert.match(table, /data-ui="demand-details-trigger"/, 'Demand detail should remain an explicit independent action');
 assert.match(table, /onOpenDemand\(demand, \{ kind: 'overview' \}\)/, 'The explicit details action should open overview context');
-assert.match(table, /onApplyFilter/, 'Information cells should apply list filters instead of opening the drawer');
+assert.match(table, /onApplyFilter/, 'Column headers and simple facts should keep real list filtering');
+assert.match(table, /data-ui="demand-owner-detail-trigger"[\s\S]*onOpenDemand\(demand, \{ kind: 'owner' \}\)/, 'Owner facts should open the responsibility drawer');
+assert.match(table, /data-ui="demand-hc-detail-trigger"[\s\S]*onOpenDemand\(demand, \{ kind: 'headcount' \}\)/, 'HC facts should open the delivery drawer');
+assert.match(table, /data-ui="demand-stage-detail-trigger"[\s\S]*onOpen\(demand, \{ kind: 'stage', stage, label \}\)/, 'Stage facts should open the demand-scoped stage drawer');
+assert.match(table, /data-ui="demand-status-detail-trigger"[\s\S]*onOpenDemand\(demand, \{ kind: 'status' \}\)/, 'Status facts should open the status and risk drawer');
 assert.match(table, /event\.stopPropagation\(\)/, 'Filtering and detail actions should not bubble into another interaction');
 
 assert.match(workspace, /<DrawerShell/, 'Demand detail should use the shared right drawer shell');
 assert.match(workspace, /api\.getDemandPipelineBoard\(demand\.id\)/, 'Candidate context should load the real demand-scoped board');
 assert.match(workspace, /候选人与进度/, 'The drawer should expose a candidate/progress workspace');
 assert.match(workspace, /责任与状态/, 'The drawer should expose real responsibility and lifecycle facts');
+assert.match(workspace, /activeContext\.stage === 'all'[\s\S]*`\/kanban\?demand=\$\{demand\.id\}`/, 'The all-candidates drawer link should omit the invalid stage=all query');
 assert.match(workspace, /to=\{`\/demands\/\$\{demand\.id\}`\}/, 'The full-page route should remain only as an explicit secondary action');
 
 assert.doesNotMatch(page, /useNavigate/, 'Demand creation should stay on the list page');

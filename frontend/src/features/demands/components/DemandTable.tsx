@@ -28,7 +28,7 @@ const STAGE_OPTIONS: { value: NonNullable<DemandListQuery['pipeline_stage']>; la
   { value: 'onboarded', label: '已入职' },
 ];
 
-type ColumnFilter = 'identity' | 'location' | 'owner' | 'delivery' | 'stage';
+type ColumnFilter = 'identity' | 'location' | 'owner' | 'delivery' | 'stage' | 'status';
 
 function statusTone(status: DemandStatus): 'success' | 'warning' | 'danger' | 'neutral' {
   if (status === 'active') return 'success';
@@ -67,22 +67,22 @@ function ColumnFilterHeader({
   );
 }
 
-function StageMetric({ stage, label, value, onApplyFilter }: {
+function StageMetric({ demand, stage, label, value, onOpen }: {
+  demand: RecruitmentDemand;
   stage: PipelineStage | 'all';
   label: string;
   value: number;
-  onApplyFilter: (next: Partial<DemandListQuery>) => void;
+  onOpen: (demand: RecruitmentDemand, context: DemandDrawerContext) => void;
 }) {
-  const filterStage: DemandListQuery['pipeline_stage'] = stage === 'all' ? 'any' : stage;
   return (
     <button
       type="button"
-      data-ui="demand-stage-filter"
+      data-ui="demand-stage-detail-trigger"
       className="inline-flex min-w-14 flex-col rounded-md px-2 py-1 text-center hover:bg-surface-soft focus:outline-none focus:ring-2 focus:ring-ink"
-      aria-label={`${label} ${value} 人，筛选该阶段需求`}
+      aria-label={`${label} ${value} 人，在右侧查看该需求阶段`}
       onClick={(event) => {
         event.stopPropagation();
-        onApplyFilter({ pipeline_stage: filterStage });
+        onOpen(demand, { kind: 'stage', stage, label });
       }}
     >
       <span className="text-sm font-semibold tabular-nums text-ink">{value}</span>
@@ -338,7 +338,27 @@ export function DemandTable({
                 </select>
                 <Button type="button" size="sm" variant="ghost" onClick={() => onClearFilters(['pipeline_stage'])}>清除</Button>
               </ColumnFilterHeader>
-              <th className="px-4 py-3 align-top font-medium">状态</th>
+              <ColumnFilterHeader
+                data-ui="demand-column-filter-status"
+                label="状态"
+                open={openFilter === 'status'}
+                onToggle={() => toggleFilter('status')}
+              >
+                <select
+                  aria-label="按需求状态筛选"
+                  value={query.status ?? 'all'}
+                  onChange={(event) => onApplyFilter({
+                    status: event.target.value as DemandListQuery['status'],
+                  })}
+                  className={fieldClassName}
+                >
+                  <option value="all">全部状态</option>
+                  {(Object.entries(STATUS_LABELS) as Array<[DemandStatus, string]>).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+                <Button type="button" size="sm" variant="ghost" onClick={() => onApplyFilter({ status: 'all' })}>清除</Button>
+              </ColumnFilterHeader>
             </tr>
           </thead>
           <tbody className="divide-y divide-hairline-soft">
@@ -410,11 +430,12 @@ export function DemandTable({
                 <td className="px-4 py-3 text-body">
                   <button
                     type="button"
-                    data-ui="demand-owner-filter"
+                    data-ui="demand-owner-detail-trigger"
                     className="rounded-md text-left hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    aria-label={`在右侧查看负责人详情：${demand.owner_hr_name || `专员 ${demand.owner_hr_id}`}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onApplyFilter({ owner_hr_id: demand.owner_hr_id });
+                      onOpenDemand(demand, { kind: 'owner' });
                     }}
                   >
                     {demand.owner_hr_name || `专员 #${demand.owner_hr_id}`}
@@ -423,13 +444,12 @@ export function DemandTable({
                 <td className="px-4 py-3 text-body">
                   <button
                     type="button"
-                    data-ui="demand-hc-filter"
+                    data-ui="demand-hc-detail-trigger"
                     className="block rounded-md text-left hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    aria-label={`在右侧查看 HC 交付详情：${demand.metrics.onboarded_count} / ${demand.headcount}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onApplyFilter({
-                        hc_status: demand.completion_suggested ? 'complete' : 'incomplete',
-                      });
+                      onOpenDemand(demand, { kind: 'headcount' });
                     }}
                   >
                     {demand.metrics.onboarded_count} / {demand.headcount}
@@ -450,20 +470,21 @@ export function DemandTable({
                 </td>
                 <td className="px-2 py-2">
                   <div className="flex flex-wrap gap-1">
-                    <StageMetric stage="all" label="全部" value={demand.metrics.recommended_count} onApplyFilter={onApplyFilter} />
-                    <StageMetric stage="business_review" label="待反馈" value={demand.metrics.business_review_count} onApplyFilter={onApplyFilter} />
-                    <StageMetric stage="interview" label="面试" value={demand.metrics.interview_count} onApplyFilter={onApplyFilter} />
-                    <StageMetric stage="offer" label="Offer" value={demand.metrics.offer_count} onApplyFilter={onApplyFilter} />
+                    <StageMetric demand={demand} stage="all" label="全部" value={demand.metrics.recommended_count} onOpen={onOpenDemand} />
+                    <StageMetric demand={demand} stage="business_review" label="待反馈" value={demand.metrics.business_review_count} onOpen={onOpenDemand} />
+                    <StageMetric demand={demand} stage="interview" label="面试" value={demand.metrics.interview_count} onOpen={onOpenDemand} />
+                    <StageMetric demand={demand} stage="offer" label="Offer" value={demand.metrics.offer_count} onOpen={onOpenDemand} />
                   </div>
                 </td>
                 <td className="px-4 py-3">
                   <button
                     type="button"
-                    data-ui="demand-status-filter"
+                    data-ui="demand-status-detail-trigger"
                     className="rounded-md text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    aria-label={`${STATUS_LABELS[demand.status]}，在右侧查看状态与风险`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onApplyFilter({ status: demand.status });
+                      onOpenDemand(demand, { kind: 'status' });
                     }}
                   >
                     <Badge tone={statusTone(demand.status)}>{STATUS_LABELS[demand.status]}</Badge>
