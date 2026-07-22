@@ -1,0 +1,123 @@
+name: jia-ke-local
+
+services:
+  mysql:
+    image: mysql:8.0.32
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zhipin}
+      MYSQL_USER: ${MYSQL_USER:-zhipin}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    ports:
+      - "127.0.0.1:${MYSQL_HOST_PORT:-13306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  mock-wecom:
+    image: python:3.12-alpine
+    restart: unless-stopped
+    command: ["python", "/app/tools/mock_interview_webhook.py"]
+    environment:
+      MOCK_WEBHOOK_HOST: 0.0.0.0
+      MOCK_WEBHOOK_PORT: 8090
+      MOCK_WEBHOOK_DATA_FILE: /data/events.json
+    ports:
+      - "127.0.0.1:${MOCK_WECOM_HOST_PORT:-19090}:8090"
+    volumes:
+      - ./tools/mock_interview_webhook.py:/app/tools/mock_interview_webhook.py:ro
+      - mock-wecom-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  zhipin-server:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        PYTHON_BASE_IMAGE: python:3.12-slim
+        RELEASE_CHANNEL: RC
+        AUTO_MIGRATE_DATABASE: "true"
+        ALLOW_EMPTY_DATABASE_BOOTSTRAP: "true"
+        ALLOW_INSECURE_SIT_STARTUP: "true"
+        SECURITY_HEADERS_ENABLED: "true"
+        RATE_LIMIT_ENABLED: "true"
+        ALLOW_PUBLIC_REGISTRATION: "false"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-zhipin}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-zhipin}?charset=utf8mb4
+      JWT_SECRET: ${JWT_SECRET}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
+      UPLOAD_FOLDER: /var/lib/zhipin/uploads
+      PUBLIC_APP_BASE_URL: http://127.0.0.1:${FRONTEND_HOST_PORT:-15173}
+      INTERVIEW_NOTIFICATION_WEBHOOK_URL: http://mock-wecom:8090/webhook
+      INTERVIEW_NOTIFICATION_WEBHOOK_MODE: generic
+      INTERVIEW_ACCESS_TOKEN_TTL_HOURS: 72
+      AUTO_MIGRATE_DATABASE: "true"
+      ALLOW_EMPTY_DATABASE_BOOTSTRAP: "true"
+      ALLOW_INSECURE_SIT_STARTUP: "true"
+      ALLOW_PUBLIC_REGISTRATION: "false"
+      AUTH_DISABLED: "false"
+      CONSUL_ENABLED: "false"
+      EUREKA_ENABLED: "false"
+      CORS_ORIGINS: http://127.0.0.1:${FRONTEND_HOST_PORT:-15173}
+      LOCAL_DEMO_BOOTSTRAP: "true"
+      LOCAL_HR_EMAIL: ${LOCAL_HR_EMAIL:-hr.local@example.test}
+      LOCAL_INTERVIEWER_EMAIL: ${LOCAL_INTERVIEWER_EMAIL:-interviewer.local@example.test}
+      LOCAL_DEMO_PASSWORD: ${LOCAL_DEMO_PASSWORD:-ZhipinLocal2026!}
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:${BACKEND_HOST_PORT:-15001}:5000"
+    volumes:
+      - uploads:/var/lib/zhipin/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mock-wecom:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5000/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  zhipin-frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        NODE_BASE_IMAGE: node:22-alpine
+        NGINX_BASE_IMAGE: nginx:1.27-alpine
+        VITE_API_BASE_URL: /api
+        VITE_OAUTH_BASE_URL: /pgs/oauth
+        VITE_DEFAULT_ROLE: recruiter
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-15173}:8080"
+    depends_on:
+      zhipin-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mysql-data:
+  mock-wecom-data:
+  uploads:
