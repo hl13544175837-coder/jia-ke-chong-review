@@ -620,9 +620,11 @@ def list_feedback():
     out = []
     for f in rows:
         u = db.session.get(User, f.interviewer_id)
+        demand = db.session.get(RecruitmentDemand, f.demand_id) if f.demand_id else None
         out.append({
             "id": f.id, "candidate_id": f.candidate_id, "job_id": f.job_id,
             "demand_id": f.demand_id, "assignment_id": f.assignment_id,
+            "demand_request_no": demand.request_no if demand else None,
             "round": f.round, "interviewer_id": f.interviewer_id,
             "interviewer_name": u.name if u else None,
             "score": f.score, "passed": f.passed,
@@ -685,11 +687,15 @@ def list_interviews():
         j = db.session.get(Job, jid); return j.title if j else None
     def uname(uid):
         u = db.session.get(User, uid); return u.name if u else None
+    def demand_request_no(did):
+        demand = db.session.get(RecruitmentDemand, did) if did else None
+        return demand.request_no if demand else None
 
     for iv in ai_q.order_by(Interview.id.desc()).all():
         items.append({"id": iv.id, "type": "ai", "candidate_id": iv.candidate_id,
                       "name_masked": cname(iv.candidate_id), "job_id": iv.job_id,
                       "demand_id": iv.demand_id,
+                      "demand_request_no": demand_request_no(iv.demand_id),
                       "job_title": jtitle(iv.job_id), "score": iv.score,
                       "pass": iv.pass_recommended, "round": None,
                       "interviewer_id": None, "interviewer_name": None,
@@ -701,6 +707,7 @@ def list_interviews():
         items.append({"id": f.id, "type": "feedback", "candidate_id": f.candidate_id,
                       "name_masked": cname(f.candidate_id), "job_id": f.job_id,
                       "demand_id": f.demand_id, "assignment_id": f.assignment_id,
+                      "demand_request_no": demand_request_no(f.demand_id),
                       "job_title": jtitle(f.job_id), "score": f.score,
                       "pass": f.passed, "round": f.round,
                       "interviewer_id": f.interviewer_id,

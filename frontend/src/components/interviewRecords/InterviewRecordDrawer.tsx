@@ -48,7 +48,11 @@ export function InterviewRecordDrawer({ item, onClose }: InterviewRecordDrawerPr
               {item.job_title ?? `岗位 #${item.job_id}`}
             </p>
             <p className="mt-1 text-xs text-muted-soft">
-              {item.demand_id ? `招聘需求 #${item.demand_id}` : '历史未归属需求'}
+              {item.demand_request_no
+                ? `招聘需求 ${item.demand_request_no}`
+                : item.demand_id
+                  ? '招聘需求编号待补充'
+                  : '历史未归属需求'}
             </p>
           </div>
           <button
