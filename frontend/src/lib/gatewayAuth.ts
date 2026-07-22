@@ -9,7 +9,7 @@
 //   后端 /zhipin-server/api/auth/me 按工号映射真实角色。
 // - 登录后业务接口带同一个 Bearer token，网关鉴权后透传身份给后端。
 
-import { ApiError, setEmpCode } from './api';
+import { ApiError, api, clearEmpCode, setEmpCode } from './api';
 import { md5 } from './md5';
 import type { LoginResponse, Role } from '../types';
 
@@ -18,6 +18,8 @@ import type { LoginResponse, Role } from '../types';
 const OAUTH_BASE = ((import.meta.env.VITE_OAUTH_BASE_URL ?? '/pgs/oauth') as string)
   .trim()
   .replace(/\/+$/, '') || '/pgs/oauth';
+
+const LOGIN_PROVIDER = ((import.meta.env.VITE_LOGIN_PROVIDER ?? 'gateway') as string).trim();
 
 // 临时默认角色（联调用）。profile 无角色，先统一给一个角色驱动菜单；
 // 上真实权限前改为后端 /auth/me 返回。可用 VITE_DEFAULT_ROLE 覆盖。
@@ -106,4 +108,16 @@ export async function loginViaGateway(account: string, password: string): Promis
   const { name, empCode } = await gatewayProfile(token);
   if (empCode) setEmpCode(empCode);
   return { token, role: DEFAULT_ROLE, name };
+}
+
+export async function loginWithConfiguredAuth(
+  account: string,
+  password: string,
+): Promise<LoginResponse> {
+  if (LOGIN_PROVIDER === 'local') {
+    // 本地全容器环境没有企业网关，显式模式避免把演示账号误发到外部 OAuth。
+    clearEmpCode();
+    return api.login({ email: account, password });
+  }
+  return loginViaGateway(account, password);
 }
