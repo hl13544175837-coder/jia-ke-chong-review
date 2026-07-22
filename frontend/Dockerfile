@@ -1,5 +1,8 @@
+ARG NODE_BASE_IMAGE=registry.ymdd.tech/library/node:20-alpine
+ARG NGINX_BASE_IMAGE=registry.ymdd.tech/library/nginx:1.25-alpine
+
 # Build stage
-FROM registry.ymdd.tech/library/node:20-alpine AS build-stage
+FROM ${NODE_BASE_IMAGE} AS build-stage
 WORKDIR /app
 
 # 前端 API 请求前缀（网关地址）。由构建流水线按环境传入 build-arg：
@@ -20,7 +23,7 @@ ARG VITE_DEFAULT_ROLE=admin
 
 # Copy package dependency configuration relative to root build context
 COPY frontend/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Copy frontend source code and build
 COPY frontend/ ./
@@ -30,7 +33,7 @@ RUN VITE_API_BASE_URL="$VITE_API_BASE_URL" \
     npm run build
 
 # Production stage
-FROM registry.ymdd.tech/library/nginx:1.25-alpine
+FROM ${NGINX_BASE_IMAGE}
 RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx
 RUN sed -i 's/^user/#user/' /etc/nginx/nginx.conf && \
     sed -i 's!/var/run/nginx.pid!/tmp/nginx.pid!' /etc/nginx/nginx.conf && \
