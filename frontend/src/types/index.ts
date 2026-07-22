@@ -928,11 +928,21 @@ export interface InterviewerOption {
   role: Role;
 }
 
+export interface InterviewNotificationDelivery {
+  status: 'pending' | 'sent' | 'failed' | 'not_configured';
+  channel: string;
+  attempts: number;
+  last_error: string | null;
+  response_code: number | null;
+  sent_at: string | null;
+}
+
 export interface InterviewAssignment {
   id: number;
   candidate_id: number;
   name_masked: string | null;
   demand_id: number | null;
+  demand_request_no: string | null;
   job_id: number;
   job_title: string | null;
   round: InterviewRound;
@@ -944,6 +954,10 @@ export interface InterviewAssignment {
   location: string;
   note: string;
   status: string;
+  response_status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+  response_reason: string | null;
+  responded_at: string | null;
+  notification_delivery: InterviewNotificationDelivery | null;
   feedback_submitted: boolean;
   is_overdue: boolean;
   created_by_name: string | null;
@@ -961,6 +975,42 @@ export interface InterviewAssignmentInput {
   interviewer_id: number;
   scheduled_at?: string;
   location?: string;
+  note?: string;
+}
+
+export interface InterviewAssignmentResponseInput {
+  assignment_id: number;
+  decision: 'accepted' | 'declined';
+  reason?: string;
+}
+
+export interface PublicInterviewAccess {
+  assignment_id: number;
+  candidate_name: string;
+  job_title: string;
+  demand_request_no: string;
+  round: InterviewRound;
+  round_sequence: number;
+  is_primary: boolean;
+  scheduled_at: string | null;
+  location: string;
+  note: string;
+  response_status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+  response_reason: string | null;
+  feedback_submitted: boolean;
+  can_respond: boolean;
+  can_submit_feedback: boolean;
+  deduplicated?: boolean;
+}
+
+export interface PublicInterviewFeedbackInput {
+  token: string;
+  score: number;
+  passed: boolean;
+  evaluation?: EvaluationScores;
+  reason_tags?: string[];
+  strengths?: string;
+  concerns?: string;
   note?: string;
 }
 

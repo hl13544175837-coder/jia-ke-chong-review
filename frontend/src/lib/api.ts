@@ -34,6 +34,7 @@ import type {
   LegacyInterviewFeedbackInput,
   InterviewAssignment,
   InterviewAssignmentInput,
+  InterviewAssignmentResponseInput,
   InterviewGuide,
   InterviewListItem,
   InterviewerOption,
@@ -42,6 +43,8 @@ import type {
   InterviewStartResponse,
   InterviewSubmitRequest,
   InterviewSubmitResponse,
+  PublicInterviewAccess,
+  PublicInterviewFeedbackInput,
   JobListItem,
   JobDetail,
   JdClarifyResponse,
@@ -165,11 +168,23 @@ interface RequestOptions {
   formData?: FormData;
   headers?: Record<string, string>;
   idempotencyKey?: string;
+  includeAuth?: boolean;
+  handleUnauthorized?: boolean;
 }
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, formData, idempotencyKey } = opts;
-  const headers: Record<string, string> = { ...(opts.headers ?? {}), ...authHeaders() };
+  const {
+    method = 'GET',
+    body,
+    formData,
+    idempotencyKey,
+    includeAuth = true,
+    handleUnauthorized = true,
+  } = opts;
+  const headers: Record<string, string> = {
+    ...(opts.headers ?? {}),
+    ...(includeAuth ? authHeaders() : {}),
+  };
 
   if (idempotencyKey) {
     headers['Idempotency-Key'] = idempotencyKey;
@@ -187,7 +202,8 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   try {
     res = await fetch(`${API_BASE}${path}`, { method, headers, body: payload });
   } catch (err) {
-    throw new ApiError(0, `Network error: ${(err as Error).message}`);
+    const message = err instanceof Error ? err.message : '无法连接服务';
+    throw new ApiError(0, `Network error: ${message}`);
   }
 
   // Parse JSON when present; some endpoints may return empty bodies.
@@ -204,7 +220,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   if (!res.ok) {
     // A 401 means the token is missing/expired/invalid: clear the session and
     // redirect to login centrally via the registered handler.
-    if (res.status === 401 && unauthorizedHandler) {
+    if (res.status === 401 && handleUnauthorized && unauthorizedHandler) {
       unauthorizedHandler();
     }
     // 错误体形态有两种：
@@ -511,6 +527,47 @@ export const api = {
   },
   createInterviewAssignment(payload: InterviewAssignmentInput): Promise<InterviewAssignment> {
     return request('/interview/assignments', { method: 'POST', body: payload });
+  },
+  respondInterviewAssignment(
+    payload: InterviewAssignmentResponseInput,
+  ): Promise<InterviewAssignment> {
+    return request('/interview/assignment/respond', { method: 'POST', body: payload });
+  },
+  retryInterviewAssignmentNotification(assignmentId: number): Promise<InterviewAssignment> {
+    return request('/interview/assignment/notification/retry', {
+      method: 'POST',
+      body: { assignment_id: assignmentId },
+    });
+  },
+  getPublicInterviewAccess(token: string): Promise<PublicInterviewAccess> {
+    return request('/interview/access/get', {
+      method: 'POST',
+      body: { token },
+      includeAuth: false,
+      handleUnauthorized: false,
+    });
+  },
+  respondPublicInterviewAccess(
+    token: string,
+    decision: 'accepted' | 'declined',
+    reason?: string,
+  ): Promise<PublicInterviewAccess> {
+    return request('/interview/access/respond', {
+      method: 'POST',
+      body: { token, decision, reason },
+      includeAuth: false,
+      handleUnauthorized: false,
+    });
+  },
+  submitPublicInterviewFeedback(
+    payload: PublicInterviewFeedbackInput,
+  ): Promise<InterviewFeedbackResponse> {
+    return request('/interview/access/feedback', {
+      method: 'POST',
+      body: payload,
+      includeAuth: false,
+      handleUnauthorized: false,
+    });
   },
   cancelInterviewAssignment(assignmentId: number, reason: string): Promise<InterviewAssignment> {
     return request(`/interview/assignments/${assignmentId}/cancel`, {

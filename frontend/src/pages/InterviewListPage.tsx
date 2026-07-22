@@ -175,11 +175,11 @@ export function InterviewListPage() {
         (item) => item.assignment_id === assignment.id,
       ) ?? {
         candidate_id: assignment.candidate_id,
-        name_masked: assignment.name_masked ?? `候选人 #${assignment.candidate_id}`,
+        name_masked: assignment.name_masked ?? '候选人',
         demand_id: assignment.demand_id,
         assignment_id: assignment.id,
         job_id: assignment.job_id,
-        job_title: assignment.job_title ?? `岗位 #${assignment.job_id}`,
+        job_title: assignment.job_title ?? '岗位信息待补充',
         round: assignment.round,
         round_sequence: assignment.round_sequence,
         is_primary: assignment.is_primary,
@@ -203,6 +203,24 @@ export function InterviewListPage() {
     setFocus('pending');
     setSelectedPending({ ...item, assignment_id: item.assignment_id });
   }, []);
+
+  const handleRespondAssignment = useCallback(async (
+    assignment: InterviewAssignment,
+    decision: 'accepted' | 'declined',
+    reason?: string,
+  ) => {
+    await api.respondInterviewAssignment({
+      assignment_id: assignment.id,
+      decision,
+      reason,
+    });
+    setSubmissionNotice(
+      decision === 'accepted'
+        ? '已确认参加面试，现在可以填写评分和评价。'
+        : '已记录无法参加，HR 可重新安排该轮面试官。',
+    );
+    await workspaceAsync.reload();
+  }, [workspaceAsync]);
 
   const focusOptions = [
     { value: 'pending' as const, label: `待我处理 ${pending.length}` },
@@ -303,6 +321,7 @@ export function InterviewListPage() {
           <MyInterviewsPanel
             assignments={myAssignments}
             onStartFeedback={handleStartAssignmentFeedback}
+            onRespond={handleRespondAssignment}
           />
         </>
       )}
@@ -400,7 +419,10 @@ export function InterviewListPage() {
                 activeKey={pendingFeedbackKey(selectedPending)}
                 onStartFeedback={handleStartPendingFeedback}
                 canStartFeedback={(item) => Boolean(
-                  item.assignment_id && myAssignments.some((assignment) => assignment.id === item.assignment_id),
+                  item.assignment_id && myAssignments.some(
+                    (assignment) => assignment.id === item.assignment_id
+                      && assignment.response_status === 'accepted',
+                  ),
                 )}
                 canOpenPipeline={!isInterviewer}
               />
