@@ -313,9 +313,14 @@ export interface RecruitmentDemandInput {
 export interface DemandListQuery {
   status?: DemandStatus | 'all';
   q?: string;
+  job_title?: string;
+  request_no?: string;
   department?: string;
   city?: string;
   owner_hr_id?: number;
+  hc_status?: 'complete' | 'incomplete';
+  target_date?: string;
+  pipeline_stage?: PipelineStage | 'any';
   created_from?: string;
   created_to?: string;
   page?: number;

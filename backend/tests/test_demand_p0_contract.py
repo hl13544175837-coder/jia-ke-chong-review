@@ -29,10 +29,10 @@ def _valid_payload(job_id, owner_hr_id, suffix, **overrides):
     return payload
 
 
-def _make_job(app, owner_hr_id=None):
+def _make_job(app, owner_hr_id=None, title="需求测试岗位"):
     with app.app_context():
         job = Job(
-            title="需求测试岗位",
+            title=title,
             city="模板城市",
             department="模板部门",
             jd_text="用于测试需求事实归属",
@@ -118,6 +118,240 @@ def test_demand_list_is_paginated_filterable_and_newest_first(
     assert [item["request_no"] for item in filtered.get_json()["items"]] == [
         "REQ-P0-NEW"
     ]
+
+
+def test_demand_list_exact_filters_do_not_expand_like_keyword_search(
+    client, make_user, app
+):
+    owner_id, token = make_user("demand-exact-filter@example.com", role="recruiter")
+    exact_job_id = _make_job(app, owner_id, title="数据工程师")
+    similar_job_id = _make_job(app, owner_id, title="数据工程师（高级）")
+    fallback_job_id = _make_job(app, owner_id, title="产品经理")
+
+    created_ids = {}
+    for suffix, job_id in [
+        ("EXACT", exact_job_id),
+        ("EXACT-PLUS", similar_job_id),
+        ("FALLBACK", fallback_job_id),
+    ]:
+        response = client.post(
+            "/api/demands",
+            headers=_auth(token),
+            json=_valid_payload(job_id, owner_id, suffix),
+        )
+        assert response.status_code == 201
+        created_ids[suffix] = response.get_json()["id"]
+
+    fuzzy_title = client.get(
+        "/api/demands",
+        query_string={"q": "数据工程师"},
+        headers=_auth(token),
+    ).get_json()
+    assert {item["id"] for item in fuzzy_title["items"]} == {
+        created_ids["EXACT"],
+        created_ids["EXACT-PLUS"],
+    }
+
+    fuzzy_request_no = client.get(
+        "/api/demands",
+        query_string={"q": "REQ-P0-EXACT"},
+        headers=_auth(token),
+    ).get_json()
+    assert {item["id"] for item in fuzzy_request_no["items"]} == {
+        created_ids["EXACT"],
+        created_ids["EXACT-PLUS"],
+    }
+
+    exact_title = client.get(
+        "/api/demands",
+        query_string={"job_title": "数据工程师", "page_size": 1},
+        headers=_auth(token),
+    ).get_json()
+    assert exact_title["total"] == exact_title["pages"] == 1
+    assert [item["id"] for item in exact_title["items"]] == [created_ids["EXACT"]]
+
+    exact_request_no = client.get(
+        "/api/demands",
+        query_string={"request_no": "REQ-P0-EXACT", "page_size": 1},
+        headers=_auth(token),
+    ).get_json()
+    assert exact_request_no["total"] == exact_request_no["pages"] == 1
+    assert [item["id"] for item in exact_request_no["items"]] == [
+        created_ids["EXACT"]
+    ]
+
+    with app.app_context():
+        fallback = db.session.get(RecruitmentDemand, created_ids["FALLBACK"])
+        fallback.job_title_snapshot = ""
+        db.session.commit()
+
+    exact_fallback_title = client.get(
+        "/api/demands",
+        query_string={"job_title": "产品经理", "page_size": 1},
+        headers=_auth(token),
+    ).get_json()
+    assert exact_fallback_title["total"] == exact_fallback_title["pages"] == 1
+    assert [item["id"] for item in exact_fallback_title["items"]] == [
+        created_ids["FALLBACK"]
+    ]
+
+
+def test_demand_list_filters_by_delivery_date_and_latest_pipeline_facts(
+    client, make_user, app
+):
+    owner_id, token = make_user("demand-column-filter@example.com", role="recruiter")
+    job_id = _make_job(app, owner_id)
+
+    created = []
+    for suffix, target_date, headcount in [
+        ("INTERVIEW", "2026-08-10", 2),
+        ("COMPLETE", "2026-09-15", 2),
+        ("EMPTY", "2026-10-20", 1),
+    ]:
+        response = client.post(
+            "/api/demands",
+            headers=_auth(token),
+            json=_valid_payload(
+                job_id,
+                owner_id,
+                suffix,
+                target_date=target_date,
+                headcount=headcount,
+            ),
+        )
+        assert response.status_code == 201
+        created.append(response.get_json()["id"])
+
+    interview_id, complete_id, _ = created
+    with app.app_context():
+        interview_candidate = Candidate(
+            owner_hr_id=owner_id,
+            name_masked="阶段筛选候选人",
+            resume_json={},
+        )
+        onboarded_candidates = [
+            Candidate(
+                owner_hr_id=owner_id,
+                name_masked=f"已入职候选人{index}",
+                resume_json={},
+            )
+            for index in range(2)
+        ]
+        db.session.add_all([interview_candidate, *onboarded_candidates])
+        db.session.flush()
+        db.session.add_all(
+            [
+                PipelineStage(
+                    candidate_id=interview_candidate.id,
+                    job_id=job_id,
+                    demand_id=interview_id,
+                    stage="pending",
+                    updated_by=owner_id,
+                ),
+                PipelineStage(
+                    candidate_id=interview_candidate.id,
+                    job_id=job_id,
+                    demand_id=interview_id,
+                    stage="interview_first",
+                    updated_by=owner_id,
+                ),
+                *[
+                    PipelineStage(
+                        candidate_id=candidate.id,
+                        job_id=job_id,
+                        demand_id=complete_id,
+                        stage="onboarded",
+                        updated_by=owner_id,
+                    )
+                    for candidate in onboarded_candidates
+                ],
+            ]
+        )
+        db.session.commit()
+
+    by_date = client.get(
+        "/api/demands?target_date=2026-08-10", headers=_auth(token)
+    ).get_json()
+    assert [item["id"] for item in by_date["items"]] == [interview_id]
+
+    by_stage = client.get(
+        "/api/demands?pipeline_stage=interview", headers=_auth(token)
+    ).get_json()
+    assert [item["id"] for item in by_stage["items"]] == [interview_id]
+
+    old_stage = client.get(
+        "/api/demands?pipeline_stage=pending", headers=_auth(token)
+    ).get_json()
+    assert old_stage["total"] == 0
+
+    any_stage = client.get(
+        "/api/demands?pipeline_stage=any&page=1&page_size=1",
+        headers=_auth(token),
+    ).get_json()
+    assert any_stage["total"] == 2
+    assert any_stage["pages"] == 2
+    assert len(any_stage["items"]) == 1
+
+    complete = client.get(
+        "/api/demands?hc_status=complete", headers=_auth(token)
+    ).get_json()
+    assert [item["id"] for item in complete["items"]] == [complete_id]
+
+    incomplete = client.get(
+        "/api/demands?hc_status=incomplete", headers=_auth(token)
+    ).get_json()
+    assert incomplete["total"] == 2
+    assert complete_id not in [item["id"] for item in incomplete["items"]]
+
+
+def test_pipeline_stage_filter_uses_same_single_demand_legacy_scope_as_metrics(
+    client, make_user, app
+):
+    owner_id, token = make_user("demand-legacy-filter@example.com", role="recruiter")
+    job_id = _make_job(app, owner_id)
+    first = client.post(
+        "/api/demands",
+        headers=_auth(token),
+        json=_valid_payload(job_id, owner_id, "LEGACY-ONLY"),
+    )
+    assert first.status_code == 201
+    first_id = first.get_json()["id"]
+
+    with app.app_context():
+        candidate = Candidate(
+            owner_hr_id=owner_id,
+            name_masked="旧流程候选人",
+            resume_json={},
+        )
+        db.session.add(candidate)
+        db.session.flush()
+        db.session.add(
+            PipelineStage(
+                candidate_id=candidate.id,
+                job_id=job_id,
+                demand_id=None,
+                stage="interview",
+                updated_by=owner_id,
+            )
+        )
+        db.session.commit()
+
+    single = client.get(
+        "/api/demands?pipeline_stage=interview", headers=_auth(token)
+    ).get_json()
+    assert [item["id"] for item in single["items"]] == [first_id]
+
+    sibling = client.post(
+        "/api/demands",
+        headers=_auth(token),
+        json=_valid_payload(job_id, owner_id, "LEGACY-SIBLING"),
+    )
+    assert sibling.status_code == 201
+
+    ambiguous = client.get(
+        "/api/demands?pipeline_stage=interview", headers=_auth(token)
+    ).get_json()
+    assert ambiguous["total"] == 0
 
 
 def test_demand_snapshots_do_not_drift_when_job_template_changes(

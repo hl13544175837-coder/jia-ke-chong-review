@@ -36,7 +36,21 @@ export function DemandsPage() {
 
   const demands = useAsync(
     () => demandsApi.listDemands(query),
-    [query.status, query.q, query.department, query.city, query.owner_hr_id, query.page, query.page_size, query.sort],
+    [
+      query.status,
+      query.q,
+      query.job_title,
+      query.request_no,
+      query.department,
+      query.city,
+      query.owner_hr_id,
+      query.hc_status,
+      query.target_date,
+      query.pipeline_stage,
+      query.page,
+      query.page_size,
+      query.sort,
+    ],
   );
   const jobs = useAsync(() => api.listJobs('active'), []);
   const owners = useAsync(
@@ -95,6 +109,18 @@ export function DemandsPage() {
     setActionError(null);
     setActionNotice(null);
     setWorkspace({ demand, context });
+  }
+
+  function applyTableFilter(next: Partial<DemandListQuery>) {
+    setQuery((current) => ({ ...current, ...next, page: 1 }));
+  }
+
+  function clearTableFilters(fields: Array<keyof DemandListQuery>) {
+    setQuery((current) => {
+      const next = { ...current, page: 1 };
+      fields.forEach((field) => delete next[field]);
+      return next;
+    });
   }
 
   function openDemandAction(mode: DemandActionMode) {
@@ -161,7 +187,7 @@ export function DemandsPage() {
     <div className="space-y-6">
       <PageHeader
         title="招聘需求"
-        description="每一行是一项独立招聘责任单；点击信息在右侧查看，列表位置不会丢失。"
+        description="点击表头或信息可筛选，查看详情在右侧打开，列表位置不会丢失。"
         actions={(
           <Button type="button" onClick={() => setCreateDrawerOpen(true)}>
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -182,7 +208,11 @@ export function DemandsPage() {
       ) : (
         <DemandTable
           response={response}
+          query={query}
+          owners={owners.data ?? []}
           onPageChange={(page) => setQuery((current) => ({ ...current, page }))}
+          onApplyFilter={applyTableFilter}
+          onClearFilters={clearTableFilters}
           onOpenDemand={openDemandWorkspace}
         />
       )}

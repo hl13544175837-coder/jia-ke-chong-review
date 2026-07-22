@@ -79,10 +79,10 @@ assert.match(filters, /department/, 'Demand filters should support department');
 assert.match(filters, /owner_hr_id/, 'Demand filters should support owner');
 
 assert.match(table, /<table/, 'Demand results should render as a table');
-assert.match(table, /kind: 'stage'/, 'Stage drill-down should open the scoped in-page context');
-assert.match(table, /stage, label/, 'Stage context should carry the selected stage');
+assert.match(table, /pipeline_stage: filterStage/, 'Stage numbers should filter the server-backed demand list');
 assert.match(table, /Pagination/, 'Demand results should paginate');
-assert.match(table, /onOpenDemand\(demand, \{ kind: 'overview' \}\)/, 'Rows should open demand detail in place');
+assert.match(table, /data-ui="demand-details-trigger"/, 'Each row should keep an explicit demand detail action');
+assert.match(table, /onOpenDemand\(demand, \{ kind: 'overview' \}\)/, 'The detail action should open demand detail in place');
 
 assert.match(detail, /需求事实/, 'Detail page should show demand facts');
 assert.match(detail, /招聘进度/, 'Detail page should show progress');

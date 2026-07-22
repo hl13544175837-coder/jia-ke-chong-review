@@ -36,13 +36,10 @@ assert.match(uiIndex, /DrawerShell/, 'The shared UI barrel should export DrawerS
 
 assert.doesNotMatch(table, /from 'react-router-dom'/, 'Demand table clicks should not navigate away');
 assert.match(table, /onOpenDemand/, 'Demand table should delegate all high-value clicks to one drawer controller');
-assert.match(table, /onClick=\{\(\) => onOpenDemand\(demand, \{ kind: 'overview' \}\)\}/, 'Clicking a row should open overview context');
-for (const context of ['headcount', 'owner', 'status']) {
-  assert.match(table, new RegExp(`kind: '${context}'`), `${context} should open its own demand context`);
-}
-assert.match(table, /kind: 'stage'/, 'Stage metrics should open the in-page candidate context');
-assert.match(table, /event\.stopPropagation\(\)/, 'Interactive cells should not trigger the row a second time');
-assert.match(table, /onKeyDown/, 'Keyboard users should be able to open a demand row');
+assert.match(table, /data-ui="demand-details-trigger"/, 'Demand detail should remain an explicit independent action');
+assert.match(table, /onOpenDemand\(demand, \{ kind: 'overview' \}\)/, 'The explicit details action should open overview context');
+assert.match(table, /onApplyFilter/, 'Information cells should apply list filters instead of opening the drawer');
+assert.match(table, /event\.stopPropagation\(\)/, 'Filtering and detail actions should not bubble into another interaction');
 
 assert.match(workspace, /<DrawerShell/, 'Demand detail should use the shared right drawer shell');
 assert.match(workspace, /api\.getDemandPipelineBoard\(demand\.id\)/, 'Candidate context should load the real demand-scoped board');
@@ -55,7 +52,7 @@ assert.match(page, /<DrawerShell[\s\S]*open=\{createDrawerOpen\}/, 'Demand creat
 assert.match(page, /demands\.reload\(\)/, 'Successful creation should refresh the real demand list');
 assert.match(page, /kind: 'overview'/, 'Successful creation should open the new real demand in overview context');
 assert.match(page, /<DemandWorkspaceDrawer/, 'The list page should mount the shared demand workspace drawer');
-assert.match(page, /onOpenDemand=\{openDemandWorkspace\}/, 'Table clicks should open the list-page drawer controller');
+assert.match(page, /onOpenDemand=\{openDemandWorkspace\}/, 'The table detail action should open the list-page drawer controller');
 assert.match(page, /点击右上角“新建需求”/, 'The empty state should point to the new drawer trigger');
 assert.doesNotMatch(page, /使用上方表单/, 'The empty state should not reference the removed inline form');
 

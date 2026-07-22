@@ -8,7 +8,8 @@ from datetime import date, datetime, time
 from math import ceil
 from uuid import uuid4
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, case, func, or_
+from sqlalchemy.orm import aliased
 
 from .. import db
 from ..models import Candidate, Job, PipelineStage, RecruitmentDemand, User
@@ -435,6 +436,58 @@ def demand_payload(demand, *, include_jd=False, config=None):
     return payload
 
 
+def _list_stage_scope_condition(stage):
+    sibling = aliased(RecruitmentDemand)
+    sibling_exists = (
+        db.session.query(sibling.id)
+        .filter(
+            sibling.org_id == RecruitmentDemand.org_id,
+            sibling.id != RecruitmentDemand.id,
+            sibling.job_id == RecruitmentDemand.job_id,
+        )
+        .correlate(RecruitmentDemand)
+        .exists()
+    )
+    return or_(
+        stage.demand_id == RecruitmentDemand.id,
+        and_(
+            stage.demand_id.is_(None),
+            stage.job_id == RecruitmentDemand.job_id,
+            ~sibling_exists,
+        ),
+    )
+
+
+def _latest_list_stage_query():
+    stage = aliased(PipelineStage)
+    latest_stage = aliased(PipelineStage)
+    candidate = aliased(Candidate)
+    latest_id = (
+        db.session.query(func.max(latest_stage.id))
+        .filter(
+            latest_stage.org_id == RecruitmentDemand.org_id,
+            latest_stage.candidate_id == stage.candidate_id,
+            _list_stage_scope_condition(latest_stage),
+        )
+        .correlate(RecruitmentDemand, stage)
+        .scalar_subquery()
+    )
+    query = (
+        db.session.query(stage.id)
+        .select_from(stage)
+        .join(candidate, candidate.id == stage.candidate_id)
+        .filter(
+            stage.org_id == RecruitmentDemand.org_id,
+            candidate.org_id == RecruitmentDemand.org_id,
+            candidate.deleted_at.is_(None),
+            _list_stage_scope_condition(stage),
+            stage.id == latest_id,
+        )
+        .correlate(RecruitmentDemand)
+    )
+    return query, stage
+
+
 def apply_list_filters(query, args):
     status = clean_text(args.get("status"), 40)
     if status and status != "all":
@@ -452,6 +505,26 @@ def apply_list_filters(query, args):
                 RecruitmentDemand.hiring_manager_name.ilike(pattern),
             )
         )
+
+    job_title = clean_text(args.get("job_title"), 200)
+    if job_title:
+        query = query.outerjoin(
+            Job,
+            and_(
+                Job.id == RecruitmentDemand.job_id,
+                Job.org_id == RecruitmentDemand.org_id,
+            ),
+        ).filter(
+            func.coalesce(
+                func.nullif(RecruitmentDemand.job_title_snapshot, ""),
+                Job.title,
+            )
+            == job_title
+        )
+
+    request_no = clean_text(args.get("request_no"), 80)
+    if request_no:
+        query = query.filter(RecruitmentDemand.request_no == request_no)
 
     department = clean_text(args.get("department"), 120)
     if department:
@@ -474,6 +547,41 @@ def apply_list_filters(query, args):
         query = query.filter(
             RecruitmentDemand.created_at <= datetime.combine(created_to, time.max)
         )
+
+    target_date = parse_date(args.get("target_date"))
+    if target_date:
+        query = query.filter(RecruitmentDemand.target_date == target_date)
+
+    pipeline_stage = clean_text(args.get("pipeline_stage"), 50).lower()
+    if pipeline_stage and pipeline_stage != "all":
+        latest_stage_query, latest_stage = _latest_list_stage_query()
+        if pipeline_stage != "any":
+            if pipeline_stage in INTERVIEW_PROGRESS_STAGES - OFFER_STAGES:
+                latest_stage_query = latest_stage_query.filter(
+                    latest_stage.stage.in_(INTERVIEW_PROGRESS_STAGES - OFFER_STAGES)
+                )
+            else:
+                latest_stage_query = latest_stage_query.filter(
+                    latest_stage.stage == pipeline_stage
+                )
+        query = query.filter(latest_stage_query.exists())
+
+    hc_status = clean_text(args.get("hc_status"), 20).lower()
+    if hc_status in {"complete", "incomplete"}:
+        latest_stage_query, latest_stage = _latest_list_stage_query()
+        onboarded_count = (
+            latest_stage_query.filter(latest_stage.stage == "onboarded")
+            .with_entities(func.count(latest_stage.id))
+            .scalar_subquery()
+        )
+        target_headcount = case(
+            (RecruitmentDemand.headcount > 0, RecruitmentDemand.headcount),
+            else_=1,
+        )
+        if hc_status == "complete":
+            query = query.filter(onboarded_count >= target_headcount)
+        else:
+            query = query.filter(onboarded_count < target_headcount)
     return query
 
 
