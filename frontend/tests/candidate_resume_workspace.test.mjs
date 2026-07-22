@@ -55,8 +55,16 @@ assert.doesNotMatch(types, /raw_file_path/, 'Frontend contracts must never expos
 
 assert.match(api, /previewOriginalResume/, 'Feature API should fetch an authenticated preview blob');
 assert.match(api, /downloadOriginalResume/, 'Feature API should fetch an authenticated download blob');
-assert.match(api, /Authorization/, 'Original file requests should reuse bearer authentication');
-assert.match(api, /\/api\/resume\/\$\{candidateId\}\/original\/\$\{mode\}/, 'Original files should call the protected route family');
+assert.match(
+  api,
+  /headers:\s*authHeaders\(\)/,
+  'Original file requests should reuse the shared authenticated headers',
+);
+assert.match(
+  api,
+  /\$\{API_BASE\}\/resume\/\$\{candidateId\}\/original\/\$\{mode\}/,
+  'Original files should call the protected route family through the configured API prefix',
+);
 assert.match(api, /fetchOriginalResume\(candidateId, 'preview'\)/, 'Preview should select the protected preview route');
 
 assert.match(original, /URL\.createObjectURL/, 'Viewer should render a protected blob without exposing its API URL');
