@@ -1,4 +1,5 @@
-FROM registry.ymdd.tech/library/python:3.12-uv
+ARG PYTHON_BASE_IMAGE=registry.ymdd.tech/library/python:3.12-uv
+FROM ${PYTHON_BASE_IMAGE}
 
 ARG RELEASE_CHANNEL=UNKNOWN
 ARG AUTO_MIGRATE_DATABASE=false
@@ -47,7 +48,8 @@ ENV SECURITY_HEADERS_ENABLED=${SECURITY_HEADERS_ENABLED}
 ENV RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED}
 ENV ALLOW_PUBLIC_REGISTRATION=${ALLOW_PUBLIC_REGISTRATION}
 
-RUN chmod +x /app/backend/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /app/backend/docker-entrypoint.sh && \
+    chmod +x /app/backend/docker-entrypoint.sh
 
 EXPOSE 5000
 

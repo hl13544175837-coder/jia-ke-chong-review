@@ -1,5 +1,6 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
+from urllib.parse import parse_qs, urlsplit
 
 from app import db
 from app.models import (
@@ -9,6 +10,7 @@ from app.models import (
     Interview,
     InterviewAssignment,
     InterviewFeedback,
+    InterviewNotificationDelivery,
     Job,
     Notification,
     PipelineStage,
@@ -226,6 +228,239 @@ def test_assignment_creates_interviewer_todo_and_primary_feedback_notifies_owner
         assert f"demand={demand_id}" in decision.link
 
 
+def test_webhook_access_link_accepts_task_and_submits_feedback(
+    client, make_user, app, monkeypatch
+):
+    owner_id, owner_token = make_user(
+        "iv-link-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "iv-link-interviewer@example.com", role="interviewer", name="链接面试官"
+    )
+    _, demand_id, candidate_id = _seed_demand_flow(app, owner_id, "LINK")
+    delivered = {}
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            return {}
+
+    def post_webhook(url, *, json, headers, timeout):
+        delivered.update({
+            "url": url,
+            "json": json,
+            "headers": headers,
+            "timeout": timeout,
+        })
+        return Response()
+
+    app.config.update(
+        PUBLIC_APP_BASE_URL="https://hiring.example.test",
+        INTERVIEW_NOTIFICATION_WEBHOOK_URL=(
+            "https://wecom-gateway.example.test/interviews"
+        ),
+        INTERVIEW_NOTIFICATION_WEBHOOK_MODE="generic",
+    )
+    from app.services import interview_notification_service
+
+    monkeypatch.setattr(
+        interview_notification_service.requests,
+        "post",
+        post_webhook,
+    )
+    assignment = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": candidate_id,
+            "demand_id": demand_id,
+            "round": "round_1",
+            "round_sequence": 1,
+            "is_primary": True,
+            "interviewer_id": interviewer_id,
+            "scheduled_at": "2026-07-25T10:00:00",
+            "location": "线上会议室",
+        },
+    )
+    assert assignment.status_code == 201
+    assert assignment.get_json()["demand_request_no"] == "REQ-IV-LINK"
+    assert assignment.get_json()["notification_delivery"]["status"] == "sent"
+    assert delivered["url"] == "https://wecom-gateway.example.test/interviews"
+    assert delivered["headers"]["Idempotency-Key"].startswith(
+        "interview-assignment-"
+    )
+    access_url = delivered["json"]["access_url"]
+    token = parse_qs(urlsplit(access_url).fragment)["token"][0]
+
+    details = client.post("/api/interview/access/get", json={"token": token})
+    assert details.status_code == 200
+    assert details.get_json()["candidate_name"] == "候选人LINK"
+    assert details.get_json()["can_respond"] is True
+
+    accepted = client.post(
+        "/api/interview/access/respond",
+        json={"token": token, "decision": "accepted"},
+    )
+    assert accepted.status_code == 200
+    assert accepted.get_json()["response_status"] == "accepted"
+    assert accepted.get_json()["deduplicated"] is False
+
+    feedback = client.post(
+        "/api/interview/access/feedback",
+        json={
+            "token": token,
+            "score": 5,
+            "passed": True,
+            "strengths": "系统设计扎实",
+            "concerns": "需要补充管理案例",
+            "evaluation": {"专业能力": 5, "沟通表达": 4},
+            "note": "建议进入下一步",
+        },
+    )
+    assert feedback.status_code == 201
+    assert feedback.get_json()["round_completed"] is True
+    after = client.post("/api/interview/access/get", json={"token": token})
+    assert after.get_json()["feedback_submitted"] is True
+    assert after.get_json()["can_submit_feedback"] is False
+
+    with app.app_context():
+        delivery = InterviewNotificationDelivery.query.filter_by(
+            assignment_id=assignment.get_json()["id"]
+        ).one()
+        assert delivery.attempts == 1
+        event = Event.query.filter_by(
+            action="interview.assignment_responded",
+            actor_id=interviewer_id,
+        ).one()
+        assert event.source == "interview_access_link"
+
+
+def test_declined_access_task_releases_slot_for_reassignment(client, make_user, app):
+    owner_id, owner_token = make_user(
+        "iv-decline-owner@example.com", role="recruiter"
+    )
+    first_id, first_token = make_user(
+        "iv-decline-first@example.com", role="interviewer"
+    )
+    second_id, _ = make_user(
+        "iv-decline-second@example.com", role="interviewer"
+    )
+    _, demand_id, candidate_id = _seed_demand_flow(app, owner_id, "DECLINE")
+    app.config["PUBLIC_APP_BASE_URL"] = "https://hiring.example.test"
+    common = {
+        "candidate_id": candidate_id,
+        "demand_id": demand_id,
+        "round": "round_1",
+        "round_sequence": 1,
+        "is_primary": True,
+    }
+    first = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={**common, "interviewer_id": first_id},
+    )
+    assert first.status_code == 201
+    with app.app_context():
+        from app.services.interview_notification_service import (
+            create_interview_access_token,
+        )
+
+        stored = db.session.get(InterviewAssignment, first.get_json()["id"])
+        token = create_interview_access_token(stored)
+
+    declined = client.post(
+        "/api/interview/access/respond",
+        json={
+            "token": token,
+            "decision": "declined",
+            "reason": "时间冲突，无法参加",
+        },
+    )
+    assert declined.status_code == 200
+    assert declined.get_json()["response_status"] == "declined"
+    assert declined.get_json()["can_submit_feedback"] is False
+
+    own_assignments = client.get(
+        "/api/interview/assignments", headers=_auth(first_token)
+    )
+    assert own_assignments.status_code == 200
+    assert own_assignments.get_json() == []
+    rejected_feedback = client.post(
+        "/api/interview/access/feedback",
+        json={"token": token, "score": 4, "passed": True},
+    )
+    assert rejected_feedback.status_code == 404
+    assert rejected_feedback.get_json()["code"] == "assignment_not_found"
+
+    replacement = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={**common, "interviewer_id": second_id},
+    )
+    assert replacement.status_code == 201
+    assert replacement.get_json()["id"] != first.get_json()["id"]
+
+    visible = client.get(
+        f"/api/interview/assignments?demand_id={demand_id}",
+        headers=_auth(owner_token),
+    ).get_json()
+    declined_item = next(
+        item for item in visible if item["id"] == first.get_json()["id"]
+    )
+    assert declined_item["response_reason"] == "时间冲突，无法参加"
+
+
+def test_notification_failure_keeps_assignment_and_redacts_webhook_url(
+    client, make_user, app, monkeypatch
+):
+    owner_id, owner_token = make_user(
+        "iv-notify-fail-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "iv-notify-fail-interviewer@example.com", role="interviewer"
+    )
+    _, demand_id, candidate_id = _seed_demand_flow(app, owner_id, "NOTIFY-FAIL")
+    app.config.update(
+        PUBLIC_APP_BASE_URL="https://hiring.example.test",
+        INTERVIEW_NOTIFICATION_WEBHOOK_URL=(
+            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret-value"
+        ),
+    )
+    from app.services import interview_notification_service
+
+    def fail_webhook(*args, **kwargs):
+        raise interview_notification_service.requests.ConnectionError(
+            "failed: https://qyapi.weixin.qq.com/?key=secret-value"
+        )
+
+    monkeypatch.setattr(
+        interview_notification_service.requests,
+        "post",
+        fail_webhook,
+    )
+    assignment = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": candidate_id,
+            "demand_id": demand_id,
+            "round": "round_1",
+            "interviewer_id": interviewer_id,
+        },
+    )
+    assert assignment.status_code == 201
+    delivery = assignment.get_json()["notification_delivery"]
+    assert delivery["status"] == "failed"
+    assert delivery["last_error"] == "企业微信通知服务请求失败"
+    assert "secret-value" not in delivery["last_error"]
+
+
 def test_assignment_audit_failure_rolls_back_assignment_and_notification(
     client, make_user, app, monkeypatch
 ):
@@ -283,16 +518,20 @@ def test_feedback_audit_failure_rolls_back_feedback_status_and_notification(
     )
     assert assignment.status_code == 201
     assignment_id = assignment.get_json()["id"]
-    from app.api import interview as interview_api
+    from app.services import interview_workflow_service
 
-    original_record_event = interview_api.record_event
+    original_record_event = interview_workflow_service.record_event
 
     def guarded_fail_feedback(action, *args, **kwargs):
         if action == "interview.feedback":
             raise RuntimeError("audit write failed")
         return original_record_event(action, *args, **kwargs)
 
-    monkeypatch.setattr(interview_api, "record_event", guarded_fail_feedback)
+    monkeypatch.setattr(
+        interview_workflow_service,
+        "record_event",
+        guarded_fail_feedback,
+    )
     with pytest.raises(RuntimeError, match="audit write failed"):
         client.post(
             "/api/interview/feedback",
@@ -847,8 +1086,20 @@ def test_recruiter_interview_lists_follow_demand_ownership_after_transfer(
 
     assert {item["demand_id"] for item in first_feedback} == {first_demand_id}
     assert {item["demand_id"] for item in second_feedback} == {second_demand_id}
+    assert {item["demand_request_no"] for item in first_feedback} == {
+        "REQ-IV-LIST-FIRST"
+    }
+    assert {item["demand_request_no"] for item in second_feedback} == {
+        "REQ-IV-LIST-SECOND"
+    }
     assert {item["demand_id"] for item in first_records} == {first_demand_id}
     assert {item["demand_id"] for item in second_records} == {second_demand_id}
+    assert {item["demand_request_no"] for item in first_records} == {
+        "REQ-IV-LIST-FIRST"
+    }
+    assert {item["demand_request_no"] for item in second_records} == {
+        "REQ-IV-LIST-SECOND"
+    }
 
 
 def test_assignment_status_is_server_managed_and_cancel_releases_primary_slot(

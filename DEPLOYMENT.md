@@ -73,6 +73,16 @@
 
 ## 3. 快速启动（本地开发）
 
+### 3.0 本地全容器启动（推荐）
+
+本地闭环验收优先在项目根目录使用 PowerShell 7：
+
+```powershell
+pwsh -File .\scripts\start-local.ps1
+```
+
+`compose.local.yaml` 同时运行前端、后端、`mysql:8.0.32` 和通知模拟器，宿主机只绑定 `127.0.0.1` 高位端口：前端 `15173`、后端 `15001`、MySQL `13306`、通知模拟器 `19090`。脚本生成本地 `.env` 和随机密钥并准备招聘专员/面试官验收账号；该路线不需要在宿主机安装 Python、Node 或 MySQL。详细账号与通知配置见 [RUNNING.md](RUNNING.md)。
+
 ### 3.1 克隆/解压项目
 
 ```bash
@@ -177,11 +187,11 @@ python backend/scripts/cleanup_demo_data.py --confirm
 
 ### 数据库生命周期
 
-RC/SIT/生产的 Flask 应用工厂不会执行 `create_all`、补列或其他 DDL。真正空库只能显式运行 `python backend/scripts/bootstrap_database.py --allow-empty`：脚本验证数据库完全为空后创建 metadata 并写入当前 Alembic head；缺失任一 `20260710_01` 之前的旧基线业务表都会拒绝继续且不 stamp，`candidate_demand_flows` 则由该 Expand revision 新建。已有库统一使用 `alembic upgrade head`，当前收口候选 head 为 `20260711_04`。只有自动化测试或显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 本地兼容路径允许应用侧建表。
+RC/SIT/生产的 Flask 应用工厂不会执行 `create_all`、补列或其他 DDL。真正空库只能显式运行 `python backend/scripts/bootstrap_database.py --allow-empty`：脚本验证数据库完全为空后创建 metadata 并写入当前 Alembic head；缺失任一 `20260710_01` 之前的旧基线业务表都会拒绝继续且不 stamp，`candidate_demand_flows` 则由该 Expand revision 新建。已有库统一使用 `alembic upgrade head`，当前收口候选 head 为 `20260722_06`。只有自动化测试或显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 本地兼容路径允许应用侧建表。
 
 因此 Gunicorn/Flask worker 只消费已准备好的 schema；生产必须由唯一 migration job 执行升级。禁止用手工 SQL、多个 worker 并发迁移或“启动失败后让应用补一补”替代受测试的 revision。
 
-`20260711_04` 会读取并规范化现有 Demand `request_no`，必须在停止 Demand 创建/编辑、排空旧后端实例与可能写 Demand 的 worker 后才能执行。从停写开始到 `alembic current == 20260711_04` 且 `verify_demand_scope.py` 通过前，不得恢复 Demand 写入。该 revision 的 downgrade 只恢复列可空性并移除唯一索引，不会还原大小写、首尾空格、空编号或 80 字符截断前的原始值；若必须恢复这些原值，只能使用迁移前同一 backup ID 的整库快照。
+`20260711_04` 会读取并规范化现有 Demand `request_no`，必须在停止 Demand 创建/编辑、排空旧后端实例与可能写 Demand 的 worker 后才能执行。从停写开始到 `verify_demand_scope.py` 通过且 `alembic current == 20260722_06` 前，不得恢复 Demand 写入。该 revision 的 downgrade 只恢复列可空性并移除唯一索引，不会还原大小写、首尾空格、空编号或 80 字符截断前的原始值；若必须恢复这些原值，只能使用迁移前同一 backup ID 的整库快照。后续 `20260722_05` 增加面试通知/接单事实，`20260722_06` 扩展审计来源字段，均属于当前上线 schema。
 
 ---
 
@@ -257,7 +267,7 @@ Libra 页面操作先进入执行 pipeline 页，选择 `test` 分支构建 `zhi
 
 CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 和 Makefile 会兜底使用 `RC` 和当前时间戳，避免生成 `zhipin-frontend:` / `zhipin-server:` 这类空镜像标签导致构建失败；Libra 包记录也会使用同一个 `RC_<时间戳>` 版本号。
 
-为了让当前可丢弃数据的 SIT 同时支持空库和旧库，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 与 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 先让 bootstrap 仅在真正空库创建并 stamp 当前 head，再执行一次 `alembic -c /app/backend/alembic.ini upgrade head`；部分建表的库会直接阻断，绝对配置路径避免 K8S 工作目录变化导致 `script_location` 丢失。`GA` 对两个开关都明确传入 `false`。SIT 扩展迁移发布时不得同时扩容多个新副本；如果待升级库尚未到 `20260711_04`，还必须先停止 Demand 写入并排空所有旧 server 实例，不能让旧 Pod 与新容器 entrypoint 并行读改编号。发布后必须核对 revision（本候选为 `20260711_04`）、verify 报告和受控 API；正式环境仍按唯一 migration job 门禁执行。
+为了让当前可丢弃数据的 SIT 同时支持空库和旧库，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 与 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 先让 bootstrap 仅在真正空库创建并 stamp 当前 head，再执行一次 `alembic -c /app/backend/alembic.ini upgrade head`；部分建表的库会直接阻断，绝对配置路径避免 K8S 工作目录变化导致 `script_location` 丢失。`GA` 对两个开关都明确传入 `false`。SIT 扩展迁移发布时不得同时扩容多个新副本；如果待升级库尚未到 `20260711_04`，还必须先停止 Demand 写入并排空所有旧 server 实例，不能让旧 Pod 与新容器 entrypoint 并行读改编号。发布后必须核对 revision（本候选为 `20260722_06`）、verify 报告、面试通知/访问链路和受控 API；正式环境仍按唯一 migration job 门禁执行。
 
 当前 RC/SIT 还会显式传入 `ALLOW_INSECURE_SIT_STARTUP=true`、`SECURITY_HEADERS_ENABLED=false`、`RATE_LIMIT_ENABLED=false` 和 `ALLOW_PUBLIC_REGISTRATION=true`，CORS 留空时允许测试跨域。这是项目负责人单人、可丢弃数据测试的明确授权，不开 `FLASK_DEBUG`，也不改动 Demand/候选人/面试/BI 的业务数据约束。`GA` 对这些值使用严格反向配置，且 `ALLOW_INSECURE_SIT_STARTUP=false`。完整测试模板见 `backend/sit-unrestricted.env.example`；`check_pilot_readiness.py` 只是真实数据试点/GA 门禁，不是当前 SIT 构建阻断器。
 
@@ -335,6 +345,11 @@ RATE_LIMIT_RESUME_UPLOAD=8
 BACKUP_DIR=/var/backups/zhipin
 ALLOW_PUBLIC_REGISTRATION=false
 FIELD_ENCRYPTION_KEY=PASTE_GENERATED_FERNET_KEY_HERE
+PUBLIC_APP_BASE_URL=https://zhipin.内网域名
+INTERVIEW_NOTIFICATION_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REDACTED
+INTERVIEW_NOTIFICATION_WEBHOOK_MODE=wecom
+INTERVIEW_ACCESS_TOKEN_TTL_HOURS=72
+INTERVIEW_NOTIFICATION_TIMEOUT_SECONDS=5
 ALLOW_EMPTY_DATABASE_BOOTSTRAP=false
 AUTO_MIGRATE_DATABASE=false
 BOSS_CLI_AUTO_INSTALL=false
@@ -342,6 +357,8 @@ BOSS_CLI_BIN=/usr/local/bin/boss
 ```
 
 `CORS_ORIGINS` 使用与生产启动护栏相同的严格校验，只接受无 path/query/fragment/用户凭据的 HTTP(S) origin，拒绝 `*` 和 `null`。校验错误只包含条目序号、脱敏 scheme/host 和原因，不回显 userinfo/query secret。`run.py`、备份、恢复和清理日志只显示数据库 driver/host/database 的脱敏 label，不打印用户名、密码或 query。
+
+`PUBLIC_APP_BASE_URL` 必须是面试官可访问、无 path/query/fragment 的 HTTPS origin。`INTERVIEW_NOTIFICATION_WEBHOOK_MODE` 只允许 `wecom` 或 `generic`；Webhook URL 属于密钥，不得提交或出现在日志/截图。创建 assignment 与通知投递事实分开保存，通知失败由 HR 受权重试；取消 assignment 会递增令牌版本并撤销旧访问链接。发布验收至少覆盖成功投递、失败脱敏、重试、过期/取消链接 410、接单/拒绝以及同 assignment 只能提交一份反馈。
 
 `UPLOAD_FOLDER` 在试点/生产必须是显式的非临时绝对路径，并映射到持久卷。Flask、backup、restore、cleanup 与 readiness 共用同一解析器；缺失、相对路径、文件系统根目录或 `/tmp`/`/var/tmp` 都会 fail closed。
 
@@ -704,7 +721,7 @@ cd backend
 python -c "from app import create_app; app=create_app(); print('后端 OK')"
 
 # 3. schema 独立验证（应用可构造不等于数据库 ready）
-alembic current  # 当前代码候选应为 20260711_04
+alembic current  # 当前代码候选应为 20260722_06
 
 # 4. 前端构建验证
 cd ../frontend

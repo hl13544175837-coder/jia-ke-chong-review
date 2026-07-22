@@ -17,6 +17,7 @@ from ..models import (
     Notification,
     RecruitmentDemand,
 )
+from ..time_utils import utc_now
 from .demand_context_service import (
     DemandContextError,
     can_manage_demand,
@@ -26,6 +27,10 @@ from .demand_context_service import (
 
 
 CANCELLED_ASSIGNMENT_STATUSES = {"cancelled", "canceled"}
+DECLINED_ASSIGNMENT_STATUSES = {"declined"}
+INACTIVE_ASSIGNMENT_STATUSES = (
+    CANCELLED_ASSIGNMENT_STATUSES | DECLINED_ASSIGNMENT_STATUSES
+)
 
 
 class InterviewAssignmentWorkflowError(Exception):
@@ -45,11 +50,15 @@ def assignment_is_cancelled(status):
     return normalize_assignment_status(status) in CANCELLED_ASSIGNMENT_STATUSES
 
 
+def assignment_is_inactive(status):
+    return normalize_assignment_status(status) in INACTIVE_ASSIGNMENT_STATUSES
+
+
 def active_assignment_filter():
     normalized = func.lower(
         func.trim(func.coalesce(InterviewAssignment.status, "scheduled"))
     )
-    return ~normalized.in_(tuple(CANCELLED_ASSIGNMENT_STATUSES))
+    return ~normalized.in_(tuple(INACTIVE_ASSIGNMENT_STATUSES))
 
 
 def normalize_assignment_datetime(value):
@@ -256,6 +265,7 @@ def create_interview_assignment(
         location=location[:240],
         note=note,
         status="scheduled",
+        response_status="pending",
         created_by=created_by,
     )
     db.session.add(assignment)
@@ -277,6 +287,11 @@ def create_interview_assignment(
     ))
     try:
         db.session.flush()
+        from .interview_notification_service import (
+            ensure_interview_notification_delivery,
+        )
+
+        ensure_interview_notification_delivery(assignment)
         record_event(
             "interview.assigned",
             entity_id=assignment.candidate_id,
@@ -323,10 +338,19 @@ def cancel_interview_assignment(*, assignment, reason):
     """Cancel an unfinished assignment and atomically release its slot."""
 
     if assignment_is_cancelled(assignment.status):
-        needs_repair = assignment.status != "cancelled" or assignment.primary_slot is not None
+        needs_repair = (
+            assignment.status != "cancelled"
+            or assignment.primary_slot is not None
+            or assignment.response_status != "cancelled"
+            or assignment.responded_at is None
+        )
         if needs_repair:
             assignment.status = "cancelled"
             assignment.primary_slot = None
+            assignment.response_status = "cancelled"
+            assignment.response_reason = reason
+            assignment.responded_at = assignment.responded_at or utc_now()
+            assignment.access_token_version = (assignment.access_token_version or 0) + 1
             record_event(
                 "interview.assignment_cancelled",
                 entity_id=assignment.candidate_id,
@@ -362,6 +386,10 @@ def cancel_interview_assignment(*, assignment, reason):
 
     assignment.status = "cancelled"
     assignment.primary_slot = None
+    assignment.response_status = "cancelled"
+    assignment.response_reason = reason
+    assignment.responded_at = utc_now()
+    assignment.access_token_version = (assignment.access_token_version or 0) + 1
     db.session.add(Notification(
         org_id=assignment.org_id,
         user_id=assignment.interviewer_id,
@@ -384,6 +412,107 @@ def cancel_interview_assignment(*, assignment, reason):
             "job_id": assignment.job_id,
             "round": assignment.round,
             "reason": reason,
+        },
+        commit=False,
+    )
+    db.session.commit()
+    return assignment, False
+
+
+def respond_to_interview_assignment(*, assignment, interviewer_id, decision, reason=""):
+    """记录面试官接单决定，并在拒绝时原子释放主面试官槽位。"""
+
+    normalized_decision = str(decision or "").strip().lower()
+    if normalized_decision not in {"accepted", "declined"}:
+        raise InterviewAssignmentWorkflowError(
+            "接单结果只能是接受或拒绝",
+            code="invalid_assignment_response",
+            status_code=400,
+        )
+    if assignment.interviewer_id != interviewer_id:
+        raise InterviewAssignmentWorkflowError(
+            "面试任务不存在或不属于当前面试官",
+            code="assignment_not_found",
+            status_code=404,
+        )
+    if assignment_is_cancelled(assignment.status):
+        raise InterviewAssignmentWorkflowError(
+            "面试任务已取消",
+            code="assignment_cancelled",
+            status_code=410,
+        )
+
+    current_response = str(assignment.response_status or "pending").strip().lower()
+    if current_response == normalized_decision:
+        db.session.rollback()
+        return assignment, True
+    if current_response == "declined":
+        raise InterviewAssignmentWorkflowError(
+            "该任务已拒绝，请由 HR 重新安排",
+            code="assignment_already_declined",
+        )
+
+    has_feedback = InterviewFeedback.query.filter_by(
+        org_id=assignment.org_id,
+        assignment_id=assignment.id,
+    ).first() is not None
+    if has_feedback or normalize_assignment_status(assignment.status) in {
+        "completed",
+        "feedback_submitted",
+    }:
+        raise InterviewAssignmentWorkflowError(
+            "面试反馈已提交，不能再修改接单结果",
+            code="assignment_already_completed",
+        )
+
+    normalized_reason = str(reason or "").strip()
+    if normalized_decision == "declined" and not normalized_reason:
+        raise InterviewAssignmentWorkflowError(
+            "拒绝面试任务需要填写原因",
+            code="decline_reason_required",
+            status_code=400,
+        )
+
+    assignment.response_status = normalized_decision
+    assignment.response_reason = normalized_reason[:500] or None
+    assignment.responded_at = utc_now()
+    if normalized_decision == "declined":
+        assignment.status = "declined"
+        assignment.primary_slot = None
+
+    owner_id = assignment.created_by
+    if assignment.demand_id is not None:
+        demand = db.session.get(RecruitmentDemand, assignment.demand_id)
+        if demand is not None and demand.owner_hr_id:
+            owner_id = demand.owner_hr_id
+    if owner_id:
+        db.session.add(
+            Notification(
+                org_id=assignment.org_id,
+                user_id=owner_id,
+                demand_id=assignment.demand_id,
+                type="interview_assignment_response",
+                title=(
+                    "面试官已接受任务"
+                    if normalized_decision == "accepted"
+                    else "面试官无法参加，请重新安排"
+                ),
+                body=assignment.response_reason or "面试官已确认参加",
+                link=(
+                    f"/interviews?demand={assignment.demand_id}"
+                    f"&candidate={assignment.candidate_id}"
+                ),
+            )
+        )
+    record_event(
+        "interview.assignment_responded",
+        entity_id=assignment.candidate_id,
+        entity_type="candidate",
+        demand_id=assignment.demand_id,
+        payload={
+            "assignment_id": assignment.id,
+            "decision": normalized_decision,
+            "reason": assignment.response_reason,
         },
         commit=False,
     )
@@ -421,7 +550,7 @@ def feedback_assignment(
             return None
         if round_name and assignment.round != round_name:
             return None
-        if assignment_is_cancelled(assignment.status):
+        if assignment_is_inactive(assignment.status):
             return None
         return assignment
 
@@ -441,4 +570,139 @@ def feedback_assignment(
         query.filter(active_assignment_filter())
         .order_by(InterviewAssignment.id.desc())
         .first()
+    )
+
+
+@dataclass(frozen=True)
+class InterviewFeedbackSubmission:
+    feedback: InterviewFeedback
+    deduplicated: bool
+    round_completed: bool
+
+    @property
+    def next_action(self):
+        return (
+            "awaiting_hr_decision"
+            if self.round_completed
+            else "awaiting_primary_feedback"
+        )
+
+
+def submit_interview_feedback(
+    *,
+    context,
+    assignment,
+    interviewer_id,
+    score,
+    passed,
+    strengths,
+    concerns,
+    reason_tags,
+    evaluation,
+    note,
+):
+    """在一次事务内保存反馈、完成本轮并通知招聘负责人。"""
+
+    existing = InterviewFeedback.query.filter_by(
+        org_id=assignment.org_id,
+        assignment_id=assignment.id,
+    ).first()
+    round_completed = bool(assignment.is_primary)
+    if existing is not None:
+        db.session.rollback()
+        return InterviewFeedbackSubmission(
+            feedback=existing,
+            deduplicated=True,
+            round_completed=round_completed,
+        )
+
+    if assignment.interviewer_id != interviewer_id or assignment_is_inactive(
+        assignment.status
+    ):
+        raise InterviewAssignmentWorkflowError(
+            "面试任务不存在或不属于当前面试官",
+            code="assignment_not_found",
+            status_code=404,
+        )
+
+    feedback = InterviewFeedback(
+        candidate_id=context.candidate.id,
+        job_id=context.job.id,
+        demand_id=context.demand_id,
+        assignment_id=assignment.id,
+        org_id=assignment.org_id,
+        round=assignment.round,
+        interviewer_id=interviewer_id,
+        score=score,
+        passed=passed,
+        strengths=strengths,
+        concerns=concerns,
+        reason_tags=reason_tags,
+        evaluation_json=evaluation,
+        note=note,
+    )
+    db.session.add(feedback)
+    if str(assignment.response_status or "pending").strip().lower() == "pending":
+        assignment.response_status = "accepted"
+        assignment.responded_at = utc_now()
+        assignment.response_reason = None
+    assignment.status = "completed" if round_completed else "feedback_submitted"
+    if round_completed and context.demand.owner_hr_id:
+        db.session.add(
+            Notification(
+                org_id=assignment.org_id,
+                user_id=context.demand.owner_hr_id,
+                demand_id=context.demand_id,
+                type="interview_feedback_ready",
+                title="主面试官已反馈，待 HR 确认下一步",
+                body=(
+                    f"{context.candidate.name_masked or '候选人'}的"
+                    f"第 {assignment.round_sequence} 轮主面试反馈已完成。"
+                ),
+                link=(
+                    f"/interviews?demand={context.demand_id}"
+                    f"&candidate={context.candidate.id}"
+                ),
+            )
+        )
+    try:
+        record_event(
+            "interview.feedback",
+            entity_id=context.candidate.id,
+            entity_type="candidate",
+            demand_id=context.demand_id,
+            payload={
+                "job_id": context.job.id,
+                "demand_id": context.demand_id,
+                "assignment_id": assignment.id,
+                "round": assignment.round,
+                "score": score,
+                "passed": passed,
+            },
+            commit=False,
+        )
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        existing = InterviewFeedback.query.filter_by(
+            org_id=assignment.org_id,
+            assignment_id=assignment.id,
+        ).first()
+        if existing is None:
+            raise InterviewAssignmentWorkflowError(
+                "反馈写入冲突，请刷新后重试",
+                code="feedback_conflict",
+            )
+        return InterviewFeedbackSubmission(
+            feedback=existing,
+            deduplicated=True,
+            round_completed=round_completed,
+        )
+    except Exception:
+        db.session.rollback()
+        raise
+    return InterviewFeedbackSubmission(
+        feedback=feedback,
+        deduplicated=False,
+        round_completed=round_completed,
     )

@@ -101,6 +101,44 @@ export function resultTone(pass: boolean | null): 'neutral' | 'success' | 'dange
   return pass ? 'success' : 'danger';
 }
 
+export function assignmentResponseLabel(
+  status: InterviewAssignment['response_status'],
+): string {
+  return {
+    pending: '待面试官确认',
+    accepted: '面试官已接单',
+    declined: '面试官已拒绝',
+    cancelled: '任务已取消',
+  }[status];
+}
+
+export function assignmentResponseTone(
+  status: InterviewAssignment['response_status'],
+): 'neutral' | 'success' | 'danger' | 'warning' {
+  if (status === 'accepted') return 'success';
+  if (status === 'declined' || status === 'cancelled') return 'danger';
+  return 'warning';
+}
+
+export function notificationDeliveryLabel(
+  status: NonNullable<InterviewAssignment['notification_delivery']>['status'],
+): string {
+  return {
+    pending: '企微通知待发送',
+    sent: '企微通知已发送',
+    failed: '企微通知发送失败',
+    not_configured: '企微通知未配置',
+  }[status];
+}
+
+export function notificationDeliveryTone(
+  status: NonNullable<InterviewAssignment['notification_delivery']>['status'],
+): 'neutral' | 'success' | 'danger' | 'warning' {
+  if (status === 'sent') return 'success';
+  if (status === 'failed') return 'danger';
+  return status === 'not_configured' ? 'neutral' : 'warning';
+}
+
 export function recordSummary(item: InterviewListItem): string {
   if (item.type === 'ai') {
     if (item.pass === null || item.score === null) return 'AI 预筛报告待查看';
@@ -112,7 +150,7 @@ export function recordSummary(item: InterviewListItem): string {
 
 export function demandOptionLabel(demand: RecruitmentDemand): string {
   return [
-    demand.request_no || `REQ-${demand.id}`,
+    demand.request_no || '未编号需求',
     demand.job_title,
     demand.requester_department || demand.job_department,
     demand.job_city,
@@ -131,9 +169,10 @@ export function uniqueDemands(
   }));
   [...items, ...assignments].forEach((item) => {
     if (item.demand_id && !options.has(item.demand_id)) {
+      const requestNo = 'demand_request_no' in item ? item.demand_request_no : null;
       options.set(item.demand_id, {
         id: item.demand_id,
-        label: `招聘需求 #${item.demand_id} · ${item.job_title ?? `岗位 #${item.job_id}`}`,
+        label: `${requestNo ?? '历史招聘需求'} · ${item.job_title ?? '岗位信息待补充'}`,
       });
     }
   });
@@ -256,11 +295,11 @@ export function buildAssignedPendingFeedback(assignments: InterviewAssignment[])
     .filter((item) => isActiveInterviewAssignment(item) && !item.feedback_submitted)
     .map((item) => ({
       candidate_id: item.candidate_id,
-      name_masked: item.name_masked ?? `候选人 #${item.candidate_id}`,
+      name_masked: item.name_masked ?? '候选人',
       demand_id: item.demand_id,
       assignment_id: item.id,
       job_id: item.job_id,
-      job_title: item.job_title ?? `岗位 #${item.job_id}`,
+      job_title: item.job_title ?? '岗位信息待补充',
       round: item.round,
       round_sequence: item.round_sequence,
       is_primary: item.is_primary,
@@ -272,7 +311,7 @@ export function buildAssignedPendingFeedback(assignments: InterviewAssignment[])
 
 export function isActiveInterviewAssignment(item: InterviewAssignment): boolean {
   const status = (item.status || 'scheduled').trim().toLowerCase();
-  return !['cancelled', 'canceled'].includes(status);
+  return !['cancelled', 'canceled', 'declined'].includes(status);
 }
 
 export function mergePendingFeedback(

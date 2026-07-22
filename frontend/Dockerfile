@@ -1,5 +1,8 @@
+ARG NODE_BASE_IMAGE=registry.ymdd.tech/library/node:20-alpine
+ARG NGINX_BASE_IMAGE=registry.ymdd.tech/library/nginx:1.25-alpine
+
 # Build stage
-FROM registry.ymdd.tech/library/node:20-alpine AS build-stage
+FROM ${NODE_BASE_IMAGE} AS build-stage
 WORKDIR /app
 
 # 前端 API 请求前缀（网关地址）。由构建流水线按环境传入 build-arg：
@@ -15,25 +18,29 @@ ARG VITE_API_BASE_URL=https://test-pgsgw.yimidida.com/zhipin-server/api
 #   生产：--build-arg VITE_OAUTH_BASE_URL=https://pgsgw.yimidida.com/pgs/oauth
 ARG VITE_OAUTH_BASE_URL=https://test-pgsgw.yimidida.com/pgs/oauth
 
+# 认证入口默认保持企业网关；仅本地全容器环境显式切换为 local。
+ARG VITE_LOGIN_PROVIDER=gateway
+
 # 临时默认角色（网关 profile 无应用角色，联调兜底）。接后端 /auth/me 后移除。
 ARG VITE_DEFAULT_ROLE=admin
 
 # Copy package dependency configuration relative to root build context
 COPY frontend/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Copy frontend source code and build
 COPY frontend/ ./
 RUN VITE_API_BASE_URL="$VITE_API_BASE_URL" \
     VITE_OAUTH_BASE_URL="$VITE_OAUTH_BASE_URL" \
+    VITE_LOGIN_PROVIDER="$VITE_LOGIN_PROVIDER" \
     VITE_DEFAULT_ROLE="$VITE_DEFAULT_ROLE" \
     npm run build
 
 # Production stage
-FROM registry.ymdd.tech/library/nginx:1.25-alpine
+FROM ${NGINX_BASE_IMAGE}
 RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx
 RUN sed -i 's/^user/#user/' /etc/nginx/nginx.conf && \
-    sed -i 's!/var/run/nginx.pid!/tmp/nginx.pid!' /etc/nginx/nginx.conf && \
+    sed -i 's#^[[:space:]]*pid[[:space:]].*;#pid /tmp/nginx.pid;#' /etc/nginx/nginx.conf && \
     sed -i 's/^worker_processes.*/worker_processes 2;/' /etc/nginx/nginx.conf
 COPY --chown=nginx:nginx --from=build-stage /app/dist /usr/share/nginx/html
 COPY --chown=nginx:nginx frontend/nginx.conf /etc/nginx/conf.d/default.conf

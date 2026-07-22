@@ -1,6 +1,6 @@
 # 智聘 · 快速启动
 
-> **状态声明（2026-07-11）**：本代码树是完成合并前 P0 收口的 CFPD `test` 候选。Git ref、Libra 构建、K8S 部署和测试站运行态是四类证据，不能相互替代；本说明不单独构成 SIT 已发布证明。
+> **状态声明（2026-07-22）**：本代码树已补齐本地面试通知与受控免登录反馈闭环。Git ref、Libra 构建、K8S 部署和测试站运行态是四类证据，不能相互替代；本说明不单独构成 SIT 已发布证明。
 
 ## 前置条件
 
@@ -8,6 +8,53 @@
 - Node.js 20.19–20.x 或 22.12+，npm 10+
 - pip 安装依赖前先升级安装器：`python -m pip install --upgrade pip`
 - 安装后端依赖：`python -m pip install -r backend/requirements.txt`
+- 推荐本地路线只要求 Docker Desktop，或 Docker Engine + Compose v2
+
+---
+
+## 本地全容器启动（推荐）
+
+在项目根目录使用 PowerShell 7：
+
+```powershell
+pwsh -File .\scripts\start-local.ps1
+```
+
+脚本首次运行会生成被 Git 忽略的 `.env`，创建随机数据库/JWT/字段加密密钥，构建并等待全部容器健康，再幂等准备两个本地账号。宿主机端口只绑定 `127.0.0.1`：
+
+| 服务 | 宿主机地址 | 容器内端口 |
+|---|---|---|
+| 前端 | `http://127.0.0.1:15173` | `8080` |
+| 后端 | `http://127.0.0.1:15001` | `5000` |
+| MySQL 8.0.32 | `127.0.0.1:13306` | `3306` |
+| 企业微信模拟接收器 | `http://127.0.0.1:19090` | `8090` |
+
+本地账号：
+
+- 招聘专员：`hr.local@example.test` / `ZhipinLocal2026!`
+- 面试官：`interviewer.local@example.test` / `ZhipinLocal2026!`
+
+停止容器但保留 MySQL、上传文件和模拟通知数据：
+
+```powershell
+docker compose --env-file .env --file compose.local.yaml down
+```
+
+`compose.local.yaml` 明确使用 `mysql:8.0.32`，前后端程序本体也都在 Docker 中运行。可通过 `.env` 修改高位宿主机端口，但不要改成 `3306`、`5000`、`5173`、`8080` 等常见开发端口。
+
+### 面试通知与免登录反馈
+
+本地 Compose 将通知发给模拟接收器；真实环境应配置：
+
+```env
+PUBLIC_APP_BASE_URL=https://zhipin.example.com
+INTERVIEW_NOTIFICATION_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REDACTED
+INTERVIEW_NOTIFICATION_WEBHOOK_MODE=wecom
+INTERVIEW_ACCESS_TOKEN_TTL_HOURS=72
+INTERVIEW_NOTIFICATION_TIMEOUT_SECONDS=5
+```
+
+`INTERVIEW_NOTIFICATION_WEBHOOK_MODE` 只接受 `wecom` 或 `generic`。创建面试安排时生成一次投递记录；失败不会撤销已创建的安排，HR 可从面试记录重试。链接使用 URL fragment 携带短期签名令牌，服务端只允许读取该 assignment、接单/拒绝和提交一次反馈；取消任务或令牌版本变化会立即使旧链接失效。日志和页面不得回显完整 Webhook 地址或签名令牌。
 
 ---
 
@@ -88,7 +135,7 @@ python seed_dev.py
 ```bash
 cd backend
 alembic upgrade head
-alembic current  # 当前收口候选应为 20260711_04
+alembic current  # 当前收口候选应为 20260722_06
 python scripts/audit_demand_scope.py --database <local-sqlite-fixture> \
   --output <audit-report.json> --manifest-output <mapping-to-review.json>
 # 必须由 Product/Data Owner 将审批后的条目标记 approved=true
@@ -101,6 +148,8 @@ python scripts/verify_demand_scope.py --database <local-sqlite-fixture> \
 ```
 
 上述命令的具体参数以各脚本 `--help` 为准。只有 `verify_demand_scope.py` 返回成功且 `request_no_issues=[]`、`default_interviewer_mismatches=[]` 才能结束停写；`default_interviewer_warnings` 中的停用账号只是后续人工换人提示，不代表跨组织或孤儿数据。MySQL/PostgreSQL 不用本地 SQLite 结果代替同引擎验证；其发布与回滚门禁见 [docs/10_demand_id迁移与回滚手册.md](docs/10_demand_id迁移与回滚手册.md)。
+
+`20260722_05` 在 Demand 基线上增加 assignment 接单状态、访问令牌版本和 `interview_notification_deliveries`；`20260722_06` 将 `events.source` 扩为 64 字符，以容纳 `interview_access_link` 等明确来源。两者都是当前 head 的必要组成，不能只停在 `20260711_04`。
 
 ### BOSS 直聘后端接口（实验辅助能力）
 
@@ -166,6 +215,8 @@ AI 助手首页的示例问题会按角色变化：招聘专员看到自己负�
 创建 Demand 时的“默认面试官”可留空，也可按姓名或邮箱搜索当前组织内已启用的内部账号；界面中的“例如：王杰”只是搜索提示，不会自动选中任何人。面试安排只能选择启用中的面试官账号和开放中（pending/active）的具体 Demand；选中 Demand 后会带出其默认面试官，但 HR 仍可搜索换人。如果账号被停用或 Demand 已暂停/关闭，先由管理员启用账号，或到需求工作台恢复 Demand，再重新安排面试；Job 只是画像模板，不代替 Demand 的启停语义。同一个面试官同一时间只能有一场有效面试；如果系统提示已有安排，需要改时间或换面试官。
 
 面试反馈统一在「面试任务」页处理，但它不再作为招聘专员、经理或管理员的左侧一级入口。候选人在管道进入面试阶段后，可以从管道右侧点击「填写面试反馈」，系统会带着候选人和 Demand 定位到具体 assignment；没有有效 assignment 时只提示先安排，不展示可提交表单。面试官在「我的面试」任务卡上点「填写反馈」后，会自动切到待处理并滚动到对应反馈表。AI 预筛参考只是辅助，不替代人工安排和反馈。
+
+创建面试安排后，HR 可在记录抽屉查看面试官接单状态与通知投递结果；失败投递可重试。面试官既可登录“我的面试”，也可从通知里的短期链接进入单任务页面接单、拒绝和填写反馈。短期链接不是匿名公开简历入口：它只能读取所绑定的候选人/需求/场次，过期、取消或版本失效后立即不可用。反馈完成后仍由 HR/经理/Admin 查看结果并人工推进到下一轮、淘汰或 Offer。
 
 面试误安排可由 Demand owner、经理或管理员在任务列表填写原因后取消。已提交反馈的任务不可取消；未反馈任务取消后撤销面试官访问、释放主面试官轮次槽位，可重新安排，并保留通知与审计。
 

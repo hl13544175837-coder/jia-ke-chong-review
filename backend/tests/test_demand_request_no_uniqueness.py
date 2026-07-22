@@ -330,7 +330,7 @@ def test_request_no_migration_backfills_normalizes_and_adds_unique_index(tmp_pat
     ]
     assert connection.execute(
         "SELECT version_num FROM alembic_version"
-    ).fetchone()[0] == "20260711_04"
+    ).fetchone()[0] == "20260722_06"
     connection.close()
 
     engine = create_engine(f"sqlite:///{path}")

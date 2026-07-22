@@ -65,7 +65,7 @@ export function PendingFeedbackPanel({
                       </div>
                       <p className="mt-1 truncate text-sm text-muted">{item.job_title}</p>
                       <p className="mt-1 text-xs text-muted-soft">
-                        {item.demand_id ? `招聘需求 #${item.demand_id}` : '历史未归属需求'}
+                        {item.demand_id ? '当前岗位招聘流程' : '历史未归属需求'}
                       </p>
                       <p className="mt-2 text-xs text-muted-soft">
                         进入本轮：{item.updated_at ? formatDate(item.updated_at) : '—'}

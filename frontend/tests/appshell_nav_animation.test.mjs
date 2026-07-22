@@ -4,7 +4,10 @@ import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(join(__dirname, '../src/components/AppShell.tsx'), 'utf8');
+const source = readFileSync(join(__dirname, '../src/components/AppShell.tsx'), 'utf8').replace(
+  /\r\n/g,
+  '\n',
+);
 
 const navTweenStart = source.indexOf(".from(\n              '[data-shell=\"nav-item\"]'");
 const navTweenEnd = source.indexOf("'-=0.2'", navTweenStart);

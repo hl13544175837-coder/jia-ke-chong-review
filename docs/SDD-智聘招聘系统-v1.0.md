@@ -1,9 +1,9 @@
-# 智聘招聘系统 SDD v1.1（Demand-scoped As-built 代码候选）
+# 智聘招聘系统 SDD v1.2（Demand-scoped 招聘闭环 As-built）
 
 > As-built SDD = 根据当前已实现系统反推的系统设计文档。
 > 本文用于后续迭代开发、模块定位、影响范围评估和交接，不等同于最初立项时的需求文档。
 >
-> **2026-07-11 状态说明：** Demand 维度招聘流及本轮 P0 硬化已在 `codex/premerge-p0-closeout-20260711` 形成代码候选。Git 推送、Libra 构建、K8S 部署和测试站运行态必须分别取证；本文不声称 SIT 已运行本候选。环境是否完整具备该能力，仍以后端受控 API、schema revision、部署记录和页面现场验收为准。
+> **2026-07-22 状态说明：** Demand 维度招聘流已补齐面试通知、任务响应、受控免登录反馈与 HR 后续决策闭环。Git 推送、Libra 构建、K8S 部署和测试站运行态必须分别取证；本文不声称 SIT 已运行本候选。环境是否完整具备该能力，仍以后端受控 API、schema revision、部署记录和页面现场验收为准。
 
 ## 1. 文档基准
 
@@ -11,10 +11,10 @@
 |---|---|
 | 系统名称 | 智聘 · 招聘管理系统 |
 | 文档类型 | 当前代码候选 As-built 与尚未完成的环境/Strict 门禁合并文档 |
-| 代码基准 | `codex/premerge-p0-closeout-20260711` 与 ADR-0002；环境运行态另以 CFPD/Libra/SIT 证据为准 |
+| 代码基准 | 当前仓库 `main` 与 ADR-0002；环境运行态另以 CFPD/Libra/SIT 证据为准 |
 | 本地项目路径 | `/Users/yenns/Desktop/智聘` |
 | 主要用途 | 后续按模块指定改动时，用来快速判断要改哪些文件、影响哪些接口/表/流程 |
-| 文档生成日期 | 2026-06-19；Demand As-built 更新于 2026-07-11 |
+| 文档生成日期 | 2026-06-19；招聘闭环 As-built 更新于 2026-07-22 |
 
 ### 1.1 实现状态分层
 
@@ -56,6 +56,7 @@
 | 候选人流程 | 代码候选已实现，环境待验收 | 主阶段枚举保持稳定；归属键为 `demand_id`，转需求使用 `transferred` |
 | AI 面试 | 代码候选已实现，环境待验收 | 保留生成题目、评分与建议；AI 不自动推进、淘汰、发 Offer、转派或关闭需求 |
 | 面试官反馈 | 代码候选已实现，环境待验收 | 按 Demand/assignment/轮次写反馈，数据库约束防并发重复，进入候选人 journey |
+| 面试任务通知 | 代码候选已实现，环境待验收 | 通用/企业微信 Webhook、投递状态与重试、短期签名链接接单/拒绝及受控免登录反馈 |
 | BI 看板 | 代码候选已实现，环境待验收 | 按 Demand 看进度、瓶颈与当前责任协同；不返回人员排名、绩效或奖金依据 |
 | AI 助手 | 代码候选已收缩，环境待验收 | 只做解析、匹配、总结与建议，不提供主流程写操作 |
 | 用户管理 | 已实现 | admin 管理用户角色、启停、创建账号与重置密码 |
@@ -78,7 +79,7 @@
 ```mermaid
 flowchart LR
   Browser["浏览器 / React SPA"] --> Flask["Flask API + 静态托管 :5000"]
-  Flask --> SQLite["SQLite hireinsight.db"]
+  Flask --> Database["MySQL 8.0.32 / SQLite / PostgreSQL"]
   Flask --> Uploads["本地 uploads/ 简历文件"]
   Flask --> Services["Backend Services"]
   Services --> BaseAgent["base_agent AI 能力"]
@@ -231,6 +232,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `events` | `Event` | `org_id`, `actor_id`, `actor_role`, `action`, `entity_id`, `entity_type`, `payload`, `request_id`, `ip`, `user_agent`, `result`, `failure_reason`, `source`, `severity` | 写操作事件与试点审计基础；`source` 区分页面、AI、安全拦截 |
 | `audit_logs` | `AuditLog` | `org_id`, `actor_id`, `target_table`, `target_id`, `action` | 预留审计表，当前使用较少 |
 | `interview_feedback` | `InterviewFeedback` | `org_id`, `candidate_id`, `job_id`, `demand_id`, `assignment_id`, `round`, `interviewer_id`, `score`, `passed`, `reason_tags`, `note` | 具体 assignment 的面试反馈；`assignment_id` 非空时唯一 |
+| `interview_notification_deliveries` | `InterviewNotificationDelivery` | `org_id`, `assignment_id`, `recipient_user_id`, `channel`, `status`, `attempts`, `response_code`, `last_error`, `sent_at` | 每个 assignment 一条通知投递事实；失败与安排事实分离，可受权重试且错误信息脱敏 |
 | `idempotency_records` | `IdempotencyRecord` | `scope_key`, `idempotency_key`, `actor_scope`, `method`, `path`, `body_hash`, `status_code`, `response_json` | 普通 JSON/表单写接口的 `Idempotency-Key` 重试保护；重放前重新校验当前账号启用状态与 `token_version` |
 
 下列 Demand-scoped 模型和约束同样已存在于当前代码候选：
@@ -241,7 +243,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `Candidate` | 新增 `current_demand_id` | 候选人当前唯一活跃招聘流的快速定位指针，不替代历史流水 |
 | `CandidateDemandFlow` / `candidate_demand_flows` | `org_id`, `candidate_id`, `demand_id`, `owner_hr_id`, `status`, `started_at`, `ended_at`, `transfer_from_demand_id`, `transfer_reason`；唯一约束 `(org_id, candidate_id, demand_id)` | 候选人在某 Demand 下的应聘关系与活动状态；当前阶段从该 Demand 的最新 `PipelineStage` 取得，P0 仅允许一个 active flow |
 | 主流程与业务事实 | `pipeline_stages`, `interviews`, `interview_assignments`, `interview_feedback`, `offers`, `dispositions`, `events`, `notifications`, `upload_batches` 增加可回填的 `demand_id` | 所有业务事实在严格切换后按 Demand 归属；`job_id` 仅保留画像或兼容语义 |
-| `InterviewAssignment` | `demand_id`, `round_sequence`, `is_primary`, `primary_slot`；唯一索引 `(org_id,demand_id,candidate_id,primary_slot)` | 有效 primary 的 `primary_slot=round_sequence`，辅助/取消安排为 NULL；数据库保证每轮最多一个有效主面试官 |
+| `InterviewAssignment` | `demand_id`, `round_sequence`, `is_primary`, `primary_slot`, `response_status`, `response_reason`, `responded_at`, `access_token_version`；唯一索引 `(org_id,demand_id,candidate_id,primary_slot)` | 有效 primary 的 `primary_slot=round_sequence`，辅助/取消安排为 NULL；数据库保证每轮最多一个有效主面试官，并记录接单/拒绝与旧链接撤销版本 |
 | `InterviewFeedback` | `assignment_id`, `demand_id`；`assignment_id` 唯一索引 | 反馈归属具体安排，同一 assignment 不产生第二份反馈；legacy NULL 仅为兼容，反馈永不自动推进主流程 |
 | `Match` | 继续使用 `job_id` | 匹配是候选人与岗位画像的可复用计算；“加入哪个招聘任务”由 `demand_id` 决定 |
 
@@ -362,6 +364,11 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `GET` | `/interviews` | 登录 | 面试记录列表，按角色过滤 |
 | `GET` | `/interview/interviewers` | 登录 | 返回启用中的面试官/经理/管理员选项，包含姓名、email 和角色供可搜索选择 |
 | `POST` | `/interview/assignments` | recruiter/manager/admin + Demand 权限 | 创建主/辅安排；重复返回已有记录；同轮第二个有效 primary 或时间冲突稳定 409，数据库唯一索引兜底 |
+| `POST` | `/interview/assignment/respond` | 被分配面试官 | 登录态接单或拒绝当前 assignment；拒绝原因进入任务事实与审计 |
+| `POST` | `/interview/assignment/notification/retry` | recruiter/manager/admin + Demand 管理权 | 重试失败/待处理的通知投递，不创建第二个 assignment |
+| `POST` | `/interview/access/get` | 无 JWT；有效签名令牌 | 只返回令牌绑定 assignment 的候选人、需求、时间地点、响应和反馈状态 |
+| `POST` | `/interview/access/respond` | 无 JWT；有效签名令牌 | 对令牌绑定 assignment 接单或拒绝；不能修改其他任务或推进流程 |
+| `POST` | `/interview/access/feedback` | 无 JWT；有效签名令牌 | 复用统一反馈服务提交一次评分与评价；组织、面试官、assignment 和令牌版本均由服务端解析 |
 | `PATCH` | `/interview/assignments/<assignment_id>/cancel` | recruiter/manager/admin + Demand 管理权 | `reason` 必填；只取消未反馈任务，规范状态为 `cancelled`、释放 `primary_slot` 并允许重排；已有反馈返回稳定 409 |
 
 ### 7.7 BI / Admin / Agent（当前代码候选）
@@ -615,6 +622,10 @@ flowchart TD
 
 面试安排由 HR/经理/管理员创建。Demand 可保存一个可空 `default_interviewer_id`，创建页和正式安排页通过同一可搜索账号组件选人；不按姓名或固定 ID 硬编码。选中 Demand 后仅预填它的默认面试官，当次 assignment 仍以 HR 最终选定人为准，不回写 Demand。后端会兜底校验 Demand 存在、组织/状态/RBAC、候选人 active flow，以及面试官账号属于当前组织、已启用且角色合法；只有 legacy job-only 上下文先检查并唯一解析 Demand。即使前端选项过期，也不会把新面试分配给无权 Demand 或停用账号。
 
+创建 assignment 后，`interview_notification_service` 生成带 `assignment_id`、面试官身份、令牌版本和过期时间的签名令牌，并将访问地址放在 URL fragment 中，避免常规服务器访问日志记录令牌。部署通过 `generic` 或 `wecom` Webhook 发送；投递使用稳定 `Idempotency-Key`，状态、次数、HTTP 状态码和脱敏错误保存在 `interview_notification_deliveries`。通知失败不回滚已创建的 assignment，HR 可显式重试。
+
+`/interview-access` 页面不建立通用匿名会话。每次请求都重新校验签名、过期时间、assignment 的 `access_token_version`、未取消状态、指定面试官账号启用状态与现有反馈。取消任务会递增版本并使旧链接立即失效；公开接单/反馈与登录态入口复用 `interview_workflow_service`，因此同样受一任务一反馈、主面试官轮次和审计约束。反馈完成本轮后，HR 仍需人工查看结果并决定淘汰、下一轮或 Offer。
+
 前端将面试官选项请求与既有面试记录、Demand、assignment 和待反馈任务解耦。人员选项加载失败时，主工作区继续展示已有事实；安排面板单独进入错误态，禁用新建并允许只重试人员选项。Demand 创建表单不默认选择第一条 Job，本地日期在表单实例初始化时计算。Demand 状态动作完成后，详情刷新期间与刷新失败时都会锁定依赖最新状态的按钮；失败态保留旧事实用于阅读，但明确标为可能过期并提供重试。
 
 `reason_tags` 是面试事实和阻塞原因的标准化分类，只用于协同复盘和流程改进，不是对面试官、HR 或部门做绩效定性。
@@ -797,7 +808,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 发布通道另有一层不受运行时环境变量覆盖的边界：Makefile 只接受精确 `RC` / `GA`，并把发布通道写入镜像内 `.release-channel` 文件。entrypoint 先读取该标记；GA 镜像若被 K8S env 覆盖为 SIT 放行、自动迁移/空库初始化、公开注册或关闭安全头/限流，会在任何 DDL 之前拒绝启动。RC 镜像则保留本轮已授权的完全宽松测试配置。
 
-当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
+当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260722_05` → `20260722_06`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 增加 assignment 响应字段、访问令牌版本和通知投递表；06 将 `events.source` 从 20 扩为 64 字符，保证免登录入口的明确审计来源可落库。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，发布恢复写入前必须到当前 head `20260722_06`，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|

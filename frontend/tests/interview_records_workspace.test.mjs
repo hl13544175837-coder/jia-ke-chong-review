@@ -26,6 +26,8 @@ const nav = readSource('lib/nav.ts');
 const workspace = readSource('lib/interviewRecords.ts');
 const pendingPanel = readSource('components/interviewRecords/PendingFeedbackPanel.tsx');
 const feedbackForm = readSource('components/interview/FeedbackForm.tsx');
+const recordsTable = readSource('components/interviewRecords/InterviewRecordsTable.tsx');
+const recordDrawer = readSource('components/interviewRecords/InterviewRecordDrawer.tsx');
 
 assert.match(
   page,
@@ -68,6 +70,11 @@ assert.match(
   /InterviewRecordDrawer/,
   'Interview records workspace should expose record details without leaving the page',
 );
+
+assert.match(recordsTable, /demand_request_no/, '面试记录表应展示业务需求编号');
+assert.match(recordDrawer, /demand_request_no/, '面试详情应展示业务需求编号');
+assert.doesNotMatch(recordsTable, /`#\$\{item\.demand_id\}`/, '面试记录表不应展示内部需求 ID');
+assert.doesNotMatch(recordDrawer, /招聘需求 #/, '面试详情不应展示内部需求 ID');
 
 assert.match(
   nav,

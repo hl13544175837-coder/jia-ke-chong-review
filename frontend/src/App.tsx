@@ -19,6 +19,7 @@ import { ToastProvider } from './components/ui';
 import type { Role } from './types';
 
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })));
+const PublicInterviewAccessPage = lazy(() => import('./pages/PublicInterviewAccessPage').then((module) => ({ default: module.PublicInterviewAccessPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
 const AgentPage = lazy(() => import('./pages/AgentPage').then((module) => ({ default: module.AgentPage })));
 const NotificationCenterPage = lazy(() => import('./pages/NotificationCenterPage').then((module) => ({ default: module.NotificationCenterPage })));
@@ -68,6 +69,7 @@ function AppRoutes() {
         path="/login"
         element={isAuthenticated ? <HomeRedirect /> : <LoginPage />}
       />
+      <Route path="/interview-access" element={<PublicInterviewAccessPage />} />
       <Route element={<RequireAuth />}>
         <Route path="/" element={<DashboardPage />} />
         <Route

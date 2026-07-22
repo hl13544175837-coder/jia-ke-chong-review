@@ -72,6 +72,10 @@ class Config:
         "auth.login": {"limit": int(os.environ.get("RATE_LIMIT_LOGIN", "10")), "window_seconds": 60},
         "agent.chat": {"limit": int(os.environ.get("RATE_LIMIT_AGENT_CHAT", "20")), "window_seconds": 60},
         "resume.upload": {"limit": int(os.environ.get("RATE_LIMIT_RESUME_UPLOAD", "8")), "window_seconds": 60},
+        "interview.public_access": {
+            "limit": int(os.environ.get("RATE_LIMIT_INTERVIEW_PUBLIC_ACCESS", "30")),
+            "window_seconds": 60,
+        },
     }
 
     # 视为弱/默认的密钥，生产启动时拒绝
@@ -106,6 +110,21 @@ class Config:
 
     # 字段级加密密钥（Fernet），用于加密 BOSS 账号 cookies 等敏感数据
     FIELD_ENCRYPTION_KEY = os.environ.get("FIELD_ENCRYPTION_KEY", "")
+
+    # 面试协同链接只携带短期签名令牌；真实接收方和发送方式由部署环境决定。
+    PUBLIC_APP_BASE_URL = os.environ.get("PUBLIC_APP_BASE_URL", "").strip()
+    INTERVIEW_ACCESS_TOKEN_TTL_HOURS = int(
+        os.environ.get("INTERVIEW_ACCESS_TOKEN_TTL_HOURS", "72")
+    )
+    INTERVIEW_NOTIFICATION_WEBHOOK_URL = os.environ.get(
+        "INTERVIEW_NOTIFICATION_WEBHOOK_URL", ""
+    ).strip()
+    INTERVIEW_NOTIFICATION_WEBHOOK_MODE = os.environ.get(
+        "INTERVIEW_NOTIFICATION_WEBHOOK_MODE", "generic"
+    ).strip().lower()
+    INTERVIEW_NOTIFICATION_TIMEOUT_SECONDS = float(
+        os.environ.get("INTERVIEW_NOTIFICATION_TIMEOUT_SECONDS", "5")
+    )
 
     # Flask
     SECRET_KEY = os.environ.get("JWT_SECRET", "dev-secret")

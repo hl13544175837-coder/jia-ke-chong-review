@@ -4,7 +4,15 @@ import { CalendarClock } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { formatDate } from '../../lib/formatDate';
-import { demandOptionLabel, INTERVIEW_ROUNDS, roundLabel } from '../../lib/interviewRecords';
+import {
+  assignmentResponseLabel,
+  assignmentResponseTone,
+  demandOptionLabel,
+  INTERVIEW_ROUNDS,
+  notificationDeliveryLabel,
+  notificationDeliveryTone,
+  roundLabel,
+} from '../../lib/interviewRecords';
 import type {
   InterviewAssignment,
   InterviewRound,
@@ -61,6 +69,7 @@ export function InterviewAssignmentPanel({
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [retryingId, setRetryingId] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const open = controlledOpen ?? localOpen;
@@ -132,7 +141,7 @@ export function InterviewAssignmentPanel({
     setSaving(true);
     setMessage(null);
     try {
-      await api.createInterviewAssignment({
+      const created = await api.createInterviewAssignment({
         candidate_id: cid,
         demand_id: did,
         round,
@@ -153,7 +162,16 @@ export function InterviewAssignmentPanel({
       setScheduledAt('');
       setLocation('');
       setNote('');
-      setMessage('面试安排已保存');
+      const deliveryStatus = created.notification_delivery?.status;
+      setMessage(
+        deliveryStatus === 'sent'
+          ? '面试安排已保存，企微通知已发送'
+          : deliveryStatus === 'failed'
+            ? '面试安排已保存，但企微通知发送失败，可在任务卡片重试'
+            : deliveryStatus === 'not_configured'
+              ? '面试安排已保存；当前未配置企微通知，面试官仍可登录处理'
+              : '面试安排已保存，通知正在等待发送',
+      );
       onCreated();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : '保存失败');
@@ -182,10 +200,28 @@ export function InterviewAssignmentPanel({
     }
   }
 
+  async function handleRetryNotification(item: InterviewAssignment) {
+    setRetryingId(item.id);
+    setMessage(null);
+    try {
+      const updated = await api.retryInterviewAssignmentNotification(item.id);
+      setMessage(
+        updated.notification_delivery?.status === 'sent'
+          ? '企微通知已重新发送'
+          : updated.notification_delivery?.last_error ?? '企微通知仍未发送，请检查运行配置',
+      );
+      onCreated();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : '重新发送通知失败');
+    } finally {
+      setRetryingId(null);
+    }
+  }
+
   function canCancel(item: InterviewAssignment) {
     const status = (item.status || 'scheduled').toLowerCase();
     return role !== 'interviewer'
-      && !['cancelled', 'canceled', 'completed', 'feedback_submitted'].includes(status);
+      && !['cancelled', 'canceled', 'declined', 'completed', 'feedback_submitted'].includes(status);
   }
 
   return (
@@ -195,7 +231,7 @@ export function InterviewAssignmentPanel({
           <div>
             <CardTitle>面试安排</CardTitle>
             <p className="mt-1 text-xs text-muted-soft">
-              指派面试官、记录时间与会议链接，反馈仍在下方待填写区域完成
+              指派面试官后自动通知；面试官接单、反馈，HR 再决定后续流程
             </p>
           </div>
           <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(!open)}>
@@ -411,12 +447,15 @@ export function InterviewAssignmentPanel({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-ink">{item.name_masked ?? `候选人 #${item.candidate_id}`}</p>
+                      <p className="font-medium text-ink">{item.name_masked ?? '候选人'}</p>
                       <Badge tone="warning">{roundLabel(item.round)}</Badge>
+                      <Badge tone={assignmentResponseTone(item.response_status)}>
+                        {assignmentResponseLabel(item.response_status)}
+                      </Badge>
                     </div>
-                    <p className="mt-1 truncate text-sm text-muted">{item.job_title ?? `岗位 #${item.job_id}`}</p>
+                    <p className="mt-1 truncate text-sm text-muted">{item.job_title ?? '岗位信息待补充'}</p>
                     <p className="mt-1 text-xs text-muted-soft">
-                      {item.demand_id ? `招聘需求 #${item.demand_id}` : '历史未归属需求'}
+                      {item.demand_request_no ?? '历史未归属需求'}
                       {' · '}第 {item.round_sequence} 轮
                       {' · '}{item.is_primary ? '主面试官' : '辅助面试官'}
                     </p>
@@ -425,9 +464,38 @@ export function InterviewAssignmentPanel({
                       {item.interviewer_name ? ` · ${item.interviewer_name}` : ''}
                     </p>
                     {item.location && <p className="mt-1 text-xs text-body">{item.location}</p>}
+                    {item.response_reason && (
+                      <p className="mt-2 text-xs text-danger-700">
+                        原因：{item.response_reason}
+                      </p>
+                    )}
+                    {item.notification_delivery?.last_error && (
+                      <p className="mt-1 text-xs text-muted">
+                        通知说明：{item.notification_delivery.last_error}
+                      </p>
+                    )}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
-                    <Badge tone="brand">{item.status || 'scheduled'}</Badge>
+                    {item.feedback_submitted && <Badge tone="success">反馈已提交</Badge>}
+                    {item.notification_delivery && (
+                      <Badge tone={notificationDeliveryTone(item.notification_delivery.status)}>
+                        {notificationDeliveryLabel(item.notification_delivery.status)}
+                      </Badge>
+                    )}
+                    {item.notification_delivery
+                      && ['failed', 'not_configured'].includes(item.notification_delivery.status)
+                      && canCancel(item) && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        loading={retryingId === item.id}
+                        disabled={retryingId !== null}
+                        onClick={() => void handleRetryNotification(item)}
+                      >
+                        重发企微通知
+                      </Button>
+                      )}
                     {canCancel(item) && (
                       <Button
                         type="button"
