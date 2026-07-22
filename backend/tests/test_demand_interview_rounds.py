@@ -1086,8 +1086,20 @@ def test_recruiter_interview_lists_follow_demand_ownership_after_transfer(
 
     assert {item["demand_id"] for item in first_feedback} == {first_demand_id}
     assert {item["demand_id"] for item in second_feedback} == {second_demand_id}
+    assert {item["demand_request_no"] for item in first_feedback} == {
+        "REQ-IV-LIST-FIRST"
+    }
+    assert {item["demand_request_no"] for item in second_feedback} == {
+        "REQ-IV-LIST-SECOND"
+    }
     assert {item["demand_id"] for item in first_records} == {first_demand_id}
     assert {item["demand_id"] for item in second_records} == {second_demand_id}
+    assert {item["demand_request_no"] for item in first_records} == {
+        "REQ-IV-LIST-FIRST"
+    }
+    assert {item["demand_request_no"] for item in second_records} == {
+        "REQ-IV-LIST-SECOND"
+    }
 
 
 def test_assignment_status_is_server_managed_and_cancel_releases_primary_slot(

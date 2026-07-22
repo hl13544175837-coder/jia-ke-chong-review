@@ -74,7 +74,7 @@ export function InterviewRecordsTable({ items, onSelect }: InterviewRecordsTable
                 </td>
                 <td className="px-5 py-3 text-muted">{item.job_title ?? `#${item.job_id}`}</td>
                 <td className="px-5 py-3 text-muted">
-                  {item.demand_id ? `#${item.demand_id}` : '历史未归属'}
+                  {item.demand_request_no ?? (item.demand_id ? '需求编号待补充' : '历史未归属')}
                 </td>
                 <td className="px-5 py-3">
                   {item.type === 'ai' ? (

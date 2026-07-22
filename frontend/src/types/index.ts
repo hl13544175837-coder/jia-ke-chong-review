@@ -1021,6 +1021,7 @@ export interface InterviewListItem {
   candidate_id: number;
   name_masked: string | null;
   demand_id: number | null;
+  demand_request_no: string | null;
   assignment_id?: number | null;
   job_id: number;
   job_title: string | null;
