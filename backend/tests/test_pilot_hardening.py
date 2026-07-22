@@ -12,6 +12,11 @@ class _ProdLike(Config):
     """模拟生产：关闭 debug、关闭 testing。"""
     TESTING = False
     FLASK_DEBUG = False
+    SECURITY_HEADERS_ENABLED = True
+    RATE_LIMIT_ENABLED = True
+    ALLOW_PUBLIC_REGISTRATION = False
+    AUTO_MIGRATE_DATABASE = False
+    ALLOW_EMPTY_DATABASE_BOOTSTRAP = False
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     CELERY_TASK_ALWAYS_EAGER = True
     UPLOAD_FOLDER = "/var/lib/zhipin/uploads"

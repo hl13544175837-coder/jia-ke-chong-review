@@ -28,7 +28,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app import create_app, db
 from app.models import (
     User, Candidate, CandidateTag, Job, Match,
-    Interview, PipelineStage, Event, AuditLog
+    RecruitmentDemand, CandidateDemandFlow,
+    Interview, InterviewAssignment, InterviewFeedback,
+    PipelineStage, CandidateDisposition,
+    OfferRecord, OfferEvent, Event, AuditLog
 )
 
 app = create_app()
@@ -46,11 +49,18 @@ def wipe():
     """Delete all rows from seeded tables in FK-safe order."""
     db.session.query(AuditLog).delete()
     db.session.query(Event).delete()
+    db.session.query(OfferEvent).delete()
+    db.session.query(OfferRecord).delete()
+    db.session.query(InterviewFeedback).delete()
+    db.session.query(InterviewAssignment).delete()
+    db.session.query(CandidateDisposition).delete()
     db.session.query(PipelineStage).delete()
     db.session.query(Interview).delete()
+    db.session.query(CandidateDemandFlow).delete()
     db.session.query(Match).delete()
     db.session.query(CandidateTag).delete()
     db.session.query(Candidate).delete()
+    db.session.query(RecruitmentDemand).delete()
     db.session.query(Job).delete()
     db.session.query(User).delete()
     db.session.commit()
@@ -161,7 +171,44 @@ def seed():
         db.session.add_all([job1, job2, job3, job4])
         db.session.flush()
 
-        # ── 3. CANDIDATES + TAGS ──────────────────────────────────────────────
+        # ── 3. RECRUITMENT DEMANDS ─────────────────────────────────────────────
+        demand_specs = [
+            (job1, hr1, "DEMO-2026-001", "上海", "技术研发部", "平台研发负责人"),
+            (job2, hr2, "DEMO-2026-002", "上海", "产品研发部", "前端研发负责人"),
+            (job3, hr1, "DEMO-2026-003", "北京", "AI研究院", "算法负责人"),
+            (job4, hr2, "DEMO-2026-004", "上海", "数据部", "数据负责人"),
+        ]
+        demands_by_job_id = {}
+        for job, owner, request_no, city, department, hiring_manager in demand_specs:
+            demand = RecruitmentDemand(
+                org_id=1,
+                job_id=job.id,
+                owner_hr_id=owner.id,
+                default_interviewer_id=ivr.id,
+                created_by=manager.id,
+                city=city,
+                department=department,
+                job_title_snapshot=job.title,
+                jd_text_snapshot=job.jd_text,
+                request_no=request_no,
+                requester_name=hiring_manager,
+                requester_department=department,
+                hiring_manager_name=hiring_manager,
+                requested_at=_dt(35).date(),
+                accepted_at=_dt(34).date(),
+                target_date=_dt(-30).date(),
+                priority="B",
+                headcount=2,
+                status="active",
+                note="本地四角色验收演示需求",
+                created_at=_dt(34),
+                updated_at=_dt(1),
+            )
+            db.session.add(demand)
+            db.session.flush()
+            demands_by_job_id[job.id] = demand
+
+        # ── 4. CANDIDATES + TAGS ──────────────────────────────────────────────
         def make_candidate(owner_id, name_masked, email_masked, phone_masked, resume_json, created_days_ago):
             c = Candidate(
                 owner_hr_id=owner_id,
@@ -355,7 +402,7 @@ def seed():
         all_candidates = [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10]
         db.session.flush()
 
-        # ── 4. PIPELINE STAGES ────────────────────────────────────────────────
+        # ── 5. DEMAND-SCOPED FLOWS + PIPELINE STAGES ─────────────────────────
         # Spread candidates across stages for interesting Kanban + BI funnel
         pipeline_data = [
             # (candidate, job, stage, updated_by, days_ago)
@@ -406,21 +453,47 @@ def seed():
             (c10, job4, "offer",      manager.id, 1),
         ]
 
+        latest_by_candidate = {}
         for cand, job, stage, updated_by, days_ago in pipeline_data:
+            demand = demands_by_job_id[job.id]
             db.session.add(PipelineStage(
+                org_id=demand.org_id,
                 candidate_id=cand.id,
                 job_id=job.id,
+                demand_id=demand.id,
                 stage=stage,
                 updated_by=updated_by,
                 ts=_dt(days_ago),
             ))
+            latest_by_candidate[cand.id] = (demand, stage, days_ago)
+
+        for candidate in all_candidates:
+            demand, latest_stage, latest_days_ago = latest_by_candidate[candidate.id]
+            terminal_status = {
+                "onboarded": "completed",
+                "rejected": "rejected",
+            }.get(latest_stage)
+            candidate.owner_hr_id = demand.owner_hr_id
+            candidate.current_demand_id = demand.id if terminal_status is None else None
+            db.session.add(CandidateDemandFlow(
+                org_id=demand.org_id,
+                candidate_id=candidate.id,
+                demand_id=demand.id,
+                owner_hr_id=demand.owner_hr_id,
+                status=terminal_status or "active",
+                started_at=candidate.created_at,
+                ended_at=_dt(latest_days_ago) if terminal_status else None,
+                created_at=candidate.created_at,
+                updated_at=_dt(latest_days_ago),
+            ))
 
         db.session.flush()
 
-        # ── 5. INTERVIEWS ─────────────────────────────────────────────────────
+        # ── 6. INTERVIEWS ─────────────────────────────────────────────────────
         interview1 = Interview(
             candidate_id=c1.id,
             job_id=job1.id,
+            demand_id=demands_by_job_id[job1.id].id,
             qa_json=[
                 {"q": "请介绍你在Flask项目中最有挑战性的一个经历。",
                  "a": "我们需要在高并发场景下将API响应时间从800ms优化至150ms，通过引入Redis缓存层和异步Celery任务实现。"},
@@ -447,6 +520,7 @@ def seed():
         interview2 = Interview(
             candidate_id=c3.id,
             job_id=job3.id,
+            demand_id=demands_by_job_id[job3.id].id,
             qa_json=[
                 {"q": "介绍一个你做过的大模型微调项目。",
                  "a": "基于LLaMA-2-7B做领域微调，使用LoRA+QLoRA技术，训练集约50k条，最终在下游任务提升12%。"},
@@ -473,6 +547,7 @@ def seed():
         interview3 = Interview(
             candidate_id=c6.id,
             job_id=job2.id,
+            demand_id=demands_by_job_id[job2.id].id,
             qa_json=[
                 {"q": "请介绍你的React项目经验。",
                  "a": "主要做Vue3，React只用过基础的hooks，没有大型项目经验。"},
@@ -494,9 +569,41 @@ def seed():
         )
 
         db.session.add_all([interview1, interview2, interview3])
+        db.session.add(InterviewAssignment(
+            org_id=1,
+            candidate_id=c4.id,
+            job_id=job4.id,
+            demand_id=demands_by_job_id[job4.id].id,
+            round="round_1",
+            round_sequence=1,
+            is_primary=True,
+            primary_slot=1,
+            interviewer_id=ivr.id,
+            scheduled_at=_dt(-1),
+            location="腾讯会议 / 现场面试",
+            note="本地四角色验收待反馈任务",
+            status="scheduled",
+            created_by=hr2.id,
+            created_at=_dt(1),
+        ))
+        db.session.add(OfferRecord(
+            org_id=1,
+            candidate_id=c2.id,
+            job_id=job2.id,
+            demand_id=demands_by_job_id[job2.id].id,
+            salary_range="25k-32k · 14薪",
+            approval_status="draft",
+            note="本地 Offer 页面验收数据",
+            approver_id=manager.id,
+            salary_breakdown=[{"item": "月薪", "value": "25k-32k"}],
+            version=1,
+            created_by=hr2.id,
+            created_at=_dt(2),
+            updated_at=_dt(1),
+        ))
         db.session.flush()
 
-        # ── 6. EVENTS ─────────────────────────────────────────────────────────
+        # ── 7. EVENTS ─────────────────────────────────────────────────────────
         # BI overview counts:
         #   resumes  = COUNT(DISTINCT entity_id WHERE action='resume.uploaded')
         #   screens  = COUNT(DISTINCT entity_id WHERE action='interview.started')
@@ -541,7 +648,7 @@ def seed():
 
         db.session.commit()
 
-        # ── 7. MATCH ROWS (seed first 2 jobs via MatchService) ───────────────
+        # ── 8. MATCH ROWS (seed first 2 jobs via MatchService) ───────────────
         from app.services.match_service import MatchService
         svc = MatchService()
         for seed_job in [job1, job2]:
@@ -569,9 +676,13 @@ def seed():
         print("\nData created:")
         print(f"  Users        : {db.session.query(User).count()}")
         print(f"  Jobs         : {db.session.query(Job).count()}")
+        print(f"  Demands      : {db.session.query(RecruitmentDemand).count()}")
         print(f"  Candidates   : {db.session.query(Candidate).count()}")
+        print(f"  DemandFlows  : {db.session.query(CandidateDemandFlow).count()}")
         print(f"  CandidateTags: {db.session.query(CandidateTag).count()}")
         print(f"  Interviews   : {db.session.query(Interview).count()}")
+        print(f"  Assignments  : {db.session.query(InterviewAssignment).count()}")
+        print(f"  Offers       : {db.session.query(OfferRecord).count()}")
         print(f"  PipelineStages: {db.session.query(PipelineStage).count()}")
         print(f"  Events       : {db.session.query(Event).count()}")
         print(f"  Matches      : {db.session.query(Match).count()}")

@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 
 const port = Number(process.env.LOCAL_OAUTH_BRIDGE_PORT || 5100);
 const backendBase = (process.env.LOCAL_OAUTH_BACKEND_BASE || 'http://localhost:5001/api').replace(/\/+$/, '');
-const allowedOrigin = process.env.LOCAL_OAUTH_FRONTEND_ORIGIN || 'http://localhost:5174';
+const allowedOrigin = process.env.LOCAL_OAUTH_FRONTEND_ORIGIN || 'http://127.0.0.1:5174';
 const demoPassword = 'Zhipin2026';
 const demoPasswordMd5 = createHash('md5').update(demoPassword).digest('hex');
 
@@ -16,6 +16,18 @@ const accountEmails = new Map([
   ['hr03', 'hr03@mvp.local'],
   ['interviewer01', 'interviewer01@mvp.local'],
 ]);
+
+const localMenuTree = [
+  { code: 'index', name: '工作台' },
+  { code: 'candidates', name: '简历库' },
+  { code: 'demands', name: '招聘管理' },
+  { code: 'pipeline', name: '候选人流程' },
+  { code: 'interviews', name: '面试管理' },
+  { code: 'bi', name: '进度看板' },
+  { code: 'agent', name: 'AI 助手' },
+  { code: 'agentLogs', name: 'AI 调用日志' },
+  { code: 'settings', name: '系统设置' },
+];
 
 function corsHeaders() {
   return {
@@ -98,6 +110,25 @@ async function profile(request, response) {
   });
 }
 
+async function menu(request, response, url) {
+  if (url.searchParams.get('clientId') !== 'zhipin') {
+    sendJson(response, 200, { code: 0, fail: true, msg: '本地权限应用标识无效' });
+    return;
+  }
+
+  const authorization = request.headers.authorization || '';
+  const backendResponse = await fetch(`${backendBase}/auth/me`, {
+    headers: { Authorization: authorization },
+  });
+  const user = await backendResponse.json().catch(() => ({}));
+  if (!backendResponse.ok || !user.email) {
+    sendJson(response, 200, { code: 0, fail: true, msg: user.error || '本地登录状态无效' });
+    return;
+  }
+
+  sendJson(response, 200, { code: 1, succ: true, data: localMenuTree });
+}
+
 const server = createServer(async (request, response) => {
   if (request.method === 'OPTIONS') {
     response.writeHead(204, corsHeaders());
@@ -113,6 +144,10 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'GET' && url.pathname === '/pgs/oauth/api/profile') {
       await profile(request, response);
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/pgs/oauth/api/queryCurrentUserMenu') {
+      await menu(request, response, url);
       return;
     }
     sendJson(response, 404, { code: 0, fail: true, msg: 'Not found' });

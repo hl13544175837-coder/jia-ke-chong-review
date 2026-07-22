@@ -204,7 +204,7 @@ cd backend
 python seed_dev.py
 ```
 
-清空并重新写入试用用户、候选人、岗位及面试记录：7 个试用账号、10 个候选人、4 个岗位。不需要 LLM Key。
+清空并重新写入本地验收数据：7 个试用账号、10 个候选人、4 个岗位、4 个开放 Demand、10 条 Demand Flow、1 条面试官待反馈任务和 1 条草稿 Offer；所有演示 Pipeline / Interview 均带明确 `demand_id`。不需要 LLM Key。
 
 如果准备给真实 HR 小范围试点，不要用 `seed_dev.py` 重置。先 dry-run 看清理范围：
 
@@ -261,6 +261,8 @@ npm run build    # 验证生产构建；frontend/dist/ 是生成物，不提交
 
 普通开发仍使用上面的 `npm run dev`。只有需要在公司网关不可达的本机完整点击登录页、验证四角色路由时，才额外开启本地 OAuth 验收桥。该桥只接受本文列出的 `@mvp.local` 试用账号，调用本地后端生成真实 JWT，不创建业务假数据，也不会修改或替代正式公司的 `gatewayAuth.ts` 登录链路。
 
+本地桥在校验登录 Token 后，还会为 `clientId=zhipin` 返回本地验收所需的完整菜单 code；页面仍先按登录角色过滤路由，后端 RBAC 仍是最终权限边界。该行为只用于公司网关不可达时的本机验收，不进入 SIT/正式网关协议。
+
 先确保后端已在 `:5001` 启动并执行过 `seed_dev.py`，再开两个终端：
 
 ```bash
@@ -271,7 +273,7 @@ npm run dev:oauth-bridge
 ```bash
 cd frontend
 npm run dev:local-acceptance
-# 打开 http://localhost:5174
+# 打开 http://127.0.0.1:5174
 ```
 
 `dev:local-acceptance` 会显式把业务 `/api` 指向本地 `:5001`，避免 `frontend/.env.development` 把本地验收误接到远端 SIT。登录账号填写 `admin01`、`manager01`、`hr01` 或 `interviewer01`，密码仍为 `Zhipin2026`。正式构建和 SIT 不使用这两个本地命令，仍走公司网关及原冻结链路。
