@@ -1,14 +1,15 @@
 # Readdy 新前端迁移与验收矩阵
 
-> 状态：本地代码与四角色浏览器候选已收口，功能候选 SHA 为 `5ef064a`，待推送 CFPD `test` 并完成公司 SIT 现场验收。本文是迁移过程的接线真源，不代替已部署环境证明。
+> 状态：Codex 候选已完成第二轮“同页交互收口”，正在创建本地提交。当前已提交基线 HEAD 为 `5bdc6f7`，本轮代码、测试和本文档会一起形成后续本地提交；准确 SHA 以 `git log -1` 和 `CODEX_RESULT_2026-07-22.md` 为准。本文是迁移过程的接线真源，不代替已部署环境证明。
 >
-> 代码基线：`origin/test` 的 `5e251a2`；本地功能候选 `5ef064a`；新界面来源：本地 `readdy-export-12214982`。
+> 代码基线：`origin/test` 的 `5e251a2`；当前分支 `codex/readdy-test-product`；当前已提交 HEAD `5bdc6f7`。旧公司招聘系统是视觉基准，Figma/Readdy 是流程与交互基准。
 >
-> 范围说明：本次是 Readdy 新产品全量替换，早期 P0 试点文档中“人才地图不开放”的约束已被本次明确需求取代；正式开放仍必须满足真实 API、RBAC、组织隔离、审计和测试门禁。
+> 范围说明：本次是把 Figma/Readdy 梳理出的新招聘流程嫁接到现有公司前端设计体系，不是原样复制 Figma 的颜色、字体、间距和组件。正式开放仍必须满足真实 API、RBAC、组织隔离、审计和测试门禁。
 
 ## 1. 迁移目标
 
-- Readdy 导出的页面和交互作为最终前端，不保留旧前端作为第二套正式入口。
+- 旧公司招聘系统作为视觉基准：优先复用其颜色、字体、间距、宽度、表格、按钮和信息层级；Figma/Readdy 只作为最新流程、页面关系和交互方式的基准。
+- 详情和下钻默认在当前页面右侧抽屉完成，保留原列表、筛选和滚动上下文；完整工作台仅作为抽屉内明确的次级入口，不再让普通信息点击直接跳到新页面。
 - 继续使用当前 Flask 后端、数据库、Demand 维度流程、RBAC、组织隔离、审计和 BI 口径。
 - 继续使用公司网关 OAuth、`X-Emp-Code`、Apollo `appId=zhipin`、`mcp.sso.token` / `MCP_SSO_TOKEN` 及银河/集团门户/乾坤 token 交换链。
 - 正式页面只展示后端真实结果。加载失败显示错误和重试，不能拿 mock、硬编码或 `localStorage` 冒充成功。
@@ -43,20 +44,20 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 
 | Readdy 页面 | 最终角色 | 现有后端/API | 实施动作 |
 |---|---|---|---|
-| `/login` | 未登录 | 网关 OAuth + `/auth/me` | 保留 Readdy 视觉，换成真实登录、错误态和会话恢复 |
-| `/dashboard` 及统计抽屉 | 全部角色 | `/candidates`、`/demands`、`/interviews`、`/notifications`；manager/admin 可用 `/bi/overview` | 分区独立加载；失败不能显示伪造的 0 |
-| `/jobs` 招聘管理 | recruiter/manager/admin | `/demands`、`/jobs`、`/jobs/clarify`、匹配接口 | **路由语义已对齐**：Readdy `/jobs` 展示真实 Demand；岗位/JD 模板保留在二级 `/job-templates`，不作为第二套招聘主入口 |
-| `/candidates` 简历库 | recruiter/manager/admin | `/candidates`、`/resume/*`、匹配预览、批量入流程 | 搜索/筛选/详情/上传/负责人/加入 Demand 全部真实化；匹配摘要只展示后端明确返回的分数、命中项和欠缺项，前端不按自定阈值生成“建议初筛/暂不建议”等结论 |
-| `/kanban` 进度看板 | recruiter/manager/admin | `/pipeline/demands/*` | **代码候选已接通**：Demand 选择器 + KPI 卡 + 阶段列真实看板；推进走 `movePipeline`，淘汰/修正填原因弹窗，历史时间线真实；新看板已支持填写原因后转 Demand；面试官无写操作按钮；`/pipeline` 仅保留为新看板兼容地址 |
-| `/interviews` 面试管理 | recruiter/manager/admin | `/interviews`、`/interview/assignments`、取消、反馈、AI 面试 | **代码候选已接通**：统计卡、三维筛选、安排（Demand 带默认面试官、时间冲突高亮）、取消填原因、本人反馈复用 FeedbackForm；不触碰 pipeline 推进；角色收敛为 recruiter/manager/admin，面试官走 `/interviewer/*` |
-| `/offers` Offer 管理 | recruiter/manager/admin | `/offers`、`/offers/<id>`、`/offers/<id>/actions`、Demand Offer 草稿接口 | **本地候选已验收**：真实列表、草稿、审批、发放、回复、撤回、入职和历史；Demand 加载失败或无可用 Demand 时禁止打开空表单，候选人加载失败可重试；不用 sessionStorage |
+| `/login` | 未登录 | 网关 OAuth + `/auth/me` | 保留公司登录视觉与真实协议，补齐错误态和会话恢复；不为嫁接流程改动鉴权底座 |
+| `/dashboard` 及统计抽屉 | 全部角色 | `/candidates`、`/demands`、`/interviews`、`/notifications`；manager/admin 可用 `/bi/overview` | KPI 点击在当前页打开真实口径说明抽屉；组织级汇总无法唯一定位 Demand 时只给宽范围次级入口，不冒充精准下钻 |
+| `/jobs` 招聘管理 | recruiter/manager/admin | `/demands`、`/jobs`、`/jobs/clarify`、匹配接口 | Readdy `/jobs` 展示真实 Demand；岗位/JD 模板位于 `/job-templates`。岗位行点击只更新当前页右侧详情，新增岗位使用同页抽屉，AI 澄清与保存仍走真实接口 |
+| `/candidates` 简历库 | recruiter/manager/admin | `/candidates`、`/resume/*`、候选人流程、批量入流程 | 搜索/筛选/上传/负责人/加入 Demand 全部真实化；候选人行和姓名点击在当前页打开详情与真实流程抽屉，完整档案为次级入口 |
+| `/kanban` 进度看板 | recruiter/manager/admin | `/pipeline/demands/*` | Demand 选择器 + KPI 卡 + 阶段列真实看板；候选人卡片在当前页打开流程详情抽屉；推进、淘汰、修正、转 Demand 和历史继续走真实接口；面试官无写操作按钮 |
+| `/interviews` 面试管理 | recruiter/manager/admin | `/interviews`、`/interview/assignments`、取消、反馈、AI 面试 | 统计卡在当前页筛选，面试行打开右侧详情（面试信息/反馈/流程记录）；安排、取消、反馈仍是受权限控制的真实操作；支持 `status` 和 `demand` URL 筛选 |
+| `/offers` Offer 管理 | recruiter/manager/admin | `/offers`、`/offers/<id>`、`/offers/<id>/actions`、Demand Offer 草稿接口 | Offer 行和姓名点击打开当前页真实详情/历史抽屉；草稿、审批、发放、回复、撤回、入职状态机不变；详情快速切换已有请求竞态保护 |
 | `/talent-map` | recruiter/manager/admin | `/talent-maps*`、`/talent-map-companies/*`、`/talent-map-people/*` | **代码候选已接通**：正式路由、地图/公司/人选真实写入、筛选、公司优先级和人选接触状态持久化；招聘专员限本人，manager/admin 限本组织 |
-| `/analytics` | manager/admin | `/bi/overview`、`/bi/demand/*` | **代码候选已接通**：团队 KPI + 漏斗 + Demand 下钻；无个人绩效排名/成本/渠道排名；月度趋势因无真实数据未编造 |
-| `/dashboard/hired` | recruiter/manager/admin | `/offers`（status=onboarded） | **代码候选已接通**：真实已入职视图（累计/本月/Offer 至入职周期 + 入职记录表）；现有日期只能证明 Offer 记录创建到确认入职，不能冒充完整招聘周期 |
+| `/analytics` | manager/admin | `/bi/overview`、`/bi/demand/*` | 团队 KPI + 漏斗 + Demand 下钻；KPI 点击在当前页打开说明/下钻抽屉；无个人绩效排名、成本或编造月度趋势 |
+| `/dashboard/hired` | recruiter/manager/admin | `/offers`（status=onboarded） | 真实已入职视图；入职行和姓名点击在当前页打开详情抽屉，完整候选人档案为次级入口 |
 | `/ai-assistant` | recruiter/manager/admin | `/agent/tools`、会话、SSE chat | **错误态已加固**：会话列表/详情/能力目录失败均可见并可重试；本地会话编号按工号隔离；复用真实会话；工具集不得包含主流程写操作 |
 | `/settings` | admin；个人设置全角色 | `/admin/users`、`/auth/change-password`、审计和系统接口 | Readdy 的静态开关改成真实配置或明确只读；角色权限由后端控制 |
 | `/interviewer/*` | interviewer | `/interview/assignments`、面试反馈、已分配候选人详情 | **本地候选已验收**：工作台、我的面试、已分配候选人和参与岗位都由真实 assignment 裁剪；所有面试官入口统一指向 `/interviewer/interviews`，无全量库或 AI 会话预加载 |
-| `/director/*` | manager/admin | BI、Demand、Offer 审批/反馈事实 | **代码候选已接通**：驾驶舱（biOverview 摘要+待审批计数）、进展（Demand 清单+biDemand 下钻）、洞察（按停滞/反馈积压/断流/HC 缺口主题组织，非换标题 BI 页）、审批（待审批队列+approve/reject 真实状态机） |
+| `/director/*` | manager/admin | BI、Demand、Offer 审批/反馈事实 | 驾驶舱 KPI 与审批行使用当前页抽屉；审批详情来自真实 Offer API，approve/reject 状态机不变；进展和洞察继续按真实风险主题组织 |
 | `/kpi-standards` | manager/admin | `/kpi-standards`、`/kpi-standards/reset` | **代码候选已接通**：组织级版本化持久化、校验、并发冲突、审计和恢复默认；不使用 localStorage，不生成个人排名 |
 
 ## 5. Readdy 当前假数据清理范围
@@ -107,7 +108,7 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 
 每个模块只有同时满足以下条件才标记完成：
 
-1. Readdy 页面已进入正式路由，视觉和交互保持一致。
+1. 页面已进入正式路由：视觉遵循旧公司招聘系统，流程和同页抽屉交互遵循 Figma/Readdy。
 2. 加载、空数据、错误、重试和无权限状态齐全。
 3. 所有展示数据来自真实 API；所有写操作刷新页面后仍存在。
 4. 前端角色守卫、网关菜单/按钮权限和后端 RBAC 三层一致。
@@ -132,9 +133,9 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - 人才地图已从隐藏试验页变为正式 Readdy 路由；地图、目标公司、潜在人选、筛选、优先级和接触状态都由后端持久化，不使用 mock 或浏览器业务存储。
 - Readdy `/jobs` 已映射为真实用人需求（Demand）；旧岗位/JD 模板迁到 `/job-templates`，仍可从创建需求和岗位匹配流程到达。
 - Dashboard 的面试、Offer、已入职和招聘周期路由已映射到真实面试、Offer、Pipeline 和 Demand BI；面试官与总监的 Readdy 路由已按后端角色守卫接入。
-- 已从 Figma 文件 `PkZwN0jscEZXBXas5XdhKO` 的人才地图节点核对视觉真源；全局品牌色校准为 `#379f70` / `#e9f5f0`，人才地图改为横向地图和公司卡片、公司摘要、按需展开的真实写入面板。
+- Figma 文件 `PkZwN0jscEZXBXas5XdhKO` 用于核对新流程、信息关系和抽屉交互，不再作为颜色、字体、间距和组件外观的唯一视觉真源；全局品牌色已回到旧公司招聘系统的 `#00c07b` / `#009e66` 体系。
 - 简历库已按 Readdy 三段式（全部候选人/招聘流程中/人才池）嫁接：批量勾选加入 Demand 走真实 `batch-pipeline`，快速详情抽屉保留完整简历入口，范围统计失败显示错误和重试。
-- 招聘进度看板 `/kanban` 已从旧 Pipeline 页换成 Readdy 视觉真实看板：Demand 选择器、KPI 卡、阶段列、推进/淘汰/修正/历史全部走真实接口；面试官角色只读。
+- 招聘进度看板 `/kanban` 已按 Figma/Readdy 流程重组并沿用公司视觉：Demand 选择器、KPI 卡、阶段列、推进/淘汰/修正/历史全部走真实接口；面试官角色只读。
 - 面试管理 `/interviews` 已换成 Readdy 真实页面：安排（默认面试官+时间冲突提示）、取消（填原因）、本人反馈、查看反馈；不触碰主流程推进；角色收敛为 recruiter/manager/admin。
 - 已入职 `/dashboard/hired` 已形成真实视图：Offer 生命周期 `onboarded` 记录、累计/本月/Offer 至入职周期摘要，不再是跳转占位；完整招聘周期须以后端明确起点与统计字段为准。
 - 数据分析 `/analytics` 与总监四页已接通真实 BI/Offer：无个人绩效排名、无编造月度趋势；洞察页按风险主题组织。
@@ -146,12 +147,61 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - 最终本地证据见 [`evidence/2026-07-22-codex-final/README.md`](./evidence/2026-07-22-codex-final/README.md) 与机器可读的 [`acceptance.json`](./evidence/2026-07-22-codex-final/acceptance.json)；`evidence/2026-07-22/` 仅保留为历史预收口记录。
 - 仍未完成：CFPD `test` 推送、Libra 构建/部署、公司网关、Apollo/MCP Token 和 SIT 四角色现场证据；`/settings` 继续使用现有真实管理页，未做纯视觉重写。不能把本地通过表述成 SIT 已上线。
 
-## 11. 最终本地证据（2026-07-22）
+## 11. 上一轮本地基线证据（2026-07-22）
+
+以下数字属于已提交 HEAD `5bdc6f7` 对应的上一轮证据。当前同页抽屉改动尚未形成最终提交，因此不能把这些数字直接当成本轮最终门禁；最终全量测试、构建、控制台和提交 SHA 由主任务重新收口。
 
 - 验收环境：前端 `http://127.0.0.1:5174`、后端 `http://127.0.0.1:5001`、本地 OAuth 验收桥 `http://127.0.0.1:5100`，数据库 `/private/tmp/zhipin-codex-cef8386.db`，Alembic `20260722_07`。
 - 四角色真实页面：admin、manager、recruiter、interviewer 均完成授权页面与直接输入越权 URL 验收；面试官越权页显示拒绝访问，不泄露目标页面业务数据。
 - Offer 真实数据共 5 条：`draft` 1、`pending` 1、`onboarded` 3；已入职页、审批页和总监驾驶舱口径一致。
 - 窄屏候选人 quickview 在 390px 视口通过，弹窗实际宽度为 382px，满足 `382 <= 390` 的验收条件。
 - 最终交付页重新打开后控制台错误为 0；本地后端健康接口与前端首页均返回 HTTP 200。
-- 自动化门禁：前端 90 个测试、typecheck、lint、build 均通过；后端 490 个测试通过；Base Agent 6 个测试通过。
+- 上一轮自动化门禁：前端 90 个测试、typecheck、lint、build 均通过；后端 490 个测试通过；Base Agent 6 个测试通过。本轮新增交互测试与全量门禁结果待主任务补录。
 - 本轮最终浏览器取证没有提交业务写操作；功能候选尚未 push、未进入 Libra、未部署 SIT。
+
+## 12. 同页交互二次收口（本地候选）
+
+### 12.1 已实现
+
+- 新增共享右侧抽屉 `DrawerShell`：通过 portal 挂到页面根层，提供遮罩关闭、`Esc` 关闭、焦点约束与恢复、背景滚动锁定、对辅助技术的 dialog 语义，以及窄屏全宽展示。
+- Demand：点击需求行、职位名、阶段数字、HC、负责人和状态时留在需求列表；右侧抽屉展示概览、当前 Demand 的真实候选人进度、HC、责任人与风险。新增 Demand 也改为同页抽屉；调整优先级、转派负责人、暂停/关闭和恢复均可在当前页发起，继续复用真实 API、角色校验与审计，成功后刷新列表和抽屉。原“匹配候选人”保留为抽屉次级入口。
+- 候选人：点击行或姓名打开同页详情；概览和当前/历史应聘流程来自真实候选人流程接口，完整档案只作为次级入口。
+- Kanban：点击候选人卡片或姓名打开当前 Demand 范围内的流程抽屉；切换 Demand 会清空旧详情和旧操作目标，避免跨 Demand 串数据；卡片外层不再伪装成包含子按钮的嵌套按钮，键盘入口由候选人姓名承担。
+- 面试、Offer、已入职：点击表格行或姓名留在当前页，分别打开面试详情、Offer 详情/操作历史和入职详情；行内取消、反馈、审批或状态动作不会误触整行详情。面试的 `status` / `demand` 深链接筛选与地址栏双向同步，清除筛选后刷新不会恢复旧条件。
+- Dashboard、Analytics、总监驾驶舱：KPI、今日待办、管理提醒、阶段条、阶段停留候选人与待补反馈均从纯信息/整行跳转变为当前页说明或下钻抽屉；完整工作台只在抽屉底部作为次级入口；无法唯一定位 Demand 的组织汇总不会伪装成精准阶段链接。
+- 岗位模板：岗位行驱动原页面右侧详情；筛选为空时不再显示被排除岗位；新增岗位改为右侧抽屉并保留真实 AI 澄清/保存链路。
+- 总监审批：待审批和最近审批行打开真实 Offer 审批详情抽屉，审批/驳回仍走后端状态机。
+- Offer 详情：接口失败会在抽屉内显示可见错误条，加载或错误期间禁用打印，不再只靠瞬时提示表达失败。
+- 视觉校准：保留旧公司招聘系统的视觉语言，Figma/Readdy 只指导流程及交互；全局品牌色恢复为 `#00c07b` / `#009e66`，页面、组件和 feature 源码的 Readdy 深绿硬编码已由自动合同扫描清零，没有把当前 Figma 草图的未优化视觉反向固化到正式页面。
+
+### 12.2 已做的真实浏览器点击检查
+
+本轮已在 Codex 专属前端 `http://127.0.0.1:5174` 实际点击并确认以下行为；这些是浏览器交互证据，不替代最终自动化门禁：
+
+- Demand：打开“数据分析师”详情及“候选人与进度”，地址保持 `/demands`，候选人来自当前 Demand 的真实流程接口；`Esc` 关闭后仍留在列表。
+- 候选人：打开候选人详情和“当前应聘 / 流程”，地址保持 `/candidates`，抽屉展示真实应聘记录。
+- Kanban、面试、Offer、已入职：分别点击真实候选人/记录后均在原地址打开右侧抽屉，没有跳走；面试 URL 的 `status=pending_feedback` 筛选已实际生效，点击“清除全部”后地址恢复 `/interviews`，刷新不再恢复旧条件。
+- Dashboard、Analytics、岗位模板、总监审批：KPI、今日待办、管理提醒、Demand 下钻 KPI、岗位行、新增岗位、审批 KPI 和审批行均完成当前页交互检查。
+- 390px 窄屏：Demand 抽屉实测宽度为 390px，没有超出视口；随后已恢复桌面视口。
+
+### 12.3 当前 P1 限制与收口边界
+
+- 抽屉中的“完整需求工作台”“完整候选人档案”“完整看板”等仍是明确的次级跳转入口；首要信息浏览已同页化，但深度编辑没有强行塞进一个抽屉。
+- `DrawerShell` 当前按单层业务抽屉设计；如果后续要求抽屉上继续叠加第二层抽屉，需要再定义焦点和遮罩栈规则。
+- Kanban KPI 定位阶段、面试/Offer 统计卡筛选当前列表、岗位行更新固定右侧详情属于“同页直接反馈”，不会强制再套一层抽屉。
+- 旧公司品牌色已有静态门禁；字体、间距、宽度目前仍以复用旧组件和真实浏览器检查为证据，尚未建立旧系统截图的像素级视觉回归，因此不能宣称和旧版逐像素一致。
+
+### 12.4 本轮自动化与运行证据
+
+- 前端测试文件：104 个，`npm test` 全量通过。
+- `npm run typecheck -- --pretty false`、`npm run lint -- --quiet`、`npm run build`、`git diff --check` 全部通过。
+- 后端 Python 3.12 全量：`490 passed`；Base Agent：`6 passed`。
+- Alembic 代码 head：`20260722_07`；Codex 独立验收库 verifier 返回 `ok=true`，未映射事实、Demand/流程错配、活动流程冲突、面试槽位冲突、需求编号问题和默认面试官错配均为 0。
+- 最终浏览器新会话控制台 error 为 0；仅有 2 条 React Router v7 future-flag 迁移提醒，不影响当前 React Router v6 运行。
+- 本轮没有修改后端业务代码或迁移；后端与 Base Agent 全量回归用于证明前端嫁接没有破坏冻结底座和真实主流程。
+
+### 12.5 不变底座与发布状态
+
+- 公司登录、权限入口、Apollo 默认环境和 Token 链路继续冻结；冻结文件清单见第 2 节，本轮交互改动不需要修改这些协议。
+- 正式页面继续使用真实后端 API；真实空态与错误态不会用 mock、浏览器存储或硬编码业务数据冒充成功。
+- 当前尚未 push、尚未合并 CFPD `test`、尚未触发 Libra、尚未部署 SIT。

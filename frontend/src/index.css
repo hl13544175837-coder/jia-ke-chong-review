@@ -8,10 +8,10 @@
 
 :root {
   /* ── Enterprise admin reference tokens ───────────── */
-  --enterprise-brand: #379f70;
-  --enterprise-brand-dark: #2c805a;
-  --enterprise-brand-soft: #e9f5f0;
-  --enterprise-brand-faint: #f4fbf7;
+  --enterprise-brand: #00c07b;
+  --enterprise-brand-dark: #009e66;
+  --enterprise-brand-soft: #e6f8f1;
+  --enterprise-brand-faint: #f2fffa;
   --enterprise-page: #f1f3f7;
   --enterprise-panel: #f8f9fb;
   --enterprise-line: #e5e9ef;
@@ -629,30 +629,6 @@
     color: var(--enterprise-muted);
     font-size: 12px;
     line-height: 1.6;
-  }
-
-  /* Readdy 简历库使用轻量标题和三段式候选人范围，
-     收起旧工作台的大面积渐变指标头。 */
-  .readdy-candidates .enterprise-hero {
-    align-items: end;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    padding: 0 0 4px;
-  }
-
-  .readdy-candidates .enterprise-hero h1 {
-    font-size: 22px;
-  }
-
-  .readdy-candidates .enterprise-hero p {
-    margin-top: 4px;
-    color: #8b8784;
-    font-size: 13px;
-  }
-
-  .readdy-candidates .enterprise-metrics {
-    display: none;
   }
 
   @media (max-width: 1180px) {

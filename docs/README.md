@@ -4,14 +4,14 @@
 > 用途：给产品、研发、部署和 AI/Codex 判断“先读哪份、信哪份”。
 > 状态：当前文档入口。当前开发只看下方真源文档和真实代码，不再追旧计划。
 
-> **当前状态（2026-07-22）**：本地 Codex 功能候选 `codex/readdy-test-product` 基于远端 `test` `5e251a2`，功能候选 SHA `5ef064a`。当前未 push、未进入 Libra 构建/部署、未在 SIT 生效；本地候选不等于 SIT 已部署，环境状态仍须以 CFPD ref、Libra CommitID/镜像、部署日志、schema revision、测试站资产和受控 API 为准。
+> **当前状态（2026-07-22）**：本地 Codex 功能候选 `codex/readdy-test-product` 基于远端 `test` `5e251a2`；已完成第二轮同页右侧抽屉、真实 Demand 动作、信息卡交互和旧公司色板收口，正在形成后续本地提交（准确 SHA 以 `git log -1` 和根目录外的 `CODEX_RESULT_2026-07-22.md` 为准）。旧公司招聘系统是视觉基准，Figma/Readdy 是流程和交互基准。前端 104 个测试、typecheck、lint、build，后端 490 个测试、Base Agent 6 个测试与 Demand-scope verifier 均已通过；当前未 push、未进入 Libra 构建/部署、未在 SIT 生效。
 >
 > **历史状态（2026-07-11 合并前收口）**：`codex/premerge-p0-closeout-20260711` 当时以 CFPD `test` 基线为起点，完成 P0 代码与文档收口，曾作为下一代码候选。
 
 | 状态面 | 真源 | 当前可证明什么 |
 |---|---|---|
 | 原始 checkout | `/Users/yenns/Desktop/智聘` 的实际 `git status` / HEAD | 用户原工作区有哪些本地改动；不等于实施分支或发布源 |
-| 隔离实施分支 | `codex/readdy-test-product` 工作树的 HEAD、diff 和测试 | 当前本地 Codex 功能候选；基于远端 `test` `5e251a2`，功能候选 SHA `5ef064a`；未 push、未 Libra、未 SIT |
+| 隔离实施分支 | `codex/readdy-test-product` 工作树的 HEAD、diff 和测试 | 当前本地 Codex 功能候选；已提交 HEAD `5bdc6f7` 后仍有未提交的交互收口；最终测试与 SHA 待补录；未 push、未 Libra、未 SIT |
 | CFPD `test` | `git ls-remote git@git.ymdd.tech:cfpd/zhipin-mvp.git refs/heads/test` 的 SHA | Libra 应当读到的代码源；不证明构建或部署完成 |
 | 已部署 SIT | Libra CommitID/镜像摘要、后端受控版本/schema revision、测试站 HTML 与前端 asset hash、冒烟证据 | 环境真正运行的版本；不能只凭 pipeline 绿色对勾判定 |
 

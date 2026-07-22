@@ -13,7 +13,7 @@ const recruitmentTabs = readFileSync(
 assert.match(
   source,
   /showCreateForm/,
-  'JobsPage should keep the create-job form behind explicit state',
+  'JobsPage should keep the create-job drawer behind explicit state',
 );
 
 assert.match(
@@ -48,14 +48,44 @@ assert.match(
 
 assert.match(
   source,
-  /\{showCreateForm && \(/,
-  'CreateJobForm should render only after the user clicks 新增岗位',
+  /<DrawerShell[\s\S]*open=\{showCreateForm\}[\s\S]*testId="job-create-drawer"[\s\S]*<CreateJobForm/,
+  'CreateJobForm should render in the shared right drawer after the user clicks 新增岗位',
+);
+
+assert.doesNotMatch(
+  source,
+  /\{showCreateForm && \([\s\S]{0,400}<CreateJobForm/,
+  'CreateJobForm should no longer insert a collapsible full-width block above the job list',
 );
 
 assert.match(
   source,
   /setShowCreateForm\(false\)/,
-  'The create panel should be dismissible and close after creation',
+  'The create drawer should be dismissible and close after creation',
+);
+
+assert.match(
+  source,
+  /setPendingCreatedJobId\(result\.id\)/,
+  'Create success should remember the real API id while the refreshed list is loading',
+);
+
+assert.match(
+  source,
+  /jobs\.find\(\(job\) => job\.id === pendingCreatedJobId\)/,
+  'JobsPage should resolve the new selection from the refreshed real list instead of fabricating a row',
+);
+
+assert.match(
+  source,
+  /setSelectedJob\(createdJob\)/,
+  'The newly created real list item should become the selected job after refresh',
+);
+
+assert.match(
+  source,
+  /setCityFilter\(''\)[\s\S]*setDepartmentFilter\(''\)/,
+  'Create success should clear filters that could otherwise hide the newly created job',
 );
 
 assert.match(

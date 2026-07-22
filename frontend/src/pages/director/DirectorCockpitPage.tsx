@@ -2,7 +2,7 @@
 // High-level read-only summary backed by api.biOverview() plus the pending
 // Offer count from api.listOffers(). No personal-performance content.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -19,17 +19,27 @@ import { useAuth } from '../../lib/auth';
 import { useAsync } from '../../lib/useAsync';
 import {
   Badge,
+  Button,
   Card,
   CardBody,
   CardHeader,
   CardTitle,
   EmptyState,
   ErrorState,
+  DrawerShell,
   PageHeader,
   Spinner,
 } from '../../components/ui';
 import { AlertList, KpiCard, OverviewFunnelBars, PurposeBanner } from './widgets';
 import { safeNum } from './utils';
+
+interface CockpitKpiDetail {
+  label: string;
+  value: string | number;
+  description: string;
+  to: string;
+  actionLabel: string;
+}
 
 const QUICK_LINKS = [
   {
@@ -61,6 +71,7 @@ const QUICK_LINKS = [
 export function DirectorCockpitPage() {
   const { role } = useAuth();
   const canView = role === 'manager' || role === 'admin';
+  const [cockpitKpiDetail, setCockpitKpiDetail] = useState<CockpitKpiDetail | null>(null);
 
   const overviewAsync = useAsync(
     () => (canView ? api.biOverview() : Promise.resolve(null)),
@@ -128,12 +139,26 @@ export function DirectorCockpitPage() {
               label="招聘需求总数"
               value={demands.length}
               detail={`进行中 ${activeDemands} 个`}
+              onActivate={() => setCockpitKpiDetail({
+                label: '招聘需求总数',
+                value: demands.length,
+                description: '当前组织内可查看的招聘需求总数，包含进行中和已结束需求。',
+                to: '/director/progress',
+                actionLabel: '查看需求清单',
+              })}
             />
             <KpiCard
               icon={Users}
               label="活跃需求"
               value={activeDemands}
               detail="状态为招聘中的需求"
+              onActivate={() => setCockpitKpiDetail({
+                label: '活跃需求',
+                value: activeDemands,
+                description: '当前状态为招聘中的 Demand，需要持续跟进 HC、候选人进展和卡点。',
+                to: '/director/progress',
+                actionLabel: '查看招聘进展',
+              })}
             />
             <KpiCard
               icon={FileCheck2}
@@ -155,6 +180,13 @@ export function DirectorCockpitPage() {
                   ? 'warning'
                   : 'default'
               }
+              onActivate={pendingOffersAsync.loading || pendingOffersAsync.error ? undefined : () => setCockpitKpiDetail({
+                label: 'Offer 待审批',
+                value: safeNum(pendingOffersAsync.data?.total),
+                description: '已由招聘专员提交、等待招聘经理或管理员审批的真实 Offer。',
+                to: '/director/approvals',
+                actionLabel: '处理 Offer 审批',
+              })}
             />
             <KpiCard
               icon={ShieldAlert}
@@ -162,6 +194,13 @@ export function DirectorCockpitPage() {
               value={stagnationAlerts}
               detail="高优先级卡点数量"
               tone={stagnationAlerts > 0 ? 'danger' : 'default'}
+              onActivate={() => setCockpitKpiDetail({
+                label: '停滞预警',
+                value: stagnationAlerts,
+                description: '由真实流程卡点生成的高优先级提醒，用于定位需要协调的需求和责任人。',
+                to: '/director/insights',
+                actionLabel: '查看洞察与风险',
+              })}
             />
           </div>
 
@@ -206,10 +245,10 @@ export function DirectorCockpitPage() {
               <Link
                 key={item.to}
                 to={item.to}
-                className="group rounded-xl border border-[#e8e7e1] bg-white p-4 transition-colors hover:border-[#3d7b6b]"
+                className="group rounded-xl border border-[#e8e7e1] bg-white p-4 transition-colors hover:border-[var(--enterprise-brand)]"
               >
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#edf5f1] text-[#3d7b6b]">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--enterprise-brand-soft)] text-[var(--enterprise-brand)]">
                     <item.icon className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
@@ -217,13 +256,48 @@ export function DirectorCockpitPage() {
                     <p className="truncate text-xs text-[#858a86]">{item.description}</p>
                   </div>
                   <ArrowRight
-                    className="ml-auto h-4 w-4 shrink-0 text-[#c3c7c0] transition group-hover:translate-x-0.5 group-hover:text-[#3d7b6b]"
+                    className="ml-auto h-4 w-4 shrink-0 text-[#c3c7c0] transition group-hover:translate-x-0.5 group-hover:text-[var(--enterprise-brand)]"
                     aria-hidden="true"
                   />
                 </div>
               </Link>
             ))}
           </div>
+
+          <DrawerShell
+            open={Boolean(cockpitKpiDetail)}
+            onClose={() => setCockpitKpiDetail(null)}
+            title={cockpitKpiDetail?.label ?? '指标明细'}
+            eyebrow="总监驾驶舱"
+            description="组织级真实流程摘要"
+            size="md"
+            testId="director-cockpit-kpi-drawer"
+            footer={cockpitKpiDetail ? (
+              <div className="flex w-full justify-end gap-3">
+                <Button variant="secondary" onClick={() => setCockpitKpiDetail(null)}>关闭</Button>
+                <Link
+                  to={cockpitKpiDetail.to}
+                  onClick={() => setCockpitKpiDetail(null)}
+                  className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--enterprise-brand)] px-5 text-sm font-semibold text-white hover:bg-[var(--enterprise-brand-dark)] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+                >
+                  {cockpitKpiDetail.actionLabel}
+                </Link>
+              </div>
+            ) : undefined}
+          >
+            {cockpitKpiDetail && (
+              <div className="space-y-5">
+                <section className="rounded-lg border border-hairline bg-surface-soft px-5 py-5">
+                  <p className="text-sm text-muted">{cockpitKpiDetail.label}</p>
+                  <p className="mt-2 text-4xl font-semibold tabular-nums text-ink">{cockpitKpiDetail.value}</p>
+                </section>
+                <section>
+                  <h3 className="text-sm font-semibold text-ink">管理含义</h3>
+                  <p className="mt-2 text-sm leading-6 text-body">{cockpitKpiDetail.description}</p>
+                </section>
+              </div>
+            )}
+          </DrawerShell>
         </>
       )}
     </div>

@@ -21,20 +21,10 @@ const demandsPage = readSource('features/demands/pages/DemandDetailPage.tsx')
 const settingsPage = readSource('pages/admin/SystemSettingsPage.tsx');
 const usersPage = readSource('pages/admin/UsersPage.tsx');
 
-assert.match(
+assert.doesNotMatch(
   dashboardPage,
-  /stage=business_review/,
-  'Recruiter business-feedback todo should deep-link to the business review stage',
-);
-assert.match(
-  dashboardPage,
-  /stage=interview/,
-  'Recruiter interview follow-up todo should deep-link to the interview stage',
-);
-assert.match(
-  dashboardPage,
-  /stage=offer/,
-  'Recruiter offer follow-up todo should deep-link to the offer stage',
+  /\/kanban\?stage=/,
+  'Organization or recruiter aggregate cards must not pretend the default Demand is a precise stage drill-down',
 );
 assert.doesNotMatch(
   dashboardPage,
@@ -43,7 +33,7 @@ assert.doesNotMatch(
 );
 assert.match(
   dashboardPage,
-  /to="\/interviews\?focus=pending"[\s\S]*label="待补反馈"/,
+  /to="\/interviews\?status=pending_feedback"[\s\S]*label="待补反馈"/,
   'Recruiter dashboard should keep pending feedback as a concrete todo deep link',
 );
 

@@ -172,7 +172,7 @@ export function DemandDetailPage() {
           </CardBody>
         </Card>
       </div>
-      <DemandActionDialog demand={demand} mode={mode} values={values} owners={owners.data ?? []} busy={busy} onChange={setValues} onCancel={() => setMode(null)} onConfirm={confirmAction} />
+      <DemandActionDialog demand={demand} mode={mode} values={values} owners={owners.data ?? []} busy={busy} actionError={message} onChange={setValues} onCancel={() => setMode(null)} onConfirm={confirmAction} />
     </div>
   );
 }

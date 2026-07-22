@@ -3,7 +3,7 @@
 // 数据全部来自真实 API：listDemands / getDemandPipelineBoard / movePipeline /
 // listOffers / getDemandPipelineHistory，不引用任何 mock。
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
@@ -21,6 +21,7 @@ import {
   Badge,
   Button,
   Card,
+  DrawerShell,
   EmptyState,
   ErrorState,
   Skeleton,
@@ -156,7 +157,7 @@ function RejectModal({
         <label className="block text-sm font-medium text-[#454946]">
           淘汰原因（必填）
           <input
-            className="mt-2 h-10 w-full rounded-lg border border-[#dadcd6] px-3 text-sm outline-none focus:border-[#3d7b6b]"
+            className="mt-2 h-10 w-full rounded-lg border border-[#dadcd6] px-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
             value={reason}
             onChange={(event) => {
               setReason(event.target.value);
@@ -176,7 +177,7 @@ function RejectModal({
         <label className="block text-sm font-medium text-[#454946]">
           补充备注（可选）
           <textarea
-            className="mt-2 min-h-20 w-full rounded-lg border border-[#dadcd6] px-3 py-2 text-sm outline-none focus:border-[#3d7b6b]"
+            className="mt-2 min-h-20 w-full rounded-lg border border-[#dadcd6] px-3 py-2 text-sm outline-none focus:border-[var(--enterprise-brand)]"
             value={note}
             onChange={(event) => setNote(event.target.value)}
             maxLength={240}
@@ -232,7 +233,7 @@ function CorrectModal({
         <label className="block text-sm font-medium text-[#454946]">
           目标阶段
           <select
-            className="mt-2 h-10 w-full rounded-lg border border-[#dadcd6] bg-white px-3 text-sm outline-none focus:border-[#3d7b6b]"
+            className="mt-2 h-10 w-full rounded-lg border border-[#dadcd6] bg-white px-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
             value={target}
             onChange={(event) => {
               setTarget(event.target.value as PipelineStage);
@@ -250,7 +251,7 @@ function CorrectModal({
         <label className="block text-sm font-medium text-[#454946]">
           修正原因（必填）
           <input
-            className="mt-2 h-10 w-full rounded-lg border border-[#dadcd6] px-3 text-sm outline-none focus:border-[#3d7b6b]"
+            className="mt-2 h-10 w-full rounded-lg border border-[#dadcd6] px-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
             value={reason}
             onChange={(event) => {
               setReason(event.target.value);
@@ -311,7 +312,7 @@ function TransferModal({
         <label className="block text-sm font-medium text-[#454946]">
           目标招聘需求
           <select
-            className="mt-2 h-10 w-full rounded-lg border border-[#dadcd6] bg-white px-3 text-sm outline-none focus:border-[#3d7b6b]"
+            className="mt-2 h-10 w-full rounded-lg border border-[#dadcd6] bg-white px-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
             value={targetDemandId}
             onChange={(event) => {
               setTargetDemandId(event.target.value);
@@ -332,7 +333,7 @@ function TransferModal({
         <label className="block text-sm font-medium text-[#454946]">
           转需原因（必填）
           <textarea
-            className="mt-2 min-h-20 w-full rounded-lg border border-[#dadcd6] px-3 py-2 text-sm outline-none focus:border-[#3d7b6b]"
+            className="mt-2 min-h-20 w-full rounded-lg border border-[#dadcd6] px-3 py-2 text-sm outline-none focus:border-[var(--enterprise-brand)]"
             value={reason}
             onChange={(event) => {
               setReason(event.target.value);
@@ -394,7 +395,7 @@ function HistoryModal({
                 {index < timeline.length - 1 && (
                   <span className="absolute left-[7px] top-4 h-full w-px bg-[#dfe4de]" />
                 )}
-                <span className={cn('relative mt-1.5 h-4 w-4 shrink-0 rounded-full border-4 border-[#dcebe5]', STAGE_BY_KEY[step.stage]?.dot ?? 'bg-[#3d7b6b]')} />
+                <span className={cn('relative mt-1.5 h-4 w-4 shrink-0 rounded-full border-4 border-[var(--enterprise-brand-soft)]', STAGE_BY_KEY[step.stage]?.dot ?? 'bg-[var(--enterprise-brand)]')} />
                 <div>
                   <p className="text-sm font-medium text-[#3f4541]">{stageLabel(step.stage)}</p>
                   <p className="mt-0.5 text-xs text-[#858a86]">
@@ -422,6 +423,7 @@ function CandidateCard({
   onCorrect,
   onTransfer,
   onHistory,
+  onOpen,
   highlighted,
 }: {
   candidate: PipelineBoardCandidate;
@@ -434,6 +436,7 @@ function CandidateCard({
   onCorrect: () => void;
   onTransfer: () => void;
   onHistory: () => void;
+  onOpen: () => void;
   highlighted?: boolean;
 }) {
   const next = NEXT_STAGE[candidate.stage];
@@ -441,22 +444,31 @@ function CandidateCard({
   const offerMeta = offer ? OFFER_STATUS_META[offer.status || offer.approval_status] : null;
 
   return (
-    <div className={cn(
-      'rounded-xl border border-[#e8e7e1] bg-white p-3 shadow-sm',
-      highlighted && 'ring-2 ring-[#3d7b6b] ring-offset-2',
-    )}>
+    <div
+      data-ui="kanban-candidate-card"
+      onClick={onOpen}
+      className={cn(
+        'cursor-pointer rounded-xl border border-[#e8e7e1] bg-white p-3 shadow-sm',
+        highlighted && 'ring-2 ring-[var(--enterprise-brand)] ring-offset-2',
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#eef4f1] text-xs font-bold text-[#3d7b6b]">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--enterprise-brand-soft)] text-xs font-bold text-[var(--enterprise-brand-dark)]">
             {(candidate.name_masked || '?').charAt(0)}
           </div>
           <div className="min-w-0">
-            <Link
-              to={`/candidates/${candidate.candidate_id}`}
-              className="block truncate text-sm font-semibold text-[#2f5f52] hover:underline"
+            <button
+              type="button"
+              data-ui="kanban-candidate-name"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpen();
+              }}
+              className="block max-w-full truncate text-left text-sm font-semibold text-[var(--enterprise-brand-dark)] hover:underline"
             >
               {candidate.name_masked}
-            </Link>
+            </button>
             <p className="mt-0.5 text-xs text-[#858a86]">
               {stageAgeLabel(candidate.updated_at)}
               {candidate.updated_by_name ? ` · ${candidate.updated_by_name}` : ''}
@@ -479,29 +491,67 @@ function CandidateCard({
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         {canMove && next && (
-          <Button size="sm" onClick={onAdvance} disabled={busy}>
+          <Button
+            size="sm"
+            onClick={(event) => {
+              event.stopPropagation();
+              onAdvance();
+            }}
+            disabled={busy}
+          >
             推进到{stageLabel(next)}
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         )}
         {canMove && !terminal && (
-          <Button size="sm" variant="danger" onClick={onReject} disabled={busy}>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={(event) => {
+              event.stopPropagation();
+              onReject();
+            }}
+            disabled={busy}
+          >
             <UserX className="h-3.5 w-3.5" />
             淘汰
           </Button>
         )}
         {canMove && candidate.stage !== 'transferred' && (
-          <Button size="sm" variant="ghost" onClick={onCorrect} disabled={busy}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation();
+              onCorrect();
+            }}
+            disabled={busy}
+          >
             修正
           </Button>
         )}
         {canTransfer && !terminal && (
-          <Button size="sm" variant="ghost" onClick={onTransfer} disabled={busy}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation();
+              onTransfer();
+            }}
+            disabled={busy}
+          >
             <ArrowRightLeft className="h-3.5 w-3.5" />
             转到其他需求
           </Button>
         )}
-        <Button size="sm" variant="ghost" onClick={onHistory}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={(event) => {
+            event.stopPropagation();
+            onHistory();
+          }}
+        >
           <History className="h-3.5 w-3.5" />
           历史
         </Button>
@@ -532,6 +582,7 @@ export function KanbanPage() {
   const [correctTarget, setCorrectTarget] = useState<PipelineBoardCandidate | null>(null);
   const [transferTarget, setTransferTarget] = useState<PipelineBoardCandidate | null>(null);
   const [historyTarget, setHistoryTarget] = useState<PipelineBoardCandidate | null>(null);
+  const [detailCandidateId, setDetailCandidateId] = useState<number | null>(null);
 
   const demandsAsync = useAsync(
     () => api.listDemands({ status: 'all', page: 1, page_size: 100 }),
@@ -571,6 +622,14 @@ export function KanbanPage() {
           : null
         : demandItems[0] ?? null;
   const effectiveDemandId = effectiveDemand?.id ?? null;
+
+  useEffect(() => {
+    setRejectTarget(null);
+    setCorrectTarget(null);
+    setTransferTarget(null);
+    setHistoryTarget(null);
+    setDetailCandidateId(null);
+  }, [effectiveDemandId]);
   const demandResolutionError = !demandsAsync.loading
     && !demandsAsync.error
     && (requestedDemandId === null || !explicitDemandAsync.loading)
@@ -625,6 +684,12 @@ export function KanbanPage() {
     () => boardAsync.data?.candidates ?? [],
     [boardAsync.data],
   );
+  const detailCandidate = detailCandidateId === null
+    ? null
+    : candidates.find((candidate) => candidate.candidate_id === detailCandidateId) ?? null;
+  const detailOffer = detailCandidate && effectiveDemandId !== null
+    ? offerByCandidate.get(offerKey(effectiveDemandId, detailCandidate.candidate_id)) ?? null
+    : null;
   const highlightedCandidateMissing = Boolean(
     candidateParam.provided
     && highlightedCandidateId !== null
@@ -690,13 +755,40 @@ export function KanbanPage() {
     }
   }
 
-  const kpiCards = [
-    { label: '流程中候选人', value: MAIN_STAGES.reduce((sum, stage) => sum + countOf(stage.key), 0) },
-    { label: '面试中', value: countOf('interview') },
-    { label: 'Offer', value: countOf('offer') },
-    { label: '已入职', value: countOf('onboarded') },
-    { label: '已淘汰', value: countOf('rejected') },
+  const kpiCards: Array<{ label: string; value: number; stage: PipelineStage | null }> = [
+    {
+      label: '流程中候选人',
+      value: MAIN_STAGES.reduce((sum, stage) => sum + countOf(stage.key), 0),
+      stage: null,
+    },
+    { label: '面试中', value: countOf('interview'), stage: 'interview' },
+    { label: 'Offer', value: countOf('offer'), stage: 'offer' },
+    { label: '已入职', value: countOf('onboarded'), stage: 'onboarded' },
+    { label: '已淘汰', value: countOf('rejected'), stage: 'rejected' },
   ];
+
+  function focusStage(stage: PipelineStage | null) {
+    const nextParams = new URLSearchParams(searchParams);
+    if (effectiveDemandId !== null) {
+      nextParams.set('demand', String(effectiveDemandId));
+      nextParams.delete('job');
+    }
+    nextParams.delete('candidate');
+    if (stage === null) {
+      nextParams.delete('stage');
+    } else {
+      nextParams.set('stage', stage);
+    }
+    setSearchParams(nextParams, { replace: true });
+
+    window.requestAnimationFrame(() => {
+      const target = stage === null
+        ? document.getElementById('kanban-main-stages')
+        : document.getElementById(`kanban-stage-${stage}`)
+          ?? document.getElementById('kanban-main-stages');
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
 
   return (
     <div data-ui="readdy-kanban" className="mx-auto max-w-[1600px] space-y-5">
@@ -756,7 +848,7 @@ export function KanbanPage() {
           </label>
           <select
             id="kanban-demand-select"
-            className="h-10 min-w-0 rounded-lg border border-[#dadcd6] bg-white px-3 text-sm text-[#292b2a] outline-none focus:border-[#3d7b6b] sm:min-w-[380px]"
+            className="h-10 min-w-0 rounded-lg border border-[#dadcd6] bg-white px-3 text-sm text-[#292b2a] outline-none focus:border-[var(--enterprise-brand)] sm:min-w-[380px]"
             value={effectiveDemandId ?? ''}
             onChange={(event) => {
               setSearchParams({
@@ -767,6 +859,7 @@ export function KanbanPage() {
               setCorrectTarget(null);
               setTransferTarget(null);
               setHistoryTarget(null);
+              setDetailCandidateId(null);
             }}
           >
             {effectiveDemandId === null && <option value="">请选择具体招聘需求</option>}
@@ -845,10 +938,17 @@ export function KanbanPage() {
           {/* KPI 卡 */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
             {kpiCards.map((card) => (
-              <div key={card.label} className="rounded-xl border border-[#e8e7e1] bg-white p-4">
+              <button
+                key={card.label}
+                type="button"
+                data-ui="kanban-kpi-button"
+                onClick={() => focusStage(card.stage)}
+                aria-label={`定位到${card.label}`}
+                className="rounded-xl border border-[#e8e7e1] bg-white p-4 text-left transition-colors hover:border-[var(--enterprise-brand)] hover:bg-[var(--enterprise-brand-faint)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--enterprise-brand)]"
+              >
                 <p className="text-xs text-[#777b78]">{card.label}</p>
                 <p className="mt-1 text-2xl font-bold text-[#292b2a]">{card.value}</p>
-              </div>
+              </button>
             ))}
           </div>
 
@@ -868,7 +968,7 @@ export function KanbanPage() {
           ) : (
             <div className="space-y-6">
               {/* 主流程阶段列 */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
+              <div id="kanban-main-stages" className="grid scroll-mt-6 grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
                 {MAIN_STAGES.map((stage) => (
                   <section
                     key={stage.key}
@@ -877,15 +977,21 @@ export function KanbanPage() {
                       'rounded-xl border p-3',
                       stage.bg,
                       stage.border,
-                      requestedStage === stage.key && 'ring-2 ring-[#3d7b6b] ring-offset-2',
+                      requestedStage === stage.key && 'ring-2 ring-[var(--enterprise-brand)] ring-offset-2',
                     )}
                     aria-label={`${stage.label}阶段`}
                   >
                     <header className="mb-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        data-ui="kanban-stage-button"
+                        onClick={() => focusStage(stage.key)}
+                        className="flex items-center gap-2 rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--enterprise-brand)]"
+                        aria-label={`定位到${stage.label}阶段`}
+                      >
                         <span className={cn('h-2 w-2 rounded-full', stage.dot)} />
                         <h2 className={cn('text-sm font-semibold', stage.text)}>{stage.label}</h2>
-                      </div>
+                      </button>
                       <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', stage.badgeBg)}>
                         {countOf(stage.key)}
                       </span>
@@ -909,6 +1015,7 @@ export function KanbanPage() {
                           onCorrect={() => setCorrectTarget(candidate)}
                           onTransfer={() => setTransferTarget(candidate)}
                           onHistory={() => setHistoryTarget(candidate)}
+                          onOpen={() => setDetailCandidateId(candidate.candidate_id)}
                           highlighted={candidate.candidate_id === highlightedCandidateId}
                         />
                       ))}
@@ -933,15 +1040,21 @@ export function KanbanPage() {
                         'rounded-xl border p-3',
                         stage.bg,
                         stage.border,
-                        requestedStage === stage.key && 'ring-2 ring-[#3d7b6b] ring-offset-2',
+                        requestedStage === stage.key && 'ring-2 ring-[var(--enterprise-brand)] ring-offset-2',
                       )}
                       aria-label={`${stage.label}阶段`}
                     >
                       <header className="mb-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          data-ui="kanban-stage-button"
+                          onClick={() => focusStage(stage.key)}
+                          className="flex items-center gap-2 rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--enterprise-brand)]"
+                          aria-label={`定位到${stage.label}阶段`}
+                        >
                           <span className={cn('h-2 w-2 rounded-full', stage.dot)} />
                           <h2 className={cn('text-sm font-semibold', stage.text)}>{stage.label}</h2>
-                        </div>
+                        </button>
                         <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', stage.badgeBg)}>
                           {countOf(stage.key)}
                         </span>
@@ -960,6 +1073,7 @@ export function KanbanPage() {
                             onCorrect={() => setCorrectTarget(candidate)}
                             onTransfer={() => setTransferTarget(candidate)}
                             onHistory={() => setHistoryTarget(candidate)}
+                            onOpen={() => setDetailCandidateId(candidate.candidate_id)}
                             highlighted={candidate.candidate_id === highlightedCandidateId}
                           />
                         ))}
@@ -972,6 +1086,94 @@ export function KanbanPage() {
           )}
         </>
       )}
+
+      <DrawerShell
+        open={detailCandidate !== null}
+        onClose={() => setDetailCandidateId(null)}
+        eyebrow="候选人流程详情"
+        title={detailCandidate?.name_masked || '候选人详情'}
+        description={effectiveDemand
+          ? `${effectiveDemand.request_no || `REQ-${effectiveDemand.id}`} · ${effectiveDemand.job_title}`
+          : '当前招聘需求'}
+        size="md"
+        testId="kanban-candidate-drawer"
+        footer={detailCandidate ? (
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <Link
+              to={`/candidates/${detailCandidate.candidate_id}`}
+              className="text-sm font-semibold text-accent-blue hover:underline"
+            >
+              查看完整档案
+            </Link>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setHistoryTarget(detailCandidate);
+                setDetailCandidateId(null);
+              }}
+            >
+              <History className="h-4 w-4" />
+              查看流程历史
+            </Button>
+          </div>
+        ) : undefined}
+      >
+        {detailCandidate && (
+          <div data-ui="kanban-candidate-drawer" className="space-y-5">
+            <section className="grid grid-cols-2 gap-3 rounded-xl bg-[#f7f9f7] p-4 text-sm">
+              <div>
+                <p className="text-xs text-[#858a86]">当前阶段</p>
+                <div className="mt-1"><Badge tone="info">{stageLabel(detailCandidate.stage)}</Badge></div>
+              </div>
+              <div>
+                <p className="text-xs text-[#858a86]">阶段停留</p>
+                <p className="mt-1 font-medium text-[#292b2a]">{stageAgeLabel(detailCandidate.updated_at)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#858a86]">最近操作人</p>
+                <p className="mt-1 font-medium text-[#292b2a]">{detailCandidate.updated_by_name || '系统'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#858a86]">Offer 状态</p>
+                <div className="mt-1">
+                  {detailOffer ? (
+                    <Badge tone={OFFER_STATUS_META[detailOffer.status || detailOffer.approval_status].tone}>
+                      {OFFER_STATUS_META[detailOffer.status || detailOffer.approval_status].label}
+                    </Badge>
+                  ) : (
+                    <span className="text-sm text-[#777b78]">暂无 Offer 记录</span>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {effectiveDemand && (
+              <section className="rounded-xl border border-[#e8e7e1] p-4">
+                <h3 className="font-semibold text-[#292b2a]">当前招聘需求</h3>
+                <p className="mt-2 text-sm font-medium text-[#454946]">{effectiveDemand.job_title}</p>
+                <p className="mt-1 text-xs text-[#777b78]">
+                  {[
+                    effectiveDemand.request_no || `REQ-${effectiveDemand.id}`,
+                    effectiveDemand.job_department,
+                    effectiveDemand.job_city,
+                  ].filter(Boolean).join(' · ')}
+                </p>
+                <p className="mt-3 text-xs text-[#777b78]">
+                  负责人：{effectiveDemand.owner_hr_name || '未分配'}
+                </p>
+              </section>
+            )}
+
+            <section>
+              <h3 className="font-semibold text-[#292b2a]">最近流程备注</h3>
+              <p className="mt-2 rounded-xl border border-[#e8e7e1] p-4 text-sm text-[#5f6561]">
+                {detailCandidate.note || '暂无备注'}
+              </p>
+            </section>
+          </div>
+        )}
+      </DrawerShell>
 
       {rejectTarget && (
         <RejectModal

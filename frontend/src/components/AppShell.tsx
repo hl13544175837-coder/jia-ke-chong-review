@@ -144,7 +144,7 @@ export function AppShell() {
         )}
       >
         <div className={cn('flex h-16 items-center gap-3 border-b border-[#ebeae5] px-5', sidebarCollapsed && 'justify-center px-2')}>
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#3d7b6b] text-white">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--enterprise-brand)] text-white">
             <Briefcase className="h-4 w-4" aria-hidden="true" />
           </span>
           {!sidebarCollapsed && <span className="text-base font-bold tracking-wide">智聘</span>}
@@ -158,10 +158,10 @@ export function AppShell() {
               end={item.to === '/'}
               title={sidebarCollapsed ? navLabelForRole(item, role) : undefined}
               className={({ isActive }) => cn(
-                'flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#b8d6cb]',
+                'flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--enterprise-brand-soft)]',
                 sidebarCollapsed && 'justify-center px-0',
                 isNavItemActive(item, location.pathname, isActive)
-                  ? 'bg-[#edf6f2] font-medium text-[#24594d]'
+                  ? 'bg-[var(--enterprise-brand-soft)] font-medium text-[var(--enterprise-brand-dark)]'
                   : 'text-[#626763] hover:bg-[#f7f6f2] hover:text-[#292b2a]',
               )}
             >
@@ -237,7 +237,7 @@ export function AppShell() {
                       <button
                         type="button"
                         onClick={() => void markAllNotificationsRead()}
-                        className="flex items-center gap-1 text-xs font-medium text-[#3d7b6b] hover:text-[#285e51]"
+                        className="flex items-center gap-1 text-xs font-medium text-[var(--enterprise-brand)] hover:text-[var(--enterprise-brand-dark)]"
                       >
                         <Check className="h-3.5 w-3.5" />
                         全部已读
@@ -259,7 +259,7 @@ export function AppShell() {
                         <button
                           type="button"
                           onClick={() => void loadNotifications()}
-                          className="mt-3 text-xs font-medium text-[#3d7b6b]"
+                          className="mt-3 text-xs font-medium text-[var(--enterprise-brand)]"
                         >
                           重新加载
                         </button>
@@ -275,10 +275,10 @@ export function AppShell() {
                         onClick={() => void markNotificationRead(notification)}
                         className={cn(
                           'flex w-full gap-3 border-b border-[#f0efe9] px-4 py-3 text-left transition-colors last:border-0 hover:bg-[#faf9f6]',
-                          !notification.is_read && 'bg-[#f5faf7]',
+                          !notification.is_read && 'bg-[var(--enterprise-brand-faint)]',
                         )}
                       >
-                        <span className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', notification.is_read ? 'bg-[#d8d8d3]' : 'bg-[#3d7b6b]')} />
+                        <span className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', notification.is_read ? 'bg-[#d8d8d3]' : 'bg-[var(--enterprise-brand)]')} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium">{notification.title}</span>
                           {notification.body && <span className="mt-1 line-clamp-2 block text-xs leading-5 text-[#777b78]">{notification.body}</span>}
@@ -292,7 +292,7 @@ export function AppShell() {
 
                   <NavLink
                     to="/notifications"
-                    className="block border-t border-[#eeede8] px-4 py-3 text-center text-xs font-medium text-[#3d7b6b] hover:bg-[#faf9f6]"
+                    className="block border-t border-[#eeede8] px-4 py-3 text-center text-xs font-medium text-[var(--enterprise-brand)] hover:bg-[#faf9f6]"
                   >
                     查看全部通知
                   </NavLink>
@@ -311,7 +311,7 @@ export function AppShell() {
                 aria-haspopup="menu"
                 aria-expanded={accountOpen}
               >
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e7f2ed] text-sm font-semibold text-[#2d6658]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--enterprise-brand-soft)] text-sm font-semibold text-[var(--enterprise-brand-dark)]">
                   {initials(name ?? '')}
                 </span>
                 <span className="hidden text-left sm:block">

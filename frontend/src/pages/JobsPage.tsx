@@ -1,6 +1,6 @@
 // 岗位画像页 — 新建岗位 + 岗位列表。
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Briefcase, Plus, X } from 'lucide-react';
 import { api } from '../lib/api';
@@ -13,6 +13,7 @@ import {
   CardBody,
   CardHeader,
   CardTitle,
+  DrawerShell,
   Input,
   Spinner,
   ErrorState,
@@ -498,6 +499,8 @@ export function JobsPage() {
   const [editingJobId, setEditingJobId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState({ city: '', department: '', job_code: '' });
   const [savingJobId, setSavingJobId] = useState<number | null>(null);
+  const [selectedJob, setSelectedJob] = useState<JobListItem | null>(null);
+  const [pendingCreatedJobId, setPendingCreatedJobId] = useState<number | null>(null);
 
   // Latest created job result — shown inline after creation
   const [lastCreated, setLastCreated] = useState<CreateJobResponse | null>(null);
@@ -505,8 +508,11 @@ export function JobsPage() {
   const handleCreated = useCallback(
     (result: CreateJobResponse) => {
       setLastCreated(result);
+      setPendingCreatedJobId(result.id);
       setShowCreateForm(false);
       setJobStatus('active');
+      setCityFilter('');
+      setDepartmentFilter('');
       reload();
     },
     [reload]
@@ -531,6 +537,31 @@ export function JobsPage() {
     [cityFilter, departmentFilter, jobs]
   );
   const hasActiveFilters = cityFilter !== '' || departmentFilter !== '';
+
+  useEffect(() => {
+    if (pendingCreatedJobId === null) return;
+    const createdJob = jobs.find((job) => job.id === pendingCreatedJobId);
+    if (!createdJob) return;
+    setSelectedJob(createdJob);
+    setPendingCreatedJobId(null);
+  }, [jobs, pendingCreatedJobId]);
+
+  useEffect(() => {
+    if (!selectedJob) return;
+    const refreshedSelection = filteredJobs.find((job) => job.id === selectedJob.id);
+    if (!refreshedSelection) {
+      setSelectedJob(null);
+      return;
+    }
+    if (refreshedSelection !== selectedJob) setSelectedJob(refreshedSelection);
+  }, [filteredJobs, selectedJob]);
+
+  function handleJobRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, job: JobListItem) {
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    setSelectedJob(job);
+  }
 
   const startEditJobAttribution = useCallback((job: JobListItem) => {
     setEditingJobId(job.id);
@@ -638,13 +669,6 @@ export function JobsPage() {
           />
 
           <RecruitmentManagementTabs />
-
-          {showCreateForm && (
-            <CreateJobForm
-              onCreated={handleCreated}
-              onCancel={() => setShowCreateForm(false)}
-            />
-          )}
 
           {lastCreated && (
             <Card variant="elevated">
@@ -800,7 +824,11 @@ export function JobsPage() {
                 {filteredJobs.map((job) => (
                   <tr
                     key={job.id}
-                    className="transition-colors hover:bg-surface-soft"
+                    tabIndex={0}
+                    aria-label={`查看岗位 ${job.title}`}
+                    onClick={() => setSelectedJob(job)}
+                    onKeyDown={(event) => handleJobRowKeyDown(event, job)}
+                    className={`cursor-pointer transition-colors hover:bg-surface-soft focus:outline-none focus-visible:bg-surface-soft ${selectedJob?.id === job.id ? 'bg-[var(--enterprise-brand-faint)]' : ''}`}
                   >
                     <td className="px-5 py-3.5">
                       {editingJobId === job.id ? (
@@ -858,7 +886,11 @@ export function JobsPage() {
                     <td className="px-5 py-3.5 text-muted">
                       {formatDate(job.created_at)}
                     </td>
-                    <td className="px-5 py-3.5 text-right">
+                    <td
+                      className="px-5 py-3.5 text-right"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <div className="enterprise-table-actions">
                         {editingJobId === job.id ? (
                           <>
@@ -927,8 +959,21 @@ export function JobsPage() {
             )}
           </EnterpriseTableCard>
         </div>
-        <JobDetailSummary job={filteredJobs[0] ?? jobs[0] ?? null} />
+        <JobDetailSummary job={selectedJob ?? filteredJobs[0] ?? null} />
       </div>
+      <DrawerShell
+        open={showCreateForm}
+        onClose={() => setShowCreateForm(false)}
+        title="新增岗位"
+        description="填写岗位画像；AI 会先检查 JD 中缺失或模糊的信息。"
+        size="lg"
+        testId="job-create-drawer"
+      >
+        <CreateJobForm
+          onCreated={handleCreated}
+          onCancel={() => setShowCreateForm(false)}
+        />
+      </DrawerShell>
     </EnterprisePage>
   );
 }

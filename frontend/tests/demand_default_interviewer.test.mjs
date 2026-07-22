@@ -111,8 +111,8 @@ assert.match(
 );
 assert.match(
   demandsPage,
-  /const \[showCreateForm, setShowCreateForm\] = useState\(false\)/,
-  'Adding interviewer search must preserve the existing collapsed create area',
+  /const \[createDrawerOpen, setCreateDrawerOpen\] = useState\(false\)/,
+  'Adding interviewer search must preserve the create form inside an explicitly opened drawer',
 );
 
 assert.match(

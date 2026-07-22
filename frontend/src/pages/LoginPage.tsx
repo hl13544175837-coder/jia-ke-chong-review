@@ -49,7 +49,7 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen bg-[#fbfaf7] text-[#292b2a]">
-      <section className="relative hidden w-1/2 overflow-hidden bg-gradient-to-br from-[#3d7b6b] via-[#2f695c] to-[#1f4d43] lg:flex">
+      <section className="relative hidden w-1/2 overflow-hidden bg-gradient-to-br from-[var(--enterprise-brand)] via-[var(--enterprise-brand-dark)] to-[var(--enterprise-brand-dark)] lg:flex">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,rgba(141,207,181,0.32),transparent_60%)]" />
         <div className="absolute left-16 top-20 h-64 w-64 rounded-full border border-white/10" />
         <div className="absolute bottom-32 right-20 h-48 w-48 rounded-full border border-white/10" />
@@ -79,7 +79,7 @@ export function LoginPage() {
       <main className="flex flex-1 items-center justify-center px-6 py-12 sm:px-10">
         <div className="w-full max-w-md">
           <div className="mb-10 text-center lg:hidden">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#3d7b6b] text-white">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--enterprise-brand)] text-white">
               <Briefcase className="h-6 w-6" aria-hidden="true" />
             </div>
             <h1 className="text-3xl font-bold tracking-tight">TalentFlow</h1>
@@ -114,7 +114,7 @@ export function LoginPage() {
                   placeholder="工号 / 账号"
                   autoComplete="username"
                   required
-                  className="w-full rounded-lg border border-[#deded9] bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[#5b907f] focus:ring-2 focus:ring-[#dcebe5]"
+                  className="w-full rounded-lg border border-[#deded9] bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--enterprise-brand)] focus:ring-2 focus:ring-[var(--enterprise-brand-soft)]"
                 />
               </span>
             </label>
@@ -122,7 +122,7 @@ export function LoginPage() {
             <label className="block" htmlFor="password">
               <span className="mb-1.5 flex items-center justify-between text-sm font-medium text-[#555a57]">
                 密码
-                <span className="text-xs font-normal text-[#6c8f82]">忘记密码请联系 IT 支持</span>
+                <span className="text-xs font-normal text-[var(--enterprise-brand-dark)]">忘记密码请联系 IT 支持</span>
               </span>
               <span className="relative block">
                 <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a0a39f]" aria-hidden="true" />
@@ -135,7 +135,7 @@ export function LoginPage() {
                   placeholder="输入密码"
                   autoComplete="current-password"
                   required
-                  className="w-full rounded-lg border border-[#deded9] bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[#5b907f] focus:ring-2 focus:ring-[#dcebe5]"
+                  className="w-full rounded-lg border border-[#deded9] bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--enterprise-brand)] focus:ring-2 focus:ring-[var(--enterprise-brand-soft)]"
                 />
               </span>
             </label>
@@ -143,7 +143,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#3d7b6b] py-3 text-sm font-medium text-white transition hover:bg-[#326b5d] focus:outline-none focus:ring-2 focus:ring-[#a9cfc1] focus:ring-offset-2 disabled:cursor-wait disabled:opacity-65"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--enterprise-brand)] py-3 text-sm font-medium text-white transition hover:bg-[var(--enterprise-brand-dark)] focus:outline-none focus:ring-2 focus:ring-[var(--enterprise-brand-soft)] focus:ring-offset-2 disabled:cursor-wait disabled:opacity-65"
             >
               {loading ? (
                 <>

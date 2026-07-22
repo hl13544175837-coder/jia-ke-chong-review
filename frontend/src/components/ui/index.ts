@@ -15,3 +15,5 @@ export { ConfirmDialog } from './ConfirmDialog';
 export { Pagination } from './Pagination';
 export { Skeleton, TableSkeleton } from './Skeleton';
 export { Tooltip } from './Tooltip';
+export { DrawerShell } from './DrawerShell';
+export type { DrawerShellProps } from './DrawerShell';

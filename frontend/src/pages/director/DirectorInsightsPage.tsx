@@ -4,7 +4,7 @@
 // a different view than the BI board — it groups signals by risk theme
 // instead of walking a single demand.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -24,6 +24,7 @@ import {
   CardBody,
   CardHeader,
   CardTitle,
+  DrawerShell,
   EmptyState,
   ErrorState,
   PageHeader,
@@ -38,6 +39,8 @@ interface GapDemand {
   remaining: number;
   pipeline: number;
 }
+
+type InsightsKpi = 'stagnation' | 'feedback' | 'empty_pipeline' | 'hc_gap';
 
 function InsightSection({
   icon: Icon,
@@ -59,7 +62,7 @@ function InsightSection({
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#edf5f1] text-[#3d7b6b]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--enterprise-brand-soft)] text-[var(--enterprise-brand)]">
               <Icon className="h-4 w-4" aria-hidden="true" />
             </span>
             <div>
@@ -78,6 +81,7 @@ function InsightSection({
 export function DirectorInsightsPage() {
   const { role } = useAuth();
   const canView = role === 'manager' || role === 'admin';
+  const [selectedInsightsKpi, setSelectedInsightsKpi] = useState<InsightsKpi | null>(null);
 
   const {
     data: overview,
@@ -124,6 +128,11 @@ export function DirectorInsightsPage() {
       .sort((a, b) => (b.remaining - b.pipeline) - (a.remaining - a.pipeline)),
     [demands],
   );
+  const selectedInsightAlerts = selectedInsightsKpi === 'stagnation'
+    ? stagnationAlerts
+    : selectedInsightsKpi === 'feedback'
+      ? feedbackAlerts
+      : emptyPipelineAlerts;
 
   if (!canView) {
     return (
@@ -181,6 +190,7 @@ export function DirectorInsightsPage() {
               value={stagnationAlerts.length}
               detail="候选人停留在某阶段过久"
               tone={stagnationAlerts.length > 0 ? 'danger' : 'default'}
+              onActivate={() => setSelectedInsightsKpi('stagnation')}
             />
             <KpiCard
               icon={Inbox}
@@ -188,6 +198,7 @@ export function DirectorInsightsPage() {
               value={feedbackAlerts.length}
               detail="面试/业务反馈待补"
               tone={feedbackAlerts.length > 0 ? 'warning' : 'default'}
+              onActivate={() => setSelectedInsightsKpi('feedback')}
             />
             <KpiCard
               icon={UserX}
@@ -195,6 +206,7 @@ export function DirectorInsightsPage() {
               value={emptyPipelineAlerts.length}
               detail="无在流程候选人或需求逾期"
               tone={emptyPipelineAlerts.length > 0 ? 'warning' : 'default'}
+              onActivate={() => setSelectedInsightsKpi('empty_pipeline')}
             />
             <KpiCard
               icon={Lightbulb}
@@ -202,6 +214,7 @@ export function DirectorInsightsPage() {
               value={hcGaps.length}
               detail="在流程人数不足以覆盖剩余 HC"
               tone={hcGaps.length > 0 ? 'danger' : 'default'}
+              onActivate={() => setSelectedInsightsKpi('hc_gap')}
             />
           </div>
 
@@ -251,7 +264,7 @@ export function DirectorInsightsPage() {
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#edf5f1] text-[#3d7b6b]">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--enterprise-brand-soft)] text-[var(--enterprise-brand)]">
                     <Lightbulb className="h-4 w-4" aria-hidden="true" />
                   </span>
                   <div>
@@ -293,7 +306,7 @@ export function DirectorInsightsPage() {
                       </p>
                       <Link
                         to="/director/progress"
-                        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[#2f6c5c] hover:underline"
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--enterprise-brand-dark)] hover:underline"
                       >
                         查看该需求进展
                         <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -305,6 +318,73 @@ export function DirectorInsightsPage() {
             </CardBody>
           </Card>
         </>
+      )}
+
+      {overview && (
+        <DrawerShell
+          open={selectedInsightsKpi !== null}
+          onClose={() => setSelectedInsightsKpi(null)}
+          title={selectedInsightsKpi === 'stagnation'
+            ? '流程停滞'
+            : selectedInsightsKpi === 'feedback'
+              ? '反馈积压'
+              : selectedInsightsKpi === 'empty_pipeline'
+                ? '断流与逾期'
+                : 'HC 缺口需求'}
+          description="按风险主题展示当前页从真实 BI 接口得到的事实"
+          size="md"
+          testId="director-insights-kpi-drawer"
+          footer={(
+            <Link
+              to={selectedInsightsKpi === 'feedback'
+                ? '/interviews?status=pending_feedback'
+                : '/director/progress'}
+              className="inline-flex h-10 items-center justify-center rounded-md border border-hairline bg-canvas px-5 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
+            >
+              进入完整工作台
+            </Link>
+          )}
+        >
+          <div className="space-y-4">
+            {selectedInsightsKpi === 'hc_gap' ? (
+              hcGaps.length === 0 ? (
+                <p className="text-sm text-[#777b78]">当前没有在流程人数不足以覆盖剩余 HC 的活跃需求。</p>
+              ) : (
+                hcGaps.map(({ demand, remaining, pipeline }) => (
+                  <div key={demand.demand_id} className="rounded-xl border border-[#ffe2a8] bg-[#fff7e6] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-[#292b2a]">{demand.title}</p>
+                      <Badge tone="danger">缺口 {remaining - pipeline} 人</Badge>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-[#777b78]">
+                      剩余 HC {remaining} · 流程中 {pipeline}
+                      {demand.owner_name ? ` · 负责人 ${demand.owner_name}` : ''}
+                    </p>
+                  </div>
+                ))
+              )
+            ) : selectedInsightAlerts.length === 0 ? (
+              <p className="text-sm text-[#777b78]">当前主题下没有风险事实。</p>
+            ) : (
+              selectedInsightAlerts.slice(0, 8).map((alert, index) => (
+                <div key={`${alert.kind}-${alert.demand_id}-${alert.candidate_id ?? index}`} className="rounded-xl border border-[#e8e7e1] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-semibold text-[#292b2a]">{alert.title}</p>
+                    <Badge tone={alert.priority === 'high' ? 'danger' : 'warning'}>
+                      {alert.priority === 'high' ? '高优先级' : '待关注'}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-[#777b78]">{alert.detail}</p>
+                  {(alert.owner_name || alert.candidate_name) && (
+                    <p className="mt-2 text-xs text-[#858a86]">
+                      {[alert.candidate_name, alert.owner_name ? `负责人 ${alert.owner_name}` : ''].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </DrawerShell>
       )}
     </div>
   );

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Badge, Card } from '../components/ui';
+import { Badge, Button, Card, DrawerShell } from '../components/ui';
 import { Reveal, AnimatedNumber } from '../components/motion';
 import type { BiManagerAlert, InterviewAssignment, Role } from '../types';
 
@@ -43,7 +43,7 @@ const ROLE_INFO: Record<Role, RoleInfo> = {
     duty: '管理招聘需求与候选人，跟进筛选、面试和 Offer',
     icon: UserCog,
     accent: 'bg-blue-50 text-accent-blue',
-    gradient: 'linear-gradient(135deg, #3d7b6b, #285e51)',
+    gradient: 'linear-gradient(135deg, var(--enterprise-brand), var(--enterprise-brand-dark))',
     action: { to: '/upload', label: '上传简历' },
   },
   manager: {
@@ -67,7 +67,7 @@ const ROLE_INFO: Record<Role, RoleInfo> = {
     duty: '处理分配给我的面试安排与反馈',
     icon: ClipboardCheck,
     accent: 'bg-teal-50 text-teal-700',
-    gradient: 'linear-gradient(135deg, #5d897c, #3d7b6b)',
+    gradient: 'linear-gradient(135deg, var(--enterprise-brand), var(--enterprise-brand-dark))',
     action: { to: '/interviewer/interviews', label: '查看我的面试' },
   },
 };
@@ -175,6 +175,14 @@ interface InterviewerTaskStats {
   todayInterviews: number | null;
   submittedFeedback: number | null;
   overdueFeedback: number | null;
+}
+
+interface DashboardKpiDetail {
+  label: string;
+  value: number | null;
+  description: string;
+  to: string;
+  actionLabel: string;
 }
 
 const EMPTY_STATS: DashboardStats = {
@@ -330,13 +338,21 @@ function KpiCard({
   label,
   value,
   accent,
+  onActivate,
 }: {
   label: string;
   value: number | null;
   accent?: string;
+  onActivate?: () => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-[#e8e7e1] bg-white shadow-[0_1px_2px_rgba(24,35,31,0.03)] transition-shadow hover:shadow-[0_8px_24px_rgba(24,35,31,0.07)]">
+    <button
+      type="button"
+      onClick={onActivate}
+      disabled={!onActivate || value === null}
+      className="w-full overflow-hidden rounded-xl border border-[#e8e7e1] bg-white text-left shadow-[0_1px_2px_rgba(24,35,31,0.03)] transition-shadow hover:shadow-[0_8px_24px_rgba(24,35,31,0.07)] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-80"
+      aria-label={onActivate && value !== null ? `${label} ${value}，查看明细` : undefined}
+    >
       <div className="relative px-5 py-5">
         {accent && (
           <div
@@ -353,7 +369,7 @@ function KpiCard({
           )}
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -415,6 +431,8 @@ function ManagementAlerts({
   error?: string;
   onRetry: () => void;
 }) {
+  const [selectedManagementAlert, setSelectedManagementAlert] = useState<BiManagerAlert | null>(null);
+
   return (
     <section>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -443,10 +461,12 @@ function ManagementAlerts({
           ) : (
             <div className="divide-y divide-hairline-soft">
               {alerts.slice(0, 4).map((alert) => (
-                <Link
+                <button
+                  type="button"
+                  data-ui="dashboard-management-alert-trigger"
                   key={`${alert.kind}-${alert.demand_id}-${alert.candidate_id}-${alert.stage}`}
-                  to={alert.action_path}
-                  className="flex items-start gap-3 px-5 py-4 transition-colors hover:bg-surface-soft focus:outline-none focus-visible:bg-surface-soft"
+                  onClick={() => setSelectedManagementAlert(alert)}
+                  className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors hover:bg-surface-soft focus:outline-none focus-visible:bg-surface-soft"
                 >
                   <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warning-50 text-warning-700">
                     <AlertTriangle className="h-4 w-4" />
@@ -465,12 +485,76 @@ function ManagementAlerts({
                     )}
                   </span>
                   <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-soft" />
-                </Link>
+                </button>
               ))}
             </div>
           )}
         </Card>
       )}
+
+      <DrawerShell
+        open={Boolean(selectedManagementAlert)}
+        onClose={() => setSelectedManagementAlert(null)}
+        title={selectedManagementAlert?.title ?? '管理提醒'}
+        eyebrow="管理提醒详情"
+        description="当前页展示接口已返回的提醒事实"
+        size="md"
+        testId="dashboard-management-alert-drawer"
+        footer={selectedManagementAlert ? (
+          <div className="flex w-full items-center justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => setSelectedManagementAlert(null)}>关闭</Button>
+            <Link
+              to={selectedManagementAlert.action_path || '/director/progress'}
+              onClick={() => setSelectedManagementAlert(null)}
+              className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--enterprise-brand)] px-5 text-sm font-semibold text-white hover:bg-[var(--enterprise-brand-dark)] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+            >
+              进入完整工作台
+            </Link>
+          </div>
+        ) : undefined}
+      >
+        {selectedManagementAlert && (
+          <div className="space-y-5">
+            <section className="rounded-lg border border-hairline bg-surface-soft px-5 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={alertTone(selectedManagementAlert.priority)}>
+                  {alertKindLabel(selectedManagementAlert.kind)}
+                </Badge>
+                {selectedManagementAlert.stage_label && (
+                  <Badge tone="neutral">{selectedManagementAlert.stage_label}</Badge>
+                )}
+              </div>
+              <p className="mt-3 text-sm leading-6 text-body">{selectedManagementAlert.detail}</p>
+            </section>
+            <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-muted">Demand</dt>
+                <dd className="mt-1 font-medium text-ink">#{selectedManagementAlert.demand_id}</dd>
+              </div>
+              {selectedManagementAlert.candidate_name && (
+                <div>
+                  <dt className="text-muted">候选人</dt>
+                  <dd className="mt-1 font-medium text-ink">{selectedManagementAlert.candidate_name}</dd>
+                </div>
+              )}
+              <div>
+                <dt className="text-muted">当前负责人</dt>
+                <dd className="mt-1 font-medium text-ink">{selectedManagementAlert.owner_name || '未指定'}</dd>
+              </div>
+              {selectedManagementAlert.kind === 'pending_interview_feedback' && (
+                <div>
+                  <dt className="text-muted">应补反馈面试官</dt>
+                  <dd className="mt-1 font-medium text-ink">{selectedManagementAlert.interviewer_name || '未记录'}</dd>
+                </div>
+              )}
+              <div>
+                <dt className="text-muted">停留时间</dt>
+                <dd className="mt-1 font-medium text-ink">{selectedManagementAlert.age_days} 天</dd>
+              </div>
+            </dl>
+          </div>
+        )}
+      </DrawerShell>
     </section>
   );
 }
@@ -484,11 +568,13 @@ function RecruiterWorkloadPanel({
   loading,
   error,
   onRetry,
+  onOpenKpi,
 }: {
   stats: DashboardStats;
   loading: boolean;
   error?: string;
   onRetry: () => void;
+  onOpenKpi: (detail: DashboardKpiDetail) => void;
 }) {
   return (
     <section>
@@ -511,31 +597,73 @@ function RecruiterWorkloadPanel({
             label="活动需求"
             value={loading ? null : valueOrNull(stats.activeDemands)}
             accent="#FF9500"
+            onActivate={() => onOpenKpi({
+              label: '活动需求',
+              value: valueOrNull(stats.activeDemands),
+              description: '当前由你负责、仍在推进的招聘需求。进入需求列表后可继续查看 HC、负责人和阶段进度。',
+              to: '/demands',
+              actionLabel: '查看招聘需求',
+            })}
           />
           <KpiCard
             label="当前流程人数"
             value={loading ? null : valueOrNull(stats.activeCandidates)}
             accent="#007AFF"
+            onActivate={() => onOpenKpi({
+              label: '当前流程人数',
+              value: valueOrNull(stats.activeCandidates),
+              description: '当前仍在招聘流程中的候选人总数，可在看板中按 Demand 和阶段继续查看。',
+              to: '/kanban',
+              actionLabel: '查看招聘看板',
+            })}
           />
           <KpiCard
             label="业务待反馈"
             value={loading ? null : valueOrNull(stats.businessReview)}
             accent="#5856D6"
+            onActivate={() => onOpenKpi({
+              label: '业务待反馈',
+              value: valueOrNull(stats.businessReview),
+              description: '已推荐给用人部门、正在等待业务反馈的候选人。',
+              to: '/kanban',
+              actionLabel: '打开看板并选择需求',
+            })}
           />
           <KpiCard
             label="面试中"
             value={loading ? null : valueOrNull(stats.interview)}
             accent="#AF52DE"
+            onActivate={() => onOpenKpi({
+              label: '面试中',
+              value: valueOrNull(stats.interview),
+              description: '当前已进入面试阶段的候选人，可继续查看安排与反馈状态。',
+              to: '/interviews',
+              actionLabel: '查看面试管理',
+            })}
           />
           <KpiCard
             label="Offer 跟进"
             value={loading ? null : valueOrNull(stats.offer)}
             accent="#34C759"
+            onActivate={() => onOpenKpi({
+              label: 'Offer 跟进',
+              value: valueOrNull(stats.offer),
+              description: '当前进入 Offer 阶段、仍需要审批或候选人回复的记录。',
+              to: '/offers',
+              actionLabel: '查看 Offer',
+            })}
           />
           <KpiCard
             label="待补反馈"
             value={loading ? null : valueOrNull(stats.outstandingFeedback)}
             accent="#FF3B30"
+            onActivate={() => onOpenKpi({
+              label: '待补反馈',
+              value: valueOrNull(stats.outstandingFeedback),
+              description: '已经完成面试但反馈仍未补齐的任务，需要及时提醒对应面试官。',
+              to: '/interviews?status=pending_feedback',
+              actionLabel: '查看待补反馈',
+            })}
           />
         </Reveal>
       )}
@@ -550,6 +678,7 @@ function TodoCard({
   desc,
   icon: Icon,
   tone,
+  onActivate,
 }: {
   to: string;
   label: string;
@@ -557,6 +686,7 @@ function TodoCard({
   desc: string;
   icon: LucideIcon;
   tone: 'neutral' | 'warning' | 'success';
+  onActivate: (detail: DashboardKpiDetail) => void;
 }) {
   const toneClass = {
     neutral: 'bg-surface-soft text-muted',
@@ -565,9 +695,18 @@ function TodoCard({
   }[tone];
 
   return (
-    <Link
-      to={to}
-      className="group block rounded-apple focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+    <button
+      type="button"
+      data-ui="dashboard-todo-trigger"
+      onClick={() => onActivate({
+        label,
+        value,
+        description: desc,
+        to,
+        actionLabel: '进入完整工作台',
+      })}
+      disabled={value === null}
+      className="group block w-full rounded-apple text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-80"
     >
       <Card variant="elevated" className="h-full">
         <div className="flex items-start gap-3 px-5 py-4">
@@ -586,11 +725,17 @@ function TodoCard({
           <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-soft transition-transform duration-200 group-hover:translate-x-1" />
         </div>
       </Card>
-    </Link>
+    </button>
   );
 }
 
-function RecruiterTodoPanel({ stats }: { stats: DashboardStats }) {
+function RecruiterTodoPanel({
+  stats,
+  onOpenKpi,
+}: {
+  stats: DashboardStats;
+  onOpenKpi: (detail: DashboardKpiDetail) => void;
+}) {
   const feedbackPending = valueOrNull(stats.outstandingFeedback);
   const businessReview = valueOrNull(stats.businessReview);
   const interview = valueOrNull(stats.interview);
@@ -605,36 +750,40 @@ function RecruiterTodoPanel({ stats }: { stats: DashboardStats }) {
         y={14}
       >
         <TodoCard
-          to="/kanban?stage=business_review"
+          to="/kanban"
           label="业务待反馈"
           value={businessReview}
           desc="推动用人部门确认"
           icon={Inbox}
           tone={businessReview && businessReview > 0 ? 'warning' : 'success'}
+          onActivate={onOpenKpi}
         />
         <TodoCard
-          to="/kanban?stage=interview"
+          to="/kanban"
           label="面试中跟进"
           value={interview}
           desc="关注候选人当前进展"
           icon={KanbanSquare}
           tone={interview && interview > 0 ? 'neutral' : 'success'}
+          onActivate={onOpenKpi}
         />
         <TodoCard
-          to="/interviews?focus=pending"
+          to="/interviews?status=pending_feedback"
           label="待补反馈"
           value={feedbackPending}
           desc="催补面试结论"
           icon={Clock3}
           tone={feedbackPending && feedbackPending > 0 ? 'warning' : 'success'}
+          onActivate={onOpenKpi}
         />
         <TodoCard
-          to="/kanban?stage=offer"
+          to="/kanban"
           label="Offer跟进"
           value={offer}
           desc="跟进发放与入职"
           icon={CheckCircle2}
           tone={offer && offer > 0 ? 'neutral' : 'success'}
+          onActivate={onOpenKpi}
         />
       </Reveal>
     </section>
@@ -685,6 +834,7 @@ function FeatureCard({
 export function DashboardPage() {
   const { name, role, userId } = useAuth();
   const { stats, loading, errors, reload } = useDashboardStats(role, userId);
+  const [kpiDetail, setKpiDetail] = useState<DashboardKpiDetail | null>(null);
 
   if (!role) return null;
 
@@ -751,32 +901,104 @@ export function DashboardPage() {
                 label="待我反馈"
                 value={stats.interviewerTasks.pendingFeedback}
                 accent="#FF9500"
+                onActivate={() => setKpiDetail({
+                  label: '待我反馈',
+                  value: stats.interviewerTasks.pendingFeedback,
+                  description: '已分配给你、尚未提交面试反馈的任务。',
+                  to: '/interviewer/interviews',
+                  actionLabel: '查看我的面试',
+                })}
               />
               <KpiCard
                 label="今日面试"
                 value={stats.interviewerTasks.todayInterviews}
                 accent="#007AFF"
+                onActivate={() => setKpiDetail({
+                  label: '今日面试',
+                  value: stats.interviewerTasks.todayInterviews,
+                  description: '安排在今天且尚未取消的面试任务。',
+                  to: '/interviewer/interviews',
+                  actionLabel: '查看今日安排',
+                })}
               />
               <KpiCard
                 label="已反馈"
                 value={stats.interviewerTasks.submittedFeedback}
                 accent="#34C759"
+                onActivate={() => setKpiDetail({
+                  label: '已反馈',
+                  value: stats.interviewerTasks.submittedFeedback,
+                  description: '你已经提交反馈的有效面试任务。',
+                  to: '/interviewer/interviews',
+                  actionLabel: '查看反馈记录',
+                })}
               />
               <KpiCard
                 label="超时待反馈"
                 value={stats.interviewerTasks.overdueFeedback}
                 accent="#FF3B30"
+                onActivate={() => setKpiDetail({
+                  label: '超时待反馈',
+                  value: stats.interviewerTasks.overdueFeedback,
+                  description: '已超过反馈时限、仍需要你补充评价的面试任务。',
+                  to: '/interviewer/interviews',
+                  actionLabel: '立即补反馈',
+                })}
               />
             </>
           ) : (
             <>
-              <KpiCard label="候选人总数" value={stats.candidates} accent="#007AFF" />
-              <KpiCard label="岗位总数" value={stats.jobs} accent="#5856D6" />
+              <KpiCard
+                label="候选人总数"
+                value={stats.candidates}
+                accent="#007AFF"
+                onActivate={() => setKpiDetail({
+                  label: '候选人总数',
+                  value: stats.candidates,
+                  description: '当前账号权限范围内可查看的真实候选人数量。',
+                  to: '/candidates',
+                  actionLabel: '查看候选人库',
+                })}
+              />
+              <KpiCard
+                label="岗位总数"
+                value={stats.jobs}
+                accent="#5856D6"
+                onActivate={() => setKpiDetail({
+                  label: '岗位总数',
+                  value: stats.jobs,
+                  description: '当前权限范围内的岗位画像数量，招聘需求仍按 Demand 独立管理。',
+                  to: '/job-templates',
+                  actionLabel: '查看岗位画像',
+                })}
+              />
               {showOperationalKpis && (
-                <KpiCard label="当前流程人数" value={stats.activeCandidates} accent="#FF9500" />
+                <KpiCard
+                  label="当前流程人数"
+                  value={stats.activeCandidates}
+                  accent="#FF9500"
+                  onActivate={() => setKpiDetail({
+                    label: '当前流程人数',
+                    value: stats.activeCandidates,
+                    description: '当前仍处于招聘流程中的候选人，可按 Demand 和阶段继续查看。',
+                    to: '/kanban',
+                    actionLabel: '查看招聘看板',
+                  })}
+                />
               )}
               {showOperationalKpis && (
-                <KpiCard label="活动需求" value={stats.activeDemands} accent="#34C759" />
+                <KpiCard
+                  label="活动需求"
+                  value={stats.activeDemands}
+                  accent="#34C759"
+                  onActivate={() => setKpiDetail({
+                    label: '活动需求',
+                    value: stats.activeDemands,
+                    description: '当前仍在确认或招聘中的真实招聘需求。',
+                    to: '/demands',
+                    actionLabel: '查看招聘需求',
+                  })}
+                />
               )}
             </>
           )}
@@ -798,10 +1020,13 @@ export function DashboardPage() {
           loading={loading}
           error={errors.bi}
           onRetry={reload}
+          onOpenKpi={setKpiDetail}
         />
       )}
 
-      {showRecruiterPanels && !errors.bi && <RecruiterTodoPanel stats={stats} />}
+      {showRecruiterPanels && !errors.bi && (
+        <RecruiterTodoPanel stats={stats} onOpenKpi={setKpiDetail} />
+      )}
 
       {/* C. 常用动作 */}
       <section>
@@ -833,6 +1058,41 @@ export function DashboardPage() {
           })}
         </Reveal>
       </section>
+
+      <DrawerShell
+        open={Boolean(kpiDetail)}
+        onClose={() => setKpiDetail(null)}
+        title={kpiDetail?.label ?? '指标明细'}
+        eyebrow="工作台指标"
+        description="数字来自当前账号权限范围内的真实业务数据"
+        size="md"
+        testId="dashboard-kpi-drawer"
+        footer={kpiDetail ? (
+          <div className="flex w-full items-center justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => setKpiDetail(null)}>关闭</Button>
+            <Link
+              to={kpiDetail.to}
+              onClick={() => setKpiDetail(null)}
+              className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--enterprise-brand)] px-5 text-sm font-semibold text-white hover:bg-[var(--enterprise-brand-dark)] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+            >
+              {kpiDetail.actionLabel}
+            </Link>
+          </div>
+        ) : undefined}
+      >
+        {kpiDetail && (
+          <div className="space-y-5">
+            <section className="rounded-lg border border-hairline bg-surface-soft px-5 py-5">
+              <p className="text-sm text-muted">{kpiDetail.label}</p>
+              <p className="mt-2 text-4xl font-semibold tabular-nums text-ink">{kpiDetail.value ?? '—'}</p>
+            </section>
+            <section>
+              <h3 className="text-sm font-semibold text-ink">这个数字代表什么</h3>
+              <p className="mt-2 text-sm leading-6 text-body">{kpiDetail.description}</p>
+            </section>
+          </div>
+        )}
+      </DrawerShell>
     </div>
   );
 }

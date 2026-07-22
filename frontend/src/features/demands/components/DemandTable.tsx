@@ -1,6 +1,6 @@
-import { Link } from 'react-router-dom';
 import { Badge, Pagination } from '../../../components/ui';
 import type { DemandListResponse, DemandStatus, RecruitmentDemand } from '../../../types';
+import type { DemandDrawerContext } from './DemandWorkspaceDrawer';
 
 const STATUS_LABELS: Record<DemandStatus, string> = {
   pending: '待确认',
@@ -18,27 +18,33 @@ function statusTone(status: DemandStatus): 'success' | 'warning' | 'danger' | 'n
   return 'neutral';
 }
 
-function StageMetric({ demand, stage, label, value }: {
+function StageMetric({ demand, stage, label, value, onOpen }: {
   demand: RecruitmentDemand;
   stage: string;
   label: string;
   value: number;
+  onOpen: (demand: RecruitmentDemand, context: DemandDrawerContext) => void;
 }) {
   return (
-    <Link
-      to={`/kanban?demand=${demand.id}&stage=${stage}`}
+    <button
+      type="button"
       className="inline-flex min-w-14 flex-col rounded-md px-2 py-1 text-center hover:bg-surface-soft focus:outline-none focus:ring-2 focus:ring-ink"
       aria-label={`${label} ${value} 人，查看候选人`}
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen(demand, { kind: 'stage', stage, label });
+      }}
     >
       <span className="text-sm font-semibold tabular-nums text-ink">{value}</span>
       <span className="text-[11px] text-muted">{label}</span>
-    </Link>
+    </button>
   );
 }
 
-export function DemandTable({ response, onPageChange }: {
+export function DemandTable({ response, onPageChange, onOpenDemand }: {
   response: DemandListResponse;
   onPageChange: (page: number) => void;
+  onOpenDemand: (demand: RecruitmentDemand, context: DemandDrawerContext) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-hairline bg-canvas">
@@ -56,32 +62,81 @@ export function DemandTable({ response, onPageChange }: {
           </thead>
           <tbody className="divide-y divide-hairline-soft">
             {response.items.map((demand) => (
-              <tr key={demand.id} className="align-top hover:bg-surface-soft/60">
+              <tr
+                key={demand.id}
+                tabIndex={0}
+                aria-label={`打开${demand.job_title}需求详情`}
+                onClick={() => onOpenDemand(demand, { kind: 'overview' })}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onOpenDemand(demand, { kind: 'overview' });
+                  }
+                }}
+                className="cursor-pointer align-top hover:bg-surface-soft/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-inset"
+              >
                 <td className="px-4 py-3">
-                  <Link to={`/demands/${demand.id}`} className="font-medium text-ink hover:underline">
+                  <button
+                    type="button"
+                    className="text-left font-medium text-ink hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenDemand(demand, { kind: 'overview' });
+                    }}
+                  >
                     {demand.job_title}
-                  </Link>
+                  </button>
                   <p className="mt-1 text-xs text-muted">{demand.request_no || `需求 #${demand.id}`}</p>
                 </td>
                 <td className="px-4 py-3 text-body">
                   <p>{demand.job_department || '未记录部门'}</p>
                   <p className="mt-1 text-xs text-muted">{demand.job_city || '未记录城市'}</p>
                 </td>
-                <td className="px-4 py-3 text-body">{demand.owner_hr_name || `专员 #${demand.owner_hr_id}`}</td>
                 <td className="px-4 py-3 text-body">
-                  <p>{demand.metrics.onboarded_count} / {demand.headcount}</p>
-                  <p className="mt-1 text-xs text-muted">{demand.target_date || '未记录日期'}</p>
+                  <button
+                    type="button"
+                    className="rounded-md text-left hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenDemand(demand, { kind: 'owner' });
+                    }}
+                  >
+                    {demand.owner_hr_name || `专员 #${demand.owner_hr_id}`}
+                  </button>
+                </td>
+                <td className="px-4 py-3 text-body">
+                  <button
+                    type="button"
+                    className="rounded-md text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenDemand(demand, { kind: 'headcount' });
+                    }}
+                  >
+                    <p>{demand.metrics.onboarded_count} / {demand.headcount}</p>
+                    <p className="mt-1 text-xs text-muted">{demand.target_date || '未记录日期'}</p>
+                  </button>
                 </td>
                 <td className="px-2 py-2">
                   <div className="flex flex-wrap gap-1">
-                    <StageMetric demand={demand} stage="all" label="全部" value={demand.metrics.recommended_count} />
-                    <StageMetric demand={demand} stage="business_review" label="待反馈" value={demand.metrics.business_review_count} />
-                    <StageMetric demand={demand} stage="interview" label="面试" value={demand.metrics.interview_count} />
-                    <StageMetric demand={demand} stage="offer" label="Offer" value={demand.metrics.offer_count} />
+                    <StageMetric demand={demand} stage="all" label="全部" value={demand.metrics.recommended_count} onOpen={onOpenDemand} />
+                    <StageMetric demand={demand} stage="business_review" label="待反馈" value={demand.metrics.business_review_count} onOpen={onOpenDemand} />
+                    <StageMetric demand={demand} stage="interview" label="面试" value={demand.metrics.interview_count} onOpen={onOpenDemand} />
+                    <StageMetric demand={demand} stage="offer" label="Offer" value={demand.metrics.offer_count} onOpen={onOpenDemand} />
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <Badge tone={statusTone(demand.status)}>{STATUS_LABELS[demand.status]}</Badge>
+                  <button
+                    type="button"
+                    className="rounded-md text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenDemand(demand, { kind: 'status' });
+                    }}
+                  >
+                    <Badge tone={statusTone(demand.status)}>{STATUS_LABELS[demand.status]}</Badge>
+                  </button>
                   {demand.completion_suggested && (
                     <p className="mt-2 text-xs text-success-700">HC 已达成，待确认完成</p>
                   )}

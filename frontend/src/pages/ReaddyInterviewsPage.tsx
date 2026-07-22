@@ -2,8 +2,8 @@
 // 数据全部来自真实后端：面试任务(assignment)、面试记录(record)、招聘需求、面试官。
 // 反馈提交只调用反馈接口，不会自动推进候选人主流程（后端语义如此）。
 
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   CalendarClock,
@@ -35,8 +35,8 @@ import {
   Spinner,
   useToast,
 } from '../components/ui';
+import { DrawerShell } from '../components/ui/DrawerShell';
 import { FeedbackForm } from '../components/interview/FeedbackForm';
-import { InterviewRecordDrawer } from '../components/interviewRecords/InterviewRecordDrawer';
 import type {
   InterviewAssignment,
   InterviewFeedbackResponse,
@@ -74,6 +74,18 @@ const STATUS_FILTER_OPTIONS: Array<{ key: 'all' | AssignmentStatusKey; label: st
   { key: 'done', label: '已反馈' },
   { key: 'cancelled', label: '已取消' },
 ];
+
+function statusFilterFromQuery(value: string | null): 'all' | AssignmentStatusKey {
+  return STATUS_FILTER_OPTIONS.some((item) => item.key === value)
+    ? value as 'all' | AssignmentStatusKey
+    : 'all';
+}
+
+function demandFilterFromQuery(value: string | null): 'all' | number {
+  if (!value) return 'all';
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 'all';
+}
 
 const ROUND_SEQUENCE_BY_ROUND: Partial<Record<InterviewRound, number>> = {
   round_1: 1,
@@ -459,17 +471,28 @@ function CancelModal({
 export function ReaddyInterviewsPage() {
   const { role, userId } = useAuth();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusQuery = searchParams.get('status');
+  const demandQuery = searchParams.get('demand');
   const canManage = role === 'recruiter' || role === 'manager' || role === 'admin';
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [demandFilter, setDemandFilter] = useState<'all' | number>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | AssignmentStatusKey>('all');
+  const [demandFilter, setDemandFilter] = useState<'all' | number>(() => demandFilterFromQuery(demandQuery));
+  const [statusFilter, setStatusFilter] = useState<'all' | AssignmentStatusKey>(() => statusFilterFromQuery(statusQuery));
   const [interviewerFilter, setInterviewerFilter] = useState<'all' | number>('all');
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<InterviewAssignment | null>(null);
   const [feedbackTarget, setFeedbackTarget] = useState<InterviewAssignment | null>(null);
-  const [viewingRecord, setViewingRecord] = useState<InterviewListItem | null>(null);
+  const [detailTarget, setDetailTarget] = useState<InterviewAssignment | null>(null);
+
+  useEffect(() => {
+    setStatusFilter(statusFilterFromQuery(statusQuery));
+  }, [statusQuery]);
+
+  useEffect(() => {
+    setDemandFilter(demandFilterFromQuery(demandQuery));
+  }, [demandQuery]);
 
   const assignmentsAsync = useAsync(() => api.listInterviewAssignments(), []);
   const recordsAsync = useAsync(() => api.listInterviews(), []);
@@ -545,12 +568,29 @@ export function ReaddyInterviewsPage() {
     || statusFilter !== 'all'
     || interviewerFilter !== 'all';
 
+  function changeStatusFilter(nextStatus: 'all' | AssignmentStatusKey) {
+    setStatusFilter(nextStatus);
+    const next = new URLSearchParams(searchParams);
+    if (nextStatus === 'all') next.delete('status');
+    else next.set('status', nextStatus);
+    setSearchParams(next, { replace: true });
+  }
+
+  function changeDemandFilter(nextDemand: 'all' | number) {
+    setDemandFilter(nextDemand);
+    const next = new URLSearchParams(searchParams);
+    if (nextDemand === 'all') next.delete('demand');
+    else next.set('demand', String(nextDemand));
+    setSearchParams(next, { replace: true });
+  }
+
   function clearAllFilters() {
     setSearchInput('');
     setSearch('');
     setDemandFilter('all');
     setStatusFilter('all');
     setInterviewerFilter('all');
+    setSearchParams(new URLSearchParams(), { replace: true });
   }
 
   function reloadAll() {
@@ -561,7 +601,8 @@ export function ReaddyInterviewsPage() {
   function findFeedbackRecord(assignment: InterviewAssignment): InterviewListItem | null {
     return records.find((record) => record.type === 'feedback'
       && (record.assignment_id === assignment.id
-        || (record.candidate_id === assignment.candidate_id
+        || (record.assignment_id == null
+          && record.candidate_id === assignment.candidate_id
           && record.round === assignment.round
           && (assignment.demand_id === null
             ? record.job_id === assignment.job_id
@@ -571,11 +612,19 @@ export function ReaddyInterviewsPage() {
   function handleViewFeedback(assignment: InterviewAssignment) {
     const record = findFeedbackRecord(assignment);
     if (record) {
-      setViewingRecord(record);
+      setDetailTarget(assignment);
     } else {
       toast.error('未找到对应的反馈记录，可能尚未同步');
     }
   }
+
+  const detailFeedback = detailTarget ? findFeedbackRecord(detailTarget) : null;
+  const detailRecords = detailTarget
+    ? records.filter((record) => record.candidate_id === detailTarget.candidate_id
+      && (detailTarget.demand_id === null
+        ? record.job_id === detailTarget.job_id
+        : record.demand_id === detailTarget.demand_id))
+    : [];
 
   function handleFeedbackSubmitted(result: InterviewFeedbackResponse) {
     setFeedbackTarget(null);
@@ -625,26 +674,46 @@ export function ReaddyInterviewsPage() {
 
       {/* 统计卡片 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-hairline bg-canvas p-4">
+        <button
+          type="button"
+          onClick={() => changeStatusFilter('scheduled')}
+          aria-pressed={statusFilter === 'scheduled'}
+          className={`rounded-xl border bg-canvas p-4 text-left transition-colors hover:border-[#1e6fd9] ${statusFilter === 'scheduled' ? 'border-[#1e6fd9] ring-2 ring-blue-100' : 'border-hairline'}`}
+        >
           <Clock3 className="h-5 w-5 text-[#1e6fd9]" />
           <p className="mt-3 text-xs text-muted">待面试</p>
           <p className="mt-1 text-2xl font-bold text-ink">{stats.scheduled}</p>
-        </div>
-        <div className="rounded-xl border border-hairline bg-canvas p-4">
+        </button>
+        <button
+          type="button"
+          onClick={() => changeStatusFilter('pending_feedback')}
+          aria-pressed={statusFilter === 'pending_feedback'}
+          className={`rounded-xl border bg-canvas p-4 text-left transition-colors hover:border-[#b56a00] ${statusFilter === 'pending_feedback' ? 'border-[#b56a00] ring-2 ring-amber-100' : 'border-hairline'}`}
+        >
           <AlertTriangle className="h-5 w-5 text-[#b56a00]" />
           <p className="mt-3 text-xs text-muted">待反馈</p>
           <p className="mt-1 text-2xl font-bold text-ink">{stats.pending_feedback}</p>
-        </div>
-        <div className="rounded-xl border border-hairline bg-canvas p-4">
+        </button>
+        <button
+          type="button"
+          onClick={() => changeStatusFilter('done')}
+          aria-pressed={statusFilter === 'done'}
+          className={`rounded-xl border bg-canvas p-4 text-left transition-colors hover:border-[#52a611] ${statusFilter === 'done' ? 'border-[#52a611] ring-2 ring-green-100' : 'border-hairline'}`}
+        >
           <CheckCircle2 className="h-5 w-5 text-[#52a611]" />
           <p className="mt-3 text-xs text-muted">已反馈</p>
           <p className="mt-1 text-2xl font-bold text-ink">{stats.done}</p>
-        </div>
-        <div className="rounded-xl border border-hairline bg-canvas p-4">
+        </button>
+        <button
+          type="button"
+          onClick={() => changeStatusFilter('cancelled')}
+          aria-pressed={statusFilter === 'cancelled'}
+          className={`rounded-xl border bg-canvas p-4 text-left transition-colors hover:border-[#777b78] ${statusFilter === 'cancelled' ? 'border-[#777b78] ring-2 ring-gray-100' : 'border-hairline'}`}
+        >
           <XCircle className="h-5 w-5 text-muted-soft" />
           <p className="mt-3 text-xs text-muted">已取消</p>
           <p className="mt-1 text-2xl font-bold text-ink">{stats.cancelled}</p>
-        </div>
+        </button>
       </div>
 
       <Card className="overflow-hidden">
@@ -678,7 +747,7 @@ export function ReaddyInterviewsPage() {
               aria-label="按招聘需求筛选"
               className="h-10 rounded-md border border-hairline bg-canvas px-3 text-sm text-ink focus:border-ink focus:outline-none"
               value={demandFilter === 'all' ? 'all' : String(demandFilter)}
-              onChange={(event) => setDemandFilter(event.target.value === 'all' ? 'all' : Number(event.target.value))}
+              onChange={(event) => changeDemandFilter(event.target.value === 'all' ? 'all' : Number(event.target.value))}
             >
               <option value="all">全部需求</option>
               {demandOptions.map((option) => (
@@ -689,7 +758,7 @@ export function ReaddyInterviewsPage() {
               aria-label="按状态筛选"
               className="h-10 rounded-md border border-hairline bg-canvas px-3 text-sm text-ink focus:border-ink focus:outline-none"
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as 'all' | AssignmentStatusKey)}
+              onChange={(event) => changeStatusFilter(event.target.value as 'all' | AssignmentStatusKey)}
             >
               {STATUS_FILTER_OPTIONS.map((option) => (
                 <option key={option.key} value={option.key}>{option.label}</option>
@@ -727,13 +796,13 @@ export function ReaddyInterviewsPage() {
             {demandFilter !== 'all' && (
               <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-soft px-2.5 py-1 text-xs font-medium text-ink">
                 需求: {demandOptions.find((option) => option.id === demandFilter)?.label ?? `#${demandFilter}`}
-                <button type="button" onClick={() => setDemandFilter('all')} aria-label="清除需求筛选"><X className="h-3 w-3" /></button>
+                <button type="button" onClick={() => changeDemandFilter('all')} aria-label="清除需求筛选"><X className="h-3 w-3" /></button>
               </span>
             )}
             {statusFilter !== 'all' && (
               <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-soft px-2.5 py-1 text-xs font-medium text-ink">
                 状态: {STATUS_META[statusFilter].label}
-                <button type="button" onClick={() => setStatusFilter('all')} aria-label="清除状态筛选"><X className="h-3 w-3" /></button>
+                <button type="button" onClick={() => changeStatusFilter('all')} aria-label="清除状态筛选"><X className="h-3 w-3" /></button>
               </span>
             )}
             {interviewerFilter !== 'all' && (
@@ -806,7 +875,19 @@ export function ReaddyInterviewsPage() {
                     && !item.feedback_submitted
                     && isActiveInterviewAssignment(item);
                   return (
-                    <tr key={item.id} className="hover:bg-surface-soft">
+                    <tr
+                      key={item.id}
+                      className="cursor-pointer hover:bg-surface-soft"
+                      tabIndex={0}
+                      onClick={() => setDetailTarget(item)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setDetailTarget(item);
+                        }
+                      }}
+                    >
                       <td className="px-5 py-4">
                         <p className="font-semibold text-ink">{item.name_masked ?? `候选人 #${item.candidate_id}`}</p>
                         <p className="mt-1 text-xs text-muted">
@@ -836,16 +917,25 @@ export function ReaddyInterviewsPage() {
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap justify-end gap-2">
                           {item.feedback_submitted && (
-                            <Button size="sm" variant="secondary" onClick={() => handleViewFeedback(item)}>查看反馈</Button>
+                            <Button size="sm" variant="secondary" onClick={(event) => {
+                              event.stopPropagation();
+                              handleViewFeedback(item);
+                            }}>查看反馈</Button>
                           )}
                           {canFillFeedback && (
-                            <Button size="sm" onClick={() => setFeedbackTarget(item)}>填写反馈</Button>
+                            <Button size="sm" onClick={(event) => {
+                              event.stopPropagation();
+                              setFeedbackTarget(item);
+                            }}>填写反馈</Button>
                           )}
                           {!item.feedback_submitted && !canFillFeedback && statusKey === 'pending_feedback' && (
                             <span className="self-center text-xs text-muted-soft">待面试官反馈</span>
                           )}
                           {canCancel && (
-                            <Button size="sm" variant="danger" onClick={() => setCancelTarget(item)}>取消面试</Button>
+                            <Button size="sm" variant="danger" onClick={(event) => {
+                              event.stopPropagation();
+                              setCancelTarget(item);
+                            }}>取消面试</Button>
                           )}
                         </div>
                       </td>
@@ -914,9 +1004,64 @@ export function ReaddyInterviewsPage() {
           </div>
         </ModalShell>
       )}
-      {viewingRecord && (
-        <InterviewRecordDrawer item={viewingRecord} onClose={() => setViewingRecord(null)} />
-      )}
+      <DrawerShell
+        open={Boolean(detailTarget)}
+        onClose={() => setDetailTarget(null)}
+        title="面试详情"
+        eyebrow={detailTarget ? STATUS_META[assignmentStatus(detailTarget)].label : undefined}
+        description={detailTarget
+          ? `${detailTarget.name_masked ?? `候选人 #${detailTarget.candidate_id}`} · ${detailTarget.job_title ?? `岗位 #${detailTarget.job_id}`}`
+          : undefined}
+        size="lg"
+        testId="interview-detail-drawer"
+      >
+        {detailTarget && (
+          <div className="space-y-6 p-6">
+            <section className="rounded-xl border border-hairline p-4">
+              <h3 className="text-sm font-semibold text-ink">面试信息</h3>
+              <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                <div><dt className="text-xs text-muted">面试轮次</dt><dd className="mt-1 font-medium text-ink">{roundLabel(detailTarget.round)} · 第 {detailTarget.round_sequence} 轮</dd></div>
+                <div><dt className="text-xs text-muted">面试责任</dt><dd className="mt-1 font-medium text-ink">{detailTarget.is_primary ? '主面试官' : '辅助面试官'}</dd></div>
+                <div><dt className="text-xs text-muted">面试官</dt><dd className="mt-1 font-medium text-ink">{detailTarget.interviewer_name ?? `面试官 #${detailTarget.interviewer_id}`}</dd></div>
+                <div><dt className="text-xs text-muted">时间</dt><dd className="mt-1 font-medium text-ink">{formatDateTime(detailTarget.scheduled_at)}</dd></div>
+                <div className="sm:col-span-2"><dt className="text-xs text-muted">地点 / 会议链接</dt><dd className="mt-1 font-medium text-ink">{detailTarget.location || '地点待定'}</dd></div>
+                <div className="sm:col-span-2"><dt className="text-xs text-muted">安排备注</dt><dd className="mt-1 whitespace-pre-wrap text-ink">{detailTarget.note || '暂无备注'}</dd></div>
+              </dl>
+            </section>
+
+            <section className="rounded-xl border border-hairline p-4">
+              <h3 className="text-sm font-semibold text-ink">面试反馈</h3>
+              {detailFeedback ? (
+                <div className="mt-3 space-y-2 text-sm text-body">
+                  <p><span className="text-muted">结论：</span>{detailFeedback.pass === null ? '未记录' : detailFeedback.pass ? '通过' : '不通过'}</p>
+                  <p><span className="text-muted">评分：</span>{detailFeedback.score ?? '—'}</p>
+                  <p><span className="text-muted">优势：</span>{detailFeedback.strengths || '未记录'}</p>
+                  <p><span className="text-muted">顾虑：</span>{detailFeedback.concerns || '未记录'}</p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted">本轮尚无已提交反馈。</p>
+              )}
+            </section>
+
+            <section className="rounded-xl border border-hairline p-4">
+              <h3 className="text-sm font-semibold text-ink">流程记录</h3>
+              <div className="mt-3 space-y-3">
+                <div className="rounded-lg bg-surface-soft px-3 py-2 text-sm text-body">
+                  {formatDateTime(detailTarget.created_at)} · {detailTarget.created_by_name || '系统'} 安排面试
+                </div>
+                {detailRecords.length === 0 ? (
+                  <p className="text-sm text-muted">暂无更多面试记录。</p>
+                ) : detailRecords.map((record) => (
+                  <div key={`${record.type}-${record.id}`} className="rounded-lg bg-surface-soft px-3 py-2 text-sm text-body">
+                    {formatDateTime(record.created_at)} · {record.type === 'feedback' ? '提交面试反馈' : '完成 AI 面试'}
+                    {record.interviewer_name ? ` · ${record.interviewer_name}` : ''}
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+      </DrawerShell>
     </div>
   );
 }

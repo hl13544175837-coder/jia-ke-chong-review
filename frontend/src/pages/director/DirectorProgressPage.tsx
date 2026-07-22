@@ -12,6 +12,7 @@ import {
   Badge,
   Card,
   CardBody,
+  DrawerShell,
   EmptyState,
   ErrorState,
   PageHeader,
@@ -25,6 +26,8 @@ import {
   formatDate,
   safeNum,
 } from './utils';
+
+type ProgressKpi = 'demands' | 'pipeline' | 'onboarded' | 'alerts';
 
 function DemandRow({
   demand,
@@ -46,7 +49,7 @@ function DemandRow({
       aria-pressed={selected}
       className={`w-full rounded-xl border p-4 text-left transition-all ${
         selected
-          ? 'border-[#3d7b6b] ring-2 ring-[#dcebe5]'
+          ? 'border-[var(--enterprise-brand)] ring-2 ring-[var(--enterprise-brand-soft)]'
           : 'border-[#e8e7e1] bg-white hover:border-[#c9cec6]'
       }`}
     >
@@ -67,7 +70,7 @@ function DemandRow({
       <div className="mt-3 flex items-center gap-3">
         <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#f1f2ee]">
           <div
-            className="h-full rounded-full bg-[#3d7b6b] transition-all duration-500"
+            className="h-full rounded-full bg-[var(--enterprise-brand)] transition-all duration-500"
             style={{ width: `${Math.max(hcPct, hc.onboarded_count > 0 ? 4 : 0)}%` }}
           />
         </div>
@@ -83,6 +86,7 @@ export function DirectorProgressPage() {
   const { role } = useAuth();
   const canView = role === 'manager' || role === 'admin';
   const [selectedDemandId, setSelectedDemandId] = useState<number | null>(null);
+  const [selectedProgressKpi, setSelectedProgressKpi] = useState<ProgressKpi | null>(null);
 
   const {
     data: overview,
@@ -151,18 +155,21 @@ export function DirectorProgressPage() {
               label="需求总数"
               value={demands.length}
               detail={`进行中 ${demands.filter((item) => item.status === 'active').length} 个`}
+              onActivate={() => setSelectedProgressKpi('demands')}
             />
             <KpiCard
               icon={Users}
               label="当前流程人数"
               value={safeNum(overview.funnel.pipeline_total)}
               detail="全部需求的在流程候选人"
+              onActivate={() => setSelectedProgressKpi('pipeline')}
             />
             <KpiCard
               icon={Users}
               label="已入职"
               value={safeNum(overview.funnel.onboarded)}
               detail="当前阶段为已入职"
+              onActivate={() => setSelectedProgressKpi('onboarded')}
             />
             <KpiCard
               icon={ShieldAlert}
@@ -170,6 +177,7 @@ export function DirectorProgressPage() {
               value={overview.alerts.length}
               detail="需要协调的事项数量"
               tone={overview.alerts.length > 0 ? 'warning' : 'default'}
+              onActivate={() => setSelectedProgressKpi('alerts')}
             />
           </div>
 
@@ -214,6 +222,95 @@ export function DirectorProgressPage() {
             </p>
           </CardBody>
         </Card>
+      )}
+
+      {overview && (
+        <DrawerShell
+          open={selectedProgressKpi !== null}
+          onClose={() => setSelectedProgressKpi(null)}
+          title={selectedProgressKpi === 'demands'
+            ? '需求总数'
+            : selectedProgressKpi === 'pipeline'
+              ? '当前流程人数'
+              : selectedProgressKpi === 'onboarded'
+                ? '已入职'
+                : '卡点提醒'}
+          description="本抽屉只展示当前页真实接口已返回的汇总与需求事实"
+          size="md"
+          testId="director-progress-kpi-drawer"
+          footer={(
+            <Link
+              to={selectedProgressKpi === 'demands'
+                ? '/demands'
+                : selectedProgressKpi === 'onboarded'
+                  ? '/dashboard/hired'
+                  : selectedProgressKpi === 'alerts'
+                    ? '/director/insights'
+                    : '/kanban'}
+              className="inline-flex h-10 items-center justify-center rounded-md border border-hairline bg-canvas px-5 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
+            >
+              进入完整工作台
+            </Link>
+          )}
+        >
+          <div className="space-y-4">
+            <div className="rounded-xl border border-[#e8e7e1] bg-[#f6f7f3] p-4">
+              <p className="text-xs text-[#777b78]">
+                {selectedProgressKpi === 'demands'
+                  ? '需求总数'
+                  : selectedProgressKpi === 'pipeline'
+                    ? '全部需求的在流程候选人'
+                    : selectedProgressKpi === 'onboarded'
+                      ? '当前阶段为已入职'
+                      : '需要协调的事项数量'}
+              </p>
+              <p className="mt-2 text-3xl font-bold tabular-nums text-[#292b2a]">
+                {selectedProgressKpi === 'demands'
+                  ? demands.length
+                  : selectedProgressKpi === 'pipeline'
+                    ? safeNum(overview.funnel.pipeline_total)
+                    : selectedProgressKpi === 'onboarded'
+                      ? safeNum(overview.funnel.onboarded)
+                      : overview.alerts.length}
+              </p>
+            </div>
+
+            {selectedProgressKpi === 'alerts' ? (
+              overview.alerts.length === 0 ? (
+                <p className="text-sm text-[#777b78]">当前没有需要协调的卡点。</p>
+              ) : (
+                <div className="space-y-3">
+                  {overview.alerts.slice(0, 8).map((alert, index) => (
+                    <div key={`${alert.kind}-${alert.demand_id}-${alert.candidate_id ?? index}`} className="rounded-xl border border-[#e8e7e1] p-4">
+                      <p className="text-sm font-semibold text-[#292b2a]">{alert.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-[#777b78]">{alert.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : demands.length === 0 ? (
+              <p className="text-sm text-[#777b78]">当前没有可展示的需求事实。</p>
+            ) : (
+              <div className="space-y-3">
+                {demands.slice(0, 8).map((demand) => (
+                  <div key={demand.demand_id} className="rounded-xl border border-[#e8e7e1] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-[#292b2a]">{demand.title}</p>
+                      <Badge tone={demandStatusTone(demand.status)}>{demandStatusLabel(demand.status)}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-[#777b78]">
+                      {selectedProgressKpi === 'pipeline'
+                        ? `流程中 ${safeNum(demand.funnel.pipeline_total)} 人`
+                        : selectedProgressKpi === 'onboarded'
+                          ? `已入职 ${safeNum(demand.funnel.onboarded)} 人`
+                          : `HC ${demand.hc.onboarded_count}/${demand.hc.headcount} · 流程中 ${safeNum(demand.funnel.pipeline_total)}`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DrawerShell>
       )}
     </div>
   );

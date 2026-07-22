@@ -8,8 +8,8 @@ const srcRoot = join(__dirname, '../src');
 const page = readFileSync(join(srcRoot, 'pages/TalentMapPage.tsx'), 'utf8');
 const css = readFileSync(join(srcRoot, 'index.css'), 'utf8');
 
-assert.match(css, /--enterprise-brand:\s*#379f70/i, '主色应与 Figma 人才地图一致');
-assert.match(css, /--enterprise-brand-soft:\s*#e9f5f0/i, '浅绿背景应与 Figma 一致');
+assert.match(css, /--enterprise-brand:\s*#00c07b/i, '流程嫁接后仍应使用旧公司招聘系统主色');
+assert.match(css, /--enterprise-brand-soft:\s*#e6f8f1/i, '浅绿背景应继续使用旧公司招聘系统色板');
 assert.match(page, /data-ui="figma-talent-map"/, '人才地图应有可验收的 Figma 页面标识');
 assert.match(page, /新增公司/, '页头应保留 Figma 的主操作');
 assert.match(page, /地图范围/, '页面应有横向地图范围卡片');

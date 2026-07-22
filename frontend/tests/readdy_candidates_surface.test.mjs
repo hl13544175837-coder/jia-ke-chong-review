@@ -31,5 +31,9 @@ assert.match(page, /scopeCountsAsync\.error/, '候选人范围统计失败不能
 assert.match(page, /scopeCountsAsync\.reload/, '候选人范围统计失败应可重试');
 assert.match(page, /demandsAsync\.error/, '需求选项失败应显示真实错误');
 assert.match(page, /demandsAsync\.reload/, '需求选项失败应提供重试');
-assert.match(css, /\.readdy-candidates\s+\.enterprise-hero/, '简历库应对旧 Enterprise hero 做 Readdy 视觉收敛');
+assert.doesNotMatch(
+  css,
+  /\.readdy-candidates\s+\.enterprise-hero/,
+  '简历库应复用旧公司 Enterprise hero 的原有颜色、间距和宽度，不再覆盖视觉底座',
+);
 assert.doesNotMatch(page, /localStorage|sessionStorage|mock/i, '简历库业务不得使用假数据或浏览器业务存储');

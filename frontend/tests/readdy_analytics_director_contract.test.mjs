@@ -74,18 +74,18 @@ assert.match(approvals, /拒绝时必须填写原因/);
 assert.match(widgets, /api\.biDemand\(demandId\)/);
 assert.match(
   widgets,
-  /`\/kanban\?demand=\$\{demandId\}&stage=\$\{stage\.key\}`/,
-  '单需求阶段数字必须下钻到新 Readdy 看板的对应 Demand/阶段',
+  /`\/kanban\?demand=\$\{demandId\}&stage=\$\{selectedFunnelStage\.key\}`/,
+  '单需求阶段抽屉必须保留到对应 Demand/阶段工作台的次级入口',
 );
 assert.match(
   widgets,
-  /`\/kanban\?demand=\$\{demandId\}&stage=\$\{item\.stage\}&candidate=\$\{item\.candidate_id\}`/,
-  '停滞候选人必须下钻到对应 Demand 和候选人卡片',
+  /`\/kanban\?demand=\$\{demandId\}&stage=\$\{selectedDemandFact\.item\.stage\}&candidate=\$\{selectedDemandFact\.item\.candidate_id\}`/,
+  '停滞候选人抽屉必须保留到对应 Demand 和候选人卡片的次级入口',
 );
 assert.match(
   widgets,
-  /`\/interviews\?demand=\$\{demandId\}&candidate=\$\{item\.candidate_id\}&focus=pending`/,
-  '待补反馈必须下钻到对应面试任务',
+  /`\/interviews\?demand=\$\{demandId\}&candidate=\$\{selectedDemandFact\.item\.candidate_id\}&focus=pending`/,
+  '待补反馈抽屉必须保留到对应面试任务的次级入口',
 );
 
 // API surface used by the graft must exist with the expected names.

@@ -137,7 +137,7 @@ assert.doesNotMatch(
 );
 assert.match(
   dashboard,
-  /to="\/interviews\?focus=pending"[\s\S]*label="待补反馈"/,
+  /to="\/interviews\?status=pending_feedback"[\s\S]*label="待补反馈"/,
   'Dashboard should keep interview feedback reachable as a specific todo',
 );
 assert.doesNotMatch(

@@ -2,15 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, RotateCcw, Target, Upload, UserPlus, Users, X } from 'lucide-react';
+import { Eye, RotateCcw, Target, Upload, UserPlus, Users } from 'lucide-react';
 import { candidatesApi as api } from '../api';
 import { formatDate } from '../../../lib/formatDate';
+import { stageLabel } from '../../../lib/pipelineStages';
+import { isTerminalStage, stageAgeLabel } from '../../../lib/pipelineInsights';
 import { useDebounce } from '../../../lib/useDebounce';
 import { useAsync } from '../../../lib/useAsync';
 import { RESUME_SOURCE_CHANNEL_OPTIONS } from '../../../lib/sourceChannels';
 import {
   Badge,
   Button,
+  DrawerShell,
   ErrorState,
   Input,
   Pagination,
@@ -26,7 +29,13 @@ import {
   EnterpriseTableCard,
 } from '../../../components/enterprise';
 import { Reveal, AnimatedNumber } from '../../../components/motion';
-import type { CandidateListItem, CandidateTag, MatchResultItem, ParseStatus } from '../types';
+import type { CandidatePipelineItem } from '../../../types';
+import type {
+  CandidateListItem,
+  CandidateTag,
+  MatchResultItem,
+  ParseStatus,
+} from '../types';
 
 const TAG_TONES = ['accent', 'purple', 'teal', 'info', 'neutral'] as const;
 const COMMON_SOURCE_OPTIONS = RESUME_SOURCE_CHANNEL_OPTIONS.filter((channel) => channel !== '其他');
@@ -224,6 +233,213 @@ function SourceSummary({ candidate }: { candidate: CandidateListItem }) {
   );
 }
 
+const DEMAND_STATUS_LABELS: Record<CandidatePipelineItem['demand_status'], string> = {
+  pending: '待启动',
+  active: '招聘中',
+  paused: '已暂停',
+  filled: '已完成',
+  cancelled: '已取消',
+  closed: '已关闭',
+};
+
+function isCurrentApplication(pipeline: CandidatePipelineItem) {
+  return ['pending', 'active', 'paused'].includes(pipeline.demand_status)
+    && !isTerminalStage(pipeline.stage);
+}
+
+function CandidateApplicationCard({
+  candidate,
+  pipeline,
+}: {
+  candidate: CandidateListItem;
+  pipeline: CandidatePipelineItem;
+}) {
+  return (
+    <article className="rounded-xl border border-hairline bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h4 className="font-semibold text-ink">{pipeline.job_title}</h4>
+          <p className="mt-1 text-xs text-muted-soft">
+            {[pipeline.department, pipeline.city].filter(Boolean).join(' · ') || '未设置岗位归属'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone="neutral">{DEMAND_STATUS_LABELS[pipeline.demand_status]}</Badge>
+          <Badge tone="info">{stageLabel(pipeline.stage)}</Badge>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-hairline-soft pt-3">
+        <span className="text-xs text-muted-soft">
+          最近更新：{stageAgeLabel(pipeline.updated_at)}
+        </span>
+        <Link
+          to={`/kanban?demand=${pipeline.demand_id}&candidate=${candidate.id}`}
+          className="text-sm font-semibold text-accent-blue hover:underline"
+        >
+          查看该需求流程
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function CandidateDetailDrawer({
+  candidate,
+  onClose,
+}: {
+  candidate: CandidateListItem;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<'overview' | 'pipeline'>('overview');
+  const pipelineAsync = useAsync(
+    () => api.getCandidatePipelines(candidate.id),
+    [candidate.id],
+  );
+  const pipelines = pipelineAsync.data?.pipelines ?? [];
+  const currentApplications = pipelines.filter(isCurrentApplication);
+  const historicalApplications = pipelines.filter((pipeline) => !isCurrentApplication(pipeline));
+
+  return (
+    <DrawerShell
+      open
+      onClose={onClose}
+      eyebrow="候选人详情"
+      title={candidate.name_masked || `候选人 #${candidate.id}`}
+      description={[
+        candidate.latest_experience?.position,
+        candidate.latest_experience?.company,
+      ].filter(Boolean).join(' · ') || '暂无工作经历'}
+      size="lg"
+      testId="candidate-detail-drawer"
+      footer={(
+        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          <Link
+            to={`/candidates/${candidate.id}`}
+            className="text-sm font-semibold text-accent-blue hover:underline"
+          >
+            查看完整档案
+          </Link>
+          <Button type="button" variant="secondary" onClick={onClose}>关闭</Button>
+        </div>
+      )}
+    >
+      <div data-ui="candidate-detail-drawer" className="space-y-5">
+        <div className="flex gap-1 rounded-xl bg-surface-soft p-1" role="tablist" aria-label="候选人详情分类">
+          {([
+            { key: 'overview', label: '候选人概览' },
+            { key: 'pipeline', label: '当前应聘 / 流程' },
+          ] as const).map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.key}
+              onClick={() => setTab(item.key)}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                tab === item.key
+                  ? 'bg-white text-ink shadow-sm'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'overview' && (
+          <div className="space-y-5">
+            <section className="grid grid-cols-2 gap-3 rounded-xl bg-surface-soft p-4 text-sm">
+              <div>
+                <p className="text-xs text-muted-soft">意向城市</p>
+                <p className="mt-1 font-medium text-ink">{candidate.intent_city || '未填写'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-soft">简历来源</p>
+                <p className="mt-1 font-medium text-ink">{candidate.source?.channel || '未记录'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-soft">最高技能分</p>
+                <p className="mt-1 font-medium text-ink">{candidate.max_score || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-soft">解析状态</p>
+                <div className="mt-1"><ParseStatusPill status={candidate.parse_status} /></div>
+              </div>
+            </section>
+            <section>
+              <h3 className="mb-2 font-semibold text-ink">核心技能</h3>
+              <SkillBadges candidate={candidate} />
+            </section>
+            {candidate.education_summary && (
+              <section>
+                <h3 className="mb-2 font-semibold text-ink">教育经历</h3>
+                <p className="rounded-xl border border-hairline p-4 text-sm text-muted">
+                  {candidate.education_summary}
+                </p>
+              </section>
+            )}
+          </div>
+        )}
+
+        {tab === 'pipeline' && (
+          <div className="space-y-5">
+            {pipelineAsync.loading && (
+              <div className="flex items-center gap-2 py-8 text-sm text-muted">
+                <Spinner size="sm" />
+                正在加载真实应聘流程…
+              </div>
+            )}
+            {!pipelineAsync.loading && pipelineAsync.error && (
+              <ErrorState message={pipelineAsync.error.message} onRetry={pipelineAsync.reload} />
+            )}
+            {!pipelineAsync.loading && !pipelineAsync.error && pipelines.length === 0 && (
+              <div className="rounded-xl border border-dashed border-hairline p-5 text-sm text-muted">
+                该候选人尚未进入任何招聘需求。可在列表选择目标需求后加入流程。
+              </div>
+            )}
+            {!pipelineAsync.loading && !pipelineAsync.error && pipelines.length > 0 && (
+              <>
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-semibold text-ink">进行中的应聘</h3>
+                    <span className="text-xs text-muted-soft">{currentApplications.length} 条</span>
+                  </div>
+                  {currentApplications.length > 0 ? currentApplications.map((pipeline) => (
+                    <CandidateApplicationCard
+                      key={pipeline.demand_id}
+                      candidate={candidate}
+                      pipeline={pipeline}
+                    />
+                  )) : (
+                    <p className="rounded-xl border border-dashed border-hairline p-4 text-sm text-muted-soft">
+                      暂无进行中的应聘。
+                    </p>
+                  )}
+                </section>
+                {historicalApplications.length > 0 && (
+                  <section className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-semibold text-ink">历史应聘</h3>
+                      <span className="text-xs text-muted-soft">{historicalApplications.length} 条</span>
+                    </div>
+                    {historicalApplications.map((pipeline) => (
+                      <CandidateApplicationCard
+                        key={pipeline.demand_id}
+                        candidate={candidate}
+                        pipeline={pipeline}
+                      />
+                    ))}
+                  </section>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </DrawerShell>
+  );
+}
+
 interface CandidateRowProps {
   candidate: CandidateListItem;
   selected: boolean;
@@ -251,24 +467,42 @@ function CandidateRow({
 }: CandidateRowProps) {
   const isAdding = addingCandidateId === candidate.id;
   return (
-    <tr className="border-b border-hairline-soft transition-colors hover:bg-surface-soft last:border-0">
+    <tr
+      data-ui="candidate-interactive-row"
+      tabIndex={0}
+      onClick={() => onPreview(candidate)}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onPreview(candidate);
+        }
+      }}
+      className="cursor-pointer border-b border-hairline-soft transition-colors hover:bg-surface-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent-blue last:border-0"
+    >
       <td className="px-4 py-4 text-center">
         <input
           type="checkbox"
           aria-label={`选择 ${candidate.name_masked || `候选人 #${candidate.id}`}`}
           checked={selected}
+          onClick={(event) => event.stopPropagation()}
           onChange={(event) => onSelect(candidate.id, event.target.checked)}
-          className="h-4 w-4 rounded border-[#d9d5d0] text-[#379f70] focus:ring-[#379f70]"
+          className="h-4 w-4 rounded border-[#d9d5d0] text-[var(--enterprise-brand)] focus:ring-[var(--enterprise-brand)]"
         />
       </td>
       <td className="px-5 py-4">
         <div className="min-w-[180px]">
-          <Link
-            to={`/candidates/${candidate.id}`}
-            className="font-medium text-ink hover:underline"
+          <button
+            type="button"
+            data-ui="candidate-name-trigger"
+            onClick={(event) => {
+              event.stopPropagation();
+              onPreview(candidate);
+            }}
+            className="text-left font-medium text-ink hover:underline"
           >
             {candidate.name_masked || `候选人 #${candidate.id}`}
-          </Link>
+          </button>
           <div className="mt-1 space-y-0.5 text-xs text-muted-soft">
             {candidate.email_masked && <p>{candidate.email_masked}</p>}
             {candidate.phone_masked && <p>{candidate.phone_masked}</p>}
@@ -298,17 +532,21 @@ function CandidateRow({
         <div className="flex flex-col items-end gap-2">
           <button
             type="button"
-            onClick={() => onPreview(candidate)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-[#379f70] transition-colors hover:text-[#26784f]"
+            onClick={(event) => {
+              event.stopPropagation();
+              onPreview(candidate);
+            }}
+            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--enterprise-brand)] transition-colors hover:text-[var(--enterprise-brand-dark)]"
           >
             <Eye className="h-3.5 w-3.5" />
             快速查看
           </button>
           <Link
             to={`/candidates/${candidate.id}`}
+            onClick={(event) => event.stopPropagation()}
             className="text-xs font-medium text-accent-blue transition-colors hover:underline"
           >
-            查看完整简历
+            查看完整档案
           </Link>
           <Button
             type="button"
@@ -316,7 +554,10 @@ function CandidateRow({
             size="sm"
             loading={isAdding}
             disabled={!targetDemandId || isAdding}
-            onClick={() => onAddToDemand(candidate.id)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAddToDemand(candidate.id);
+            }}
           >
             <UserPlus className="h-4 w-4" />
             加入所选需求
@@ -659,10 +900,10 @@ export function CandidatesPage() {
               key={item.key}
               type="button"
               onClick={() => setPipelineStatusFilter(item.key)}
-              className={`flex h-14 items-center justify-center gap-2 border-b border-[#f3f2ed] px-4 text-sm font-medium transition-colors last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0 ${active ? 'bg-[#e9f5f0] text-[#1d6b42]' : 'text-[#575454] hover:bg-[#fafaf9]'}`}
+              className={`flex h-14 items-center justify-center gap-2 border-b border-[#f3f2ed] px-4 text-sm font-medium transition-colors last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0 ${active ? 'bg-[var(--enterprise-brand-soft)] text-[var(--enterprise-brand-dark)]' : 'text-[#575454] hover:bg-[#fafaf9]'}`}
             >
               <span>{item.label}</span>
-              <span className={`rounded px-2 py-0.5 text-xs ${active ? 'bg-white/80 text-[#1d6b42]' : 'bg-[#f8f7f4] text-[#959190]'}`}>
+              <span className={`rounded px-2 py-0.5 text-xs ${active ? 'bg-white/80 text-[var(--enterprise-brand-dark)]' : 'bg-[#f8f7f4] text-[#959190]'}`}>
                 {item.count ?? '—'}
               </span>
             </button>
@@ -680,8 +921,8 @@ export function CandidatesPage() {
       )}
 
       {selectedCandidateIds.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#cce7da] bg-[#f2faf6] px-4 py-3">
-          <p className="text-sm font-medium text-[#245f43]">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--enterprise-brand-soft)] bg-[var(--enterprise-brand-faint)] px-4 py-3">
+          <p className="text-sm font-medium text-[var(--enterprise-brand-dark)]">
             已选择 {selectedCandidateIds.length} 位候选人
           </p>
           <div className="flex items-center gap-2">
@@ -924,7 +1165,7 @@ export function CandidatesPage() {
                                   setSelectedCandidateIds([]);
                                 }
                               }}
-                              className="h-4 w-4 rounded border-[#d9d5d0] text-[#379f70] focus:ring-[#379f70]"
+                              className="h-4 w-4 rounded border-[#d9d5d0] text-[var(--enterprise-brand)] focus:ring-[var(--enterprise-brand)]"
                             />
                           </th>
 	                      <th className="px-5 py-3">候选人</th>
@@ -964,74 +1205,10 @@ export function CandidatesPage() {
       )}
 
       {candidatePreview && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={() => setCandidatePreview(null)}>
-          <aside
-            role="dialog"
-            aria-modal="true"
-            aria-label="候选人快速详情"
-            className="h-full w-full max-w-lg overflow-y-auto bg-white p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-[#eeeae5] pb-5">
-              <div>
-                <p className="text-xs font-medium text-[#379f70]">候选人快速详情</p>
-                <h2 className="mt-1 text-xl font-bold text-[#292b2a]">
-                  {candidatePreview.name_masked || `候选人 #${candidatePreview.id}`}
-                </h2>
-                <p className="mt-1 text-sm text-[#8b8784]">
-                  {[candidatePreview.latest_experience?.position, candidatePreview.latest_experience?.company]
-                    .filter(Boolean)
-                    .join(' · ') || '暂无工作经历'}
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label="关闭候选人快速详情"
-                onClick={() => setCandidatePreview(null)}
-                className="rounded-lg p-2 text-[#8b8784] hover:bg-[#f6f4f1] hover:text-[#292b2a]"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-5 py-5 text-sm">
-              <section className="grid grid-cols-2 gap-3 rounded-xl bg-[#faf9f7] p-4">
-                <div><p className="text-xs text-[#9a9692]">意向城市</p><p className="mt-1 font-medium">{candidatePreview.intent_city || '未填写'}</p></div>
-                <div><p className="text-xs text-[#9a9692]">简历来源</p><p className="mt-1 font-medium">{candidatePreview.source?.channel || '未记录'}</p></div>
-                <div><p className="text-xs text-[#9a9692]">最高技能分</p><p className="mt-1 font-medium">{candidatePreview.max_score || '—'}</p></div>
-                <div><p className="text-xs text-[#9a9692]">解析状态</p><div className="mt-1"><ParseStatusPill status={candidatePreview.parse_status} /></div></div>
-              </section>
-              <section>
-                <h3 className="mb-2 font-semibold text-[#292b2a]">核心技能</h3>
-                <SkillBadges candidate={candidatePreview} />
-              </section>
-              {candidatePreview.education_summary && (
-                <section>
-                  <h3 className="mb-2 font-semibold text-[#292b2a]">教育经历</h3>
-                  <p className="rounded-xl border border-[#eeeae5] p-4 text-[#625f5c]">{candidatePreview.education_summary}</p>
-                </section>
-              )}
-            </div>
-
-            <div className="sticky bottom-0 flex gap-3 border-t border-[#eeeae5] bg-white pt-4">
-              <Link to={`/candidates/${candidatePreview.id}`} className="flex-1">
-                <Button type="button" variant="secondary" className="w-full">查看完整简历</Button>
-              </Link>
-              <Button
-                type="button"
-                variant="accent"
-                className="flex-1"
-                disabled={!targetDemandId}
-                onClick={() => {
-                  void handleAddToDemand(candidatePreview.id);
-                  setCandidatePreview(null);
-                }}
-              >
-                加入所选需求
-              </Button>
-            </div>
-          </aside>
-        </div>
+        <CandidateDetailDrawer
+          candidate={candidatePreview}
+          onClose={() => setCandidatePreview(null)}
+        />
       )}
       </EnterprisePage>
     </div>

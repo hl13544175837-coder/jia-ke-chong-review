@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Check,
@@ -25,6 +25,7 @@ import {
   Spinner,
   useToast,
 } from '../components/ui';
+import { DrawerShell } from '../components/ui/DrawerShell';
 import type {
   OfferAction,
   OfferActionInput,
@@ -181,7 +182,7 @@ function OfferForm({
         <label className="block text-sm font-medium text-[#454946]">
           招聘需求
           <select
-            className="mt-2 h-11 w-full rounded-lg border border-[#dadcd6] bg-white px-3 text-sm outline-none focus:border-[#3d7b6b]"
+            className="mt-2 h-11 w-full rounded-lg border border-[#dadcd6] bg-white px-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
             value={demandId}
             disabled={!!offer}
             onChange={(event) => {
@@ -199,7 +200,7 @@ function OfferForm({
         <label className="block text-sm font-medium text-[#454946]">
           候选人
           <select
-            className="mt-2 h-11 w-full rounded-lg border border-[#dadcd6] bg-white px-3 text-sm outline-none focus:border-[#3d7b6b]"
+            className="mt-2 h-11 w-full rounded-lg border border-[#dadcd6] bg-white px-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
             value={candidateId}
             disabled={!!offer || !demandId || boardAsync.loading}
             onChange={(event) => setCandidateId(event.target.value)}
@@ -214,7 +215,7 @@ function OfferForm({
           {!offer && boardAsync.error && (
             <button
               type="button"
-              className="mt-2 text-xs font-medium text-[#2f6c5c] hover:underline"
+              className="mt-2 text-xs font-medium text-[var(--enterprise-brand-dark)] hover:underline"
               onClick={boardAsync.reload}
             >
               重新加载候选人
@@ -230,7 +231,7 @@ function OfferForm({
         <label className="block text-sm font-medium text-[#454946]">
           备注
           <textarea
-            className="mt-2 min-h-28 w-full rounded-lg border border-[#dadcd6] px-3 py-2 text-sm outline-none focus:border-[#3d7b6b]"
+            className="mt-2 min-h-28 w-full rounded-lg border border-[#dadcd6] px-3 py-2 text-sm outline-none focus:border-[var(--enterprise-brand)]"
             value={note}
             onChange={(event) => setNote(event.target.value)}
             maxLength={2000}
@@ -312,7 +313,7 @@ function ActionModal({
         <label className="block text-sm font-medium text-[#454946]">
           {needsReason ? '原因（必填）' : '备注（可选）'}
           <textarea
-            className="mt-2 min-h-24 w-full rounded-lg border border-[#dadcd6] px-3 py-2 text-sm outline-none focus:border-[#3d7b6b]"
+            className="mt-2 min-h-24 w-full rounded-lg border border-[#dadcd6] px-3 py-2 text-sm outline-none focus:border-[var(--enterprise-brand)]"
             value={comment}
             onChange={(event) => setComment(event.target.value)}
             placeholder={needsReason ? '请填写具体原因' : '补充说明'}
@@ -359,35 +360,86 @@ function OfferActions({
   );
 }
 
-function OfferDetail({ offer, onClose }: { offer: OfferRecord; onClose: () => void }) {
+function OfferDetailDrawer({
+  offer,
+  loading,
+  error,
+  onClose,
+}: {
+  offer: OfferRecord;
+  loading: boolean;
+  error: string;
+  onClose: () => void;
+}) {
   const status = STATUS_META[offerStatus(offer)];
   return (
-    <ModalShell title="Offer 详情与历史" description={`${offer.candidate_name} · ${offer.request_no}`} onClose={onClose}>
+    <DrawerShell
+      open
+      title="Offer 详情"
+      eyebrow={status.label}
+      description={`${offer.candidate_name} · ${offer.request_no}`}
+      onClose={onClose}
+      size="lg"
+      testId="offer-detail-drawer"
+      footer={(
+        <Button
+          variant="secondary"
+          disabled={loading || Boolean(error)}
+          onClick={() => window.print()}
+        >
+          打印 / 导出 PDF
+        </Button>
+      )}
+    >
       <div className="space-y-6 px-6 py-6">
-        <div className="grid gap-4 rounded-xl bg-[#f6f7f3] p-4 sm:grid-cols-2">
-          <div><p className="text-xs text-[#777b78]">当前状态</p><div className="mt-1"><Badge tone={status.tone}>{status.label}</Badge></div></div>
-          <div><p className="text-xs text-[#777b78]">薪酬方案</p><p className="mt-1 font-semibold text-[#292b2a]">{offer.salary_range || '—'}</p></div>
-          <div><p className="text-xs text-[#777b78]">预计入职</p><p className="mt-1 text-sm text-[#454946]">{offer.onboard_date || '—'}</p></div>
-          <div><p className="text-xs text-[#777b78]">审批人</p><p className="mt-1 text-sm text-[#454946]">{offer.approver_name || '提交后自动分配'}</p></div>
-        </div>
-        <div>
-          <h3 className="text-sm font-semibold text-[#292b2a]">备注</h3>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#5f6561]">{offer.note || '暂无备注'}</p>
-        </div>
-        {offer.rejection_reason && (
-          <div className="rounded-xl border border-red-100 bg-red-50 p-4">
-            <p className="text-xs font-medium text-red-700">结束/拒绝原因</p>
-            <p className="mt-1 text-sm text-red-800">{offer.rejection_reason}</p>
+        {loading && (
+          <div className="flex items-center gap-2 rounded-md border border-hairline bg-surface-soft px-3 py-2 text-sm text-muted">
+            <Spinner size="sm" />正在读取最新 Offer 详情…
           </div>
         )}
-        <div>
-          <div className="flex items-center gap-2"><History className="h-4 w-4 text-[#3d7b6b]" /><h3 className="text-sm font-semibold text-[#292b2a]">完整操作历史</h3></div>
+        {error && (
+          <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}。当前展示的是列表概要，暂不可打印；关闭后可重新打开重试。
+          </div>
+        )}
+        <section className="rounded-xl border border-[#e8e7e1] p-4">
+          <h3 className="text-sm font-semibold text-[#292b2a]">基本信息</h3>
+          <div className="mt-3 grid gap-4 rounded-xl bg-[#f6f7f3] p-4 sm:grid-cols-2">
+            <div><p className="text-xs text-[#777b78]">当前状态</p><div className="mt-1"><Badge tone={status.tone}>{status.label}</Badge></div></div>
+            <div><p className="text-xs text-[#777b78]">岗位</p><p className="mt-1 font-semibold text-[#292b2a]">{offer.position || '—'}</p></div>
+            <div><p className="text-xs text-[#777b78]">部门</p><p className="mt-1 text-sm text-[#454946]">{offer.department || '—'}</p></div>
+            <div><p className="text-xs text-[#777b78]">审批人</p><p className="mt-1 text-sm text-[#454946]">{offer.approver_name || '提交后自动分配'}</p></div>
+          </div>
+          <div className="mt-4">
+            <p className="text-xs text-[#777b78]">备注</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#5f6561]">{offer.note || '暂无备注'}</p>
+          </div>
+          {offer.rejection_reason && (
+            <div className="mt-4 rounded-xl border border-red-100 bg-red-50 p-4">
+              <p className="text-xs font-medium text-red-700">结束/拒绝原因</p>
+              <p className="mt-1 text-sm text-red-800">{offer.rejection_reason}</p>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-xl border border-[#e8e7e1] p-4">
+          <h3 className="text-sm font-semibold text-[#292b2a]">薪资与入职</h3>
+          <dl className="mt-3 grid gap-4 sm:grid-cols-2">
+            <div><dt className="text-xs text-[#777b78]">薪酬方案</dt><dd className="mt-1 font-semibold text-[#292b2a]">{offer.salary_range || '—'}</dd></div>
+            <div><dt className="text-xs text-[#777b78]">预计入职</dt><dd className="mt-1 text-sm text-[#454946]">{offer.onboard_date || '—'}</dd></div>
+            <div><dt className="text-xs text-[#777b78]">Offer 发放</dt><dd className="mt-1 text-sm text-[#454946]">{formatTime(offer.sent_at)}</dd></div>
+            <div><dt className="text-xs text-[#777b78]">确认入职</dt><dd className="mt-1 text-sm text-[#454946]">{formatTime(offer.onboarded_at)}</dd></div>
+          </dl>
+        </section>
+
+        <section className="rounded-xl border border-[#e8e7e1] p-4">
+          <div className="flex items-center gap-2"><History className="h-4 w-4 text-[var(--enterprise-brand)]" /><h3 className="text-sm font-semibold text-[#292b2a]">操作历史</h3></div>
           <div className="mt-4 space-y-0">
             {(offer.history ?? []).length === 0 && <p className="text-sm text-[#777b78]">暂无操作记录</p>}
             {(offer.history ?? []).map((item, index) => (
               <div key={item.id} className="relative flex gap-3 pb-5">
                 {index < (offer.history?.length ?? 0) - 1 && <span className="absolute left-[7px] top-4 h-full w-px bg-[#dfe4de]" />}
-                <span className="relative mt-1.5 h-4 w-4 shrink-0 rounded-full border-4 border-[#dcebe5] bg-[#3d7b6b]" />
+                <span className="relative mt-1.5 h-4 w-4 shrink-0 rounded-full border-4 border-[var(--enterprise-brand-soft)] bg-[var(--enterprise-brand)]" />
                 <div>
                   <p className="text-sm font-medium text-[#3f4541]">{ACTION_LABELS[item.action as OfferAction] ?? item.action}</p>
                   <p className="mt-0.5 text-xs text-[#858a86]">{item.actor_name || '系统'} · {formatTime(item.created_at)}</p>
@@ -396,12 +448,9 @@ function OfferDetail({ offer, onClose }: { offer: OfferRecord; onClose: () => vo
               </div>
             ))}
           </div>
-        </div>
+        </section>
       </div>
-      <div className="flex justify-end border-t border-[#ecece8] px-6 py-4">
-        <Button variant="secondary" onClick={() => window.print()}>打印 / 导出 PDF</Button>
-      </div>
-    </ModalShell>
+    </DrawerShell>
   );
 }
 
@@ -414,6 +463,9 @@ export function OffersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<OfferRecord | null>(null);
   const [selected, setSelected] = useState<OfferRecord | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const detailRequestRef = useRef(0);
   const [actionTarget, setActionTarget] = useState<{ offer: OfferRecord; action: OfferAction } | null>(null);
   const offersAsync = useAsync(() => api.listOffers({ search }), [search]);
   const demandsAsync = useAsync(
@@ -438,11 +490,50 @@ export function OffersPage() {
   const canCreateOffer = !demandsAsync.loading && !demandsAsync.error && activeDemandCount > 0;
 
   async function openDetail(offer: OfferRecord) {
+    const requestId = ++detailRequestRef.current;
+    setSelected(offer);
+    setDetailLoading(true);
+    setDetailError('');
     try {
-      setSelected(await api.getOffer(offer.id!));
+      const detail = await api.getOffer(offer.id!);
+      if (requestId !== detailRequestRef.current) return;
+      setSelected(detail);
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Offer 详情加载失败');
+      if (requestId !== detailRequestRef.current) return;
+      const message = cause instanceof Error ? cause.message : 'Offer 详情加载失败';
+      setDetailError(message);
+      toast.error(message);
+    } finally {
+      if (requestId === detailRequestRef.current) setDetailLoading(false);
     }
+  }
+
+  function invalidateOfferDetail() {
+    detailRequestRef.current += 1;
+    setDetailLoading(false);
+    setDetailError('');
+    setSelected(null);
+  }
+
+  function closeDetail() {
+    invalidateOfferDetail();
+  }
+
+  function openCreateForm() {
+    invalidateOfferDetail();
+    setEditing(null);
+    setShowForm(true);
+  }
+
+  function openEditForm(offer: OfferRecord) {
+    invalidateOfferDetail();
+    setEditing(offer);
+    setShowForm(true);
+  }
+
+  function openActionModal(offer: OfferRecord, action: OfferAction) {
+    invalidateOfferDetail();
+    setActionTarget({ offer, action });
   }
 
   function handleSaved(offer: OfferRecord) {
@@ -455,6 +546,9 @@ export function OffersPage() {
 
   function handleActionDone(offer: OfferRecord) {
     const action = actionTarget?.action;
+    detailRequestRef.current += 1;
+    setDetailLoading(false);
+    setDetailError('');
     setActionTarget(null);
     offersAsync.reload();
     setSelected(offer);
@@ -470,7 +564,7 @@ export function OffersPage() {
         </div>
         <Button
           disabled={!canCreateOffer}
-          onClick={() => { setEditing(null); setShowForm(true); }}
+          onClick={openCreateForm}
         >
           <Plus className="h-4 w-4" />
           {demandsAsync.loading ? '加载需求中…' : '新建 Offer'}
@@ -502,10 +596,10 @@ export function OffersPage() {
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`relative shrink-0 px-4 py-4 text-sm font-medium ${activeTab === tab.key ? 'text-[#2f6c5c]' : 'text-[#777b78] hover:text-[#454946]'}`}
+              className={`relative shrink-0 px-4 py-4 text-sm font-medium ${activeTab === tab.key ? 'text-[var(--enterprise-brand-dark)]' : 'text-[#777b78] hover:text-[#454946]'}`}
             >
               {tab.label}<span className="ml-1.5 text-xs">{counts[tab.key] ?? 0}</span>
-              {activeTab === tab.key && <span className="absolute inset-x-3 bottom-0 h-0.5 bg-[#3d7b6b]" />}
+              {activeTab === tab.key && <span className="absolute inset-x-3 bottom-0 h-0.5 bg-[var(--enterprise-brand)]" />}
             </button>
           ))}
         </div>
@@ -516,7 +610,7 @@ export function OffersPage() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#929793]" />
             <input
-              className="h-10 w-full rounded-lg border border-[#dedfd9] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#3d7b6b]"
+              className="h-10 w-full rounded-lg border border-[#dedfd9] bg-white pl-9 pr-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
               placeholder="搜索候选人、岗位、部门或需求编号"
@@ -547,10 +641,25 @@ export function OffersPage() {
                 {filtered.map((offer) => {
                   const status = STATUS_META[offerStatus(offer)];
                   return (
-                    <tr key={offer.id} className="hover:bg-[#fafbf8]">
+                    <tr
+                      key={offer.id}
+                      className="cursor-pointer hover:bg-[#fafbf8]"
+                      tabIndex={0}
+                      onClick={() => void openDetail(offer)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          void openDetail(offer);
+                        }
+                      }}
+                    >
                       <td className="px-5 py-4">
-                        <button type="button" onClick={() => void openDetail(offer)} className="text-left">
-                          <p className="font-semibold text-[#2f5f52] hover:underline">{offer.candidate_name}</p>
+                        <button type="button" onClick={(event) => {
+                          event.stopPropagation();
+                          void openDetail(offer);
+                        }} className="text-left">
+                          <p className="font-semibold text-[var(--enterprise-brand-dark)] hover:underline">{offer.candidate_name}</p>
                           <p className="mt-1 text-xs text-[#777b78]">{offer.position} · {offer.department || '未填部门'}</p>
                         </button>
                       </td>
@@ -558,12 +667,12 @@ export function OffersPage() {
                       <td className="px-5 py-4"><p className="font-medium text-[#3f4541]">{offer.salary_range || '—'}</p><p className="mt-1 text-xs text-[#858a86]">{offer.onboard_date || '入职日期待定'}</p></td>
                       <td className="px-5 py-4"><Badge tone={status.tone}>{status.label}</Badge></td>
                       <td className="px-5 py-4 text-xs text-[#777b78]">{formatTime(offer.updated_at || offer.created_at)}</td>
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4" onClick={(event) => event.stopPropagation()}>
                         <OfferActions
                           offer={offer}
                           canApprove={canApprove}
-                          onEdit={() => { setEditing(offer); setShowForm(true); }}
-                          onAction={(action) => setActionTarget({ offer, action })}
+                          onEdit={() => openEditForm(offer)}
+                          onAction={(action) => openActionModal(offer, action)}
                         />
                       </td>
                     </tr>
@@ -576,9 +685,9 @@ export function OffersPage() {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-[#e8e7e1] bg-white p-4"><Clock3 className="h-5 w-5 text-[#c47b55]" /><p className="mt-3 text-xs text-[#777b78]">审批中</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.pending ?? 0}</p></div>
-        <div className="rounded-xl border border-[#e8e7e1] bg-white p-4"><Mail className="h-5 w-5 text-[#3d7b6b]" /><p className="mt-3 text-xs text-[#777b78]">等待候选人回复</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.reply ?? 0}</p></div>
-        <div className="rounded-xl border border-[#e8e7e1] bg-white p-4"><UserCheck className="h-5 w-5 text-[#3d7b6b]" /><p className="mt-3 text-xs text-[#777b78]">待入职</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.onboard ?? 0}</p></div>
+        <button type="button" onClick={() => setActiveTab('pending')} className="rounded-xl border border-[#e8e7e1] bg-white p-4 text-left transition-colors hover:border-[#c47b55]"><Clock3 className="h-5 w-5 text-[#c47b55]" /><p className="mt-3 text-xs text-[#777b78]">审批中</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.pending ?? 0}</p></button>
+        <button type="button" onClick={() => setActiveTab('reply')} className="rounded-xl border border-[#e8e7e1] bg-white p-4 text-left transition-colors hover:border-[var(--enterprise-brand)]"><Mail className="h-5 w-5 text-[var(--enterprise-brand)]" /><p className="mt-3 text-xs text-[#777b78]">等待候选人回复</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.reply ?? 0}</p></button>
+        <button type="button" onClick={() => setActiveTab('onboard')} className="rounded-xl border border-[#e8e7e1] bg-white p-4 text-left transition-colors hover:border-[var(--enterprise-brand)]"><UserCheck className="h-5 w-5 text-[var(--enterprise-brand)]" /><p className="mt-3 text-xs text-[#777b78]">待入职</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.onboard ?? 0}</p></button>
       </div>
 
       {showForm && (
@@ -589,7 +698,14 @@ export function OffersPage() {
           onClose={() => { setShowForm(false); setEditing(null); }}
         />
       )}
-      {selected && <OfferDetail offer={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <OfferDetailDrawer
+          offer={selected}
+          loading={detailLoading}
+          error={detailError}
+          onClose={closeDetail}
+        />
+      )}
       {actionTarget && (
         <ActionModal
           action={actionTarget.action}

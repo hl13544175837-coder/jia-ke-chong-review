@@ -59,4 +59,4 @@ assert.match(form, /提需求日期/, 'Demand form should capture when business 
 assert.match(form, /HR 接手日期/, 'Demand form may capture when HR accepted the request');
 assert.match(filters, /最新创建在前/, 'Demand list should default to newest-first sorting');
 assert.match(table, /<table/, 'Demand list should be a scannable table rather than cards');
-assert.match(table, /demand=\$\{demand\.id\}/, 'Demand metrics should drill into scoped candidates');
+assert.match(table, /kind: 'stage'/, 'Demand metrics should drill into scoped candidates without leaving the list');

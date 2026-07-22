@@ -27,6 +27,7 @@ export function DemandActionDialog({
   values,
   owners,
   busy,
+  actionError,
   onChange,
   onCancel,
   onConfirm,
@@ -36,6 +37,7 @@ export function DemandActionDialog({
   values: DemandActionValues;
   owners: CandidateOwnerOption[];
   busy: boolean;
+  actionError?: string | null;
   onChange: (values: DemandActionValues) => void;
   onCancel: () => void;
   onConfirm: () => void;
@@ -135,6 +137,11 @@ export function DemandActionDialog({
             <AlertTriangle className="mt-0.5 h-5 w-5 text-warning-700" />
             <div><h2 className="font-display text-lg text-ink">{title}</h2><p className="mt-1 text-sm text-muted">{demand.job_title} · {demand.request_no}</p></div>
           </div>
+          {actionError && (
+            <p role="alert" className="rounded-md bg-danger-50 px-3 py-2 text-sm text-danger-700">
+              {actionError}
+            </p>
+          )}
           {mode === 'close' && (
             <label className="block"><span className="mb-1.5 block text-sm font-medium text-ink">处理方式</span>
               <select value={values.close_status} onChange={(event) => onChange({ ...values, close_status: event.target.value as DemandActionValues['close_status'] })} className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-sm">

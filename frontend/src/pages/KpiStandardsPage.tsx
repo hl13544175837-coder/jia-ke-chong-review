@@ -50,7 +50,7 @@ function NumberField({
     <div className="flex items-center gap-2">
       <input
         type="number"
-        className="h-10 w-24 rounded-lg border border-[#dcded8] bg-white px-3 text-sm outline-none focus:border-[#3d7b6b]"
+        className="h-10 w-24 rounded-lg border border-[#dcded8] bg-white px-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
         min={min}
         max={max}
         step={step}
@@ -81,7 +81,7 @@ function Section({
     <Card className="overflow-hidden border-[#e8e7e1]">
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-[#fafbf8]">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#edf5f1] text-[#3d7b6b]">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--enterprise-brand-soft)] text-[var(--enterprise-brand)]">
             <ChevronDown className={`h-4 w-4 transition-transform ${open ? '' : '-rotate-90'}`} />
           </span>
           <div className="min-w-0">
@@ -219,7 +219,7 @@ export function KpiStandardsPage() {
     <div data-ui="readdy-kpi-standards" className="mx-auto max-w-5xl space-y-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-[#3d7b6b]" /><h1 className="text-2xl font-bold text-[#292b2a]">招聘流程口径配置</h1></div>
+          <div className="flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-[var(--enterprise-brand)]" /><h1 className="text-2xl font-bold text-[#292b2a]">招聘流程口径配置</h1></div>
           <p className="mt-2 text-sm text-[#777b78]">用于 Demand 卡点归类和流程预警；不用于个人排名或绩效评价。</p>
           <p className="mt-1 text-xs text-[#969a97]">当前版本 {version} · {standardsAsync.data?.updated_by_name ? `最近由 ${standardsAsync.data.updated_by_name} 更新` : '尚未自定义'}</p>
         </div>
@@ -234,7 +234,7 @@ export function KpiStandardsPage() {
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          className="h-11 w-full rounded-xl border border-[#e0e1dc] bg-white pl-10 pr-4 text-sm outline-none focus:border-[#3d7b6b]"
+          className="h-11 w-full rounded-xl border border-[#e0e1dc] bg-white pl-10 pr-4 text-sm outline-none focus:border-[var(--enterprise-brand)]"
           placeholder="搜索规则名称、分类关键词…"
         />
       </div>
@@ -258,7 +258,7 @@ export function KpiStandardsPage() {
                   <input
                     value={category.name}
                     onChange={(event) => updateCategory(category.id, { name: event.target.value })}
-                    className="h-10 flex-1 rounded-lg border border-[#dcded8] bg-white px-3 text-sm outline-none focus:border-[#3d7b6b]"
+                    className="h-10 flex-1 rounded-lg border border-[#dcded8] bg-white px-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
                     placeholder="分类名称"
                     maxLength={80}
                   />
@@ -267,7 +267,7 @@ export function KpiStandardsPage() {
                     onChange={(event) => updateCategory(category.id, {
                       keywords: event.target.value.split(/[,，]/).map((item) => item.trim()),
                     })}
-                    className="h-10 flex-[1.5] rounded-lg border border-[#dcded8] bg-white px-3 text-sm outline-none focus:border-[#3d7b6b]"
+                    className="h-10 flex-[1.5] rounded-lg border border-[#dcded8] bg-white px-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
                     placeholder="多个关键词用逗号分隔"
                   />
                   <button type="button" onClick={() => removeCategory(category.id)} disabled={config.block_categories.length <= 1} className="self-end rounded-lg p-2 text-[#929793] hover:bg-red-50 hover:text-red-600 disabled:opacity-30 sm:self-auto" aria-label="删除分类"><Trash2 className="h-4 w-4" /></button>

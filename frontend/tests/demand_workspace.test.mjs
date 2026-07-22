@@ -29,38 +29,29 @@ assert.match(routes, /path:\s*'\/demands\/:id'/, 'Demand detail route should be 
 assert.match(page, /DemandFilters/, 'Demand list should use filters');
 assert.match(page, /DemandTable/, 'Demand list should use a table instead of demand cards');
 assert.doesNotMatch(page, /function DemandCard/, 'The list page should not render a card stream');
-assert.match(page, /useNavigate/, 'Create success should navigate to detail');
-assert.match(page, /navigate\(`\/demands\/\$\{created\.id\}`\)/, '201 should open the new demand');
+assert.doesNotMatch(page, /useNavigate/, 'Creating a demand should preserve the current list workspace');
+assert.match(page, /demands\.reload\(\)/, '201 should refresh the real demand list');
+assert.match(page, /setWorkspace\(\{ demand: created, context: \{ kind: 'overview' \} \}\)/, '201 should open the new demand in the right drawer');
 assert.match(page, /submitGuardRef\.current/, 'A synchronous guard should prevent double clicks');
 assert.match(
   page,
-  /const \[showCreateForm, setShowCreateForm\] = useState\(false\)/,
-  'Demand creation should be collapsed by default so the demand table stays near the top',
+  /const \[createDrawerOpen, setCreateDrawerOpen\] = useState\(false\)/,
+  'Demand creation should stay out of the table flow until its drawer is opened',
 );
 assert.match(
   page,
-  /aria-expanded=\{showCreateForm\}/,
-  'The create-demand toggle should expose its expanded state to assistive technology',
+  /onClick=\{\(\) => setCreateDrawerOpen\(true\)\}/,
+  'The create-demand action should open the right drawer',
 );
 assert.match(
   page,
-  /aria-controls="demand-create-panel"/,
-  'The create-demand toggle should identify the panel it controls',
+  /<DrawerShell[\s\S]*open=\{createDrawerOpen\}/,
+  'The create-demand form should use the shared right drawer',
 );
 assert.match(
   page,
-  /id="demand-create-panel"/,
-  'The create-demand panel should remain mounted so collapsing it does not clear partial input',
-);
-assert.match(
-  page,
-  /hidden=\{!showCreateForm\}/,
-  'The full existing form should be hidden, rather than unmounted, while the create area is collapsed',
-);
-assert.match(
-  page,
-  /showCreateForm \? '收起' : '展开'/,
-  'The create-demand toggle should clearly switch between expand and collapse actions',
+  /<DemandWorkspaceDrawer/,
+  'Demand rows should open detail without leaving the list page',
 );
 
 for (const label of [
@@ -88,10 +79,10 @@ assert.match(filters, /department/, 'Demand filters should support department');
 assert.match(filters, /owner_hr_id/, 'Demand filters should support owner');
 
 assert.match(table, /<table/, 'Demand results should render as a table');
-assert.match(table, /demand=\$\{demand\.id\}/, 'Stage drill-down should carry demand_id');
-assert.match(table, /stage=/, 'Stage drill-down should carry the selected stage');
+assert.match(table, /kind: 'stage'/, 'Stage drill-down should open the scoped in-page context');
+assert.match(table, /stage, label/, 'Stage context should carry the selected stage');
 assert.match(table, /Pagination/, 'Demand results should paginate');
-assert.match(table, /\/demands\/\$\{demand\.id\}/, 'Rows should link to demand detail');
+assert.match(table, /onOpenDemand\(demand, \{ kind: 'overview' \}\)/, 'Rows should open demand detail in place');
 
 assert.match(detail, /需求事实/, 'Detail page should show demand facts');
 assert.match(detail, /招聘进度/, 'Detail page should show progress');

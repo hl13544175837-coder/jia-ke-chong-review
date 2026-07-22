@@ -364,7 +364,7 @@ export function TalentMapPage() {
                 key={item.id}
                 type="button"
                 onClick={() => setActiveMapId(item.id)}
-                className={`min-w-[158px] rounded-xl border bg-white px-5 py-3 text-left transition-colors ${active ? 'border-[#a0dabe] shadow-[0_0_0_1px_#bde6d3]' : 'border-[#f3f2ed] hover:border-[#d8e9df]'}`}
+                className={`min-w-[158px] rounded-xl border bg-white px-5 py-3 text-left transition-colors ${active ? 'border-[var(--enterprise-brand)] shadow-[0_0_0_1px_var(--enterprise-brand-soft)]' : 'border-[#f3f2ed] hover:border-[var(--enterprise-brand-soft)]'}`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm font-semibold text-[#171616]">{item.name}</span>
@@ -380,7 +380,7 @@ export function TalentMapPage() {
             <button
               type="button"
               onClick={() => setComposer('map')}
-              className="min-w-[158px] rounded-xl border border-dashed border-[#a0dabe] bg-[#f4fbf7] px-5 py-3 text-left text-sm font-medium text-[#1d6b42]"
+              className="min-w-[158px] rounded-xl border border-dashed border-[var(--enterprise-brand)] bg-[var(--enterprise-brand-faint)] px-5 py-3 text-left text-sm font-medium text-[var(--enterprise-brand-dark)]"
             >
               <Plus className="mb-2 h-4 w-4" />
               创建第一张地图
@@ -401,14 +401,14 @@ export function TalentMapPage() {
                   key={company.id}
                   type="button"
                   onClick={() => setActiveCompanyId(company.id)}
-                  className={`min-w-[158px] rounded-xl border bg-white px-5 py-3 text-left transition-colors ${active ? 'border-[#a0dabe] shadow-[0_0_0_1px_#bde6d3]' : 'border-[#f3f2ed] hover:border-[#d8e9df]'}`}
+                  className={`min-w-[158px] rounded-xl border bg-white px-5 py-3 text-left transition-colors ${active ? 'border-[var(--enterprise-brand)] shadow-[0_0_0_1px_var(--enterprise-brand-soft)]' : 'border-[#f3f2ed] hover:border-[var(--enterprise-brand-soft)]'}`}
                 >
                   <p className="truncate text-sm font-semibold text-[#171616]">{company.company_name}</p>
                   <div className="mt-1.5 flex items-center gap-2 text-[10px] text-[#747170]">
                     <span>{mappedPeople} 位人选</span>
                     <span className="h-1 flex-1 overflow-hidden rounded-full bg-[#f3f2ed]">
                       <span
-                        className="block h-full rounded-full bg-[#81caa6]"
+                        className="block h-full rounded-full bg-[var(--enterprise-brand)]"
                         style={{ width: `${Math.min(100, mappedPeople * 12)}%` }}
                       />
                     </span>
@@ -420,7 +420,7 @@ export function TalentMapPage() {
 
           {activeCompany && (
             <div className="flex items-start gap-4 rounded-xl border border-[#f3f2ed] bg-white p-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#e9f5f0] text-[#1d6b42]">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[var(--enterprise-brand-soft)] text-[var(--enterprise-brand-dark)]">
                 <Building2 className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
@@ -659,7 +659,7 @@ export function TalentMapPage() {
         </Card>
 
         {composer && (
-          <section className="rounded-xl border border-[#d8e9df] bg-[#f4fbf7] p-4">
+          <section className="rounded-xl border border-[var(--enterprise-brand-soft)] bg-[var(--enterprise-brand-faint)] p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-[#171616]">
