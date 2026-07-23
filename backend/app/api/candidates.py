@@ -180,13 +180,88 @@ def _education_summary(info):
     return " · ".join([p for p in parts if p])[:240]
 
 
-def _candidate_library_item(candidate):
+def _candidate_library_context(candidates):
+    candidate_ids = [candidate.id for candidate in candidates]
+    if not candidate_ids:
+        return {
+            "owners": {},
+            "stages": {},
+            "demands": {},
+            "jobs": {},
+        }
+
+    owner_ids = {
+        candidate.owner_hr_id
+        for candidate in candidates
+        if candidate.owner_hr_id is not None
+    }
+    owners = {
+        user.id: user.name
+        for user in User.query.filter(
+            User.org_id == g.org_id,
+            User.id.in_(owner_ids),
+        ).all()
+    } if owner_ids else {}
+
+    latest_stage = (
+        db.session.query(
+            PipelineStage.candidate_id.label("candidate_id"),
+            func.max(PipelineStage.id).label("max_id"),
+        )
+        .filter(
+            PipelineStage.org_id == g.org_id,
+            PipelineStage.candidate_id.in_(candidate_ids),
+        )
+        .group_by(PipelineStage.candidate_id)
+        .subquery()
+    )
+    stages = {
+        stage.candidate_id: stage
+        for stage in (
+            PipelineStage.query
+            .join(latest_stage, PipelineStage.id == latest_stage.c.max_id)
+            .all()
+        )
+    }
+    demand_ids = {
+        stage.demand_id
+        for stage in stages.values()
+        if stage.demand_id is not None
+    }
+    job_ids = {
+        stage.job_id
+        for stage in stages.values()
+        if stage.job_id is not None
+    }
+    demands = {
+        demand.id: demand
+        for demand in RecruitmentDemand.query.filter(
+            RecruitmentDemand.org_id == g.org_id,
+            RecruitmentDemand.id.in_(demand_ids),
+        ).all()
+    } if demand_ids else {}
+    jobs = {
+        job.id: job
+        for job in Job.query.filter(
+            Job.org_id == g.org_id,
+            Job.id.in_(job_ids),
+        ).all()
+    } if job_ids else {}
+    return {
+        "owners": owners,
+        "stages": stages,
+        "demands": demands,
+        "jobs": jobs,
+    }
+
+
+def _candidate_library_item(candidate, context=None):
     info = _resume_info(candidate)
     tags = sorted(
         [{"tag": t.tag, "score": t.score or 0} for t in candidate.tags if t.tag],
         key=lambda x: (-int(x["score"] or 0), x["tag"]),
     )
-    return {
+    item = {
         "id": candidate.id,
         "name_masked": candidate.name_masked,
         "email_masked": candidate.email_masked,
@@ -203,6 +278,23 @@ def _candidate_library_item(candidate):
         "education_summary": _education_summary(info),
         "source": _candidate_source_payload(candidate),
     }
+    if context is None:
+        return item
+
+    stage = context["stages"].get(candidate.id)
+    demand = context["demands"].get(stage.demand_id) if stage else None
+    job = context["jobs"].get(stage.job_id) if stage else None
+    item.update({
+        "owner_hr_name": context["owners"].get(candidate.owner_hr_id, ""),
+        "pipeline_status": "in_pipeline" if stage else "not_in_pipeline",
+        "current_stage": normalize_pipeline_stage(stage.stage) if stage else None,
+        "current_demand_id": demand.id if demand else None,
+        "current_demand_request_no": demand.request_no if demand else None,
+        "current_job_id": job.id if job else None,
+        "current_job_title": job.title if job else None,
+        "pipeline_updated_at": stage.ts.isoformat() if stage and stage.ts else None,
+    })
+    return item
 
 
 def _export_count_for_actor(window=timedelta(minutes=10)):
@@ -310,7 +402,9 @@ def list_candidates():
     query = visible_candidate_query(g.user_id, g.role)
 
     if not wants_paginated:
-        return jsonify([_candidate_library_item(c) for c in query.all()])
+        candidates = query.all()
+        context = _candidate_library_context(candidates)
+        return jsonify([_candidate_library_item(candidate, context) for candidate in candidates])
 
     search = request.args.get("search", "").strip()
     stage = request.args.get("stage", "").strip()
@@ -402,9 +496,13 @@ def list_candidates():
 
     total = query.count()
     candidates = query.offset((page - 1) * per_page).limit(per_page).all()
+    context = _candidate_library_context(candidates)
 
     return jsonify({
-        "candidates": [_candidate_library_item(c) for c in candidates],
+        "candidates": [
+            _candidate_library_item(candidate, context)
+            for candidate in candidates
+        ],
         "total": total,
         "page": page,
         "per_page": per_page,

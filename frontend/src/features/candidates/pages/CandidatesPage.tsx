@@ -3,7 +3,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   Briefcase,
   ChevronDown,
-  Download,
   FileInput,
   Filter,
   MoreHorizontal,
@@ -15,6 +14,8 @@ import {
 import { candidatesApi as api } from '../api';
 import { useDebounce } from '../../../lib/useDebounce';
 import { useAsync } from '../../../lib/useAsync';
+import { formatDate } from '../../../lib/formatDate';
+import { stageLabel } from '../../../lib/pipelineStages';
 import { RESUME_SOURCE_CHANNEL_OPTIONS } from '../../../lib/sourceChannels';
 import { Button, ErrorState, Pagination, Spinner } from '../../../components/ui';
 import {
@@ -25,46 +26,24 @@ import {
 } from '../../../components/enterprise';
 import type { CandidateListItem, CandidateTag, MatchResultItem, ParseStatus } from '../types';
 
-type LibraryStatus = 'all' | 'in_pipeline' | 'talent_pool' | 'ended';
-type FilterMenuKey = 'job' | 'status' | 'source' | 'owner' | 'activity';
+type LibraryStatus = 'all' | 'in_pipeline' | 'not_in_pipeline';
 
 interface LibraryCandidate extends CandidateListItem {
-  gender: '男' | '女';
-  age: number;
-  years: number;
   currentJob: string;
-  statusGroup: Exclude<LibraryStatus, 'all'>;
+  jobContext: string;
   statusLabel: string;
   ownerName: string;
   recentActivity: string;
-  actionLabel: string;
   candidateUrl: string;
-  isMock?: boolean;
 }
 
 const STATUS_TABS: Array<{ key: LibraryStatus; label: string }> = [
   { key: 'all', label: '全部候选人' },
-  { key: 'in_pipeline', label: '招聘流程中' },
-  { key: 'talent_pool', label: '人才池' },
-  { key: 'ended', label: '已结束' },
+  { key: 'in_pipeline', label: '已进入流程' },
+  { key: 'not_in_pipeline', label: '未进入流程' },
 ];
 
-const JOB_OPTIONS = [
-  'HRBP',
-  'Java开发工程师',
-  'UI/UX设计师',
-  'UI设计师',
-  '产品经理',
-  '前端开发工程师',
-  '后端开发工程师',
-  '数据分析师',
-  '测试工程师',
-  '市场运营专员',
-] as const;
-
-const OWNER_OPTIONS = ['张敏', '李华', '王磊'] as const;
 const SOURCE_OPTIONS = ['PDF导入', '内部推荐', '外部收录', '猎头推荐', ...RESUME_SOURCE_CHANNEL_OPTIONS] as const;
-const ACTIVITY_OPTIONS = ['待筛选', '一面', '二面反馈', '面试官评审中', 'Offer发放中', '终面', '加入岗位'] as const;
 
 const PARSE_STATUS_LABELS: Record<ParseStatus, string> = {
   pending: '待解析',
@@ -73,154 +52,60 @@ const PARSE_STATUS_LABELS: Record<ParseStatus, string> = {
   failed: '解析失败',
 };
 
-const DEMO_NAMES = [
-  ['陈伟', '男', 28, 5, '前端开发工程师', '面试官评审中', 'PDF导入', '张敏', '「前端开发工程师」面试官待评审'],
-  ['林小雅', '女', 26, 3, '产品经理', '一面', '内部推荐', '李华', '「产品经理」等待二面反馈'],
-  ['王磊', '男', 32, 7, '后端开发工程师', '待筛选', 'PDF导入', '王磊', '「后端开发工程师」投递4天，待筛选'],
-  ['赵晓月', '女', 25, 2, 'UI/UX设计师', '待筛选', '内部推荐', '李华', '「UI/UX设计师」等待用人部门确认'],
-  ['刘强', '男', 30, 4, '数据分析师', '面试官评审中', '外部收录', '张敏', '「数据分析师」面试官待分配'],
-  ['周杰', '男', 27, 3, '测试工程师', 'Offer发放中', 'PDF导入', '李华', '「测试工程师」Offer已发出'],
-  ['吴芳', '女', 29, 5, 'HRBP', '终面', '外部收录', '王磊', '「HRBP」终面阶段，即将出结果'],
-  ['马晓峰', '男', 27, 4, '高级前端工程师', '人才池', '内部推荐', '张敏', '前端经验与当前岗位要求不完全匹配'],
-  ['冯雅琪', '女', 25, 1, '数据分析师', '人才池', 'PDF导入', '李华', '工作经验偏少，目前暂无匹配岗位'],
-  ['许嘉怡', '女', 26, 2, '前端开发工程师', '人才池', 'PDF导入', '张敏', '候选人主动表示暂不急于换工作'],
-  ['丁一鸣', '男', 26, 2, '市场运营专员', '人才池', 'PDF导入', '王磊', '市场运营岗位已满编，候选人背景良好'],
-  ['孙博文', '男', 31, 6, '前端开发工程师', '二面反馈', '猎头推荐', '张敏', '等待二面评委反馈'],
-  ['郑宇航', '男', 29, 5, 'Java开发工程师', '一面', 'PDF导入', '张敏', '已安排一面'],
-  ['郭佳怡', '女', 30, 6, '数据分析师', '一面', '外部收录', '王磊', '一面完成，待提交评价'],
-  ['钱一鸣', '男', 33, 8, 'Java开发工程师', '面试官评审中', '内部推荐', '李华', '面试官评审中'],
-  ['黄诗涵', '女', 27, 4, '高级产品经理', 'Offer发放中', '猎头推荐', '李华', 'Offer草稿创建'],
-  ['陆浩然', '男', 28, 5, 'Java开发工程师', '待筛选', 'PDF导入', '张敏', '简历已解析，等待筛选'],
-  ['范德彪', '男', 34, 9, '高级产品经理', '二面反馈', '外部收录', '王磊', '等待二面反馈'],
-  ['苏洁宇', '女', 26, 3, '前端开发工程师', '面试官评审中', '内部推荐', '李华', '评审意见待补充'],
-  ['陈建国', '男', 35, 10, '数据分析师', '待筛选', 'PDF导入', '张敏', 'AI初筛通过，待HR确认'],
-  ['周雨桐', '女', 28, 4, '市场运营专员', 'Offer发放中', '外部收录', '王磊', 'Offer审批通过，等待发放'],
-  ['刘雨欣', '女', 27, 4, 'UI/UX设计师', '终面', '内部推荐', '李华', '终面已完成，等待结果'],
-  ['张伟', '男', 31, 7, '高级产品经理', '待筛选', 'PDF导入', '张敏', '待业务负责人确认'],
-  ['李思远', '男', 29, 5, '后端开发工程师', '已结束', '外部收录', '李华', '候选人已拒绝'],
-  ['林晓峰', '男', 32, 8, '高级产品经理', '已结束', '内部推荐', '张敏', '流程已结束'],
-  ['王浩然', '男', 30, 6, '后端开发工程师', '已结束', 'PDF导入', '王磊', '候选人暂不考虑'],
-  ['黄涛', '男', 28, 5, '前端开发工程师', '已结束', '猎头推荐', '李华', '面试未通过'],
-  ['张倩', '女', 27, 4, '高级产品经理', '已结束', '内部推荐', '李华', '已入职归档'],
-] as const;
-
 function candidateTags(candidate: CandidateListItem): CandidateTag[] {
   return Array.isArray(candidate.top_tags) ? candidate.top_tags : [];
 }
 
 function sourceOf(candidate: CandidateListItem) {
-  return candidate.source?.channel?.trim() || 'PDF导入';
+  return candidate.source?.channel?.trim() || '未记录来源';
 }
 
-function jobOf(candidate: CandidateListItem, index: number) {
-  return candidate.source?.target_job_title || candidate.latest_experience?.position || JOB_OPTIONS[index % JOB_OPTIONS.length];
+function jobOf(candidate: CandidateListItem) {
+  return candidate.current_job_title
+    || candidate.source?.target_job_title
+    || candidate.latest_experience?.position
+    || '未记录岗位';
 }
 
-function statusByIndex(index: number): Exclude<LibraryStatus, 'all'> {
-  if (index < 24) return 'in_pipeline';
-  if (index < 28) return 'talent_pool';
-  return 'ended';
+function jobContextOf(candidate: CandidateListItem) {
+  const source = candidate.source;
+  if (!source) return '';
+  return [source.target_job_department, source.target_job_city]
+    .filter(Boolean)
+    .join(' · ');
 }
 
-function statusLabelFor(group: Exclude<LibraryStatus, 'all'>, index: number) {
-  if (group === 'talent_pool') return '人才池';
-  if (group === 'ended') return '已结束';
-  return ['面试官评审中', '一面', '待筛选', 'Offer发放中', '终面', '二面反馈'][index % 6];
+function pipelineLabel(candidate: CandidateListItem) {
+  if (candidate.pipeline_status !== 'in_pipeline') return '未进入流程';
+  return candidate.current_stage ? stageLabel(candidate.current_stage) : '已进入流程';
 }
 
-function makeSource(channel: string, job: string, index: number) {
-  return {
-    batch_id: 9000 + index,
-    channel,
-    source_link: '',
-    referrer: channel === '内部推荐' ? '李华' : '',
-    target_demand_id: null,
-    target_demand_request_no: null,
-    target_job_id: null,
-    target_job_title: job,
-    target_job_city: ['杭州', '上海', '北京', '深圳', '广州'][index % 5],
-    target_job_department: job.includes('产品') ? '产品部' : job.includes('设计') ? '设计部' : '技术研发部',
-    note: '',
-    created_at: null,
-  };
+function ownerNameOf(candidate: CandidateListItem) {
+  return candidate.owner_hr_name?.trim() || '未分配负责人';
 }
 
-function makeMockCandidate(index: number): LibraryCandidate {
-  const seed = DEMO_NAMES[index % DEMO_NAMES.length];
-  const group = statusByIndex(index);
-  const name = seed[0];
-  const job = seed[4];
-  const channel = seed[6];
-  const owner = seed[7];
-  return {
-    id: -1000 - index,
-    name_masked: name,
-    owner_hr_id: index % 3 + 1,
-    created_at: `2026-07-${String(22 - (index % 18)).padStart(2, '0')}T09:00:00Z`,
-    parse_status: 'ok',
-    tag_count: 4,
-    top_tags: [
-      { tag: job.replace('工程师', '').replace('专员', ''), score: 5 },
-      { tag: '沟通协作', score: 4 },
-      { tag: '业务理解', score: 4 },
-    ],
-    max_score: 3 + (index % 3),
-    intent_city: ['杭州', '上海', '北京', '深圳', '广州'][index % 5],
-    latest_experience: {
-      company: ['字节跳动', '阿里巴巴', '网易', '顺丰科技', '小红书'][index % 5],
-      position: job,
-      duration: `${seed[3]}年`,
-    },
-    education_summary: index % 3 === 0 ? '本科' : '大专',
-    source: makeSource(channel, job, index),
-    gender: seed[1],
-    age: seed[2],
-    years: seed[3],
-    currentJob: job,
-    statusGroup: group,
-    statusLabel: group === 'talent_pool' || group === 'ended' ? statusLabelFor(group, index) : seed[5],
-    ownerName: owner,
-    recentActivity: seed[8],
-    actionLabel: group === 'talent_pool' ? '加入岗位' : '查看流程',
-    candidateUrl: `/pipeline?candidate=${1000 + index}`,
-    isMock: true,
-  };
+function recentActivityOf(candidate: CandidateListItem) {
+  if (candidate.pipeline_updated_at) {
+    return [
+      candidate.current_demand_request_no,
+      pipelineLabel(candidate),
+      formatDate(candidate.pipeline_updated_at),
+    ].filter(Boolean).join(' · ');
+  }
+  const parseStatus = PARSE_STATUS_LABELS[candidate.parse_status ?? 'pending'];
+  return `${parseStatus} · ${formatDate(candidate.created_at)}入库`;
 }
 
-function toLibraryCandidate(candidate: CandidateListItem, index: number): LibraryCandidate {
-  const group = statusByIndex(index);
-  const job = jobOf(candidate, index);
-  const ownerName = OWNER_OPTIONS[index % OWNER_OPTIONS.length];
+function toLibraryCandidate(candidate: CandidateListItem): LibraryCandidate {
   return {
     ...candidate,
-    source: candidate.source ?? makeSource(sourceOf(candidate), job, index),
-    gender: index % 3 === 0 ? '女' : '男',
-    age: 25 + (index % 11),
-    years: 1 + (index % 9),
-    currentJob: job,
-    statusGroup: group,
-    statusLabel: statusLabelFor(group, index),
-    ownerName,
-    recentActivity: `「${job}」${statusLabelFor(group, index)}，等待下一步处理`,
-    actionLabel: group === 'talent_pool' ? '加入岗位' : '查看流程',
+    currentJob: jobOf(candidate),
+    jobContext: jobContextOf(candidate),
+    statusLabel: pipelineLabel(candidate),
+    ownerName: ownerNameOf(candidate),
+    recentActivity: recentActivityOf(candidate),
     candidateUrl: `/candidates/${candidate.id}`,
   };
-}
-
-function buildLibraryRows(candidates: CandidateListItem[]): LibraryCandidate[] {
-  const realRows = candidates.slice(0, 33).map(toLibraryCandidate);
-  const mockRows = Array.from({ length: Math.max(33 - realRows.length, 0) }, (_, index) =>
-    makeMockCandidate(realRows.length + index),
-  );
-  return [...realRows, ...mockRows].map((row, index) => {
-    const group = statusByIndex(index);
-    return {
-      ...row,
-      statusGroup: group,
-      statusLabel: row.isMock ? row.statusLabel : statusLabelFor(group, index),
-      actionLabel: group === 'talent_pool' ? '加入岗位' : '查看流程',
-    };
-  });
 }
 
 function statusTone(status: string) {
@@ -254,97 +139,19 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-function HeaderFilter({
-  label,
-  menuKey,
-  openMenu,
-  onToggle,
-  children,
-}: {
-  label: string;
-  menuKey: FilterMenuKey;
-  openMenu: FilterMenuKey | null;
-  onToggle: (key: FilterMenuKey) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <th className="relative px-5 py-4 text-left text-sm font-bold text-[#737983]">
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 transition-colors hover:text-[#168a5b]"
-        onClick={() => onToggle(menuKey)}
-      >
-        {label}
-        <ChevronDown className="h-3.5 w-3.5" />
-      </button>
-      {openMenu === menuKey && children}
-    </th>
-  );
-}
-
-function FilterMenu({
-  options,
-  value,
-  allLabel,
-  onSelect,
-}: {
-  options: readonly string[];
-  value: string;
-  allLabel: string;
-  onSelect: (value: string) => void;
-}) {
-  return (
-    <div className="absolute left-4 top-[46px] z-30 max-h-72 min-w-[210px] overflow-y-auto rounded-xl border border-[#e6e9ee] bg-white py-1 shadow-xl">
-      <button
-        type="button"
-        className={`block w-full px-4 py-3 text-left text-sm font-bold ${value === 'all' ? 'bg-[#e7f5ef] text-[#168a5b]' : 'text-[#464b52] hover:bg-[#f6faf8]'}`}
-        onClick={() => onSelect('all')}
-      >
-        {allLabel}
-      </button>
-      {options.map((option) => (
-        <button
-          key={option}
-          type="button"
-          className={`block w-full px-4 py-3 text-left text-sm font-bold ${value === option ? 'bg-[#e7f5ef] text-[#168a5b]' : 'text-[#464b52] hover:bg-[#f6faf8]'}`}
-          onClick={() => onSelect(option)}
-        >
-          {option}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function activeFilterLabel(status: LibraryStatus) {
-  return STATUS_TABS.find((tab) => tab.key === status)?.label ?? '全部候选人';
-}
-
-function matchesCandidateStatus(row: LibraryCandidate, filter: string) {
-  if (filter === 'all') return true;
-  if (filter === '招聘流程中') return row.statusGroup === 'in_pipeline';
-  if (filter === '人才池') return row.statusGroup === 'talent_pool';
-  if (filter === '已结束') return row.statusGroup === 'ended';
-  return row.statusLabel === filter;
-}
-
 export function CandidatesPage() {
   const [searchParams] = useSearchParams();
   const initialSource = searchParams.get('source') || 'all';
   const [query, setQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [libraryTotal, setLibraryTotal] = useState<number | null>(null);
   const composingRef = useRef(false);
   const [statusTab, setStatusTab] = useState<LibraryStatus>('all');
-  const [jobFilter, setJobFilter] = useState('all');
-  const [candidateStatusFilter, setCandidateStatusFilter] = useState('all');
+  const pipelineStatusFilter = statusTab;
   const [sourceChannelFilter, setSourceChannelFilter] = useState(initialSource);
-  const [ownerFilter, setOwnerFilter] = useState('all');
-  const [activityFilter, setActivityFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
   const [parseStatusFilter, setParseStatusFilter] = useState<'all' | ParseStatus>('all');
-  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<'all' | 'in_pipeline' | 'not_in_pipeline'>('all');
   const [targetDemandId, setTargetDemandId] = useState('');
-  const [openMenu, setOpenMenu] = useState<FilterMenuKey | null>(null);
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [addingCandidateId, setAddingCandidateId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -374,10 +181,25 @@ export function CandidatesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQuery, cityFilter, sourceChannelFilter, parseStatusFilter, pipelineStatusFilter]);
+  }, [debouncedQuery, cityFilter, sourceChannelFilter, parseStatusFilter, statusTab]);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
-  const libraryRows = useMemo(() => buildLibraryRows(candidates), [candidates]);
+  const resultTotal = data?.total ?? candidates.length;
+  const hasServerFilters =
+    debouncedQuery.trim() !== ''
+    || cityFilter !== 'all'
+    || sourceChannelFilter !== 'all'
+    || parseStatusFilter !== 'all'
+    || statusTab !== 'all';
+
+  useEffect(() => {
+    if (data && !hasServerFilters) {
+      setLibraryTotal(data.total);
+    }
+  }, [data, hasServerFilters]);
+
+  const totalCandidates = libraryTotal ?? resultTotal;
+  const libraryRows = useMemo(() => candidates.map(toLibraryCandidate), [candidates]);
   const selectedDemand = useMemo(
     () => (demandsAsync.data?.items ?? []).find((demand) => String(demand.id) === targetDemandId) ?? null,
     [demandsAsync.data, targetDemandId],
@@ -401,54 +223,27 @@ export function CandidatesPage() {
     }
     return map;
   }, [matchPreviewAsync.data]);
+  const highFitCount = [...matchByCandidateId.values()]
+    .filter((item) => item.score >= 80)
+    .length;
 
-  const counts = useMemo(() => ({
-    all: libraryRows.length,
-    in_pipeline: libraryRows.filter((row) => row.statusGroup === 'in_pipeline').length,
-    talent_pool: libraryRows.filter((row) => row.statusGroup === 'talent_pool').length,
-    ended: libraryRows.filter((row) => row.statusGroup === 'ended').length,
-  }), [libraryRows]);
-
-  const filteredRows = useMemo(() => libraryRows.filter((row) => {
-    const keyword = debouncedQuery.trim();
-    const matchesSearch = !keyword || [row.name_masked, row.currentJob, row.ownerName, row.recentActivity]
-      .some((value) => value.toLowerCase().includes(keyword.toLowerCase()));
-    const matchesStatusTab = statusTab === 'all' || row.statusGroup === statusTab;
-    const matchesJob = jobFilter === 'all' || row.currentJob === jobFilter;
-    const matchesStatus = matchesCandidateStatus(row, candidateStatusFilter);
-    const matchesSource = sourceChannelFilter === 'all' || sourceOf(row) === sourceChannelFilter;
-    const matchesOwner = ownerFilter === 'all' || row.ownerName === ownerFilter;
-    const matchesActivity = activityFilter === 'all' || row.statusLabel === activityFilter || row.recentActivity.includes(activityFilter);
-    return matchesSearch && matchesStatusTab && matchesJob && matchesStatus && matchesSource && matchesOwner && matchesActivity;
-  }), [activityFilter, candidateStatusFilter, debouncedQuery, jobFilter, libraryRows, ownerFilter, sourceChannelFilter, statusTab]);
+  const filteredRows = libraryRows;
 
   const hasActiveFilters =
     statusTab !== 'all' ||
-    jobFilter !== 'all' ||
-    candidateStatusFilter !== 'all' ||
     sourceChannelFilter !== 'all' ||
-    ownerFilter !== 'all' ||
-    activityFilter !== 'all' ||
+    cityFilter !== 'all' ||
+    parseStatusFilter !== 'all' ||
     searchQuery.trim() !== '';
-
-  function setMenuFilter(setter: (value: string) => void, value: string) {
-    setter(value);
-    setOpenMenu(null);
-  }
 
   function resetFilters() {
     composingRef.current = false;
     setQuery('');
     setSearchQuery('');
     setStatusTab('all');
-    setJobFilter('all');
-    setCandidateStatusFilter('all');
     setSourceChannelFilter('all');
-    setOwnerFilter('all');
-    setActivityFilter('all');
     setCityFilter('all');
     setParseStatusFilter('all');
-    setPipelineStatusFilter('all');
     setActionError(null);
     setActionMessage(null);
     setPage(1);
@@ -456,11 +251,6 @@ export function CandidatesPage() {
 
   async function handleAddToDemand(candidateId: number) {
     const demandId = Number(targetDemandId);
-    if (candidateId < 0) {
-      setActionMessage('已模拟加入岗位，演示数据不会写入后台');
-      setActionError(null);
-      return;
-    }
     if (!selectedJobId || !targetDemandId || Number.isNaN(demandId)) {
       setActionError('请先在更多筛选里选择目标招聘需求');
       setActionMessage(null);
@@ -511,6 +301,12 @@ export function CandidatesPage() {
       <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-[#171a1f]">简历库</h1>
         <div className="flex flex-wrap items-center gap-2">
+          <Link to="/demands">
+            <Button variant="secondary">
+              <Users className="h-4 w-4" />
+              选择招聘需求
+            </Button>
+          </Link>
           <Link to="/upload">
             <Button variant="secondary">
               <FileInput className="h-4 w-4" />
@@ -523,26 +319,29 @@ export function CandidatesPage() {
               猎头推荐导入
             </Button>
           </Link>
-          <Button variant="secondary" type="button">
-            <Download className="h-4 w-4" />
-            导出
-          </Button>
         </div>
       </header>
 
       <section className="overflow-hidden rounded-xl border border-[#e6e9ee] bg-white">
-        <div className="grid grid-cols-4 divide-x divide-[#edf0f2]">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              className={`h-14 text-center text-sm font-bold transition-colors ${statusTab === tab.key ? 'bg-[#35a36f] text-white' : 'bg-white text-[#4b515a] hover:bg-[#f5fbf8]'}`}
-              onClick={() => setStatusTab(tab.key)}
-            >
-              <span className="mr-2 text-lg">{counts[tab.key]}</span>
-              {tab.label}
-            </button>
-          ))}
+        <div className="grid grid-cols-3 divide-x divide-[#edf0f2]">
+          {STATUS_TABS.map((tab) => {
+            const count = tab.key === 'all'
+              ? totalCandidates
+              : statusTab === tab.key
+                ? resultTotal
+                : null;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                className={`h-14 text-center text-sm font-bold transition-colors ${statusTab === tab.key ? 'bg-[#35a36f] text-white' : 'bg-white text-[#4b515a] hover:bg-[#f5fbf8]'}`}
+                onClick={() => setStatusTab(tab.key)}
+              >
+                {count !== null && <span className="mr-2 text-lg">{count}</span>}
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -622,8 +421,8 @@ export function CandidatesPage() {
             <label className="space-y-1 text-sm font-bold text-[#737983]">
               入流程状态
               <select
-                value={pipelineStatusFilter}
-                onChange={(event) => setPipelineStatusFilter(event.target.value as 'all' | 'in_pipeline' | 'not_in_pipeline')}
+                value={statusTab}
+                onChange={(event) => setStatusTab(event.target.value as LibraryStatus)}
                 className="h-11 w-full rounded-lg border border-[#e6e9ee] bg-white px-3 text-[#22262c]"
               >
                 <option value="all">全部状态</option>
@@ -652,29 +451,30 @@ export function CandidatesPage() {
           <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
             {statusTab !== 'all' && (
               <button type="button" onClick={() => setStatusTab('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">
-                状态: {activeFilterLabel(statusTab)} ×
+                状态: {STATUS_TABS.find((tab) => tab.key === statusTab)?.label} ×
               </button>
             )}
-            {jobFilter !== 'all' && <button type="button" onClick={() => setJobFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">岗位: {jobFilter} ×</button>}
-            {candidateStatusFilter !== 'all' && <button type="button" onClick={() => setCandidateStatusFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">候选人状态: {candidateStatusFilter} ×</button>}
             {sourceChannelFilter !== 'all' && <button type="button" onClick={() => setSourceChannelFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">来源: {sourceChannelFilter} ×</button>}
-            {ownerFilter !== 'all' && <button type="button" onClick={() => setOwnerFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">负责人: {ownerFilter} ×</button>}
-            {activityFilter !== 'all' && <button type="button" onClick={() => setActivityFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">动态: {activityFilter} ×</button>}
+            {cityFilter !== 'all' && <button type="button" onClick={() => setCityFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">城市: {cityFilter} ×</button>}
+            {parseStatusFilter !== 'all' && <button type="button" onClick={() => setParseStatusFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">解析状态: {PARSE_STATUS_LABELS[parseStatusFilter]} ×</button>}
           </div>
         )}
-        <p className="mt-4 text-sm font-medium text-[#737983]">
-          {hasActiveFilters ? `筛选结果 ${filteredRows.length} 条，共 ${libraryRows.length} 条` : `共 ${libraryRows.length} 条候选档案`}
-        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-medium text-[#737983]">
+          <p>{hasActiveFilters ? `筛选结果 ${resultTotal} 条，简历库共 ${totalCandidates} 条` : `共 ${totalCandidates} 条候选档案`}</p>
+          {selectedDemand && !matchPreviewAsync.loading && <p>高匹配候选人 {highFitCount} 人</p>}
+          {loading && data !== null && <p aria-live="polite" className="text-[#168a5b]">正在搜索候选人…</p>}
+        </div>
         {actionMessage && <p className="mt-2 text-sm font-bold text-[#168a5b]">{actionMessage}</p>}
         {actionError && <p className="mt-2 text-sm font-bold text-[#ef4444]">{actionError}</p>}
       </EnterpriseSearchPanel>
 
       <EnterpriseTableCard className="mt-5 overflow-visible">
+        <h2 className="sr-only">候选人列表</h2>
         {filteredRows.length === 0 ? (
           <EnterpriseEmptyState
             icon={Users}
             title="没有符合条件的简历"
-            description="调整搜索词、城市、来源、解析状态、入流程状态或技能条件后再查看"
+            description="调整搜索词、城市、来源、解析状态或入流程状态后再查看，也可以先导入一份简历。"
           />
         ) : (
           <table className="enterprise-table min-w-[1120px]">
@@ -684,21 +484,11 @@ export function CandidatesPage() {
                   <input type="checkbox" className="h-4 w-4 rounded border-[#ccd2d8]" />
                 </th>
                 <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">候选人</th>
-                <HeaderFilter label="当前/最近应聘岗位" menuKey="job" openMenu={openMenu} onToggle={(key) => setOpenMenu(openMenu === key ? null : key)}>
-                  <FilterMenu options={JOB_OPTIONS} value={jobFilter} allLabel="全部岗位" onSelect={(value) => setMenuFilter(setJobFilter, value)} />
-                </HeaderFilter>
-                <HeaderFilter label="候选人状态" menuKey="status" openMenu={openMenu} onToggle={(key) => setOpenMenu(openMenu === key ? null : key)}>
-                  <FilterMenu options={['招聘流程中', '人才池', '已结束', ...ACTIVITY_OPTIONS]} value={candidateStatusFilter} allLabel="全部状态" onSelect={(value) => setMenuFilter(setCandidateStatusFilter, value)} />
-                </HeaderFilter>
-                <HeaderFilter label="来源" menuKey="source" openMenu={openMenu} onToggle={(key) => setOpenMenu(openMenu === key ? null : key)}>
-                  <FilterMenu options={SOURCE_OPTIONS} value={sourceChannelFilter} allLabel="全部来源" onSelect={(value) => setMenuFilter(setSourceChannelFilter, value)} />
-                </HeaderFilter>
-                <HeaderFilter label="招聘负责人" menuKey="owner" openMenu={openMenu} onToggle={(key) => setOpenMenu(openMenu === key ? null : key)}>
-                  <FilterMenu options={OWNER_OPTIONS} value={ownerFilter} allLabel="全部负责人" onSelect={(value) => setMenuFilter(setOwnerFilter, value)} />
-                </HeaderFilter>
-                <HeaderFilter label="最近动态" menuKey="activity" openMenu={openMenu} onToggle={(key) => setOpenMenu(openMenu === key ? null : key)}>
-                  <FilterMenu options={ACTIVITY_OPTIONS} value={activityFilter} allLabel="全部动态" onSelect={(value) => setMenuFilter(setActivityFilter, value)} />
-                </HeaderFilter>
+                <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">最近流程/来源岗位</th>
+                <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">流程状态</th>
+                <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">来源</th>
+                <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">招聘负责人</th>
+                <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">最近动态</th>
                 <th className="px-5 py-4 text-right text-sm font-bold text-[#737983]">操作</th>
               </tr>
             </thead>
@@ -714,16 +504,26 @@ export function CandidatesPage() {
                       <span>
                         <span className="block font-bold text-[#168a5b]">{candidate.name_masked}</span>
                         <span className="block text-xs font-medium text-[#7d838c]">
-                          {candidate.gender} · {candidate.age}岁 · {candidate.years}年
+                          {[
+                            candidate.email_masked,
+                            candidate.phone_masked,
+                            candidate.intent_city ? `意向城市：${candidate.intent_city}` : '',
+                            candidate.education_summary,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || '暂无联系方式与教育摘要'}
                         </span>
                       </span>
                     </Link>
                   </td>
-                  <td className="px-5 py-5 font-bold text-[#30343a]">{candidate.currentJob}</td>
+                  <td className="px-5 py-5">
+                    <p className="font-bold text-[#30343a]">{candidate.currentJob}</p>
+                    {candidate.jobContext && <p className="mt-1 text-xs text-[#737983]">{candidate.jobContext}</p>}
+                  </td>
                   <td className="px-5 py-5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-[#30343a]">{candidate.currentJob}</span>
                       <span className={`rounded-md px-2 py-1 text-xs font-bold ${statusTone(candidate.statusLabel)}`}>{candidate.statusLabel}</span>
+                      {candidate.current_demand_request_no && <span className="text-xs text-[#737983]">{candidate.current_demand_request_no}</span>}
                     </div>
                   </td>
                   <td className="px-5 py-5 font-medium text-[#464b52]">{sourceOf(candidate)}</td>
@@ -732,7 +532,7 @@ export function CandidatesPage() {
                   <td className="px-5 py-5">
                     <div className="flex items-center justify-end gap-3">
                       <JobFitSummary candidate={candidate} jobFit={matchByCandidateId.get(candidate.id) ?? null} />
-                      {candidate.statusGroup === 'talent_pool' ? (
+                      {candidate.pipeline_status !== 'in_pipeline' ? (
                         <Button
                           type="button"
                           variant="secondary"
@@ -741,7 +541,7 @@ export function CandidatesPage() {
                           onClick={() => handleAddToDemand(candidate.id)}
                         >
                           <UserPlus className="h-4 w-4" />
-                          加入岗位
+                          加入所选需求
                         </Button>
                       ) : (
                         <Link to={candidate.candidateUrl} className="inline-flex h-9 items-center rounded-lg bg-[#35a36f] px-4 text-sm font-bold text-white hover:bg-[#168a5b]">
@@ -771,9 +571,6 @@ export function CandidatesPage() {
         </div>
       )}
 
-      {/* 测试兼容锚点：EnterpriseSearchPanel EnterpriseTableCard EnterpriseEmptyState enterprise-table */}
-      {/* 选择招聘需求 / 高匹配候选人 / 候选人列表 / 岗位匹配 / 加入所选需求 */}
-      {/* api.previewJobMatch(selectedJobId, candidateIds) / api.batchAddToPipeline(selectedJobId, [candidateId], demandId) */}
     </EnterprisePage>
   );
 }

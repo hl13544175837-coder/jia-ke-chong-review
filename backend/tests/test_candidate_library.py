@@ -5,8 +5,24 @@ def test_candidate_library_list_includes_resume_summary_and_top_tags(client, mak
     uid, token = make_user("hr@x.com", role="recruiter")
     with app.app_context():
         from app import db
-        from app.models import Candidate, CandidateTag
+        from app.models import (
+            Candidate,
+            CandidateTag,
+            Job,
+            PipelineStage,
+            RecruitmentDemand,
+        )
 
+        job = Job(title="NLP算法工程师", jd_text="负责算法平台", owner_hr_id=uid)
+        db.session.add(job)
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=uid,
+            request_no="REQ-LIBRARY-001",
+        )
+        db.session.add(demand)
+        db.session.flush()
         candidate = Candidate(
             owner_hr_id=uid,
             name_masked="候选人A",
@@ -29,6 +45,13 @@ def test_candidate_library_list_includes_resume_summary_and_top_tags(client, mak
             CandidateTag(candidate_id=candidate.id, tag="Python", score=5),
             CandidateTag(candidate_id=candidate.id, tag="NLP", score=4),
             CandidateTag(candidate_id=candidate.id, tag="SQL", score=3),
+            PipelineStage(
+                candidate_id=candidate.id,
+                job_id=job.id,
+                demand_id=demand.id,
+                stage="interview",
+                updated_by=uid,
+            ),
         ])
         db.session.commit()
 
@@ -46,6 +69,12 @@ def test_candidate_library_list_includes_resume_summary_and_top_tags(client, mak
         "duration": "2022-至今",
     }
     assert body[0]["education_summary"] == "复旦大学 · 本科 · 计算机科学"
+    assert body[0]["owner_hr_name"] == "T"
+    assert body[0]["pipeline_status"] == "in_pipeline"
+    assert body[0]["current_stage"] == "interview"
+    assert body[0]["current_demand_request_no"] == "REQ-LIBRARY-001"
+    assert body[0]["current_job_title"] == "NLP算法工程师"
+    assert body[0]["pipeline_updated_at"]
 
 
 def test_original_resume_preview_and_download_are_protected_and_path_free(

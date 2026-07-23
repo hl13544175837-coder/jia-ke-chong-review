@@ -148,6 +148,14 @@ export interface CandidateListItem {
   } | null;
   education_summary?: string;
   source?: CandidateSourceInfo | null;
+  owner_hr_name?: string;
+  pipeline_status?: 'in_pipeline' | 'not_in_pipeline';
+  current_stage?: PipelineStage | null;
+  current_demand_id?: number | null;
+  current_demand_request_no?: string | null;
+  current_job_id?: number | null;
+  current_job_title?: string | null;
+  pipeline_updated_at?: string | null;
 }
 
 export interface CandidateListQuery {

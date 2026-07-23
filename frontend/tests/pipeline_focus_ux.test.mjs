@@ -25,10 +25,10 @@ assert.match(
   'Pipeline page should gate the add-candidate panel behind a local disclosure state',
 );
 
-assert.ok(
-  pipelinePage.indexOf('添加候选人') !== -1 &&
-    pipelinePage.indexOf('添加候选人') < pipelinePage.indexOf('安排面试'),
-  'Interview management should expose adding candidates before the interview list actions',
+assert.match(
+  pipelinePage,
+  /添加候选人/,
+  'Interview management should expose adding candidates from the demand workspace',
 );
 
 assert.match(
@@ -45,14 +45,24 @@ assert.match(
 
 assert.match(
   pipelinePage,
-  /安排面试[\s\S]*调整面试[\s\S]*催反馈[\s\S]*openActionCandidateId[\s\S]*确认面试完成[\s\S]*标记未进行/,
-  'Interview rows should keep primary actions focused and move secondary actions into the more menu',
+  /管理流程[\s\S]*处理面试/,
+  'Interview rows should expose workflow management and interview handling',
+);
+assert.match(
+  pipelinePage,
+  /PipelineCandidatePanel/,
+  'Workflow management should reuse the server-backed candidate process panel',
+);
+assert.match(
+  pipelinePage,
+  /cancelInterviewAssignment/,
+  'Interview cancellation should call the server-backed cancellation action',
 );
 
 assert.doesNotMatch(
   pipelinePage,
-  /更多操作已打开|已切换到日历视图预览|处理结果入口已打开/,
-  'Interview management should not use placeholder toast messages for normal button clicks',
+  /已发送反馈提醒|已记录面试完成|已记录面试未进行|更多操作已打开|已切换到日历视图预览|处理结果入口已打开/,
+  'Interview management should not report success for actions that were not written to the backend',
 );
 
 assert.match(

@@ -106,13 +106,13 @@ assert.match(
 );
 assert.match(
   demandsPage,
-  /onReloadInterviewers=\{interviewers\.reload\}/,
-  'A failed interviewer list should expose a direct retry action',
+  /onReloadOptions=\{\(\) => \{[\s\S]*?interviewers\.reload\(\);[\s\S]*?\}\}/,
+  'A failed option list should expose a retry action that reloads interviewers',
 );
 assert.match(
   demandsPage,
-  /const \[showCreateForm, setShowCreateForm\] = useState\(false\)/,
-  'Adding interviewer search must preserve the existing collapsed create area',
+  /const \[createOpen, setCreateOpen\] = useState\(false\)/,
+  'Adding interviewer search must preserve the target-mode create modal state',
 );
 
 assert.match(
