@@ -104,6 +104,7 @@ services:
         NGINX_BASE_IMAGE: nginx:1.27-alpine
         VITE_API_BASE_URL: /api
         VITE_OAUTH_BASE_URL: /pgs/oauth
+        VITE_LOGIN_PROVIDER: local
         VITE_DEFAULT_ROLE: recruiter
     restart: unless-stopped
     ports:

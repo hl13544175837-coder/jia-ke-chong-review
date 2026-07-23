@@ -45,7 +45,7 @@ docker compose --env-file .env --file compose.local.yaml down
 
 `down` 不删除 MySQL、上传文件和通知记录卷；不要在需要保留本地验收数据时追加 `--volumes`。
 
-本地全容器环境不提供公司 PGS OAuth 服务。业务账号登录走本项目 `/api/auth/login`；`/pgs/oauth/api/queryCurrentUserMenu` 不是本地健康检查接口，当前菜单权限请求失败后会按既有保护逻辑放行本地业务菜单。若要改变该行为或代理真实 PGS OAuth，必须由鉴权 Owner 明确批准并单独验收。
+本地全容器环境将 `VITE_LOGIN_PROVIDER` 固定为 `local`：业务账号登录走本项目 `/api/auth/login`，菜单与按钮权限由后端 RBAC 决定，前端不会请求公司 PGS OAuth 的登录、用户信息或 `queryCurrentUserMenu` 接口。SIT/生产镜像默认仍为 `gateway`，构建时不得误传 `local`。
 
 ---
 

@@ -1,4 +1,4 @@
-// 契约测试：前端登录走网关 OAuth，且所有接口走可配置网关前缀。
+// 契约测试：默认登录走网关 OAuth，本地容器可显式切换后端认证。
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -19,6 +19,7 @@ assert.ok(read('lib/md5.ts').includes('export function md5'), 'md5.ts 应导出 
 
 // 3) 网关登录模块：登录 + profile + 默认角色，密码 MD5，读 data.token
 const gw = read('lib/gatewayAuth.ts');
+const authMode = read('lib/authMode.ts');
 assert.ok(gw.includes('/login'), '应 POST 网关 /login');
 assert.ok(gw.includes('/api/profile'), '应 GET 网关 /api/profile');
 assert.ok(gw.includes('md5(password)'), '密码应 MD5 后发送');
@@ -26,11 +27,16 @@ assert.ok(gw.includes('data?.token') || gw.includes('data.token'), 'token 应取
 assert.ok(gw.includes('Bearer'), 'profile 应带 Bearer 鉴权');
 assert.ok(gw.includes('VITE_OAUTH_BASE_URL'), 'OAuth 前缀应可配置');
 assert.ok(gw.includes('VITE_DEFAULT_ROLE'), '默认角色应可配置');
+assert.ok(gw.includes("from './authMode'"), '登录与权限模块应复用同一认证模式真源');
+assert.ok(authMode.includes('VITE_LOGIN_PROVIDER'), '认证模式真源应读取构建配置');
+assert.ok(authMode.includes("return 'local'"), '认证模式真源应显式识别本地模式');
+assert.ok(gw.includes("LOGIN_PROVIDER === 'local'"), '本地模式应显式调用后端认证');
+assert.ok(gw.includes('api.login({ email: account, password })'), '本地模式应复用统一登录 API');
 assert.ok(gw.includes('succ') || gw.includes('code === 1'), '应按网关包 succ/code 判成败');
 
-// 4) 登录页改用账号 + 网关登录，不再用邮箱直连后端 login
+// 4) 登录页只采集账号，由配置化认证入口决定网关或本地后端
 const loginPage = read('pages/LoginPage.tsx');
-assert.ok(loginPage.includes('loginViaGateway'), 'LoginPage 应调用 loginViaGateway');
+assert.ok(loginPage.includes('loginWithConfiguredAuth'), 'LoginPage 应调用配置化认证入口');
 assert.ok(loginPage.includes('account'), 'LoginPage 应采集账号 account');
 assert.ok(!loginPage.includes('api.login('), 'LoginPage 不应再直连后端 api.login');
 

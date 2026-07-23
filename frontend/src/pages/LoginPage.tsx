@@ -3,8 +3,9 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, api, clearEmpCode, clearToken } from '../lib/api';
+import { ApiError, clearToken } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { loginWithConfiguredAuth } from '../lib/gatewayAuth';
 import { defaultRouteForRole } from '../lib/nav';
 import { Button, Input, ErrorState } from '../components/ui';
 import { gsap, useGSAP, EASE, DUR, STAGGER } from '../lib/motion';
@@ -69,9 +70,7 @@ export function LoginPage() {
     try {
       // 清除残留旧 token，防止 API 请求带无效 token 触发 401
       clearToken();
-      clearEmpCode();
-      // 本地演示走后端账号密码登录，不经过公司网关。
-      const res = await api.login({ email: account, password });
+      const res = await loginWithConfiguredAuth(account, password);
       login(res);
       navigate(defaultRouteForRole(), { replace: true });
     } catch (err) {

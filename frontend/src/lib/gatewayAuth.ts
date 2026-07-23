@@ -9,7 +9,8 @@
 //   后端 /zhipin-server/api/auth/me 按工号映射真实角色。
 // - 登录后业务接口带同一个 Bearer token，网关鉴权后透传身份给后端。
 
-import { ApiError, setEmpCode } from './api';
+import { ApiError, api, clearEmpCode, setEmpCode } from './api';
+import { LOGIN_PROVIDER } from './authMode';
 import { md5 } from './md5';
 import type { LoginResponse, Role } from '../types';
 
@@ -106,4 +107,16 @@ export async function loginViaGateway(account: string, password: string): Promis
   const { name, empCode } = await gatewayProfile(token);
   if (empCode) setEmpCode(empCode);
   return { token, role: DEFAULT_ROLE, name };
+}
+
+export async function loginWithConfiguredAuth(
+  account: string,
+  password: string,
+): Promise<LoginResponse> {
+  if (LOGIN_PROVIDER === 'local') {
+    // 本地全容器环境没有企业网关，显式模式避免把演示账号误发到外部 OAuth。
+    clearEmpCode();
+    return api.login({ email: account, password });
+  }
+  return loginViaGateway(account, password);
 }

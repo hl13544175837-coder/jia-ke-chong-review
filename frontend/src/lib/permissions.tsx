@@ -1,7 +1,7 @@
 // 网关菜单/按钮权限接入。
 //
-// 登录后拉取 /pgs/oauth/api/queryCurrentUserMenu?clientId=zhipin，把返回的菜单树
-// 拍平成两个集合：menuCodes（菜单 code）、buttonCodes（resourceInfo 里的按钮 code）。
+// 网关模式登录后拉取菜单树并拍平成 menuCodes/buttonCodes；
+// 本地模式只依赖后端 RBAC，避免把本地 JWT 发送给企业网关。
 // 组件用 hasMenu(code)/hasButton(code) 或 <Can code> 控制显示隐藏。
 //
 // 安全默认（fail-open）：在权限「就绪」之前（尚未加载 / 加载失败），hasMenu/hasButton
@@ -16,6 +16,7 @@ import {
   type ReactNode,
 } from 'react';
 import { authHeaders } from './api';
+import { LOGIN_PROVIDER } from './authMode';
 
 // 权限接口在网关 OAuth 前缀下（与登录/profile 同源），clientId 标识当前应用。
 const OAUTH_BASE = ((import.meta.env.VITE_OAUTH_BASE_URL ?? '/pgs/oauth') as string)
@@ -102,6 +103,11 @@ export function PermissionsProvider({
   const [state, setState] = useState(EMPTY);
 
   const load = useCallback(async () => {
+    if (LOGIN_PROVIDER === 'local') {
+      // 本地角色由后端 RBAC 决定，不能把本地 JWT 发送给企业网关或等待不存在的菜单树。
+      setState({ ...EMPTY, settled: true });
+      return;
+    }
     setState((s) => ({ ...s, loading: true }));
     try {
       const { menuCodes, buttonCodes, tree } = await fetchCurrentUserMenu();

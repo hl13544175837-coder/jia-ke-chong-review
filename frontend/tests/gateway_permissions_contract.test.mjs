@@ -18,6 +18,14 @@ assert.ok(perm.includes('export function Can'), '应导出 Can 按钮门组件')
 assert.ok(perm.includes('export function PermissionsProvider'), '应导出 PermissionsProvider');
 // fail-open：未就绪时 hasMenu/hasButton 返回 true
 assert.ok(perm.includes('!state.ready'), 'hasMenu/hasButton 应在未就绪时 fail-open');
+assert.ok(
+  perm.includes("LOGIN_PROVIDER === 'local'"),
+  '本地认证模式不得请求企业网关菜单',
+);
+assert.ok(
+  perm.indexOf("LOGIN_PROVIDER === 'local'") < perm.indexOf('await fetchCurrentUserMenu()'),
+  '本地认证分支必须在发起网关菜单请求前返回',
+);
 
 // 进入应用先拉菜单再渲染：首个请求 settle 前显示加载、不渲染路由（避免菜单闪动）
 assert.ok(perm.includes('settled'), '应有 settled 标记首个权限请求是否结束');

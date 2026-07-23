@@ -81,7 +81,7 @@
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
 ```
 
-默认宿主机端口为前端 `15173`、后端 `15001`、MySQL `13306`、企微替身 `19090`，且全部只绑定 `127.0.0.1`。端口可在根目录 `.env` 中覆盖；容器内部仍使用各服务标准端口，不会占用宿主机常见端口。该 Compose 仅用于本地可丢弃数据验收，不替代 Libra/SIT 或生产部署路线。账号和运行检查见 [RUNNING.md](RUNNING.md)。
+默认宿主机端口为前端 `15173`、后端 `15001`、MySQL `13306`、企微替身 `19090`，且全部只绑定 `127.0.0.1`。端口可在根目录 `.env` 中覆盖；容器内部仍使用各服务标准端口，不会占用宿主机常见端口。该 Compose 仅用于本地可丢弃数据验收，不替代 Libra/SIT 或生产部署路线。它会显式构建 `VITE_LOGIN_PROVIDER=local`，因此本地账号走后端认证且不会调用公司 PGS OAuth 菜单接口；SIT/生产镜像保持默认 `gateway`。账号和运行检查见 [RUNNING.md](RUNNING.md)。
 
 ### 3.1 克隆/解压项目
 

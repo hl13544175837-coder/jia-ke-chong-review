@@ -18,6 +18,9 @@ ARG VITE_API_BASE_URL=https://test-pgsgw.yimidida.com/zhipin-server/api
 #   生产：--build-arg VITE_OAUTH_BASE_URL=https://pgsgw.yimidida.com/pgs/oauth
 ARG VITE_OAUTH_BASE_URL=https://test-pgsgw.yimidida.com/pgs/oauth
 
+# 认证入口默认保持企业网关；仅本地全容器环境显式切换为 local。
+ARG VITE_LOGIN_PROVIDER=gateway
+
 # 临时默认角色（网关 profile 无应用角色，联调兜底）。接后端 /auth/me 后移除。
 ARG VITE_DEFAULT_ROLE=admin
 
@@ -29,6 +32,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 COPY frontend/ ./
 RUN VITE_API_BASE_URL="$VITE_API_BASE_URL" \
     VITE_OAUTH_BASE_URL="$VITE_OAUTH_BASE_URL" \
+    VITE_LOGIN_PROVIDER="$VITE_LOGIN_PROVIDER" \
     VITE_DEFAULT_ROLE="$VITE_DEFAULT_ROLE" \
     npm run build
 
