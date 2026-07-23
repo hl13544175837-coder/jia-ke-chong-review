@@ -85,89 +85,8 @@ const ROUND_LABELS: Record<string, string> = {
 };
 
 const ROUND_ACTIONS: InterviewRound[] = ['round_1', 'round_2', 'round_3', 'hr'];
-
-const DEMO_INTERVIEW_CANDIDATES: PipelineBoardCandidate[] = [
-  { candidate_id: -101, name_masked: '林小雅', stage: 'pending', updated_at: '2026-07-18T09:00:00', updated_by_name: '招聘专员01' },
-  { candidate_id: -102, name_masked: '王浩然', stage: 'pending', updated_at: '2026-07-18T10:00:00', updated_by_name: '招聘专员01' },
-  { candidate_id: -103, name_masked: '赵晓月', stage: 'interview', updated_at: '2026-07-19T10:00:00', updated_by_name: '刘思琪' },
-  { candidate_id: -104, name_masked: '陈建国', stage: 'pending', updated_at: '2026-07-18T14:00:00', updated_by_name: '招聘专员01' },
-  { candidate_id: -105, name_masked: '孙博文', stage: 'interview', updated_at: '2026-07-17T10:00:00', updated_by_name: '刘思琪' },
-  { candidate_id: -106, name_masked: '周雨桐', stage: 'business_review', updated_at: '2026-07-20T11:00:00', updated_by_name: '张明远' },
-  { candidate_id: -107, name_masked: '陈伟', stage: 'pending', updated_at: '2026-07-18T16:00:00', updated_by_name: '招聘专员01' },
-  { candidate_id: -108, name_masked: '苏浩宇', stage: 'interview', updated_at: '2026-07-19T15:00:00', updated_by_name: '周明辉' },
-  { candidate_id: -109, name_masked: '甄诚', stage: 'interview', updated_at: '2026-07-19T15:30:00', updated_by_name: '黄志远' },
-  { candidate_id: -110, name_masked: '郭佳怡', stage: 'business_review', updated_at: '2026-07-20T16:00:00', updated_by_name: '吴文杰' },
-  { candidate_id: -111, name_masked: '林晓峰', stage: 'business_review', updated_at: '2026-07-20T17:00:00', updated_by_name: '张明远' },
-  { candidate_id: -112, name_masked: '郑宇航', stage: 'business_review', updated_at: '2026-07-21T09:30:00', updated_by_name: '张明远' },
-  { candidate_id: -113, name_masked: '刘雨欣', stage: 'business_review', updated_at: '2026-07-21T10:00:00', updated_by_name: '吴文杰' },
-  { candidate_id: -114, name_masked: '钱一鸣', stage: 'pending', updated_at: '2026-07-21T11:00:00', updated_by_name: '招聘专员01' },
-];
-
-const DEMO_ASSIGNMENTS: InterviewAssignment[] = [
-  {
-    id: -201,
-    candidate_id: -103,
-    name_masked: '赵晓月',
-    demand_id: null,
-    job_id: 0,
-    job_title: 'UI/UX设计师',
-    round: 'round_1',
-    round_sequence: 1,
-    is_primary: true,
-    interviewer_id: -1,
-    interviewer_name: '刘思琪',
-    scheduled_at: '2026-07-19T10:00:00',
-    location: '总部2楼设计室',
-    note: '60 分钟',
-    status: 'scheduled',
-    feedback_submitted: false,
-    is_overdue: false,
-    created_by_name: '招聘专员01',
-    created_at: '2026-07-18T12:00:00',
-  },
-  {
-    id: -202,
-    candidate_id: -105,
-    name_masked: '孙博文',
-    demand_id: null,
-    job_id: 0,
-    job_title: '前端开发工程师',
-    round: 'round_1',
-    round_sequence: 1,
-    is_primary: true,
-    interviewer_id: -2,
-    interviewer_name: '刘思琪',
-    scheduled_at: '2026-07-17T10:00:00',
-    location: '线上视频面试',
-    note: '60 分钟',
-    status: 'completed',
-    feedback_submitted: true,
-    is_overdue: false,
-    created_by_name: '招聘专员01',
-    created_at: '2026-07-16T12:00:00',
-  },
-  ...[-108, -109, -110, -111, -112, -113].map((candidateId, index) => ({
-    id: -220 - index,
-    candidate_id: candidateId,
-    name_masked: DEMO_INTERVIEW_CANDIDATES.find((item) => item.candidate_id === candidateId)?.name_masked ?? null,
-    demand_id: null,
-    job_id: 0,
-    job_title: '前端开发工程师',
-    round: 'round_1' as InterviewRound,
-    round_sequence: 1,
-    is_primary: true,
-    interviewer_id: -10 - index,
-    interviewer_name: ['周明辉', '黄志远', '吴文杰', '张明远', '张明远', '吴文杰'][index],
-    scheduled_at: `2026-07-${18 + index}T10:00:00`,
-    location: '企业微信会议',
-    note: '60 分钟',
-    status: 'scheduled',
-    feedback_submitted: false,
-    is_overdue: index < 4,
-    created_by_name: '招聘专员01',
-    created_at: '2026-07-17T12:00:00',
-  })),
-];
+const EMPTY_PIPELINE_CANDIDATES: PipelineBoardCandidate[] = [];
+const EMPTY_ASSIGNMENTS: InterviewAssignment[] = [];
 
 function candidateInitial(name: string) {
   return name.replace(/^候选人\s*/, '').trim().slice(0, 1) || '候';
@@ -898,17 +817,8 @@ export function PipelinePage() {
   const [recentlyMovedCandidateId, setRecentlyMovedCandidateId] = useState<number | null>(null);
   const autoStageKeyRef = useRef<string | null>(null);
 
-  const realCandidates = boardAsync.data?.candidates ?? [];
-  const usingDemoCandidates =
-    effectiveDemandId !== null &&
-    !boardAsync.loading &&
-    !boardAsync.error &&
-    realCandidates.length === 0;
-  const candidates: PipelineBoardCandidate[] = useMemo(
-    () => (usingDemoCandidates ? DEMO_INTERVIEW_CANDIDATES : realCandidates),
-    [realCandidates, usingDemoCandidates],
-  );
-  const assignments = usingDemoCandidates ? DEMO_ASSIGNMENTS : assignmentsAsync.data ?? [];
+  const candidates = boardAsync.data?.candidates ?? EMPTY_PIPELINE_CANDIDATES;
+  const assignments = assignmentsAsync.data ?? EMPTY_ASSIGNMENTS;
   const assignmentByCandidateId = useMemo(() => {
     const map = new Map<number, InterviewAssignment | null>();
     candidates.forEach((candidate) => {

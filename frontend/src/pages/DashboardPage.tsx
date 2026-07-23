@@ -24,7 +24,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import type { Role } from '../types';
 
 interface DashboardErrors {
   candidates?: string;
@@ -58,7 +57,7 @@ interface DashboardState {
 // WORKFLOW_ACTIONS: [{ to: '/demands', label: '管理招聘需求' }]
 // interviewer: ['/interviews']; action: { to: '/interviews', label: '查看我的面试' }; listInterviewAssignments()
 // 待我反馈 今日面试 已反馈 超时待反馈
-function useDashboardStats(_role: Role | null, _userId: number | null): DashboardState {
+function useDashboardStats(): DashboardState {
   const [reloadKey, setReloadKey] = useState(0);
   const stats = useMemo<DashboardStats>(() => ({
     activeDemands: 7,
@@ -458,8 +457,8 @@ function PerformancePanel() {
 }
 
 export function DashboardPage() {
-  const { name, role, userId } = useAuth();
-  const { stats, loading, errors, reload } = useDashboardStats(role, userId);
+  const { name } = useAuth();
+  const { stats, loading, errors, reload } = useDashboardStats();
   const [month, setMonth] = useState('2026年7月');
 
   const urgentCount = TODO_ITEMS.filter((item) => item.urgent).length;
