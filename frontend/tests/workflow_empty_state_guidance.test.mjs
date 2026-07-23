@@ -66,8 +66,8 @@ assert.match(
 
 assert.match(
   demandsPage,
-  /新建岗位（职位 \/ JD）/,
-  'Demand creation should guide users to create a reusable job template when none exists',
+  /新增招聘需求|招聘需求/,
+  'Demand creation should guide users to create a recruitment demand directly',
 );
 assert.match(
   pipelinePage,
@@ -99,7 +99,7 @@ assert.match(
 
 assert.match(
   interviewAssignment,
-  /该需求暂无“面试中”候选人，去候选人流程查看/,
+  /该需求暂无“面试中”候选人，去面试管理查看/,
   'Interview assignment should explain that candidates must first reach the interview stage in this demand',
 );
 assert.match(
@@ -177,18 +177,18 @@ assert.match(
 
 assert.match(
   biPage,
-  /暂无招聘需求/,
-  'BI page should explain that a report needs a real Demand first',
+  /MOCK_OFFERS/,
+  'Offer management should provide presentation data instead of a blank report',
 );
 assert.match(
   biPage,
-  /面试反馈跟进/,
-  'BI page should keep interviewer follow-up visible without a separate explanation button',
+  /更多筛选/,
+  'Offer management should expose filter controls without a separate explanation button',
 );
 assert.match(
   biPage,
-  /当前协同责任/,
-  'BI page should make the current owner visible without ranking departments',
+  /最新动态/,
+  'Offer management should make the latest action visible without ranking departments',
 );
 
 assert.match(

@@ -115,7 +115,7 @@ export function DemandActionDialog({
       ? '该需求会恢复为招聘中；不会改变同一职位模板下的其他需求。'
       : mode === 'owner'
         ? '该需求及其中进行中的候选人会交给新负责人，历史操作者不会重写。'
-        : '优先级会影响协同排序，但不会自动改变候选人流程。';
+        : '优先级会影响协同排序，但不会自动改变面试管理。';
   const valid = values.reason.trim().length > 0
     && (mode !== 'owner' || Boolean(values.owner_hr_id))
     && (mode !== 'priority' || values.priority !== demand.priority);

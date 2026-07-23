@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>智聘招聘全流程泳道图</title>
+  <style>
+    :root{--ink:#172033;--muted:#667085;--line:#d5deea;--blue:#2563eb;--purple:#7155d9;--cyan:#0f8fa8;--green:#16845c;--amber:#c66a00;--red:#c73d3d}
+    *{box-sizing:border-box}body{margin:0;background:#e9eef6;color:var(--ink);font-family:"PingFang SC","Microsoft YaHei",Inter,Arial,sans-serif}
+    .page{width:1660px;margin:28px auto;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 20px 52px rgba(25,42,73,.15)}
+    header{padding:38px 50px 30px;background:linear-gradient(120deg,#173463 0%,#265bc2 55%,#118d98 100%);color:#fff}
+    .eyebrow{font-size:16px;letter-spacing:2px;opacity:.8}h1{font-size:39px;margin:8px 0 10px}header p{font-size:18px;margin:0;opacity:.9}
+    .intro{padding:24px 42px 18px;display:flex;justify-content:space-between;align-items:center}.intro h2{font-size:25px;margin:0}.intro p{margin:0;color:var(--muted);font-size:14px}
+    .board{width:1580px;height:3780px;margin:0 40px 20px;position:relative;border:1px solid #cfd9e7;border-radius:18px;overflow:hidden;background:#fbfcfe}
+    .lane{position:absolute;top:0;bottom:0;width:263px;border-right:1px dashed #cbd5e3}.lane:nth-child(odd){background:rgba(241,245,249,.55)}
+    .lane-head{height:78px;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;font-size:17px;border-bottom:1px solid #b9c7d8;color:#fff;padding:0 12px}
+    .lane small{display:block;font-weight:500;font-size:11px;opacity:.8;margin-top:3px}
+    .lane0{left:0}.lane1{left:263px}.lane2{left:526px}.lane3{left:789px}.lane4{left:1052px}.lane5{left:1315px;border-right:0}
+    .lane0 .lane-head{background:#485b7a}.lane1 .lane-head{background:#16845c}.lane2 .lane-head{background:#0f8fa8}.lane3 .lane-head{background:#2563eb}.lane4 .lane-head{background:#7155d9}.lane5 .lane-head{background:#b15b22}
+    #connectors{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
+    .node{position:absolute;width:205px;min-height:74px;padding:12px 13px;border-radius:12px;border:1.5px solid #b9c8dd;background:#fff;box-shadow:0 5px 14px rgba(30,50,82,.08);z-index:4;font-size:13px;line-height:1.45}
+    .node b{display:block;font-size:15px;margin-bottom:5px}.node .stepno{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#e9effa;color:#23427b;font-size:11px;margin-right:5px}.node .api{display:inline-block;margin-top:7px;padding:4px 7px;border-radius:6px;font-weight:800;font-size:11px;background:#eef3ff;color:#244aa5}.node .warn{background:#fff0d7;color:#945300}
+    .system{border-color:#83cfdd;background:#effbfc}.system b{color:#08788e}.recruiter{border-color:#a8c3ff;background:#f1f5ff}.recruiter b{color:#1c50bd}.interviewer{border-color:#c5b7ff;background:#f5f2ff}.interviewer b{color:#6042c3}.candidate{border-color:#efb78d;background:#fff7f1}.candidate b{color:#9a4c18}.external{border-color:#9bd3bd;background:#f0faf6}.external b{color:#0d704d}.origin{border-color:#b9c5d8;background:#f7f9fc}.origin b{color:#344563}
+    .decision{width:215px;min-height:88px;background:#fff4dc;border-color:#e3ad4a;clip-path:polygon(12% 0,88% 0,100% 50%,88% 100%,12% 100%,0 50%);padding:15px 25px;text-align:center;box-shadow:none}.decision b{color:#8c5000;margin:0}.endnode{border-color:#eea2a2;background:#fff0f0}.endnode b{color:#a92d2d}.success{border-color:#8bd0af;background:#effaf5}.success b{color:#0d704d}
+    .phase{position:absolute;left:10px;z-index:3;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;color:#fff;background:#708198;transform:translateY(-50%)}
+    .legend{padding:10px 42px 32px}.legend h2{font-size:23px;margin:18px 0 14px}.legend-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.legend-card{border:1px solid var(--line);border-radius:12px;padding:13px 15px;min-height:80px}.legend-card b{display:block;margin-bottom:5px}.legend-card p{font-size:13px;line-height:1.5;color:var(--muted);margin:0}.legend-num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#172033;color:#fff;margin-right:7px}.notice{margin-top:14px;border:1px solid #edc36d;background:#fff5df;border-radius:12px;padding:13px 15px;color:#7d4b00;font-size:13px;line-height:1.6}.evidence{padding:17px 42px 25px;border-top:1px solid var(--line);background:#fbfcfe;color:#7a8599;font-size:12px}
+  </style>
+</head>
+<body>
+  <main class="page" id="swimlanePage">
+    <header>
+      <div class="eyebrow">ZHIPIN · RECRUITMENT PROCESS SWIMLANE</div>
+      <h1>智聘招聘全流程泳道图</h1>
+      <p>谁在什么环节做什么，以及每一步由哪个外部接口提供能力</p>
+    </header>
+    <div class="intro"><h2>单条连续业务流 · 跨角色泳道 · 接口编号原位标注</h2><p>加面、淘汰/终结、Offer 接受/拒绝、入职/延期/放弃均按分支表达</p></div>
+    <section class="board" id="board">
+      <div class="lane lane0"><div class="lane-head">用人部门 / 需求发起人<small>提出招聘需求</small></div></div>
+      <div class="lane lane1"><div class="lane-head">外部系统<small>OA · 企微 · 会议 · Offer · HRIS</small></div></div>
+      <div class="lane lane2"><div class="lane-head">智聘系统<small>承接事实 · 状态 · 提醒 · 对账</small></div></div>
+      <div class="lane lane3"><div class="lane-head">招聘专员<small>排期 · 推进 · 人工决策</small></div></div>
+      <div class="lane lane4"><div class="lane-head">面试官<small>面试 · 评分 · 推荐意见</small></div></div>
+      <div class="lane lane5"><div class="lane-head">候选人<small>确认 · 面试 · 签署 · 入职</small></div></div>
+      <svg id="connectors" viewBox="0 0 1580 3780" preserveAspectRatio="none">
+        <defs>
+          <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#69809f"/></marker>
+          <marker id="arrowBlue" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#2563eb"/></marker>
+          <marker id="arrowRed" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#c73d3d"/></marker>
+        </defs>
+      </svg>
+
+      <div class="phase" style="top:106px">需求进入</div>
+      <div id="demand" class="node origin" style="left:29px;top:120px"><b><span class="stepno">1</span>提交招聘需求</b>用人部门在 OA 提交需求、JD、HC 与附件。</div>
+      <div id="oaDemand" class="node external" style="left:292px;top:235px"><b>OA 审批通过并推送</b><span class="api">① OA 招聘需求 MQ</span></div>
+      <div id="createDemand" class="node system" style="left:555px;top:350px"><b>智聘生成招聘责任单</b>建立 Demand，承接 JD、HC、负责人和招聘状态。</div>
+
+      <div class="phase" style="top:475px">候选人与排期</div>
+      <div id="selectCandidate" class="node recruiter" style="left:818px;top:480px"><b><span class="stepno">2</span>选择候选人</b>从简历库选定候选人，准备推送完整资料。</div>
+      <div id="pushProfile" class="node recruiter" style="left:818px;top:595px"><b>推送候选人资料</b>把候选人信息与完整简历发给面试官。<span class="api">② 企业微信消息</span></div>
+      <div id="receiveProfile" class="node interviewer" style="left:1081px;top:710px"><b>面试官接收资料</b>了解候选人背景与对应岗位要求。</div>
+      <div id="confirmTime" class="node recruiter" style="left:818px;top:835px"><b><span class="stepno">3</span>确认时间与形式</b>与候选人确认面试时间，以及线上或线下形式。</div>
+      <div id="candidateTime" class="node candidate" style="left:1344px;top:950px"><b>候选人反馈时间</b>确认可参加的时间和面试形式。</div>
+      <div id="createMeeting" class="node recruiter" style="left:818px;top:1065px"><b><span class="stepno">4</span>创建会议 / 订会议室</b>线上创建会议，线下预订会议室。<span class="api">③ 日程 + 壹速通</span></div>
+      <div id="meetingSystem" class="node external" style="left:292px;top:1180px"><b>形成面试日程</b>企业微信日程、壹速通会议平台或会议室返回安排。<span class="api">③ 会议 / 会议室</span></div>
+      <div id="saveSchedule" class="node system" style="left:555px;top:1295px"><b>保存面试安排</b>关联 Demand、候选人、轮次、面试官与会议信息。</div>
+      <div id="notifyCandidate" class="node candidate" style="left:1344px;top:1410px"><b><span class="stepno">5</span>接收面试通知</b>获得面试时间、会议链接或线下地点。<span class="api warn">邮件 / 短信待业务确认</span></div>
+
+      <div class="phase" style="top:1540px">面试与评分</div>
+      <div id="interviewCandidate" class="node candidate" style="left:1344px;top:1545px"><b><span class="stepno">6</span>参加面试</b>按约定时间进入线上会议或到达线下地点。</div>
+      <div id="interviewInterviewer" class="node interviewer" style="left:1081px;top:1545px"><b>开展面试</b>基于候选人资料和岗位要求完成本轮面试。</div>
+      <div id="scoreTimer" class="node system" style="left:555px;top:1680px"><b><span class="stepno">7</span>触发 JD 评分卡</b>面试开始 30 分钟后，自动生成对应 JD 的评分卡。</div>
+      <div id="scorePush" class="node external" style="left:292px;top:1795px"><b>企微推送评分卡</b>向本轮面试官发送评分卡。<span class="api">② 企业微信消息</span></div>
+      <div id="scoreSubmit" class="node interviewer" style="left:1081px;top:1910px"><b><span class="stepno">8</span>完成评分与推荐</b>各项按 0～10 分评分，并提交 Yes / No 推荐意见。<span class="api">② 企微回复</span></div>
+      <div id="scoreReturn" class="node external" style="left:292px;top:2025px"><b>回传评分结果</b>企业微信把面试官评分和意见送回智聘。<span class="api">② 企业微信回调</span></div>
+      <div id="saveFeedback" class="node system" style="left:555px;top:2140px"><b>记录面试评价</b>按 Demand、候选人、轮次和面试官保存反馈。</div>
+
+      <div class="phase" style="top:2265px">人工决策</div>
+      <div id="moreInterview" class="node recruiter decision" style="left:813px;top:2260px"><b><span class="stepno">9</span>是否需要进一步面试？</b></div>
+      <div id="offerDecision" class="node recruiter decision" style="left:813px;top:2400px"><b>是否推进 Offer？</b></div>
+      <div id="rejectEnd" class="node system endnode" style="left:555px;top:2535px"><b>不推进：终结 / 人才保护</b>是否计入“淘汰”仍需业务确认，保留后续联系可能。</div>
+      <div id="startOffer" class="node recruiter" style="left:818px;top:2535px"><b><span class="stepno">10</span>发起 Offer 审批</b>招聘专员提交 Offer 审批申请。<span class="api">④ Offer OA</span></div>
+
+      <div class="phase" style="top:2670px">Offer 与入职</div>
+      <div id="offerOA" class="node external" style="left:292px;top:2670px"><b>OA 完成 Offer 审批</b>智聘发消息给 OA，并接收审批结果。<span class="api">④ Offer OA 审批</span></div>
+      <div id="offerApproved" class="node external decision" style="left:287px;top:2805px"><b>审批是否通过？</b></div>
+      <div id="offerAdjust" class="node recruiter" style="left:818px;top:2935px"><b>补充 / 调整审批信息</b>审批未通过时，由招聘专员处理后决定是否重提。</div>
+      <div id="offerSend" class="node external" style="left:292px;top:2935px"><b>发放 Offer / 电子签</b>使用公司现有系统发送并完成电子签。<span class="api">⑤ Offer 发放 / 电子签</span></div>
+      <div id="offerAccept" class="node candidate decision" style="left:1339px;top:3065px"><b><span class="stepno">11</span>候选人是否接受 Offer？</b></div>
+      <div id="offerReject" class="node system endnode" style="left:555px;top:3200px"><b>拒绝 Offer：流程终结</b>是否进入人才保护 / 淘汰口径，待业务确认。</div>
+      <div id="pendingJoin" class="node system success" style="left:555px;top:3320px"><b>接受 Offer：进入待入职</b>Offer 接受不减 HC，继续等待 HRIS 的最终结果。</div>
+      <div id="hrisReturn" class="node external" style="left:292px;top:3440px"><b><span class="stepno">12</span>HRIS 回传入职结果</b>正式入职、延期或放弃。<span class="api">⑥ HRIS / 入职</span></div>
+      <div id="joinResult" class="node system decision" style="left:550px;top:3565px"><b>入职结果</b></div>
+      <div id="joined" class="node system success" style="left:450px;top:3675px;width:180px"><b>正式入职</b>HC 核减 1。</div>
+      <div id="delayed" class="node system" style="left:650px;top:3675px;width:180px"><b>延期入职</b>保持待入职并继续跟进。</div>
+      <div id="abandoned" class="node system endnode" style="left:850px;top:3675px;width:190px"><b>放弃入职</b>释放 HC，流程终结。</div>
+    </section>
+
+    <section class="legend">
+      <h2>接口编号说明</h2>
+      <div class="legend-grid">
+        <article class="legend-card"><b><span class="legend-num">①</span>OA 招聘需求 MQ</b><p>OA 审批后的招聘需求、JD、HC、附件进入智聘。</p></article>
+        <article class="legend-card"><b><span class="legend-num">②</span>企业微信消息 / 回调</b><p>候选人资料、评分卡推送；面试官评分结果回传。</p></article>
+        <article class="legend-card"><b><span class="legend-num">③</span>日程 / 壹速通会议 / 会议室</b><p>创建线上会议，或预订线下会议室并返回安排。</p></article>
+        <article class="legend-card"><b><span class="legend-num">④</span>Offer OA 审批</b><p>智聘发起 Offer 审批并接收审批状态。</p></article>
+        <article class="legend-card"><b><span class="legend-num">⑤</span>Offer 发放 / 电子签</b><p>复用现有系统完成 Offer 发送、签署与结果回传。</p></article>
+        <article class="legend-card"><b><span class="legend-num">⑥</span>HRIS / 入职</b><p>回传正式入职、延期、放弃，并据此更新 HC。</p></article>
+      </div>
+      <div class="notice"><b>会议中明确保留的待确认项：</b>候选人面试通知及入职前提醒是否使用邮件 / 短信；不推进、拒绝 Offer、放弃入职究竟计入“淘汰”还是“终结 / 人才保护”。当前 ①～⑥ 仍是目标接口落点，不代表已经联通。</div>
+    </section>
+    <div class="evidence">依据：飞书妙记原始 OGG 录音 16:30–19:08 独立语音识别核听、飞书逐字稿、《接口清单.md》；版式遵循原声要求：角色泳道、连续流程、接口序号原位标注、底部接口说明。</div>
+  </main>
+  <script>
+    const svg=document.getElementById('connectors');
+    const NS='http://www.w3.org/2000/svg';
+    function box(id){const e=document.getElementById(id),b=e.getBoundingClientRect(),s=svg.getBoundingClientRect();return{x:b.left-s.left,y:b.top-s.top,w:b.width,h:b.height,cx:b.left-s.left+b.width/2,cy:b.top-s.top+b.height/2}}
+    function edge(a,b,opt={}){
+      const A=box(a),B=box(b);let x1=A.cx,y1=A.y+A.h,x2=B.cx,y2=B.y;
+      if(opt.from==='right'){x1=A.x+A.w;y1=A.cy} if(opt.from==='left'){x1=A.x;y1=A.cy}
+      if(opt.to==='right'){x2=B.x+B.w;y2=B.cy} if(opt.to==='left'){x2=B.x;y2=B.cy}
+      const p=document.createElementNS(NS,'path');
+      const mid=opt.midX??((x1+x2)/2);let d;
+      if(opt.route==='h') d=`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`;
+      else {const my=(y1+y2)/2;d=`M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`}
+      p.setAttribute('d',d);p.setAttribute('fill','none');p.setAttribute('stroke',opt.color||'#69809f');p.setAttribute('stroke-width',opt.width||2.2);if(opt.dash)p.setAttribute('stroke-dasharray','7 6');p.setAttribute('marker-end',`url(#${opt.marker||'arrow'})`);svg.appendChild(p);
+      if(opt.label){const t=document.createElementNS(NS,'text');t.setAttribute('x',opt.labelX??((x1+x2)/2+6));t.setAttribute('y',opt.labelY??((y1+y2)/2-6));t.setAttribute('font-size','13');t.setAttribute('font-weight','700');t.setAttribute('fill',opt.color||'#516985');t.textContent=opt.label;svg.appendChild(t)}
+    }
+    function custom(d,opt={}){const p=document.createElementNS(NS,'path');p.setAttribute('d',d);p.setAttribute('fill','none');p.setAttribute('stroke',opt.color||'#2563eb');p.setAttribute('stroke-width',opt.width||2.4);if(opt.dash)p.setAttribute('stroke-dasharray','7 6');p.setAttribute('marker-end',`url(#${opt.marker||'arrowBlue'})`);svg.appendChild(p);if(opt.label){const t=document.createElementNS(NS,'text');t.setAttribute('x',opt.x);t.setAttribute('y',opt.y);t.setAttribute('font-size','13');t.setAttribute('font-weight','700');t.setAttribute('fill',opt.color||'#2563eb');t.textContent=opt.label;svg.appendChild(t)}}
+    window.addEventListener('load',()=>{
+      edge('demand','oaDemand',{route:'h',from:'right',to:'left'});edge('oaDemand','createDemand',{route:'h',from:'right',to:'left'});edge('createDemand','selectCandidate',{route:'h',from:'right',to:'left'});
+      edge('selectCandidate','pushProfile');edge('pushProfile','receiveProfile',{route:'h',from:'right',to:'left'});edge('receiveProfile','confirmTime',{route:'h',from:'left',to:'right'});edge('confirmTime','candidateTime',{route:'h',from:'right',to:'left'});edge('candidateTime','createMeeting',{route:'h',from:'left',to:'right'});edge('createMeeting','meetingSystem',{route:'h',from:'left',to:'right'});edge('meetingSystem','saveSchedule',{route:'h',from:'right',to:'left'});edge('saveSchedule','notifyCandidate',{route:'h',from:'right',to:'left'});
+      edge('notifyCandidate','interviewCandidate');edge('interviewCandidate','interviewInterviewer',{route:'h',from:'left',to:'right'});edge('interviewInterviewer','scoreTimer',{route:'h',from:'left',to:'right'});edge('scoreTimer','scorePush',{route:'h',from:'left',to:'right'});edge('scorePush','scoreSubmit',{route:'h',from:'right',to:'left'});edge('scoreSubmit','scoreReturn',{route:'h',from:'left',to:'right'});edge('scoreReturn','saveFeedback',{route:'h',from:'right',to:'left'});edge('saveFeedback','moreInterview',{route:'h',from:'right',to:'left'});
+      edge('moreInterview','offerDecision',{label:'否',labelX:930,labelY:2392});
+      custom('M 1028 2304 C 1245 2304, 1245 880, 1024 880',{label:'是：加面，返回确认时间',x:1115,y:1000});
+      edge('offerDecision','rejectEnd',{route:'h',from:'left',to:'right',label:'否',labelX:700,labelY:2500,color:'#c73d3d',marker:'arrowRed'});edge('offerDecision','startOffer',{label:'是',labelX:940,labelY:2528,color:'#2563eb',marker:'arrowBlue'});
+      edge('startOffer','offerOA',{route:'h',from:'left',to:'right'});edge('offerOA','offerApproved');edge('offerApproved','offerSend',{label:'是',labelX:404,labelY:2928,color:'#2563eb',marker:'arrowBlue'});edge('offerApproved','offerAdjust',{route:'h',from:'right',to:'left',label:'否',labelX:680,labelY:2890,color:'#c73d3d',marker:'arrowRed'});
+      custom('M 920 2935 C 930 2865, 680 2825, 502 2848',{label:'调整后可重新提交',x:650,y:2835,dash:true});
+      edge('offerSend','offerAccept',{route:'h',from:'right',to:'left'});edge('offerAccept','offerReject',{route:'h',from:'left',to:'right',label:'拒绝',labelX:950,labelY:3160,color:'#c73d3d',marker:'arrowRed'});edge('offerAccept','pendingJoin',{route:'h',from:'left',to:'right',label:'接受',labelX:1060,labelY:3270,color:'#2563eb',marker:'arrowBlue'});edge('pendingJoin','hrisReturn',{route:'h',from:'left',to:'right'});edge('hrisReturn','joinResult',{route:'h',from:'right',to:'left'});
+      edge('joinResult','joined',{label:'正式入职',labelX:465,labelY:3658,color:'#16845c'});edge('joinResult','delayed',{label:'延期',labelX:690,labelY:3658,color:'#2563eb',marker:'arrowBlue'});edge('joinResult','abandoned',{route:'h',from:'right',to:'left',label:'放弃',labelX:800,labelY:3625,color:'#c73d3d',marker:'arrowRed'});
+    });
+  </script>
+</body>
+</html>

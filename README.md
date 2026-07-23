@@ -1,10 +1,10 @@
 <div align="center">
 
-# 智聘 · AI 招聘管理系统
+# 智聘 · AI 招聘中控台
 
 **AI-Powered Recruitment Management System**
 
-用自然语言驱动的企业招聘平台 — 简历解析、智能匹配、AI 面试、数据看板，一站式闭环
+串起招聘需求、候选人、面试、评价、Offer 与入职状态的企业招聘中控台
 
 [![Backend](https://img.shields.io/badge/backend-Flask%203.1-000000)](https://flask.palletsprojects.com/)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite%208-61dafb)](https://react.dev/)
@@ -23,15 +23,17 @@
 
 > **2026-07-11 收口状态口径**：本代码树已完成 `demand_id` P0、数据库生命周期、面试轮次唯一性、Demand 维度 BI、错误态保真、运行配置与可恢复清理的合并前收口，并补齐 Demand 默认面试官口子、需求编号唯一性和视口级操作弹窗，可作为 CFPD `test` 的下一代码候选。Git 推送只改变代码源，不等于 Libra 已构建或 SIT 已部署；环境状态必须分别用 CFPD ref、Libra CommitID/镜像、schema revision、测试站资产和受控 API 证据确认。本轮不引入 OA/Consul、微服务或依赖大版本升级。
 
+> **2026-07-15 第一阶段改造口径**：智聘的目标定位已调整为“招聘中控台”，不再自建 OA 审批、第二套员工组织、企业微信消息/日程、Offer 审批/电子签和 HRIS 入职流程。本阶段只完成业务页面加载入口分块、外部接口适配边界、`GET /api/integrations/capabilities` 只读状态接口和系统设置的“外部接口”面板。路由角色和权限仍集中保留原状；8 项能力默认都是 `manual_bridge / unconfigured`，即“人工过渡 / 还没接通”，不会伪造成功。本阶段没有新增环境变量、端口或数据库表；后四个阶段尚未实施。
+
 > **2026-07-13 更新（服务注册中心）**：`test` 分支已新增可选的 Consul / Eureka 服务注册能力，由配置动态切换，**默认关闭**（`CONSUL_ENABLED` / `EUREKA_ENABLED` 均为 false 时不注册，仍走 K8S 原生服务发现）。这更新了上方 2026-07-11 口径中“不引入 Consul”关于注册中心的部分：此前顾虑的“Gunicorn 多 worker 重复注册”已由 `backend/gunicorn.conf.py` 的 master 单点注册钩子解决。是否在 SIT 真正启用、以及 HTTP/TTL 健康检查模式的选择，仍需负责人结合网络可达性确认。详见 [DEPLOYMENT.md](DEPLOYMENT.md) 的「服务注册中心（Consul / Eureka）」。
 
 > **当前 test/SIT 口径**：当前只用于项目负责人的可丢弃数据测试。RC 镜像会显式跳过生产启动自检，并关闭应用安全头和限流、允许公开注册与宽松 CORS；这不代表可以存放真实候选人数据或作为生产配置。`GA`/生产默认仍严格。详见 [RUNNING.md](RUNNING.md) 和 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 ## 📖 项目简介
 
-**智聘** 是一套面向 HR、招聘管理者与面试官的招聘管理系统。P0 的主线是让用户找到一次真实招聘需求，看清进度与责任人，下钻候选人并完成当前动作。AI 用于解析、匹配、总结和建议，不替人淘汰、推进、发 Offer、转派或关闭需求。
+**智聘** 是一套面向 HR、招聘管理者与面试官的招聘中控台。它保留招聘需求与 HC 看板、候选人档案与流程、面试排期、JD 评分卡、评价汇总、HR 待办和外部状态展示；OA、PGS、企业微信、现有 Offer 系统和 HRIS 各自保持其业务真源。AI 用于解析、匹配、总结和建议，不替人淘汰、推进、发 Offer、转派或关闭需求。
 
-系统覆盖招聘全闭环：**简历入库 → 岗位发布 → 智能匹配 → AI 面试 → 流程流转 → 数据洞察**，并提供基于角色（RBAC）的差异化视图。
+目标闭环为：**OA 批准招聘需求 → 智聘承接 JD/HC → HR 管理候选人与排期 → 企业微信发资料、日程和评分卡 → HR 决定是否推进 → Offer OA 与现有发放系统 → HRIS 回传入职结果和 HC**。第一阶段只搭好模块与接口槽位，现有功能在外部接口真正连通并完成状态对账前不直接删除。
 
 ## ✨ 核心特性
 
@@ -87,7 +89,8 @@
 - 公开注册默认关闭，试点账号由管理员创建并分配
 - 管理员重置密码或用户自助改密后，旧登录 token 会立刻失效
 - 面试官账号只保留工作台和“我的面试”主入口，只能填写分配给自己的面试反馈，不开放全量简历库、候选人流程、AI 助手主入口，也不能直接推进 Offer 或淘汰
-- 管理员系统设置按账号管理、审计日志、AI 边界分区；审计日志展示 request_id、操作者角色、目标、来源、结果和失败原因，越权请求会以告警标红
+- 管理员系统设置按账号管理、审计日志、外部接口、AI 边界分区；审计日志展示 request_id、操作者角色、目标、来源、结果和失败原因，越权请求会以告警标红
+- 系统设置的“外部接口”面板只读展示 OA 招聘需求、企微资料/日程/评分卡、会议安排、Offer OA、Offer 发放/电子签和 HRIS 入职共 8 项能力；未接通时明确显示人工过渡和待提供资料
 - 个人信息、自助改密
 
 
@@ -105,7 +108,7 @@
 │  ┌────────────┬────────────┬──────────────────────────┐  │
 │  │ auth       │ resume     │ jobs / match / pipeline   │  │
 │  │ interview  │ bi         │ agent (LangGraph SSE)     │  │
-│  │ demands    │ talent_maps│ notifications / admin     │  │
+│  │ demands    │ integrations│ talent_maps / notify/admin │  │
 │  └────────────┴────────────┴──────────────────────────┘  │
 └──────────────────────────┬──────────────────────────────┘
                            │ 复用
@@ -113,6 +116,8 @@
 │  base_agent/  LLM 客户端(DeepSeek) · 简历解析 · 匹配算法   │
 └──────────────────────────────────────────────────────────┘
 ```
+
+当前 `integrations` 只是模块化单体内的适配边界与状态目录，没有连接 OA、企业微信、会议系统、Offer 系统或 HRIS，也不会发起真实审批、消息或入职操作。
 
 **技术栈**
 
@@ -187,12 +192,14 @@ npm run dev                   # http://localhost:5173，代理到 :5001
 ```
 .
 ├── backend/          Flask 后端（app-factory + 蓝图）
-│   ├── app/api/      API 蓝图（auth/resume/jobs/demands/match/pipeline/interview/bi/agent/boss/talent_maps/notifications/admin/candidates）
-│   ├── app/services/ 业务服务（agent / match / resume / interview / boss）
+│   ├── app/api/      API 蓝图（含 integrations 只读状态入口）
+│   ├── app/integrations/ 外部能力目录与独立适配槽位（当前未配置）
+│   ├── app/services/ 业务服务（含接口能力状态汇总）
 │   └── run.py        启动入口
 ├── frontend/         Vite + React 前端
 │   └── src/
-│       ├── pages/    工作台/招聘需求/简历库/流程/面试/BI/AI助手/系统设置等页面（实验页代码可保留，P0 主导航隐藏）
+│       ├── pages/    工作台/招聘需求/简历库/流程/面试/BI/AI助手/系统设置等页面
+│       ├── features/ 业务板块的页面加载 facade；不承接或改写角色权限
 │       ├── components/ UI 基元 + 业务组件
 │       └── lib/      api 客户端 / auth / agent 流式
 ├── base_agent/       复用的 LLM/解析/匹配模块

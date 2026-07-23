@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>智聘目标态招聘业务泳道图（优化版）</title>
+  <style>
+    :root{
+      --navy:#14284d;--ink:#172033;--muted:#667085;--line:#d6dfeb;--paper:#f4f7fb;
+      --blue:#246bfd;--blue-soft:#eaf1ff;--cyan:#0e91ad;--cyan-soft:#e5f7fb;
+      --violet:#7152d6;--violet-soft:#f0ecff;--green:#12805a;--green-soft:#e6f7ef;
+      --amber:#b96800;--amber-soft:#fff3d8;--red:#c73f4b;--red-soft:#ffeaed;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:#e9eef5;color:var(--ink);font-family:"PingFang SC","Microsoft YaHei",Arial,sans-serif}
+    .page{width:2200px;margin:28px auto;background:#fff;border-radius:28px;overflow:hidden;box-shadow:0 18px 48px rgba(20,40,77,.15)}
+    header{padding:42px 58px 30px;color:#fff;background:linear-gradient(118deg,#163263 0%,#5143a8 55%,#168ea1 100%)}
+    header .eyebrow{font-size:17px;letter-spacing:2px;opacity:.76}
+    header h1{margin:10px 0 12px;font-size:42px;line-height:1.15}
+    header p{margin:0;font-size:20px;opacity:.9}
+    .content{padding:30px 44px 38px}
+    .topline{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+    .topline h2{font-size:27px;margin:0}
+    .state{display:flex;gap:10px;align-items:center;padding:9px 14px;border:1px solid #efc26d;background:var(--amber-soft);border-radius:999px;color:#7e4b00;font-size:14px;font-weight:700}
+    .state i{width:9px;height:9px;background:#e19315;border-radius:50%}
+    .flow-strip{display:grid;grid-template-columns:185px repeat(10,1fr);margin-bottom:10px}
+    .flow-label{background:var(--navy);color:#fff;border-radius:14px 0 0 14px;display:flex;align-items:center;justify-content:center;font-weight:700;border-right:1px solid #425375}
+    .phase{position:relative;min-height:92px;padding:13px 12px;background:var(--navy);color:#fff;border-right:1px solid #425375}
+    .phase:last-child{border-radius:0 14px 14px 0}
+    .phase:not(:last-child)::after{content:"";position:absolute;right:-8px;top:39px;width:15px;height:15px;border-top:3px solid #8fa7d3;border-right:3px solid #8fa7d3;transform:rotate(45deg);z-index:2}
+    .phase .n{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#fff;color:var(--navy);font-size:13px;font-weight:800;margin-bottom:6px}
+    .phase b{display:block;font-size:14px;line-height:1.35}.phase small{display:block;color:#bdc9df;font-size:11px;margin-top:3px}
+    .board{border:1px solid var(--line);border-radius:16px;overflow:hidden}
+    .row{display:grid;grid-template-columns:185px repeat(10,1fr);min-height:130px}
+    .row+.row{border-top:1px solid var(--line)}
+    .lane{display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;border-right:1px solid var(--line);font-size:16px;font-weight:800;line-height:1.4}
+    .lane.dept{background:#edf3ff;color:#173f8e}.lane.ext{background:#fff2dc;color:#865000}.lane.zp{background:#e5f7fb;color:#08677b}.lane.hr{background:#eaf1ff;color:#18449a}.lane.int{background:#f0ecff;color:#533aa8}.lane.can{background:#e6f7ef;color:#0c6c4b}
+    .cell{padding:8px;border-right:1px dashed #dce4ee;background:#fbfcfe;display:flex;align-items:center;min-width:0}
+    .cell:last-child{border-right:0}
+    .card{width:100%;padding:11px 10px;border-radius:10px;border:1px solid #c6d4ea;background:#fff;font-size:12px;line-height:1.45;box-shadow:0 2px 8px rgba(35,58,98,.04)}
+    .card strong{display:block;font-size:14px;line-height:1.3;margin-bottom:5px}
+    .dept-card{background:#edf3ff;border-color:#b9cdf8}.dept-card strong{color:#173f8e}
+    .ext-card{background:#fff4e1;border-color:#efc06b}.ext-card strong{color:#855000}
+    .zp-card{background:#e8f8fb;border-color:#a9dfea}.zp-card strong{color:#086b80}
+    .hr-card{background:#edf3ff;border-color:#b9cdf8}.hr-card strong{color:#173f8e}
+    .int-card{background:#f1edff;border-color:#cbbfff}.int-card strong{color:#5b3eb5}
+    .can-card{background:#e8f8f0;border-color:#a9dcc6}.can-card strong{color:#0b704e}
+    .decision{background:var(--amber-soft);border-color:#e8b85d}.decision strong{color:#8a5200}
+    .terminal{background:var(--red-soft);border-color:#eeabb3}.terminal strong{color:#a32936}
+    .api{display:inline-block;margin-top:6px;padding:3px 6px;border-radius:5px;background:#fff;color:#344054;font-size:11px;font-weight:800}
+    .direction{display:inline-block;margin-top:5px;color:#875100;font-size:11px;font-weight:800}
+    .loop{margin:16px 0 0;padding:12px 16px;border:1px solid #d5c7ff;background:#f5f2ff;border-radius:12px;color:#493795;font-size:14px}
+    .notes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px}
+    .note{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fbfcfe;color:var(--muted);font-size:13px;line-height:1.5}
+    .note b{display:block;color:var(--ink);font-size:14px;margin-bottom:3px}
+    footer{padding:16px 44px 22px;border-top:1px solid var(--line);background:#fbfcfe;color:#69758b;font-size:12px}
+  </style>
+</head>
+<body>
+  <main class="page" id="diagram">
+    <header>
+      <div class="eyebrow">ZHIPIN · TARGET RECRUITMENT SWIMLANE</div>
+      <h1>智聘目标态招聘业务泳道图</h1>
+      <p>从 OA 招聘需求发起，到面试、Offer、正式入职与 HC 对账</p>
+    </header>
+    <section class="content">
+      <div class="topline">
+        <h2>正确起点：用人部门在 OA 发起需求，OA 审批通过后向智聘发送 MQ</h2>
+        <div class="state"><i></i>目标态流程｜当前外部能力仍为 manual_bridge / unconfigured</div>
+      </div>
+
+      <div class="flow-strip">
+        <div class="flow-label">角色 / 系统</div>
+        <div class="phase"><span class="n">1</span><b>OA 提交需求</b><small>业务发起</small></div>
+        <div class="phase"><span class="n">2</span><b>OA 审批与 MQ</b><small>外部事件</small></div>
+        <div class="phase"><span class="n">3</span><b>智聘承接 Demand</b><small>招聘责任单</small></div>
+        <div class="phase"><span class="n">4</span><b>候选人资料推送</b><small>进入面试协同</small></div>
+        <div class="phase"><span class="n">5</span><b>确认时间与安排</b><small>日程 / 会议 / 通知</small></div>
+        <div class="phase"><span class="n">6</span><b>参加面试</b><small>线上或线下</small></div>
+        <div class="phase"><span class="n">7</span><b>评分卡与反馈</b><small>事实记录</small></div>
+        <div class="phase"><span class="n">8</span><b>HR 人工决策</b><small>加面 / 录用 / 终结</small></div>
+        <div class="phase"><span class="n">9</span><b>Offer 审批与签署</b><small>OA + 现有系统</small></div>
+        <div class="phase"><span class="n">10</span><b>入职与 HC 对账</b><small>HRIS 真源</small></div>
+      </div>
+
+      <div class="board">
+        <div class="row">
+          <div class="lane dept">用人部门<br/>需求发起人</div>
+          <div class="cell"><div class="card dept-card"><strong>在 OA 提交招聘需求</strong>填写岗位 / JD、HC、部门、申请人及附件。</div></div>
+          <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+        </div>
+
+        <div class="row">
+          <div class="lane ext">OA / 企业微信 /<br/>会议 / Offer / HRIS</div>
+          <div class="cell"></div>
+          <div class="cell"><div class="card ext-card"><strong>OA 审批通过并发布 MQ</strong>OA 是需求审批真源；智聘不主动生成原始需求。<span class="api">① OA 招聘需求 MQ</span><span class="direction">OA → 智聘</span></div></div>
+          <div class="cell"></div>
+          <div class="cell"><div class="card ext-card"><strong>企业微信发送资料</strong>把候选人摘要和安全简历入口触达面试官。<span class="api">② 企业微信</span></div></div>
+          <div class="cell"><div class="card ext-card"><strong>创建日程 / 会议</strong>企微日程与会议平台返回链接、会议室或地点。<span class="api">③ 日程 + 会议</span></div></div>
+          <div class="cell"></div>
+          <div class="cell"><div class="card ext-card"><strong>企业微信承载评分卡</strong>推送 JD 评分项，并把面试官结果回传智聘。<span class="api">② 企业微信</span></div></div>
+          <div class="cell"></div>
+          <div class="cell"><div class="card ext-card"><strong>OA 审批 → 发放 / 电子签</strong>OA 回传审批状态；通过后由现有 Offer 系统发送和签署。<span class="api">④ Offer OA　⑤ 电子签</span></div></div>
+          <div class="cell"><div class="card ext-card"><strong>HRIS 回传入职事实</strong>正式入职、放弃、延期及入职日期以 HRIS 为准。<span class="api">⑥ HRIS</span><span class="direction">HRIS → 智聘</span></div></div>
+        </div>
+
+        <div class="row">
+          <div class="lane zp">智聘系统</div>
+          <div class="cell"></div>
+          <div class="cell"><div class="card zp-card"><strong>消费 MQ 并校验</strong>验签、幂等、字段映射；失败进入重试和审计，不重复建单。</div></div>
+          <div class="cell"><div class="card zp-card"><strong>创建 / 更新 Demand</strong>形成 JD、HC、负责人和状态明确的招聘责任单。</div></div>
+          <div class="cell"><div class="card zp-card"><strong>触发资料推送</strong>记录触达结果和失败原因。</div></div>
+          <div class="cell"><div class="card zp-card"><strong>保存面试安排</strong>关联 Demand、候选人、轮次、面试官与时间。</div></div>
+          <div class="cell"></div>
+          <div class="cell"><div class="card zp-card"><strong>开始 30 分钟后发评分卡</strong>接收逐项 0～10 分和 Yes / No；只记录事实，不自动推进。</div></div>
+          <div class="cell"><div class="card zp-card"><strong>等待 HR 决策</strong>AI 可总结和建议，但不能替 HR 推进、淘汰或发 Offer。</div></div>
+          <div class="cell"><div class="card zp-card"><strong>发起并跟踪 Offer</strong>向 OA 发起审批，展示审批、发放、签署、接受 / 拒绝状态。<span class="direction">智聘 → OA</span></div></div>
+          <div class="cell"><div class="card zp-card"><strong>更新入职状态与 HC</strong>正式入职才已入职人数 +1、剩余 HC -1；放弃则释放。</div></div>
+        </div>
+
+        <div class="row">
+          <div class="lane hr">招聘专员</div>
+          <div class="cell"></div><div class="cell"></div>
+          <div class="cell"><div class="card hr-card"><strong>接手招聘需求</strong>核对需求、负责人、目标日期与 HC，开始招聘。</div></div>
+          <div class="cell"><div class="card hr-card"><strong>选择候选人与面试官</strong>确认资料范围后触发推送。</div></div>
+          <div class="cell"><div class="card hr-card"><strong>人工确认时间和形式</strong>与候选人确认线上 / 线下，并通知候选人；邮件或短信待业务确认。</div></div>
+          <div class="cell"></div><div class="cell"></div>
+          <div class="cell"><div class="card decision"><strong>人工选择下一步</strong>进入下一轮 → 回到阶段 5；直接录用 → 阶段 9；不通过 → 终结。面试反馈本身不推进流程。</div></div>
+          <div class="cell"><div class="card hr-card"><strong>发起 Offer 申请</strong>填写 Offer 申请并提交 OA；审批驳回时补充后重提。</div></div>
+          <div class="cell"></div>
+        </div>
+
+        <div class="row">
+          <div class="lane int">面试官</div>
+          <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+          <div class="cell"><div class="card int-card"><strong>接收必要候选人资料</strong>只查看本次任务所需信息。</div></div>
+          <div class="cell"><div class="card int-card"><strong>接收日程和会议信息</strong>确认时间、会议链接或地点。</div></div>
+          <div class="cell"><div class="card int-card"><strong>参加面试</strong>围绕岗位和 JD 完成本轮面试。</div></div>
+          <div class="cell"><div class="card int-card"><strong>填写评分与推荐意见</strong>逐项 0～10 分，并提交 Yes / No；不直接决定流程结果。</div></div>
+          <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+        </div>
+
+        <div class="row">
+          <div class="lane can">候选人</div>
+          <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+          <div class="cell"><div class="card can-card"><strong>确认可面时间并接收通知</strong>候选人不使用企业微信；由招聘专员人工联系。</div></div>
+          <div class="cell"><div class="card can-card"><strong>参加面试</strong>线上进入会议，或前往线下面试地点。</div></div>
+          <div class="cell"></div><div class="cell"></div>
+          <div class="cell"><div class="card can-card"><strong>在现有系统签署 / 拒绝 Offer</strong>接受后进入待入职；发出或接受 Offer 均不扣减 HC。</div></div>
+          <div class="cell"><div class="card can-card"><strong>正式入职 / 延期 / 放弃</strong>最终事实由 HRIS 回传，不由候选人在智聘中操作。</div></div>
+        </div>
+      </div>
+
+      <div class="loop"><b>循环分支：</b>招聘专员选择“进入下一轮”后，指定下一轮负责人，并回到阶段 5“确认时间与安排”，重新执行会议 / 日程 → 面试 → 评分反馈。</div>
+      <div class="notes">
+        <div class="note"><b>方向不能画反</b>需求进入是 OA → 智聘；Offer 发起是智聘 → OA；HRIS 入职结果是 HRIS → 智聘。</div>
+        <div class="note"><b>候选人通知不算企微接口</b>候选人不使用企业微信。邮件或短信渠道、入职提醒时间仍待业务确认。</div>
+        <div class="note"><b>终态名称待确认</b>候选人不通过、拒绝 Offer 或未入职，最终归为“淘汰、终结或人才保护”仍需业务定稿。</div>
+        <div class="note"><b>HC 只在正式入职时扣减</b>Offer 发出、签署或接受都不减 HC；以 HRIS 正式入职事实为准。</div>
+      </div>
+    </section>
+    <footer>依据：飞书妙记《智聘系统招聘流程讨论》16:35 后讨论、《接口清单.md》、PRD 与《09 招聘中控台目标态线性接口流程图》。①～⑥ 为会议接口编号；目标能力当前均未配置。</footer>
+  </main>
+</body>
+</html>

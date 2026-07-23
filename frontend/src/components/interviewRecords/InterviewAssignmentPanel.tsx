@@ -289,7 +289,7 @@ export function InterviewAssignmentPanel({
                     to={`/pipeline?demand=${selectedDemandId}`}
                     className="mt-1 inline-flex text-xs font-semibold text-ink hover:underline"
                   >
-                    该需求暂无“面试中”候选人，去候选人流程查看
+                    该需求暂无“面试中”候选人，去面试管理查看
                   </Link>
                 )}
               </div>

@@ -51,40 +51,21 @@ assert.match(
 assert.match(
   biPage,
   /api\.listDemands\([\s\S]*created_at_desc/,
-  'The BI page should load visible demands newest first for explicit selection',
-);
-assert.match(
-  biPage,
-  /api\.biDemand\(demandId\)/,
-  'The BI page should read one selected demand instead of a job/team aggregate',
-);
-assert.match(biPage, /title="进度看板"/, 'The page should use the operational navigation name');
-assert.match(biPage, /选择招聘需求/, 'The page should make the Demand selector explicit');
-assert.match(
-  biPage,
-  /仅用于进度、卡点和当前责任协同，不用于绩效考核/,
-  'The phase-one non-performance boundary should be visible',
-);
-assert.match(biPage, /已淘汰/, 'Rejected candidates should remain visible');
-assert.match(biPage, /已转出/, 'Transferred candidates should be shown separately');
-assert.match(
-  biPage,
-  /`\/pipeline\?demand=\$\{demandId\}&stage=\$\{stage\.key\}`/,
-  'Every funnel number should drill into the selected demand and stage',
-);
-assert.match(
-  biPage,
-  /`\/interviews\?demand=\$\{demandId\}`/,
-  'Outstanding feedback should drill into demand-scoped interview tasks',
-);
-assert.match(biPage, /暂无招聘需求/, 'No-demand state should explain why no report is shown');
-assert.match(
-  biPage,
-  /还没有候选人流程事实/,
-  'A demand without facts should show guidance rather than zero KPI placeholders',
+  'The Offer page should still sync visible demands newest first for context',
 );
 assert.doesNotMatch(
   biPage,
   /api\.biOverview|api\.biStaff|HR 绩效|团队均转化率/,
-  'The demand BI workspace should stop using personal performance comparison modules',
+  'The Offer workspace should not use personal performance comparison modules',
+);
+assert.doesNotMatch(biPage, /<h1[\s\S]*Offer 管理|管理 Offer 审批、发放与候选人回复/, 'Offer management should not keep redundant page title copy');
+assert.match(biPage, /STATUS_TABS[\s\S]*待提交[\s\S]*审批中[\s\S]*待发放[\s\S]*待回复[\s\S]*待入职[\s\S]*已结束/, 'Offer status tabs should mirror the management flow');
+assert.match(biPage, /MOCK_OFFERS/, 'Offer management should include demo data for presentation');
+assert.match(biPage, /发起 Offer/, 'Offer management should expose a create action');
+assert.match(biPage, /OfferHeaderFilter[\s\S]*候选人[\s\S]*应聘岗位[\s\S]*薪酬 \/ 入职日期[\s\S]*当前进度[\s\S]*最新动态/, 'Offer table headers should open filter menus');
+assert.match(biPage, /to=\{`\/candidates\/\$\{row\.candidateId\}`\}/, 'Offer candidate names should link to candidate profiles');
+assert.match(
+  biPage,
+  /候选人[\s\S]*应聘岗位[\s\S]*薪酬 \/ 入职日期[\s\S]*当前进度[\s\S]*最新动态[\s\S]*操作/,
+  'Offer management should render the requested table columns',
 );

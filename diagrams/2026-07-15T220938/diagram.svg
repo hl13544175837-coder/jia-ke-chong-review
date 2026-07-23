@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3200" height="2200" viewBox="0 0 3200 2200">
+  <rect x="0" y="0" width="3200" height="2200" fill="#F7F8FC"/>
+  <g id="title">
+    <rect x="74" y="58" width="18" height="110" rx="9" fill="#3267E3"/>
+    <text x="122" y="111" font-family="Noto Sans SC" font-size="54" font-weight="700" fill="#17233D">智聘外部协同接口全流程图</text>
+    <text x="124" y="158" font-family="Noto Sans SC" font-size="25" fill="#667085">从 OA 需求进入，到 HRIS 入职与 HC 闭环 · 以人工决策为主线</text>
+    <rect x="2380" y="72" width="690" height="86" rx="24" fill="#FFF7D6" stroke="#D7A514" stroke-width="2" stroke-dasharray="10 7"/>
+    <circle cx="2423" cy="115" r="13" fill="#E1A900"/>
+    <text x="2452" y="108" font-family="Noto Sans SC" font-size="23" font-weight="700" fill="#725100">接口状态统一标识</text>
+    <text x="2452" y="139" font-family="Noto Sans SC" font-size="22" fill="#8A6514">待研发 / manual_bridge / unconfigured</text>
+  </g>
+
+  <g id="column-headings">
+    <text x="104" y="245" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">连续招聘流程</text>
+    <text x="1050" y="245" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">责任角色</text>
+    <text x="1560" y="245" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">动作概述</text>
+    <text x="2420" y="245" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">对应接口</text>
+    <rect x="104" y="264" width="190" height="7" rx="4" fill="#3267E3"/>
+    <rect x="1050" y="264" width="132" height="7" rx="4" fill="#8A63E8"/>
+    <rect x="1560" y="264" width="132" height="7" rx="4" fill="#1D9A6C"/>
+    <rect x="2420" y="264" width="132" height="7" rx="4" fill="#D7A514"/>
+  </g>
+
+  <g id="flow-lane">
+    <rect x="68" y="294" width="918" height="1818" rx="38" fill="#FFFFFF" stroke="#E1E6EF" stroke-width="3"/>
+    <rect x="92" y="320" width="128" height="44" rx="22" fill="#EAF2FF"/>
+    <text x="156" y="350" text-anchor="middle" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#3267E3">需求开启</text>
+    <rect x="92" y="742" width="128" height="44" rx="22" fill="#F0ECFF"/>
+    <text x="156" y="772" text-anchor="middle" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#7047C6">面试协同</text>
+    <rect x="92" y="1200" width="128" height="44" rx="22" fill="#FFF1E7"/>
+    <text x="156" y="1230" text-anchor="middle" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#C5651D">人工决策</text>
+    <rect x="92" y="1442" width="128" height="44" rx="22" fill="#EAF8F2"/>
+    <text x="156" y="1472" text-anchor="middle" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#17845B">Offer</text>
+    <rect x="92" y="1902" width="128" height="44" rx="22" fill="#EAEFFD"/>
+    <text x="156" y="1932" text-anchor="middle" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#3C55A5">入职闭环</text>
+
+    <line x1="252" y1="390" x2="252" y2="1970" stroke="#9AB4F2" stroke-width="10" stroke-linecap="round"/>
+    <polygon points="240,486 264,486 252,502" fill="#3267E3"/>
+    <polygon points="240,706 264,706 252,722" fill="#3267E3"/>
+    <polygon points="240,926 264,926 252,942" fill="#3267E3"/>
+    <polygon points="240,1148 264,1148 252,1164" fill="#3267E3"/>
+    <polygon points="240,1404 264,1404 252,1420" fill="#3267E3"/>
+    <polygon points="240,1628 264,1628 252,1644" fill="#3267E3"/>
+    <polygon points="240,1856 264,1856 252,1872" fill="#3267E3"/>
+
+    <line x1="282" y1="390" x2="330" y2="390" stroke="#9AB4F2" stroke-width="5"/>
+    <line x1="282" y1="610" x2="330" y2="610" stroke="#9AB4F2" stroke-width="5"/>
+    <line x1="282" y1="830" x2="330" y2="830" stroke="#9AB4F2" stroke-width="5"/>
+    <line x1="282" y1="1050" x2="330" y2="1050" stroke="#9AB4F2" stroke-width="5"/>
+    <line x1="282" y1="1280" x2="510" y2="1280" stroke="#9AB4F2" stroke-width="5"/>
+    <line x1="282" y1="1510" x2="330" y2="1510" stroke="#9AB4F2" stroke-width="5"/>
+    <line x1="282" y1="1740" x2="330" y2="1740" stroke="#9AB4F2" stroke-width="5"/>
+    <line x1="282" y1="1970" x2="330" y2="1970" stroke="#9AB4F2" stroke-width="5"/>
+
+    <g id="step-dots">
+      <circle cx="252" cy="390" r="31" fill="#3267E3" stroke="#FFFFFF" stroke-width="8"/><text x="252" y="400" text-anchor="middle" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#FFFFFF">1</text>
+      <circle cx="252" cy="610" r="31" fill="#3267E3" stroke="#FFFFFF" stroke-width="8"/><text x="252" y="620" text-anchor="middle" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#FFFFFF">2</text>
+      <circle cx="252" cy="830" r="31" fill="#7047C6" stroke="#FFFFFF" stroke-width="8"/><text x="252" y="840" text-anchor="middle" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#FFFFFF">3</text>
+      <circle cx="252" cy="1050" r="31" fill="#7047C6" stroke="#FFFFFF" stroke-width="8"/><text x="252" y="1060" text-anchor="middle" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#FFFFFF">4</text>
+      <circle cx="252" cy="1280" r="31" fill="#D97720" stroke="#FFFFFF" stroke-width="8"/><text x="252" y="1290" text-anchor="middle" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#FFFFFF">5</text>
+      <circle cx="252" cy="1510" r="31" fill="#17845B" stroke="#FFFFFF" stroke-width="8"/><text x="252" y="1520" text-anchor="middle" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#FFFFFF">6</text>
+      <circle cx="252" cy="1740" r="31" fill="#17845B" stroke="#FFFFFF" stroke-width="8"/><text x="252" y="1750" text-anchor="middle" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#FFFFFF">7</text>
+      <circle cx="252" cy="1970" r="31" fill="#3C55A5" stroke="#FFFFFF" stroke-width="8"/><text x="252" y="1980" text-anchor="middle" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#FFFFFF">8</text>
+    </g>
+
+    <g id="flow-cards">
+      <rect x="330" y="326" width="600" height="128" rx="26" fill="#F8FAFF" stroke="#A9C0F5" stroke-width="3"/>
+      <rect x="330" y="326" width="12" height="128" rx="6" fill="#3267E3"/>
+      <text x="378" y="378" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">OA 需求进入</text>
+      <text x="378" y="420" font-family="Noto Sans SC" font-size="23" fill="#667085">OA 审批通过 · 招聘启动</text>
+
+      <rect x="330" y="546" width="600" height="128" rx="26" fill="#F8FAFF" stroke="#A9C0F5" stroke-width="3"/>
+      <rect x="330" y="546" width="12" height="128" rx="6" fill="#3267E3"/>
+      <text x="378" y="598" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">候选人资料送达</text>
+      <text x="378" y="640" font-family="Noto Sans SC" font-size="23" fill="#667085">候选人信息 · 完整简历</text>
+
+      <rect x="330" y="756" width="600" height="148" rx="26" fill="#FBF9FF" stroke="#C6B4F2" stroke-width="3"/>
+      <rect x="330" y="756" width="12" height="148" rx="6" fill="#7047C6"/>
+      <text x="378" y="814" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">确认并安排面试</text>
+      <text x="378" y="856" font-family="Noto Sans SC" font-size="23" fill="#667085">确认时间与形式 · 建会 / 订室后同步日程</text>
+
+      <rect x="330" y="976" width="600" height="148" rx="26" fill="#FBF9FF" stroke="#C6B4F2" stroke-width="3"/>
+      <rect x="330" y="976" width="12" height="148" rx="6" fill="#7047C6"/>
+      <text x="378" y="1034" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">面试与评分回传</text>
+      <text x="378" y="1076" font-family="Noto Sans SC" font-size="23" fill="#667085">30 分钟后推评分卡 · 记录评价</text>
+
+      <polygon points="510,1280 630,1190 750,1280 630,1370" fill="#FFF7EF" stroke="#D97720" stroke-width="4"/>
+      <text x="630" y="1261" text-anchor="middle" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#8E470E">招聘专员</text>
+      <text x="630" y="1295" text-anchor="middle" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#8E470E">人工决策</text>
+      <polyline points="510,1280 306,1280 306,830 330,830" fill="none" stroke="#D97720" stroke-width="4" stroke-dasharray="11 8"/>
+      <polygon points="330,830 350,820 350,840" fill="#D97720"/>
+      <rect x="324" y="1156" width="178" height="48" rx="24" fill="#FFF1E7"/>
+      <text x="413" y="1188" text-anchor="middle" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#C5651D">下一轮 → 步骤 3</text>
+      <polyline points="750,1280 796,1280" fill="none" stroke="#D97720" stroke-width="4"/>
+      <polygon points="796,1280 778,1270 778,1290" fill="#D97720"/>
+      <rect x="798" y="1242" width="142" height="76" rx="24" fill="#FFF0F0" stroke="#E76B6B" stroke-width="3"/>
+      <text x="869" y="1272" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#B33A3A">淘汰</text>
+      <text x="869" y="1298" text-anchor="middle" font-family="Noto Sans SC" font-size="19" fill="#B33A3A">流程终止</text>
+      <line x1="630" y1="1370" x2="630" y2="1448" stroke="#17845B" stroke-width="4"/>
+      <polygon points="620,1448 640,1448 630,1466" fill="#17845B"/>
+      <rect x="654" y="1383" width="130" height="46" rx="23" fill="#EAF8F2"/>
+      <text x="719" y="1414" text-anchor="middle" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#17845B">直接录用</text>
+
+      <rect x="330" y="1446" width="600" height="128" rx="26" fill="#F4FBF8" stroke="#9FD6C2" stroke-width="3"/>
+      <rect x="330" y="1446" width="12" height="128" rx="6" fill="#17845B"/>
+      <text x="378" y="1498" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">Offer 审批</text>
+      <text x="378" y="1540" font-family="Noto Sans SC" font-size="23" fill="#667085">发起审批 · 跟踪审批状态</text>
+
+      <rect x="330" y="1676" width="600" height="128" rx="26" fill="#F4FBF8" stroke="#9FD6C2" stroke-width="3"/>
+      <rect x="330" y="1676" width="12" height="128" rx="6" fill="#17845B"/>
+      <text x="378" y="1728" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">Offer 发放 / 电子签</text>
+      <text x="378" y="1770" font-family="Noto Sans SC" font-size="23" fill="#667085">接受 · 拒绝 · 过期</text>
+
+      <rect x="330" y="1906" width="600" height="128" rx="26" fill="#F7F8FE" stroke="#AEB9E5" stroke-width="3"/>
+      <rect x="330" y="1906" width="12" height="128" rx="6" fill="#3C55A5"/>
+      <text x="378" y="1958" font-family="Noto Sans SC" font-size="31" font-weight="700" fill="#17233D">HRIS 入职与 HC 闭环</text>
+      <text x="378" y="2000" font-family="Noto Sans SC" font-size="23" fill="#667085">正式入职后扣 HC · 手动关需求</text>
+    </g>
+  </g>
+
+  <g id="row-connectors" fill="none" stroke="#C9D2E3" stroke-width="3" stroke-dasharray="7 8">
+    <polyline points="930,390 1008,390 1008,390 1040,390"/><polyline points="1480,390 1520,390 1520,390 1550,390"/><polyline points="2330,390 2370,390 2370,390 2410,390"/>
+    <polyline points="930,610 1008,610 1008,610 1040,610"/><polyline points="1480,610 1520,610 1520,610 1550,610"/><polyline points="2330,610 2370,610 2370,610 2410,610"/>
+    <polyline points="930,830 1008,830 1008,830 1040,830"/><polyline points="1480,830 1520,830 1520,830 1550,830"/><polyline points="2330,830 2370,830 2370,830 2410,830"/>
+    <polyline points="930,1050 1008,1050 1008,1050 1040,1050"/><polyline points="1480,1050 1520,1050 1520,1050 1550,1050"/><polyline points="2330,1050 2370,1050 2370,1050 2410,1050"/>
+    <polyline points="940,1280 1008,1280 1008,1280 1040,1280"/><polyline points="1480,1280 1520,1280 1520,1280 1550,1280"/><polyline points="2330,1280 2370,1280 2370,1280 2410,1280"/>
+    <polyline points="930,1510 1008,1510 1008,1510 1040,1510"/><polyline points="1480,1510 1520,1510 1520,1510 1550,1510"/><polyline points="2330,1510 2370,1510 2370,1510 2410,1510"/>
+    <polyline points="930,1740 1008,1740 1008,1740 1040,1740"/><polyline points="1480,1740 1520,1740 1520,1740 1550,1740"/><polyline points="2330,1740 2370,1740 2370,1740 2410,1740"/>
+    <polyline points="930,1970 1008,1970 1008,1970 1040,1970"/><polyline points="1480,1970 1520,1970 1520,1970 1550,1970"/><polyline points="2330,1970 2370,1970 2370,1970 2410,1970"/>
+  </g>
+
+  <g id="connector-arrows" fill="#C9D2E3">
+    <polygon points="1040,390 1026,382 1026,398"/><polygon points="1550,390 1536,382 1536,398"/><polygon points="2410,390 2396,382 2396,398"/>
+    <polygon points="1040,610 1026,602 1026,618"/><polygon points="1550,610 1536,602 1536,618"/><polygon points="2410,610 2396,602 2396,618"/>
+    <polygon points="1040,830 1026,822 1026,838"/><polygon points="1550,830 1536,822 1536,838"/><polygon points="2410,830 2396,822 2396,838"/>
+    <polygon points="1040,1050 1026,1042 1026,1058"/><polygon points="1550,1050 1536,1042 1536,1058"/><polygon points="2410,1050 2396,1042 2396,1058"/>
+    <polygon points="1040,1280 1026,1272 1026,1288"/><polygon points="1550,1280 1536,1272 1536,1288"/><polygon points="2410,1280 2396,1272 2396,1288"/>
+    <polygon points="1040,1510 1026,1502 1026,1518"/><polygon points="1550,1510 1536,1502 1536,1518"/><polygon points="2410,1510 2396,1502 2396,1518"/>
+    <polygon points="1040,1740 1026,1732 1026,1748"/><polygon points="1550,1740 1536,1732 1536,1748"/><polygon points="2410,1740 2396,1732 2396,1748"/>
+    <polygon points="1040,1970 1026,1962 1026,1978"/><polygon points="1550,1970 1536,1962 1536,1978"/><polygon points="2410,1970 2396,1962 2396,1978"/>
+  </g>
+
+  <g id="roles">
+    <g id="roles-1"><rect x="1040" y="336" width="440" height="108" rx="25" fill="#FFFFFF" stroke="#DDD6F5" stroke-width="3"/><rect x="1070" y="368" width="108" height="46" rx="23" fill="#FFF1E7"/><text x="1124" y="399" text-anchor="middle" font-family="Noto Sans SC" font-size="22" font-weight="700" fill="#B85B17">OA</text><rect x="1194" y="368" width="126" height="46" rx="23" fill="#EAF2FF"/><text x="1257" y="399" text-anchor="middle" font-family="Noto Sans SC" font-size="22" font-weight="700" fill="#3267E3">智聘</text></g>
+    <g id="roles-2"><rect x="1040" y="552" width="440" height="116" rx="25" fill="#FFFFFF" stroke="#DDD6F5" stroke-width="3"/><rect x="1065" y="572" width="150" height="46" rx="23" fill="#F0ECFF"/><text x="1140" y="603" text-anchor="middle" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#7047C6">招聘专员</text><rect x="1230" y="572" width="112" height="46" rx="23" fill="#EAF2FF"/><text x="1286" y="603" text-anchor="middle" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#3267E3">智聘</text><rect x="1065" y="624" width="132" height="34" rx="17" fill="#EAF8F2"/><text x="1131" y="648" text-anchor="middle" font-family="Noto Sans SC" font-size="19" font-weight="700" fill="#17845B">面试官</text></g>
+    <g id="roles-3"><rect x="1040" y="752" width="440" height="156" rx="25" fill="#FFFFFF" stroke="#DDD6F5" stroke-width="3"/><rect x="1064" y="772" width="148" height="42" rx="21" fill="#F0ECFF"/><text x="1138" y="801" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#7047C6">招聘专员</text><rect x="1226" y="772" width="128" height="42" rx="21" fill="#FFEAF1"/><text x="1290" y="801" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#B94F78">候选人</text><rect x="1064" y="824" width="108" height="42" rx="21" fill="#EAF2FF"/><text x="1118" y="853" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#3267E3">智聘</text><rect x="1184" y="824" width="108" height="42" rx="21" fill="#E8F8F7"/><text x="1238" y="853" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#147C78">会议</text><rect x="1304" y="824" width="108" height="42" rx="21" fill="#F0F8E8"/><text x="1358" y="853" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#4F7F24">企微</text></g>
+    <g id="roles-4"><rect x="1040" y="994" width="440" height="112" rx="25" fill="#FFFFFF" stroke="#DDD6F5" stroke-width="3"/><rect x="1070" y="1027" width="116" height="46" rx="23" fill="#EAF2FF"/><text x="1128" y="1058" text-anchor="middle" font-family="Noto Sans SC" font-size="22" font-weight="700" fill="#3267E3">智聘</text><rect x="1202" y="1027" width="136" height="46" rx="23" fill="#EAF8F2"/><text x="1270" y="1058" text-anchor="middle" font-family="Noto Sans SC" font-size="22" font-weight="700" fill="#17845B">面试官</text></g>
+    <g id="roles-5"><rect x="1040" y="1226" width="440" height="108" rx="25" fill="#FFFFFF" stroke="#DDD6F5" stroke-width="3"/><rect x="1070" y="1255" width="164" height="50" rx="25" fill="#F0ECFF"/><text x="1152" y="1289" text-anchor="middle" font-family="Noto Sans SC" font-size="22" font-weight="700" fill="#7047C6">招聘专员</text></g>
+    <g id="roles-6"><rect x="1040" y="1453" width="440" height="114" rx="25" fill="#FFFFFF" stroke="#DDD6F5" stroke-width="3"/><rect x="1064" y="1485" width="148" height="46" rx="23" fill="#F0ECFF"/><text x="1138" y="1516" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#7047C6">招聘专员</text><rect x="1224" y="1485" width="90" height="46" rx="23" fill="#FFF1E7"/><text x="1269" y="1516" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#B85B17">OA</text><rect x="1326" y="1485" width="112" height="46" rx="23" fill="#EAF2FF"/><text x="1382" y="1516" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#3267E3">智聘</text></g>
+    <g id="roles-7"><rect x="1040" y="1683" width="440" height="114" rx="25" fill="#FFFFFF" stroke="#DDD6F5" stroke-width="3"/><rect x="1064" y="1715" width="154" height="46" rx="23" fill="#FFF1E7"/><text x="1141" y="1746" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#B85B17">Offer 系统</text><rect x="1230" y="1715" width="130" height="46" rx="23" fill="#FFEAF1"/><text x="1295" y="1746" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#B94F78">候选人</text><rect x="1372" y="1715" width="86" height="46" rx="23" fill="#EAF2FF"/><text x="1415" y="1746" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#3267E3">智聘</text></g>
+    <g id="roles-8"><rect x="1040" y="1913" width="440" height="114" rx="25" fill="#FFFFFF" stroke="#DDD6F5" stroke-width="3"/><rect x="1064" y="1945" width="112" height="46" rx="23" fill="#EAEFFD"/><text x="1120" y="1976" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#3C55A5">HRIS</text><rect x="1188" y="1945" width="100" height="46" rx="23" fill="#EAF2FF"/><text x="1238" y="1976" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#3267E3">智聘</text><rect x="1300" y="1945" width="148" height="46" rx="23" fill="#F0ECFF"/><text x="1374" y="1976" text-anchor="middle" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#7047C6">招聘专员</text></g>
+  </g>
+
+  <g id="actions">
+    <g id="action-1"><rect x="1550" y="322" width="780" height="136" rx="28" fill="#FFFFFF" stroke="#DDE4EE" stroke-width="3"/><circle cx="1595" cy="365" r="18" fill="#3267E3"/><text x="1595" y="373" text-anchor="middle" font-family="Noto Sans SC" font-size="18" font-weight="700" fill="#FFFFFF">1</text><text x="1630" y="365" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#25324B">OA 审批通过的需求进入智聘</text><text x="1595" y="410" font-family="Noto Sans SC" font-size="23" fill="#667085">智聘生成招聘需求，并启动后续招聘流程</text></g>
+    <g id="action-2"><rect x="1550" y="542" width="780" height="136" rx="28" fill="#FFFFFF" stroke="#DDE4EE" stroke-width="3"/><circle cx="1595" cy="585" r="18" fill="#3267E3"/><text x="1595" y="593" text-anchor="middle" font-family="Noto Sans SC" font-size="18" font-weight="700" fill="#FFFFFF">2</text><text x="1630" y="585" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#25324B">候选人资料推送给面试官</text><text x="1595" y="630" font-family="Noto Sans SC" font-size="23" fill="#667085">招聘专员发起；智聘送达候选人信息与完整简历</text></g>
+    <g id="action-3"><rect x="1550" y="738" width="780" height="184" rx="28" fill="#FFFFFF" stroke="#DDE4EE" stroke-width="3"/><circle cx="1595" cy="780" r="18" fill="#7047C6"/><text x="1595" y="788" text-anchor="middle" font-family="Noto Sans SC" font-size="18" font-weight="700" fill="#FFFFFF">3</text><text x="1630" y="780" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#25324B">确认时间、形式与面试资源</text><text x="1595" y="824" font-family="Noto Sans SC" font-size="22" fill="#667085">先建会 / 订会议室取得链接或地点，再同步企微日程</text><rect x="1592" y="850" width="442" height="44" rx="22" fill="#FFF1E7"/><text x="1615" y="880" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#B85B17">候选人通知渠道：待确认</text></g>
+    <g id="action-4"><rect x="1550" y="958" width="780" height="184" rx="28" fill="#FFFFFF" stroke="#DDE4EE" stroke-width="3"/><circle cx="1595" cy="1000" r="18" fill="#7047C6"/><text x="1595" y="1008" text-anchor="middle" font-family="Noto Sans SC" font-size="18" font-weight="700" fill="#FFFFFF">4</text><text x="1630" y="1000" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#25324B">面试开始 30 分钟后推送 JD 评分卡</text><text x="1595" y="1044" font-family="Noto Sans SC" font-size="22" fill="#667085">面试官逐项填写 0–10 分，并选择 Yes / No</text><text x="1595" y="1082" font-family="Noto Sans SC" font-size="22" fill="#667085">智聘接收评价并记录到候选人流程</text></g>
+    <g id="action-5"><rect x="1550" y="1190" width="780" height="180" rx="28" fill="#FFFDFC" stroke="#E9D2BF" stroke-width="3"/><circle cx="1595" cy="1232" r="18" fill="#D97720"/><text x="1595" y="1240" text-anchor="middle" font-family="Noto Sans SC" font-size="18" font-weight="700" fill="#FFFFFF">5</text><text x="1630" y="1232" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#25324B">招聘专员基于评价人工决策</text><text x="1595" y="1275" font-family="Noto Sans SC" font-size="22" fill="#667085">下一轮 → 指定下轮负责人并回到步骤 3</text><text x="1595" y="1313" font-family="Noto Sans SC" font-size="22" fill="#667085">直接录用 → Offer　｜　淘汰 → 终止流程</text></g>
+    <g id="action-6"><rect x="1550" y="1434" width="780" height="152" rx="28" fill="#FFFFFF" stroke="#DDE4EE" stroke-width="3"/><circle cx="1595" cy="1476" r="18" fill="#17845B"/><text x="1595" y="1484" text-anchor="middle" font-family="Noto Sans SC" font-size="18" font-weight="700" fill="#FFFFFF">6</text><text x="1630" y="1476" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#25324B">发起 Offer 审批，并显示审批状态</text><rect x="1592" y="1510" width="594" height="44" rx="22" fill="#FFF1E7"/><text x="1615" y="1540" font-family="Noto Sans SC" font-size="21" font-weight="700" fill="#B85B17">审批通过后进入步骤 7｜结果回传待确认</text></g>
+    <g id="action-7"><rect x="1550" y="1652" width="780" height="176" rx="28" fill="#FFFFFF" stroke="#DDE4EE" stroke-width="3"/><circle cx="1595" cy="1694" r="18" fill="#17845B"/><text x="1595" y="1702" text-anchor="middle" font-family="Noto Sans SC" font-size="18" font-weight="700" fill="#FFFFFF">7</text><text x="1630" y="1694" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#25324B">发放电子 Offer，候选人接受 / 拒绝 / 过期</text><text x="1595" y="1738" font-family="Noto Sans SC" font-size="22" fill="#667085">智聘展示 Offer 与待入职状态</text><rect x="1592" y="1764" width="430" height="42" rx="21" fill="#FFF1E7"/><text x="1615" y="1793" font-family="Noto Sans SC" font-size="20" font-weight="700" fill="#B85B17">触发与结果回传方式：待确认</text></g>
+    <g id="action-8"><rect x="1550" y="1882" width="780" height="176" rx="28" fill="#FFFFFF" stroke="#DDE4EE" stroke-width="3"/><circle cx="1595" cy="1924" r="18" fill="#3C55A5"/><text x="1595" y="1932" text-anchor="middle" font-family="Noto Sans SC" font-size="18" font-weight="700" fill="#FFFFFF">8</text><text x="1630" y="1924" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#25324B">HRIS 同步正式入职 / 放弃状态</text><text x="1595" y="1968" font-family="Noto Sans SC" font-size="22" fill="#667085">正式入职才扣减 HC；达到 HC 仅提示</text><text x="1595" y="2006" font-family="Noto Sans SC" font-size="22" fill="#667085">招聘专员确认后，手动关闭招聘需求</text></g>
+  </g>
+
+  <g id="interfaces">
+    <g id="interface-1"><rect x="2410" y="322" width="710" height="136" rx="28" fill="#FFF9E7" stroke="#D7A514" stroke-width="3" stroke-dasharray="11 8"/><text x="2450" y="365" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#6B520D">① recruitment_demand_oa</text><text x="2450" y="403" font-family="Noto Sans SC" font-size="21" fill="#806A2C">OA → 智聘｜招聘需求输入</text><text x="2450" y="438" font-family="Noto Sans SC" font-size="19" font-weight="700" fill="#B06A00">待研发 / manual_bridge / unconfigured</text></g>
+    <g id="interface-2"><rect x="2410" y="542" width="710" height="136" rx="28" fill="#FFF9E7" stroke="#D7A514" stroke-width="3" stroke-dasharray="11 8"/><text x="2450" y="585" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#6B520D">② wecom_material_delivery</text><text x="2450" y="623" font-family="Noto Sans SC" font-size="21" fill="#806A2C">智聘 → 企业微信｜资料送达</text><text x="2450" y="658" font-family="Noto Sans SC" font-size="19" font-weight="700" fill="#B06A00">待研发 / manual_bridge / unconfigured</text></g>
+    <g id="interface-3"><rect x="2410" y="728" width="710" height="204" rx="28" fill="#FFF9E7" stroke="#D7A514" stroke-width="3" stroke-dasharray="11 8"/><text x="2450" y="770" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#6B520D">③ wecom_calendar</text><text x="2450" y="803" font-family="Noto Sans SC" font-size="18" font-weight="700" fill="#B06A00">待研发 / manual_bridge / unconfigured</text><line x1="2450" y1="827" x2="3070" y2="827" stroke="#E3C66B" stroke-width="2"/><text x="2450" y="865" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#6B520D">⑤ meeting_arrangement</text><text x="2450" y="898" font-family="Noto Sans SC" font-size="18" font-weight="700" fill="#B06A00">待研发 / manual_bridge / unconfigured</text></g>
+    <g id="interface-4"><rect x="2410" y="958" width="710" height="184" rx="28" fill="#FFF9E7" stroke="#D7A514" stroke-width="3" stroke-dasharray="11 8"/><text x="2450" y="1004" font-family="Noto Sans SC" font-size="25" font-weight="700" fill="#6B520D">④ wecom_scorecard_delivery</text><text x="2450" y="1042" font-family="Noto Sans SC" font-size="21" fill="#806A2C">评分卡推送与评价回传</text><text x="2450" y="1082" font-family="Noto Sans SC" font-size="19" font-weight="700" fill="#B06A00">待研发 / manual_bridge / unconfigured</text></g>
+    <g id="interface-5"><rect x="2410" y="1218" width="710" height="124" rx="28" fill="#F8F9FB" stroke="#B9C1CD" stroke-width="3" stroke-dasharray="11 8"/><text x="2450" y="1265" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#4B5565">无新增外部接口</text><text x="2450" y="1303" font-family="Noto Sans SC" font-size="21" fill="#667085">内部人工决策｜沿用智聘既有流程</text></g>
+    <g id="interface-6"><rect x="2410" y="1434" width="710" height="152" rx="28" fill="#FFF9E7" stroke="#D7A514" stroke-width="3" stroke-dasharray="11 8"/><text x="2450" y="1480" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#6B520D">⑥ offer_oa</text><text x="2450" y="1518" font-family="Noto Sans SC" font-size="21" fill="#806A2C">智聘 → OA｜Offer 审批</text><text x="2450" y="1555" font-family="Noto Sans SC" font-size="19" font-weight="700" fill="#B06A00">待研发 / manual_bridge / unconfigured</text></g>
+    <g id="interface-7"><rect x="2410" y="1652" width="710" height="176" rx="28" fill="#FFF9E7" stroke="#D7A514" stroke-width="3" stroke-dasharray="11 8"/><text x="2450" y="1698" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#6B520D">⑦ offer_delivery</text><text x="2450" y="1736" font-family="Noto Sans SC" font-size="21" fill="#806A2C">触发与结果回传方向：待接口评审</text><text x="2450" y="1776" font-family="Noto Sans SC" font-size="19" font-weight="700" fill="#B06A00">待研发 / manual_bridge / unconfigured</text></g>
+    <g id="interface-8"><rect x="2410" y="1882" width="710" height="176" rx="28" fill="#FFF9E7" stroke="#D7A514" stroke-width="3" stroke-dasharray="11 8"/><text x="2450" y="1928" font-family="Noto Sans SC" font-size="26" font-weight="700" fill="#6B520D">⑧ hris_onboarding</text><text x="2450" y="1966" font-family="Noto Sans SC" font-size="21" fill="#806A2C">HRIS → 智聘｜入职结果与 HC 闭环</text><text x="2450" y="2006" font-family="Noto Sans SC" font-size="19" font-weight="700" fill="#B06A00">待研发 / manual_bridge / unconfigured</text></g>
+  </g>
+
+  <g id="footer-notes">
+    <rect x="1050" y="2087" width="2070" height="74" rx="28" fill="#EEF2F7"/>
+    <text x="1085" y="2133" font-family="Noto Sans SC" font-size="21" fill="#596579">口径说明｜正式入职才扣 HC；达到 HC 仅提示并由招聘专员手动关闭。所有外部接口均为规划态，未表示已连通。</text>
+  </g>
+</svg>

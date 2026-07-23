@@ -26,39 +26,39 @@ async function importTsModule(path) {
   return import(pathToFileURL(tempFile).href);
 }
 
-const app = readSource('App.tsx');
-const tabs = readSource('components/recruitment/RecruitmentManagementTabs.tsx');
-const demandsFeature = readSource('features/demands/index.ts');
+const candidatesNav = readSource('features/candidates/nav.ts');
+const candidatesRoutes = readSource('features/candidates/routes.tsx');
+const candidatesFeature = readSource('features/candidates/index.ts');
 const api = readSource('lib/api.ts');
 const types = readSource('types/index.ts');
 assert.ok(
   existsSync(join(srcRoot, 'pages/TalentMapPage.tsx')),
-  'Talent map implementation may remain in source while its pilot entry is hidden',
+  'Talent map implementation should exist',
 );
 const page = readSource('pages/TalentMapPage.tsx');
 
-assert.doesNotMatch(
-  app,
-  /path="\/talent-map"/,
-  'Pilot router should not expose the unavailable talent map route',
+assert.match(
+  candidatesRoutes,
+  /path:\s*'\/talent-map'/,
+  'Router should expose the talent map route',
 );
 
-assert.doesNotMatch(
-  app,
+assert.match(
+  candidatesRoutes,
   /TalentMapPage/,
-  'Pilot bundle should not register the unavailable talent map page',
+  'Candidate routes should register the talent map page lazily',
 );
 
-assert.doesNotMatch(
-  tabs,
+assert.match(
+  candidatesNav,
   /to:\s*'\/talent-map'[\s\S]*label:\s*'人才地图'/,
-  'Recruitment management tabs should hide the unavailable talent map entry',
+  'Sidebar should expose the talent map entry',
 );
 
-assert.doesNotMatch(
-  demandsFeature,
+assert.match(
+  candidatesFeature,
   /topLevelPaths:\s*\[[\s\S]*'\/talent-map'[\s\S]*\]/,
-  'Talent map should not be treated as a pilot top-level page',
+  'Talent map should be treated as a top-level candidate workspace',
 );
 
 assert.match(types, /interface TalentMap\b/, 'Shared types should expose TalentMap');
@@ -77,37 +77,22 @@ for (const name of [
   assert.match(api, new RegExp(`${name}\\(`), `API client should expose ${name}`);
 }
 
-assert.match(page, /RecruitmentManagementTabs/, 'Talent map page should reuse recruitment tabs');
-assert.match(page, /公司筛选/, 'Talent map page should let HR filter by company');
+assert.match(page, /INITIAL_COMPANIES/, 'Talent map page should include demo-ready map data');
+assert.match(page, /动态筛选/, 'Talent map page should let HR filter the map dynamically');
 assert.match(page, /新增目标公司/, 'Talent map page should let HR add target companies');
-assert.match(page, /新增潜在人选/, 'Talent map page should let HR add talent leads');
+assert.match(page, /新增岗位节点/, 'Talent map page should let HR add role nodes');
 assert.match(
   page,
-  /resolvedActiveMapId[\s\S]*api\.getTalentMap\(resolvedActiveMapId/,
-  'Talent map detail requests should only use a resolved valid map id',
+  /updateNodeStatus/,
+  'Talent map cards should allow status changes',
 );
 assert.match(
   page,
-  /label:\s*'岗位列表'/,
-  'Talent map errors should identify when the job list request fails',
-);
-assert.match(
-  page,
-  /label:\s*'人才地图列表'/,
-  'Talent map errors should identify when the map list request fails',
-);
-assert.match(
-  page,
-  /label:\s*'人才地图详情'/,
-  'Talent map errors should identify when the map detail request fails',
-);
-assert.match(
-  page,
-  /message=\{`\$\{errorState\.label\}：\$\{errorState\.error\.message\}`\}/,
-  'Talent map should not display a bare Not Found without its request source',
+  /人才地图不是简历列表/,
+  'Talent map should explain the recruiting map concept in business language',
 );
 
-for (const column of ['目标公司', '潜在人选', '重点关注', '已接触', '暂不合适']) {
+for (const column of ['中通快递', '总部·信息技术中心', '总部·运营管理部', '已确认', '推测中', '待填充']) {
   assert.match(page, new RegExp(column), `Talent map board should include the ${column} board area`);
 }
 

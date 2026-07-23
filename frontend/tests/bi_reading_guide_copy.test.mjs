@@ -26,14 +26,14 @@ assert.doesNotMatch(
 
 assert.match(
   biPage,
-  /description="按具体招聘需求看进度、卡点和当前责任"/,
-  'BI header should use one short business-facing sentence',
+  /发起 Offer/,
+  'Offer management should keep the primary create action visible',
 );
 
-assert.match(
+assert.doesNotMatch(
   biPage,
-  /不用于绩效考核/,
-  'BI should state the phase-one non-performance boundary directly',
+  /<h1[\s\S]*Offer 管理|管理 Offer 审批、发放与候选人回复/,
+  'Offer management should not keep a redundant title block',
 );
 
 assert.doesNotMatch(

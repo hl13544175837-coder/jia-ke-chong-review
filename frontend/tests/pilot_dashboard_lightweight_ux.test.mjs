@@ -57,18 +57,18 @@ assert.doesNotMatch(
 );
 assert.match(
   biPage,
-  /选择招聘需求/,
-  'BI page should use a concrete demand selector as its primary control',
+  /当前展示需求/,
+  'Offer management should keep demand context visible',
 );
 assert.match(
   biPage,
-  /Offer/,
-  'BI page should still expose Offer metrics',
+  /Offer 管理/,
+  'The former BI page should expose Offer management',
 );
 assert.match(
   biPage,
-  /已入职/,
-  'BI page should still expose onboarded metrics',
+  /确认入职|已入职/,
+  'Offer management should still expose onboarded follow-up',
 );
 assert.doesNotMatch(
   biPage,

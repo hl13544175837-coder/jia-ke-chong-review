@@ -39,13 +39,13 @@ assert.doesNotMatch(feedbackForm, /提交并推进 Offer/, 'Feedback should not 
 assert.match(feedbackForm, /待 HR 确认下一步/, 'Primary feedback should explicitly return the next decision to HR');
 assert.doesNotMatch(feedbackForm, /interview_second/, 'Feedback form should not force a passed first interview into a second interview');
 
-assert.match(biPage, /面试中/, 'BI should show the single generic interview stage');
-assert.match(biPage, /面试反馈跟进/, 'BI should show round feedback as an operational task');
+assert.match(biPage, /发起 Offer/, 'The former BI page should now be the Offer management workspace');
+assert.match(biPage, /待提交[\s\S]*审批中[\s\S]*待发放[\s\S]*待回复[\s\S]*待入职/, 'Offer management should show the Offer workflow states');
 assert.doesNotMatch(biPage, /一面通过/, 'BI should not use fixed first-interview pass as a top-level KPI');
 assert.doesNotMatch(biPage, /二面通过/, 'BI should not use fixed second-interview pass as a top-level KPI');
 
 assert.match(
   pipelinePage,
-  /待筛选 → AI 初筛 → 业务反馈 → 面试中 → Offer → 已入职 \/ 淘汰沉淀/,
-  'Pipeline guidance should describe the simplified MVP main flow',
+  /面试管理[\s\S]*安排面试[\s\S]*调整面试/,
+  'Pipeline page should now focus on the interview management workbench',
 );

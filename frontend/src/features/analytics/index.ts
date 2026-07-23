@@ -1,0 +1,1 @@
+export { BiPage } from './pages';

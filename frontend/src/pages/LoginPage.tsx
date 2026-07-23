@@ -3,8 +3,7 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, clearToken } from '../lib/api';
-import { loginViaGateway } from '../lib/gatewayAuth';
+import { ApiError, api, clearEmpCode, clearToken } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { defaultRouteForRole } from '../lib/nav';
 import { Button, Input, ErrorState } from '../components/ui';
@@ -70,8 +69,9 @@ export function LoginPage() {
     try {
       // 清除残留旧 token，防止 API 请求带无效 token 触发 401
       clearToken();
-      // 走网关 OAuth 登录：账号 + 密码(前端 MD5) → token → profile 拿姓名
-      const res = await loginViaGateway(account, password);
+      clearEmpCode();
+      // 本地演示走后端账号密码登录，不经过公司网关。
+      const res = await api.login({ email: account, password });
       login(res);
       navigate(defaultRouteForRole(), { replace: true });
     } catch (err) {

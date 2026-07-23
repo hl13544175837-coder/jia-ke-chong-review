@@ -3,8 +3,8 @@
 import {
   LayoutDashboard,
   KanbanSquare,
-  BarChart3,
   ClipboardCheck,
+  MailCheck,
   Sparkles,
   Settings,
   ScrollText,
@@ -41,7 +41,7 @@ export const NAV_ITEMS: NavItem[] = [
   ...featureNavItems,
   {
     to: '/pipeline',
-    label: '候选人流程',
+    label: '面试管理',
     icon: KanbanSquare,
     roles: ['recruiter', 'manager', 'admin'],
     menuCode: 'pipeline',
@@ -55,8 +55,8 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     to: '/bi',
-    label: '进度看板',
-    icon: BarChart3,
+    label: 'Offer 管理',
+    icon: MailCheck,
     roles: ['manager', 'admin'],
     menuCode: 'bi',
   },

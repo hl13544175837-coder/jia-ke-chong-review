@@ -195,7 +195,7 @@ function JobDetailSummary({ job }: { job: JobListItem | null }) {
         items={[
           { label: '城市', value: job.city || '未设置' },
           { label: '部门', value: job.department || '未设置' },
-          { label: '流程入口', value: <Link className="enterprise-row-title" to={`/pipeline?job=${job.id}`}>查看候选人流程</Link> },
+          { label: '流程入口', value: <Link className="enterprise-row-title" to={`/pipeline?job=${job.id}`}>查看面试管理</Link> },
           { label: '匹配入口', value: <Link className="enterprise-row-title" to={`/jobs/${job.id}/match`}>匹配候选人</Link> },
         ]}
       />
@@ -203,7 +203,7 @@ function JobDetailSummary({ job }: { job: JobListItem | null }) {
         <h3 className="enterprise-section-title">推荐动作</h3>
         <div className="grid gap-3">
           <div className="enterprise-recommendation-card">
-            <strong>先查看候选人流程</strong>
+            <strong>先查看面试管理</strong>
             <p>确认当前岗位下是否有待筛选、业务待反馈、面试中或 Offer 阶段的候选人。</p>
           </div>
           <div className="enterprise-recommendation-card">
@@ -899,7 +899,7 @@ export function JobsPage() {
                                   to={`/pipeline?job=${job.id}`}
                                   className="text-xs font-medium text-muted hover:text-ink hover:underline"
                                 >
-                                  查看候选人流程
+                                  查看面试管理
                                 </Link>
                                 <button
                                   onClick={() => startEditJobAttribution(job)}

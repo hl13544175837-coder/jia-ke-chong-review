@@ -4,17 +4,19 @@
 > 本文用于后续迭代开发、模块定位、影响范围评估和交接，不等同于最初立项时的需求文档。
 >
 > **2026-07-11 状态说明：** Demand 维度招聘流及本轮 P0 硬化已在 `codex/premerge-p0-closeout-20260711` 形成代码候选。Git 推送、Libra 构建、K8S 部署和测试站运行态必须分别取证；本文不声称 SIT 已运行本候选。环境是否完整具备该能力，仍以后端受控 API、schema revision、部署记录和页面现场验收为准。
+>
+> **2026-07-15 第一阶段说明：** 产品目标调整为招聘中控台。当前代码候选只搭建业务页面加载 facade、外部能力适配边界、`GET /api/integrations/capabilities` 只读状态 API 和系统设置面板。路由角色与权限仍集中保留原状；8 项 capability 默认均为 `manual_bridge / unconfigured`，不代表任何外部系统已连通。本阶段无新增环境变量、端口或数据库表；后四阶段尚未实施。
 
 ## 1. 文档基准
 
 | 项目 | 内容 |
 |---|---|
-| 系统名称 | 智聘 · 招聘管理系统 |
-| 文档类型 | 当前代码候选 As-built 与尚未完成的环境/Strict 门禁合并文档 |
+| 系统名称 | 智聘 · 招聘中控台 |
+| 文档类型 | 当前代码候选 As-built、第一阶段接口底座与尚未完成的环境/Strict 门禁合并文档 |
 | 代码基准 | `codex/premerge-p0-closeout-20260711` 与 ADR-0002；环境运行态另以 CFPD/Libra/SIT 证据为准 |
 | 本地项目路径 | `/Users/yenns/Desktop/智聘` |
 | 主要用途 | 后续按模块指定改动时，用来快速判断要改哪些文件、影响哪些接口/表/流程 |
-| 文档生成日期 | 2026-06-19；Demand As-built 更新于 2026-07-11 |
+| 文档生成日期 | 2026-06-19；Demand As-built 更新于 2026-07-11；接口底座更新于 2026-07-15 |
 
 ### 1.1 实现状态分层
 
@@ -42,7 +44,7 @@
 
 ## 2. 系统目标
 
-智聘是一个面向招聘团队的内部招聘管理系统，核心目标是把“简历进入、岗位管理、候选人匹配、流程推进、AI 面试、BI 看板”串成一条可操作的招聘闭环。
+智聘是一个面向招聘团队的内部招聘中控台，核心目标是把“OA 需求、候选人、面试排期与评价、Offer 审批/发放状态、HRIS 入职与 HC”串成可操作的招聘闭环。它不自建 OA、第二套员工组织、企业微信消息/日程、Offer 审批/电子签和 HRIS 入职流程。
 
 ### 2.1 核心能力
 
@@ -59,6 +61,7 @@
 | BI 看板 | 代码候选已实现，环境待验收 | 按 Demand 看进度、瓶颈与当前责任协同；不返回人员排名、绩效或奖金依据 |
 | AI 助手 | 代码候选已收缩，环境待验收 | 只做解析、匹配、总结与建议，不提供主流程写操作 |
 | 用户管理 | 已实现 | admin 管理用户角色、启停、创建账号与重置密码 |
+| 外部接口准备度 | 第一阶段代码候选 | 只读列出 8 项 capability 的阶段、健康状态、owner 与待补资料；当前全部未配置 |
 
 ### 2.2 明确不做或尚未工程化的能力
 
@@ -70,6 +73,7 @@
 | 搜索索引 | 未实现，主要通过数据库查询 |
 | 大规模批量导入队列 | 未实现，当前批量上传在请求中同步解析 |
 | 文件对象存储 | 未实现，简历原文件保存在本地上传目录 |
+| OA / 企微 / 会议 / Offer / HRIS 真实对接 | 未实现；第一阶段只有 adapter 槽位和未配置状态 |
 
 术语说明：本文中的“多组织隔离”指核心业务数据通过 `org_id` 做服务端过滤和越权拦截。“不做 SaaS 式多租户”指一期不做前端组织管理后台、租户自助开通、跨组织运营管理、计费/套餐等能力；不应理解为当前没有组织级数据隔离。
 
@@ -86,6 +90,7 @@ flowchart LR
 
   subgraph Frontend["frontend/"]
     Pages["pages"]
+    FeatureFacades["features/* 页面加载 facade"]
     Components["components"]
     ApiClient["lib/api.ts"]
   end
@@ -94,15 +99,23 @@ flowchart LR
     APIs["app/api/*.py"]
     Models["app/models.py"]
     BizServices["app/services/*.py"]
+    IntegrationSlots["app/integrations/* 适配槽位"]
   end
 
+  External["OA / 企业微信 / 会议 / Offer / HRIS（未连通）"]
+
   Browser --> Frontend
+  FeatureFacades --> Pages
   Frontend --> ApiClient
   ApiClient --> APIs
   APIs --> BizServices
   APIs --> Models
   BizServices --> BaseAgent
+  BizServices --> IntegrationSlots
+  IntegrationSlots -. "第二至第五阶段才接入" .-> External
 ```
+
+图中的外部系统连线是后续阶段边界，不是当前运行连接。第一阶段的 registry 在没有真实 adapter 时固定返回 `manual_bridge / unconfigured`，不发起外部请求。
 
 ### 3.1 技术栈
 
@@ -147,6 +160,8 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | 路径 | 责任 |
 |---|---|
 | `frontend/src/App.tsx` | 前端路由与角色级页面守卫 |
+| `frontend/src/features/*` | 按工作台、候选人、需求、流程、面试、BI、AI 助手和管理分组的页面加载 facade；不保存或改写角色权限配置 |
+| `frontend/src/features/integrations/*` | 外部接口状态类型、只读 API 客户端、白话状态映射和系统设置面板 |
 | `frontend/src/lib/api.ts` | 所有前端 API 调用、JWT 注入、401 处理 |
 | `frontend/src/lib/auth.tsx` | 登录态、token、角色信息 |
 | `frontend/src/lib/nav.ts` | 侧边导航与角色可见性 |
@@ -157,6 +172,8 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `backend/app/config.py` | 环境变量、数据库、上传目录、JWT、Celery 配置 |
 | `backend/app/models.py` | 数据模型定义 |
 | `backend/app/api/*.py` | REST API 层 |
+| `backend/app/api/integrations.py` | 仅 admin 可访问的外部 capability 只读列表入口 |
+| `backend/app/integrations/*` | 8 项外部能力目录、模式/健康状态类型和可替换 adapter 注册表 |
 | `backend/app/services/*.py` | 业务服务层，封装匹配、简历、面试、AI 助手等 |
 | `backend/app/middleware/auth.py` | JWT 校验与 RBAC 装饰器 |
 | `backend/app/middleware/events.py` | 写操作事件埋点 |
@@ -424,6 +441,41 @@ BOSS 直聘后端已注册 `/api/boss/*` 蓝图，用于内部验证账号、收
 - 该模块依赖预先准备的 `boss` CLI。运行期自动安装被禁止，旧 `BOSS_CLI_AUTO_INSTALL=true` 会被安全忽略；如单独开放，必须在镜像构建阶段固定并审查版本，再配置 `BOSS_CLI_BIN`。
 - 常见失败状态：未登录智聘返回 401；角色不允许返回 403；无激活 BOSS 账号返回 409 `no_active_account`；CLI 缺失返回 503 `boss_cli_not_installed`；Cookie 失效/缺字段返回 409。
 - P0 已在 API 与服务层同时关闭 BOSS 批量导入自动入池和 AI 初筛写入；仅隐藏前端入口不构成安全边界。若后续单独开放，必须先重新设计显式 `demand_id`、RBAC、人工确认和审计契约。
+
+### 7.10 外部接口准备状态（第一阶段代码候选）
+
+| 方法 | 路径 | 权限 | 作用 |
+|---|---|---|---|
+| `GET` | `/integrations/capabilities` | admin | 只读返回 8 项外部能力的代码、名称、对接责任方、接入模式、健康状态、说明和待补资料 |
+
+对外完整路径为 `GET /api/integrations/capabilities`，响应契约是 `{ "items": [...] }`。每个 item 固定包含：
+
+- `code`、`name`、`owner`
+- `mode`、`health`
+- `description`
+- `required_inputs`
+
+第一阶段目录与代码如下：
+
+| code | 能力 | 当前默认 |
+|---|---|---|
+| `recruitment_demand_oa` | OA 招聘需求 | `manual_bridge / unconfigured` |
+| `wecom_material_delivery` | 企业微信候选人资料发送 | `manual_bridge / unconfigured` |
+| `wecom_calendar` | 企业微信日程 | `manual_bridge / unconfigured` |
+| `wecom_scorecard_delivery` | 企业微信评分卡发送 | `manual_bridge / unconfigured` |
+| `meeting_arrangement` | 会议平台 / 会议室 | `manual_bridge / unconfigured` |
+| `offer_oa` | Offer OA 审批 | `manual_bridge / unconfigured` |
+| `offer_delivery` | Offer 发放 / 电子签 | `manual_bridge / unconfigured` |
+| `hris_onboarding` | HRIS 入职 | `manual_bridge / unconfigured` |
+
+实现边界：
+
+- `backend/app/integrations/capabilities.py` 是能力目录，`registry.py` 是单 capability adapter 注册槽位，`integration_capability_service.py` 汇总对外状态。
+- 没有真实 adapter 时不发外部请求，也不根据配置文案猜测连通；只返回 `manual_bridge / unconfigured`。
+- 单个 adapter 状态读取异常时，该项回退为 `manual_bridge / unavailable` 并记录错误，其他 capability 仍正常返回；不伪造成功，也不让一个故障隐藏整张清单。
+- MQ 地址、账号和 Secret 属于 OA 连通配置，并入 `recruitment_demand_oa.required_inputs`，不单列业务接口。回调域名和可信出口 IP 属于企业微信连通配置，并入相应企微 capability 的 `required_inputs`，不单列运维接口。
+- 本阶段没有新增环境变量、端口或数据库表；状态目录在代码中定义。
+- 后续接口资料到位后，只替换相应 adapter，同时补充字段映射、回调验签、失败重试、审计与业务契约测试；不通过改路由角色或导航权限完成对接。
 
 ## 8. 核心业务流程
 
@@ -745,6 +797,9 @@ AI_HUMAN_REVIEW_REQUIRED=true
 |---|---|---|---|
 | 登录页视觉 | `frontend/src/pages/LoginPage.tsx` | 无 | 无 |
 | 导航菜单 | `frontend/src/lib/nav.ts`, `AppShell.tsx` | 可能无 | 若新路由需同步权限 |
+| 业务页面加载分块 | `frontend/src/features/<module>/index.ts` 与集中路由入口 | 无 | 只拆 lazy page facade；角色、路由守卫、菜单权限仍留在原集中 owner |
+| 外部接口状态面板 | `features/integrations/*`, `SystemSettingsPage.tsx` | `api/integrations.py`, `services/integration_capability_service.py` | 第一阶段只读代码目录，无数据库表或真实外部请求 |
+| 单个外部系统真实对接 | 相应业务 feature 与 `features/integrations/*` | `integrations/<capability>` adapter + 业务 service | 第二至第五阶段；必须单独设计映射、回调、重试、审计与状态真源 |
 | 候选人列表 | `CandidatesPage.tsx` | `api/candidates.py` | `candidates`, `candidate_tags` |
 | 候选人详情 | `CandidateProfilePage.tsx` | `api/resume.py`, `api/candidates.py` | `resume_json`, tags, journey |
 | 简历批量上传 | `UploadPage.tsx` | `api/resume.py`, `services/resume_service.py` | 会调用 `resume_parser.py` 并写候选人；招聘需求流程加入放在简历库完成 |
@@ -773,6 +828,7 @@ API 层只负责参数解析、身份入口和响应映射，不在多个路由�
 | `interview_workflow_service` | Demand 下的安排、轮次、primary 面试官、反馈完成语义；不改主流程 |
 | `bi_service` | Demand 维度指标、下钻和口径一致性；禁止人员排名/绩效推断 |
 | `agent_service` | 只组合受权限裁剪的读取、解析、匹配、总结和建议能力 |
+| `integrations` registry + `integration_capability_service` | 提供稳定 capability 目录和真实运行状态汇总；未注册 adapter 时必须 fail truthful 为 `manual_bridge / unconfigured` |
 
 ## 11. 变更影响矩阵
 
@@ -787,6 +843,8 @@ API 层只负责参数解析、身份入口和响应映射，不在多个路由�
 | 修改简历解析结构 | 高 | 是 | 可能 | 上传、候选人详情、匹配 |
 | 修改匹配算法 | 高 | 是 | 否 | 匹配单测 + 岗位匹配页 |
 | 新增只读 AI 建议 | 中 | 是 | 否 | LLM fallback + 前端展示 |
+| 新增或调整 capability 目录 | 中 | 是 | 否 | API 契约、admin 权限、默认未配置、页面错误/空态 |
+| 接入真实 OA/企微/会议/Offer/HRIS adapter | 高 | 是 | 可能 | 字段映射、签名验证、幂等/重试、回调、审计、影子对账与回退 |
 | AI 自动写库/改流程 | 禁止 | 不应实现 | 不应发生 | 工具集不可达 + 接口/服务负向测试 |
 
 ### 11.1 Demand 迁移与兼容影响
@@ -915,6 +973,9 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 | `backend/tests/test_bi_operational_overview.py` | Demand 团队总览、专员 workload、权限与旧 Job 歧义 |
 | `frontend/tests/interviewer_role_scope.test.mjs` | 面试官导航、路由、面试任务与反馈按钮边界 |
 | `frontend/tests/dashboard_data_truth_contract.test.mjs` | Dashboard 分区错误、重试、不可用态与禁止伪造 0/绩效 UI |
+| `backend/tests/test_integration_capabilities.py` | capability 只读 API 的未登录/admin 权限、8 项目录、默认未配置和 adapter 状态汇总 |
+| `frontend/tests/feature_module_facades.test.mjs` | 业务板块只拆页面加载 facade，路由角色与权限仍由原集中入口管理 |
+| `frontend/tests/integration_status_panel.test.mjs` | 外部接口面板的契约、白话状态、加载/错误/重试/空态和不伪造成功；8 项目录由后端契约测试约束 |
 | `base_agent/tests/test_job_matcher.py` | 岗位匹配算法 |
 | `base_agent/tests/test_llm_client_secrets.py` | keychain 密钥解析 |
 
@@ -930,6 +991,8 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 | 改匹配算法 | `pytest ../base_agent/tests/test_job_matcher.py -q` 或在 base_agent 目录跑 |
 | 改密钥/LLMClient | `cd base_agent && ../.venv/bin/python -m pytest tests/test_llm_client_secrets.py -q` |
 | 改部署/静态托管 | `npm run build` + 访问 `/login`、登录、打开核心页面 |
+| 改业务页面加载分块 | `(cd frontend && node tests/feature_module_facades.test.mjs && npm run typecheck && npm run build)` |
+| 改外部 capability 目录/状态面板 | `(cd backend && pytest tests/test_integration_capabilities.py -q)` + `(cd frontend && node tests/integration_status_panel.test.mjs && npm run typecheck && npm run build)` |
 
 ### 15.4 Demand P0 已有自动化验收面
 
@@ -959,6 +1022,8 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 | `base_agent` 通过 sys.path 复用 | 包边界不清晰 | 后续可整理为 Python package |
 | 试点审计不是企业合规完整版 | 缺导出审批、水印、字段级权限和不可变日志 | 生产合规版再接入专用审计存储与审批策略 |
 | ZIP 批量导入仍会逐份同步 AI | 大量简历导入慢 | 异步导入、批次 ID、失败重试 |
+| 外部接口状态目录可被误读为“已对接” | 产品或运维可能误判真实闭环已完成 | 未配置时固定返回 `manual_bridge / unconfigured`，页面用“暂时人工处理 / 还没接通”展示，接口失败不回退为假数据 |
+| 外部接口未通就下线旧功能 | 需求、面试、Offer 或入职主流程中断 | 按人工过渡 → 影子对账 → 双轨 → 正式接管 → 旧功能下线分阶段验收 |
 
 ## 17. 后续文档建议
 
@@ -970,10 +1035,11 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 ## 18. 快速结论
 
-当前代码候选已完成 Demand P0、schema 生命周期、面试唯一性、运营 BI、Dashboard 数据保真、运行配置与可恢复清理的本地收口。未经 CFPD ref 对齐、目标引擎迁移/恢复门禁、四角色 SIT 验收和发布证据，仍不能宣称“已在 SIT 生效”或“可生产使用”。后续迭代必须：
+当前代码候选在 Demand P0 基线上增加了第一阶段的业务页面加载分块和外部接口状态底座。这只证明后续可按板块替换并真实显示“未接通”，不证明 OA、企微、会议、Offer 或 HRIS 已可用。未经 CFPD ref 对齐、目标引擎迁移/恢复门禁、四角色 SIT 验收和发布证据，仍不能宣称“已在 SIT 生效”或“可生产使用”。后续迭代必须：
 
 1. UI 风格改动只动 `frontend/`。
 2. 新增只读展示优先复用现有 API。
 3. 新增保存字段必须同时设计模型、接口、前端、测试。
 4. AI 行为仅作旁路解析、匹配、总结和建议，不直接写主流程。
 5. Demand 变更继续收敛到唯一服务 Owner、版本化迁移、测试和文档真源，不用页面或 prompt 硬编码规则。
+6. 真实外部接口按第二至第五阶段逐项接入；每次只替换对应 adapter/业务模块，不改写登录、路由角色或菜单权限作为接口对接手段。

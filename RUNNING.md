@@ -2,6 +2,8 @@
 
 > **状态声明（2026-07-11）**：本代码树是完成合并前 P0 收口的 CFPD `test` 候选。Git ref、Libra 构建、K8S 部署和测试站运行态是四类证据，不能相互替代；本说明不单独构成 SIT 已发布证明。
 
+> **第一阶段接口改造（2026-07-15）**：当前只新增业务页面加载分块、外部接口适配槽位、只读状态 API 和系统设置面板。路由角色与权限仍集中保留原状。OA、企业微信、会议系统、Offer 系统和 HRIS 都没有真正连通；不需要新增环境变量、端口或数据库表。
+
 ## 前置条件
 
 - Python 3.11–3.13（推荐及容器基线 3.12）
@@ -23,6 +25,30 @@ PORT=5001 python run.py
 代码与容器的安全默认是 `FLASK_DEBUG=false`；`.env.example` 只为本地开发显式设置 `FLASK_DEBUG=true`。如果还需让应用为本地 SQLite 旧库建表/补兼容列，必须另外显式设置 `LOCAL_SCHEMA_COMPAT=true`；debug 不再隐式授权 DDL。
 
 启动日志只显示脱敏后的数据库 driver/host/database label，不打印用户名、密码或 query。`GET /api/health` 只用于进程 liveness；它返回 200 不能证明数据库连接、schema revision、backfill、uploads 或外部依赖 ready。
+
+### 查看外部接口准备状态
+
+登录后，管理员可在“系统设置 → 外部接口”查看接入准备情况。同一份信息也可通过仅允许 admin 访问的只读接口获取：
+
+```bash
+curl -H "Authorization: Bearer <管理员 token>" \
+  http://localhost:5001/api/integrations/capabilities
+```
+
+响应为 `{ "items": [...] }`，每项包含 `code`、`name`、`owner`、`mode`、`health`、`description` 和 `required_inputs`。第一阶段固定列出以下 8 项：
+
+- OA 招聘需求
+- 企业微信候选人资料发送
+- 企业微信日程
+- 企业微信评分卡发送
+- 会议平台 / 会议室
+- Offer OA 审批
+- Offer 发放 / 电子签
+- HRIS 入职
+
+目前每项都应返回 `mode=manual_bridge` 和 `health=unconfigured`，表示仍走人工过渡且还没接通。页面读取失败时会显示错误与重试，不会把失败伪装成“已接通”。拿到某个内部系统的接口资料后，只为对应 capability 补充 adapter 与测试；不通过修改路由角色或导航权限来完成接口对接。
+
+MQ 地址、账号和 Secret 并入 OA 需求接口的连通资料；回调域名和可信出口 IP 并入企业微信对应 capability 的连通资料。它们都不单列成业务接口或独立运维模块。
 
 Libra/SIT 的 RC server 镜像在 Gunicorn 启动前依次执行受控空库 bootstrap 和 `alembic -c /app/backend/alembic.ini upgrade head`。`ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 只会初始化“真正为空”的数据库并写入当前 Alembic head；发现部分业务表或不完整 schema 会拒绝继续。`AUTO_MIGRATE_DATABASE=true` 再负责已有库的加性升级。Makefile 对 `GA` 同时关闭这两个开关，因此这不是生产自动建表/迁移授权。直接运行 `python run.py` 不触发容器 entrypoint；需要时在 `backend/` 显式执行 bootstrap 或 Alembic。
 
@@ -179,7 +205,7 @@ AI 助手首页的示例问题会按角色变化：招聘专员看到自己负�
 
 如果需求被误关闭或误暂停，使用 Demand 自身的恢复动作并填写原因。Demand 的状态、优先级和负责人都是受审计业务动作，但不再同步改写 Job 模板。
 
-管理员进入「系统设置」后，先在「账号管理」查看成员列表；需要新增试点账号时再点击「创建账号」展开表单。审计日志和 AI 边界在同一页顶部标签中切换。审计日志里能看到操作者、角色、目标、request_id、IP、来源（页面 / AI / 安全）、结果和失败原因；越权请求和短时间高频导出会标红为告警。
+管理员进入「系统设置」后，先在「账号管理」查看成员列表；需要新增试点账号时再点击「创建账号」展开表单。审计日志、外部接口和 AI 边界在同一页顶部标签中切换。外部接口面板只用于看接入阶段、健康状态和待补资料，第一阶段不提供“测试发送”或“发起审批”按钮。审计日志里能看到操作者、角色、目标、request_id、IP、来源（页面 / AI / 安全）、结果和失败原因；越权请求和短时间高频导出会标红为告警。
 
 如果候选人推进错阶段或误淘汰，在候选人流程右侧打开「更多操作：修正阶段」，必须填写修正原因。修正会影响当前阶段和 BI 当前存量，但历史流水会保留，后续复盘能看到这次是补救操作。
 

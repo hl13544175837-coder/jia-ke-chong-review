@@ -199,10 +199,10 @@ function MatchRow({
               to={demandId
                 ? `/pipeline?demand=${demandId}&candidate=${item.candidate_id}`
                 : `/pipeline?job=${jobId}&candidate=${item.candidate_id}`}
-              aria-label="查看候选人流程"
+              aria-label="查看面试管理"
               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft hover:border-surface-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
             >
-              去候选人流程查看
+              去面试管理查看
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>

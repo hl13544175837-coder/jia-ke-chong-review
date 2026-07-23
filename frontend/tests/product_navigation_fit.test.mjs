@@ -27,10 +27,10 @@ assert.doesNotMatch(
 );
 
 assert.ok(
-  /label:\s*'简历库'/.test(candidatesNav) &&
+    /label:\s*'简历库'/.test(candidatesNav) &&
     /label:\s*'招聘管理'/.test(demandsNav) &&
-    nav.indexOf('...featureNavItems') < nav.indexOf("label: '候选人流程'") &&
-    nav.indexOf("label: '候选人流程'") < nav.indexOf("label: '进度看板'"),
+    nav.indexOf('...featureNavItems') < nav.indexOf("label: '面试管理'") &&
+    nav.indexOf("label: '面试管理'") < nav.indexOf("label: 'Offer 管理'"),
   'Sidebar should follow the HR workflow without adding interview as a second workbench',
 );
 
@@ -53,7 +53,7 @@ assert.doesNotMatch(
 );
 
 assert.ok(
-  nav.indexOf("label: '进度看板'") < nav.indexOf("label: 'AI 助手'"),
+  nav.indexOf("label: 'Offer 管理'") < nav.indexOf("label: 'AI 助手'"),
   'AI assistant should support the workflow instead of interrupting the main HR path',
 );
 
@@ -64,13 +64,18 @@ assert.match(
 );
 assert.doesNotMatch(
   recruitmentTabs,
-  /to:\s*'\/(?:jobs|talent-map)'/,
-  'Job portraits and talent maps should not occupy standalone recruitment tabs in the pilot',
+  /to:\s*'\/jobs'/,
+  'Job portraits should not occupy standalone recruitment tabs in the pilot',
 );
 assert.doesNotMatch(
   demandsFeature,
-  /topLevelPaths:\s*\[[\s\S]*'\/(?:jobs|talent-map)'[\s\S]*\]/,
+  /topLevelPaths:\s*\[[\s\S]*'\/jobs'[\s\S]*\]/,
   'Only recruitment demands should be treated as a top-level recruitment workspace',
+);
+assert.match(
+  candidatesNav,
+  /to:\s*'\/talent-map'[\s\S]*label:\s*'人才地图'/,
+  'Talent map should sit beside the resume library as a candidate sourcing workspace',
 );
 assert.match(
   app,

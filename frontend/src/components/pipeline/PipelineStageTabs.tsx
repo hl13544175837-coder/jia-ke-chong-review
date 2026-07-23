@@ -22,7 +22,7 @@ export function PipelineStageTabs({
   onSelect,
 }: PipelineStageTabsProps) {
   return (
-    <nav aria-label="候选人流程阶段" className="overflow-x-auto rounded-md border border-hairline bg-canvas p-2">
+    <nav aria-label="面试管理阶段" className="overflow-x-auto rounded-md border border-hairline bg-canvas p-2">
       <div className="flex min-w-max gap-2">
         <button
           type="button"

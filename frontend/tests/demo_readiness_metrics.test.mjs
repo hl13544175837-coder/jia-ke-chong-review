@@ -33,38 +33,38 @@ assert.match(
 );
 assert.match(
   biPage,
-  /流程阶段/,
-  'BI should render the selected Demand funnel',
+  /发起 Offer/,
+  'The former BI page should render Offer management',
 );
 assert.match(
   biPage,
-  /阶段停留/,
-  'BI page should surface stage-age blockers from the backend',
+  /STATUS_TABS/,
+  'Offer management should expose status tabs',
 );
 assert.match(
   biPage,
-  /面试反馈跟进/,
-  'BI page should surface outstanding feedback from the backend',
+  /MOCK_OFFERS/,
+  'Offer management should provide demo rows for readiness',
 );
 assert.match(
   biPage,
-  /metrics\.hc\.completion_rate/,
-  'BI page should render demand-scoped HC progress',
+  /薪酬 \/ 入职日期/,
+  'Offer management should render salary and onboard-date columns',
 );
 assert.match(
   biPage,
-  /metrics\.current_responsibility/,
-  'BI page should render current collaboration responsibility',
+  /最新动态/,
+  'Offer management should render current offer progress',
 );
 assert.match(
   biPage,
-  /当前流程人数/,
-  'BI should label current active pipeline stock plainly',
+  /发起 Offer/,
+  'Offer management should expose a create action',
 );
 assert.match(
   biPage,
-  /metrics\.funnel\.pipeline_total/,
-  'BI should render the backend current pipeline total',
+  /编辑并提交|发放Offer|跟进回复|确认入职/,
+  'Offer management should render row actions',
 );
 assert.doesNotMatch(
   biPage,

@@ -42,8 +42,8 @@ def create_app(config=None):
         CORS(app)
     db.init_app(app)
 
-    from .api import resume, jobs, demands, talent_maps, candidates, match, interview, pipeline, bi, auth, agent, admin, notifications, boss
-    for bp in [auth.bp, resume.bp, jobs.bp, demands.bp, talent_maps.bp, candidates.bp, match.bp, interview.bp, pipeline.bp, bi.bp, agent.bp, admin.bp, notifications.bp, boss.bp]:
+    from .api import resume, jobs, demands, talent_maps, candidates, match, interview, pipeline, bi, auth, agent, admin, notifications, boss, integrations
+    for bp in [auth.bp, resume.bp, jobs.bp, demands.bp, talent_maps.bp, candidates.bp, match.bp, interview.bp, pipeline.bp, bi.bp, agent.bp, admin.bp, notifications.bp, boss.bp, integrations.bp]:
         app.register_blueprint(bp, url_prefix="/api")
 
     _register_request_audit(app)

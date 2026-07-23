@@ -13,6 +13,7 @@ function readSource(path) {
 const registry = readSource('app/featureRegistry.ts');
 const tabs = readSource('components/recruitment/RecruitmentManagementTabs.tsx');
 const demandsFeature = readSource('features/demands/index.ts');
+const candidatesNav = readSource('features/candidates/nav.ts');
 const nav = readSource('lib/nav.ts');
 const dashboard = readSource('pages/DashboardPage.tsx');
 const app = readSource('App.tsx');
@@ -23,10 +24,10 @@ assert.doesNotMatch(
   /bossFeature/,
   'BOSS should not be registered in the pilot navigation or route surface',
 );
-assert.doesNotMatch(
-  `${tabs}\n${demandsFeature}\n${app}`,
-  /(?:to:\s*'\/talent-map'|path="\/talent-map"|TalentMapPage)/,
-  'Talent map should not have a discoverable pilot entry',
+assert.match(
+  candidatesNav,
+  /to:\s*'\/talent-map'[\s\S]*label:\s*'人才地图'/,
+  'Talent map should have a discoverable pilot entry',
 );
 assert.doesNotMatch(
   tabs,
@@ -40,8 +41,8 @@ assert.doesNotMatch(
 );
 assert.match(
   nav,
-  /to:\s*'\/bi'[\s\S]*label:\s*'进度看板'/,
-  'BI should be presented as an operational progress workspace rather than a performance product',
+  /to:\s*'\/bi'[\s\S]*label:\s*'Offer 管理'/,
+  'The former progress entry should be presented as Offer management in the pilot surface',
 );
 assert.match(
   dashboard,

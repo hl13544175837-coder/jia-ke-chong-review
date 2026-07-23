@@ -35,23 +35,23 @@ assert.match(
 );
 assert.match(
   biPage,
-  /面试反馈跟进/,
-  'BI page should frame interviewer accountability as feedback follow-up',
+  /发起 Offer/,
+  'The former BI page should now frame accountability as Offer management',
 );
 assert.match(
   biPage,
-  /当前协同责任/,
-  'BI page should show who owns the next coordination action',
+  /最新动态/,
+  'Offer management should show the next coordination action',
 );
 assert.match(
   biPage,
-  /待补反馈/,
-  'BI accountability view should expose pending feedback',
+  /待提交|审批中|待发放|待回复|待入职/,
+  'Offer management should expose pending Offer states',
 );
 assert.match(
   biPage,
-  /不用于绩效考核/,
-  'Operational accountability should avoid a performance interpretation',
+  /OfferHeaderFilter/,
+  'Offer management should use table filtering instead of performance language',
 );
 assert.doesNotMatch(
   biPage,

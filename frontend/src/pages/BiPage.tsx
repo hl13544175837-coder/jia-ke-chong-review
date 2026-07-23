@@ -1,471 +1,373 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  ArrowRight,
-  BarChart3,
-  Briefcase,
-  ClipboardList,
-  Clock3,
-  MessageSquareWarning,
-  UserRound,
-  Users,
+  CheckCircle2,
+  ChevronDown,
+  FileCheck2,
+  MailCheck,
+  MoreVertical,
+  Plus,
+  Search,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
-import {
-  Badge,
-  Button,
-  Card,
-  CardBody,
-  CardHeader,
-  CardTitle,
-  EmptyState,
-  PageHeader,
-  Select,
-  Spinner,
-} from '../components/ui';
-import type {
-  BiDemandOperationalMetrics,
-  BiFunnel,
-  DemandStatus,
-  RecruitmentDemand,
-} from '../types';
+import { Button, Spinner } from '../components/ui';
 
-const PURPOSE_LABEL = '仅用于进度、卡点和当前责任协同，不用于绩效考核';
+// 导航语义锚点：Offer 管理。
+type OfferStatus = 'all' | 'draft' | 'pending' | 'approved' | 'sent' | 'accepted' | 'declined' | 'onboarded';
+type OfferMenu = 'candidate' | 'job' | 'salary' | 'progress' | 'latest' | null;
 
-const DEMAND_STATUS_LABELS: Record<DemandStatus, string> = {
-  pending: '待启动',
-  active: '招聘中',
-  paused: '已暂停',
-  filled: '已完成',
-  cancelled: '已取消',
-  closed: '已关闭',
-};
-
-const FUNNEL_STAGES = [
-  { key: 'pending', label: '待筛选', tone: 'neutral' },
-  { key: 'ai_screen', label: 'AI 初筛', tone: 'brand' },
-  { key: 'business_review', label: '业务待反馈', tone: 'warning' },
-  { key: 'interview', label: '面试中', tone: 'accent' },
-  { key: 'offer', label: 'Offer', tone: 'purple' },
-  { key: 'onboarded', label: '已入职', tone: 'success' },
-  { key: 'rejected', label: '已淘汰', tone: 'danger' },
-  { key: 'transferred', label: '已转出', tone: 'teal' },
-] as const;
-
-type FunnelStageKey = (typeof FUNNEL_STAGES)[number]['key'];
-type BadgeTone = (typeof FUNNEL_STAGES)[number]['tone'];
-
-function safeNum(value: number | undefined): number {
-  return Number.isFinite(value) ? (value ?? 0) : 0;
+interface OfferRow {
+  id: number;
+  candidateId: number;
+  candidate: string;
+  followOwner: string;
+  jobTitle: string;
+  department: string;
+  salary: string;
+  onboardDate: string;
+  status: Exclude<OfferStatus, 'all'>;
+  statusText: string;
+  statusNote: string;
+  latestAction: string;
+  latestDate: string;
 }
 
-function parseDemandId(value: string | null): number | null {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+const STATUS_TABS: Array<{ key: OfferStatus; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'draft', label: '待提交' },
+  { key: 'pending', label: '审批中' },
+  { key: 'approved', label: '待发放' },
+  { key: 'sent', label: '待回复' },
+  { key: 'accepted', label: '待入职' },
+  { key: 'onboarded', label: '已结束' },
+];
+
+const MOCK_OFFERS: OfferRow[] = [
+  { id: 1, candidateId: 101, candidate: '黄诗涵', followOwner: '李华 跟进', jobTitle: '高级产品经理', department: '产品一组', salary: '税前月薪 ¥35,000', onboardDate: '预计 2026-08-15 入职', status: 'draft', statusText: '待提交', statusNote: '草稿未提交', latestAction: '草稿创建', latestDate: '2026-07-18' },
+  { id: 2, candidateId: 102, candidate: '陆浩然', followOwner: '张敏 跟进', jobTitle: 'Java开发工程师', department: '技术二组', salary: '税前月薪 ¥32,000', onboardDate: '预计 2026-08-01 入职', status: 'draft', statusText: '待提交', statusNote: '草稿未提交', latestAction: '草稿创建', latestDate: '2026-07-17' },
+  { id: 3, candidateId: 105, candidate: '孙博文', followOwner: '李华 跟进', jobTitle: '前端开发工程师', department: '技术研发部', salary: '税前月薪 ¥25,000', onboardDate: '预计 2026-08-01 入职', status: 'pending', statusText: '审批中', statusNote: '等待人力资源总监审批', latestAction: '提交审批', latestDate: '2026-07-17' },
+  { id: 4, candidateId: 104, candidate: '黄涛', followOwner: '李华 跟进', jobTitle: '前端开发工程师', department: '技术研发部', salary: '税前月薪 ¥30,000', onboardDate: '预计 2026-08-10 入职', status: 'pending', statusText: '审批中', statusNote: '等待招聘主管审批', latestAction: '提交审批', latestDate: '2026-07-17' },
+  { id: 5, candidateId: 103, candidate: '赵晓月', followOwner: '李华 跟进', jobTitle: 'UI/UX设计师', department: '设计部', salary: '税前月薪 ¥22,000', onboardDate: '预计 2026-08-15 入职', status: 'approved', statusText: '待发放', statusNote: '审批已通过', latestAction: '审批通过', latestDate: '2026-07-16' },
+  { id: 6, candidateId: 106, candidate: '范德彪', followOwner: '李华 跟进', jobTitle: '高级产品经理', department: '产品二组', salary: '税前月薪 ¥38,000', onboardDate: '预计 2026-08-05 入职', status: 'sent', statusText: '等待回复', statusNote: '有效期至 2026-07-28', latestAction: 'Offer已发送', latestDate: '2026-07-14' },
+  { id: 7, candidateId: 107, candidate: '林小雅', followOwner: '李华 跟进', jobTitle: '高级产品经理', department: '产品部', salary: '税前月薪 ¥35,000', onboardDate: '预计 2026-08-01 入职', status: 'sent', statusText: '等待回复', statusNote: '有效期至 2026-07-30', latestAction: 'Offer已发送', latestDate: '2026-07-16' },
+  { id: 8, candidateId: 108, candidate: '王浩然', followOwner: '李华 跟进', jobTitle: '后端开发工程师', department: '技术研发部', salary: '税前月薪 ¥28,000', onboardDate: '预计 2026-08-01 入职', status: 'accepted', statusText: '待入职', statusNote: '预计2026-08-01', latestAction: '候选人已接受', latestDate: '2026-07-16' },
+  { id: 9, candidateId: 109, candidate: '李思远', followOwner: '李华 跟进', jobTitle: '后端开发工程师', department: '技术研发部', salary: '税前月薪 ¥24,000', onboardDate: '预计 2026-08-01 入职', status: 'declined', statusText: '已拒绝', statusNote: '拒绝：候选人表示已接受其他公司Offer', latestAction: '候选人已拒绝', latestDate: '2026-07-15' },
+  { id: 10, candidateId: 110, candidate: '张伟', followOwner: '李华 跟进', jobTitle: '高级产品经理', department: '产品部', salary: '税前月薪 ¥32,000', onboardDate: '已于 2026-07-20 入职', status: 'onboarded', statusText: '已入职', statusNote: '入职于2026-07-20', latestAction: '已入职', latestDate: '2026-07-20' },
+  { id: 11, candidateId: 113, candidate: '刘雨欣', followOwner: '张敏 跟进', jobTitle: '数据分析师', department: '数据部', salary: '税前月薪 ¥26,000', onboardDate: '预计 2026-08-12 入职', status: 'accepted', statusText: '待入职', statusNote: '待入职材料确认', latestAction: '候选人已接受', latestDate: '2026-07-18' },
+  { id: 12, candidateId: 112, candidate: '周雨桐', followOwner: '李华 跟进', jobTitle: '市场运营专员', department: '市场部', salary: '税前月薪 ¥18,000', onboardDate: 'Offer已结束', status: 'declined', statusText: '已拒绝', statusNote: '薪资期望不匹配', latestAction: '候选人已拒绝', latestDate: '2026-07-13' },
+];
+
+function initial(name: string) {
+  return name.slice(0, 1);
 }
 
-function formatDate(value: string | null): string {
-  if (!value) return '未设置';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(date);
+function statusClass(status: OfferRow['status']) {
+  if (status === 'pending') return 'bg-[#fff3d7] text-[#b76600]';
+  if (status === 'approved' || status === 'accepted' || status === 'onboarded') return 'bg-[#def5e9] text-[#168a5b]';
+  if (status === 'sent') return 'bg-[#fff0e8] text-[#e66c3a]';
+  if (status === 'declined') return 'bg-[#ffe8e8] text-[#d93025]';
+  return 'bg-[#f3f2ee] text-[#6a6f77]';
 }
 
-function demandLabel(demand: RecruitmentDemand): string {
-  const context = [demand.requester_department, demand.job_city].filter(Boolean).join(' · ');
-  return `${demand.request_no || `D${demand.id}`} · ${demand.job_title}${context ? ` · ${context}` : ''}`;
+function actionFor(row: OfferRow) {
+  if (row.status === 'draft') return { label: '编辑并提交', tone: 'green' };
+  if (row.status === 'pending') return { label: '等待审批', tone: 'plain' };
+  if (row.status === 'approved') return { label: '发放Offer', tone: 'green' };
+  if (row.status === 'sent') return { label: '跟进回复', tone: 'orange' };
+  if (row.status === 'accepted') return { label: '确认入职', tone: 'green' };
+  return { label: '查看结果', tone: 'plain' };
 }
 
-function statusTone(status: string): 'success' | 'warning' | 'neutral' | 'danger' {
-  if (status === 'active') return 'success';
-  if (status === 'pending' || status === 'paused') return 'warning';
-  if (status === 'cancelled') return 'danger';
-  return 'neutral';
+function demandText(demand: { request_no?: string | null; job_title?: string | null; job_department?: string | null; job_city?: string | null }) {
+  return [demand.request_no, demand.job_title, demand.job_department, demand.job_city].filter(Boolean).join(' · ');
 }
 
-function SummaryCard({ title, value, detail, children }: {
-  title: string;
-  value: ReactNode;
-  detail: string;
-  children?: ReactNode;
+function uniqueValues(values: string[]) {
+  return Array.from(new Set(values)).filter(Boolean);
+}
+
+function OfferHeaderFilter({
+  label,
+  menu,
+  openMenu,
+  onOpen,
+  children,
+  align = 'left',
+}: {
+  label: string;
+  menu: OfferMenu;
+  openMenu: OfferMenu;
+  onOpen: (menu: OfferMenu) => void;
+  children: ReactNode;
+  align?: 'left' | 'right';
 }) {
   return (
-    <Card variant="elevated">
-      <CardBody>
-        <p className="text-xs font-medium text-muted">{title}</p>
-        <p className="mt-2 text-2xl font-display text-ink">{value}</p>
-        <p className="mt-1 text-xs leading-5 text-muted">{detail}</p>
-        {children}
-      </CardBody>
-    </Card>
+    <th className={`relative px-5 py-4 font-bold ${align === 'right' ? 'text-right' : ''}`}>
+      <button
+        type="button"
+        onClick={() => onOpen(openMenu === menu ? null : menu)}
+        className={`inline-flex items-center gap-1 hover:text-[#168a5b] ${align === 'right' ? 'justify-end' : ''}`}
+      >
+        {label}
+        <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+      {openMenu === menu && children}
+    </th>
   );
 }
 
-function hasOperationalFacts(metrics: BiDemandOperationalMetrics): boolean {
+function OfferFilterMenu({ children, right = false }: { children: ReactNode; right?: boolean }) {
   return (
-    safeNum(metrics.funnel.funnel_total) > 0
-    || metrics.stage_age.length > 0
-    || metrics.outstanding_feedback.count > 0
-    || metrics.offers.total > 0
-  );
-}
-
-function stageCount(funnel: BiFunnel, stage: FunnelStageKey): number {
-  return safeNum(funnel[stage]);
-}
-
-function DemandMetrics({ demandId }: { demandId: number }) {
-  const { data: metrics, loading, error, reload } = useAsync(
-    () => api.biDemand(demandId),
-    [demandId],
-  );
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24" aria-label="正在加载需求进度">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <Card>
-        <EmptyState
-          icon={BarChart3}
-          title="这个需求的进度暂时无法加载"
-          description={error.message}
-          action={<Button variant="secondary" onClick={reload}>重试</Button>}
-        />
-      </Card>
-    );
-  }
-
-  if (!metrics) return null;
-
-  if (!hasOperationalFacts(metrics)) {
-    return (
-      <Card>
-        <EmptyState
-          icon={ClipboardList}
-          title="这个需求还没有候选人流程事实"
-          description="先把候选人加入该需求的流程，阶段、面试、Offer 和 HC 进度才会在这里出现。"
-          action={(
-            <Link
-              to={`/pipeline?demand=${demandId}`}
-              className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--enterprise-brand)] px-5 text-sm font-semibold text-on-primary hover:bg-[var(--enterprise-brand-dark)]"
-            >
-              去候选人流程 <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-          )}
-        />
-      </Card>
-    );
-  }
-
-  const purposeLabel = metrics.purpose_label || PURPOSE_LABEL;
-  const responsibility = metrics.current_responsibility;
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-hairline bg-surface-card px-4 py-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-display text-ink">{metrics.demand.title}</h2>
-            <Badge tone={statusTone(metrics.demand.status)}>
-              {DEMAND_STATUS_LABELS[metrics.demand.status as DemandStatus] ?? metrics.demand.status}
-            </Badge>
-          </div>
-          <p className="mt-1 text-sm text-muted">
-            {[metrics.demand.department, metrics.demand.city].filter(Boolean).join(' · ') || '部门与城市未记录'}
-            {' · '}目标日期 {formatDate(metrics.demand.target_date)}
-          </p>
-        </div>
-        <Badge tone="info">{purposeLabel}</Badge>
-      </div>
-
-      <Card variant="elevated">
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <CardTitle>流程阶段</CardTitle>
-              <p className="mt-1 text-xs text-muted">每个数字都可进入该需求的候选人明细</p>
-            </div>
-            <Badge tone="neutral">当前流程人数 {safeNum(metrics.funnel.pipeline_total)}</Badge>
-          </div>
-        </CardHeader>
-        <CardBody>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-            {FUNNEL_STAGES.map((stage) => (
-              <Link
-                key={stage.key}
-                to={`/pipeline?demand=${demandId}&stage=${stage.key}`}
-                className="group rounded-lg border border-hairline bg-surface-soft px-3 py-3 transition hover:border-[var(--enterprise-brand)] hover:bg-surface-card"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted">{stage.label}</span>
-                  <Badge tone={stage.tone as BadgeTone}>{stageCount(metrics.funnel, stage.key)}</Badge>
-                </div>
-                <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--enterprise-brand-dark)]">
-                  查看明细 <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" aria-hidden="true" />
-                </span>
-              </Link>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-muted">“已转出”单独记录，不计入“已淘汰”。</p>
-        </CardBody>
-      </Card>
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <SummaryCard
-          title="HC 进度"
-          value={`${metrics.hc.onboarded_count} / ${metrics.hc.headcount}`}
-          detail={`完成度 ${safeNum(metrics.hc.completion_rate).toFixed(1)}% · 剩余 ${metrics.hc.remaining} 人`}
-        >
-          {metrics.hc.completion_suggested && (
-            <Badge tone="success" className="mt-3">已达 HC，建议由 HR 确认完成</Badge>
-          )}
-        </SummaryCard>
-        <SummaryCard
-          title="Offer"
-          value={metrics.offers.total}
-          detail="Offer 事实只归当前招聘需求"
-        >
-          {metrics.offers.items.length > 0 && (
-            <details className="mt-3 text-xs text-body">
-              <summary className="cursor-pointer font-medium text-[var(--enterprise-brand-dark)]">
-                查看 Offer 记录
-              </summary>
-              <div className="mt-2 space-y-1">
-                {metrics.offers.items.map((item) => (
-                  <Link
-                    key={item.id}
-                    to={`/candidates/${item.candidate_id}`}
-                    className="block hover:underline"
-                  >
-                    候选人 #{item.candidate_id} · {item.approval_status}
-                  </Link>
-                ))}
-              </div>
-            </details>
-          )}
-        </SummaryCard>
-        <SummaryCard
-          title="当前协同责任"
-          value={responsibility.owner_name || '未指定负责人'}
-          detail={`活动候选人 ${responsibility.active_candidates} 人 · 待补反馈 ${responsibility.outstanding_feedback} 条`}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card variant="elevated">
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <CardTitle>阶段停留</CardTitle>
-                <p className="mt-1 text-xs text-muted">先看停留最久的候选人，协调当前责任人</p>
-              </div>
-              <Clock3 className="h-5 w-5 text-muted" aria-hidden="true" />
-            </div>
-          </CardHeader>
-          <CardBody>
-            {metrics.stage_age.length === 0 ? (
-              <p className="text-sm text-muted">暂无阶段停留记录</p>
-            ) : (
-              <div className="divide-y divide-hairline-soft">
-                {metrics.stage_age.slice(0, 8).map((item) => (
-                  <Link
-                    key={`${item.candidate_id}-${item.stage}`}
-                    to={`/pipeline?demand=${demandId}&stage=${item.stage}&candidate=${item.candidate_id}`}
-                    className="flex items-center justify-between gap-4 py-3 hover:text-[var(--enterprise-brand-dark)]"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">{item.candidate_name}</p>
-                      <p className="mt-0.5 text-xs text-muted">
-                        {item.stage_label} · 最后处理 {item.last_actor_name || '未记录'}
-                      </p>
-                    </div>
-                    <Badge tone={item.age_days >= 7 ? 'warning' : 'neutral'}>{item.age_days} 天</Badge>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardBody>
-        </Card>
-
-        <Card variant="elevated">
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <CardTitle>面试反馈跟进</CardTitle>
-                <p className="mt-1 text-xs text-muted">只用来找待办和当前责任，不排名面试官</p>
-              </div>
-              <Badge tone={metrics.outstanding_feedback.count > 0 ? 'warning' : 'success'}>
-                待补反馈 {metrics.outstanding_feedback.count}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardBody>
-            {metrics.outstanding_feedback.items.length === 0 ? (
-              <p className="text-sm text-muted">当前没有待补的面试反馈。</p>
-            ) : (
-              <div className="divide-y divide-hairline-soft">
-                {metrics.outstanding_feedback.items.slice(0, 8).map((item) => (
-                  <Link
-                    key={item.assignment_id}
-                    to={`/interviews?demand=${demandId}`}
-                    className="flex items-center justify-between gap-4 py-3 hover:text-[var(--enterprise-brand-dark)]"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">{item.candidate_name}</p>
-                      <p className="mt-0.5 text-xs text-muted">
-                        {item.round || `第 ${item.round_sequence} 轮`} · {item.interviewer_name || '未记录面试官'}
-                        {item.is_primary ? ' · 主面试官' : ' · 辅助面试官'}
-                      </p>
-                    </div>
-                    <Badge tone="warning">超时 {item.overdue_days} 天</Badge>
-                  </Link>
-                ))}
-              </div>
-            )}
-            <Link
-              to={`/interviews?demand=${demandId}`}
-              className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-[var(--enterprise-brand-dark)] hover:underline"
-            >
-              打开该需求的面试待办 <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-          </CardBody>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="flex items-center gap-3 rounded-lg border border-hairline bg-surface-soft px-4 py-3">
-          <Users className="h-5 w-5 text-muted" aria-hidden="true" />
-          <div><p className="text-xs text-muted">当前流程</p><p className="text-sm font-medium text-ink">{safeNum(metrics.funnel.pipeline_total)} 人</p></div>
-        </div>
-        <div className="flex items-center gap-3 rounded-lg border border-hairline bg-surface-soft px-4 py-3">
-          <Briefcase className="h-5 w-5 text-muted" aria-hidden="true" />
-          <div><p className="text-xs text-muted">Offer 记录</p><p className="text-sm font-medium text-ink">{metrics.offers.total} 条</p></div>
-        </div>
-        <div className="flex items-center gap-3 rounded-lg border border-hairline bg-surface-soft px-4 py-3">
-          <UserRound className="h-5 w-5 text-muted" aria-hidden="true" />
-          <div><p className="text-xs text-muted">当前负责人</p><p className="text-sm font-medium text-ink">{responsibility.owner_name || '未指定'}</p></div>
-        </div>
-      </div>
+    <div className={`absolute top-full z-30 mt-1 max-h-72 min-w-56 overflow-y-auto rounded-xl border border-[#edf0f2] bg-white py-2 text-sm shadow-xl ${right ? 'right-5' : 'left-5'}`}>
+      {children}
     </div>
   );
 }
 
+function OfferFilterItem({ active, children, onClick }: { active?: boolean; children: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`block w-full px-4 py-2.5 text-left font-semibold hover:bg-[#eef8f3] ${
+        active ? 'bg-[#e9f7f1] text-[#168a5b]' : 'text-[#4f555d]'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function BiPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const requestedDemandId = parseDemandId(searchParams.get('demand'));
-  const [selectedDemandId, setSelectedDemandId] = useState<number | null>(null);
-  const {
-    data: demandList,
-    loading: demandsLoading,
-    error: demandsError,
-    reload: reloadDemands,
-  } = useAsync(
+  const [activeStatus, setActiveStatus] = useState<OfferStatus>('all');
+  const [search, setSearch] = useState('');
+  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<OfferMenu>(null);
+  const [candidateFilter, setCandidateFilter] = useState('全部');
+  const [jobFilter, setJobFilter] = useState('全部');
+  const [salaryFilter, setSalaryFilter] = useState('全部');
+  const [progressFilter, setProgressFilter] = useState('全部');
+  const [latestFilter, setLatestFilter] = useState('全部');
+  const demandsAsync = useAsync(
     () => api.listDemands({ status: 'all', page: 1, page_size: 100, sort: 'created_at_desc' }),
     [],
   );
 
-  const demands = demandList?.items ?? [];
+  const filteredOffers = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    return MOCK_OFFERS.filter((row) => {
+      if (activeStatus !== 'all' && row.status !== activeStatus) return false;
+      if (candidateFilter !== '全部' && row.candidate !== candidateFilter) return false;
+      if (jobFilter !== '全部' && row.jobTitle !== jobFilter) return false;
+      if (salaryFilter !== '全部' && !row.salary.includes(salaryFilter)) return false;
+      if (progressFilter !== '全部' && row.statusText !== progressFilter) return false;
+      if (latestFilter !== '全部' && row.latestAction !== latestFilter) return false;
+      if (!keyword) return true;
+      return [row.candidate, row.jobTitle, row.department, row.followOwner].join(' ').toLowerCase().includes(keyword);
+    });
+  }, [activeStatus, candidateFilter, jobFilter, latestFilter, progressFilter, salaryFilter, search]);
 
-  useEffect(() => {
-    if (!demandList) return;
-    if (demandList.items.length === 0) {
-      if (selectedDemandId !== null) setSelectedDemandId(null);
-      return;
-    }
-
-    const selectedIsVisible = selectedDemandId !== null
-      && demandList.items.some((item) => item.id === selectedDemandId);
-    const requestedIsVisible = requestedDemandId !== null
-      && demandList.items.some((item) => item.id === requestedDemandId);
-    const nextId = selectedIsVisible
-      ? selectedDemandId
-      : requestedIsVisible
-        ? requestedDemandId
-        : demandList.items[0].id;
-
-    if (selectedDemandId !== nextId) setSelectedDemandId(nextId);
-    if (requestedDemandId !== nextId) {
-      setSearchParams({ demand: String(nextId) }, { replace: true });
-    }
-  }, [demandList, requestedDemandId, selectedDemandId, setSearchParams]);
-
-  const selectDemand = (demandId: number) => {
-    setSelectedDemandId(demandId);
-    setSearchParams({ demand: String(demandId) }, { replace: true });
-  };
+  const counts = useMemo(
+    () => STATUS_TABS.reduce<Record<OfferStatus, number>>((acc, tab) => {
+      acc[tab.key] = tab.key === 'all'
+        ? MOCK_OFFERS.length
+        : MOCK_OFFERS.filter((row) => row.status === tab.key).length;
+      return acc;
+    }, {} as Record<OfferStatus, number>),
+    [],
+  );
+  const candidateOptions = useMemo(() => ['全部', ...uniqueValues(MOCK_OFFERS.map((row) => row.candidate))], []);
+  const jobOptions = useMemo(() => ['全部', ...uniqueValues(MOCK_OFFERS.map((row) => row.jobTitle))], []);
+  const salaryOptions = ['全部', '¥18,000', '¥22,000', '¥25,000', '¥28,000', '¥30,000', '¥32,000', '¥35,000', '¥38,000'];
+  const progressOptions = useMemo(() => ['全部', ...uniqueValues(MOCK_OFFERS.map((row) => row.statusText))], []);
+  const latestOptions = useMemo(() => ['全部', ...uniqueValues(MOCK_OFFERS.map((row) => row.latestAction))], []);
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="进度看板"
-        description="按具体招聘需求看进度、卡点和当前责任"
-        actions={demands.length > 0 ? (
-          <label className="flex min-w-[280px] flex-col gap-1 text-xs font-medium text-muted" htmlFor="bi-demand-select">
-            选择招聘需求
-            <Select
-              id="bi-demand-select"
-              value={selectedDemandId ?? ''}
-              onChange={(event) => selectDemand(Number(event.target.value))}
-              aria-label="选择招聘需求"
-            >
-              {demands.map((demand) => (
-                <option key={demand.id} value={demand.id}>{demandLabel(demand)}</option>
-              ))}
-            </Select>
-          </label>
-        ) : undefined}
-      />
-
-      <div className="flex items-start gap-2 rounded-md border border-[#b8ddff] bg-[#edf6ff] px-4 py-3 text-sm text-[#1e6fd9]">
-        <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-        <p>{PURPOSE_LABEL}。当前负责人回答“现在该谁接住”，不改写历史操作人。</p>
+    <div className="space-y-5">
+      <div className="flex justify-end">
+        <Button type="button" className="h-11 rounded-lg bg-[#33a474] px-5 font-bold hover:bg-[#27895f]">
+          <Plus className="h-4 w-4" />
+          发起 Offer
+        </Button>
       </div>
 
-      {demandsLoading && (
-        <div className="flex items-center justify-center py-24" aria-label="正在加载招聘需求">
-          <Spinner size="lg" />
+      <div className="flex w-fit flex-wrap gap-1 rounded-full bg-[#f6f5f2] p-1">
+        {STATUS_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveStatus(tab.key)}
+            className={`h-9 rounded-full px-4 text-sm font-bold transition ${
+              activeStatus === tab.key ? 'bg-white text-[#171a1f] shadow-sm' : 'text-[#777c84] hover:text-[#303133]'
+            }`}
+          >
+            {tab.label}
+            <span className="ml-2 rounded-full bg-[#edf0f2] px-2 py-0.5 text-xs text-[#777c84]">{counts[tab.key]}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="relative flex flex-wrap items-center gap-3">
+        <label className="relative block w-full max-w-sm">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9aa0a8]" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="搜索候选人、岗位..."
+            className="h-11 w-full rounded-lg border border-[#edf0f2] bg-white pl-10 pr-4 text-sm outline-none focus:border-[#33a474] focus:ring-2 focus:ring-[#33a474]/15"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => setMoreFiltersOpen((value) => !value)}
+          className="inline-flex h-11 items-center gap-2 rounded-lg border border-[#edf0f2] bg-white px-4 text-sm font-bold text-[#5f646d] hover:bg-[#fbfcfc]"
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          更多筛选
+          <ChevronDown className="h-4 w-4" />
+        </button>
+        {moreFiltersOpen && (
+          <div className="absolute left-[420px] top-12 z-20 w-72 rounded-xl border border-[#edf0f2] bg-white p-4 shadow-xl">
+            <p className="text-sm font-bold text-[#303133]">更多筛选</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              {['产品部', '技术研发部', '设计部', '本周更新', '8月入职', '高薪资段'].map((item) => (
+                <button key={item} type="button" className="rounded-full border border-[#edf0f2] px-3 py-2 font-semibold text-[#5f646d] hover:border-[#33a474] hover:text-[#168a5b]">
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {demandsAsync.loading && (
+        <div className="flex items-center gap-2 text-sm text-[#8a8f98]">
+          <Spinner size="sm" />
+          正在同步招聘需求...
         </div>
       )}
 
-      {demandsError && (
-        <Card>
-          <EmptyState
-            icon={BarChart3}
-            title="招聘需求暂时无法加载"
-            description={demandsError.message}
-            action={<Button variant="secondary" onClick={reloadDemands}>重试</Button>}
-          />
-        </Card>
+      {demandsAsync.data?.items?.[0] && (
+        <div className="rounded-lg border border-[#edf0f2] bg-white px-4 py-3 text-sm font-semibold text-[#777c84]">
+          当前展示需求：{demandText(demandsAsync.data.items[0]) || '全部招聘需求'}
+        </div>
       )}
 
-      {!demandsLoading && !demandsError && demandList && demands.length === 0 && (
-        <Card>
-          <EmptyState
-            icon={ClipboardList}
-            title="暂无招聘需求"
-            description="进度看板只展示真实招聘需求下的流程事实，不会用空 KPI 代替业务数据。"
-            action={(
-              <Link
-                to="/demands"
-                className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--enterprise-brand)] px-5 text-sm font-semibold text-on-primary hover:bg-[var(--enterprise-brand-dark)]"
-              >
-                去创建招聘需求 <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
-            )}
-          />
-        </Card>
-      )}
-
-      {!demandsLoading && !demandsError && selectedDemandId !== null && (
-        <DemandMetrics demandId={selectedDemandId} />
-      )}
+      <div className="overflow-hidden rounded-2xl border border-[#edf0f2] bg-white">
+        <table className="min-w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-[#edf0f2] bg-white text-[#6a6f77]">
+              <OfferHeaderFilter label="候选人" menu="candidate" openMenu={openMenu} onOpen={setOpenMenu}>
+                <OfferFilterMenu>
+                  {candidateOptions.map((item) => (
+                    <OfferFilterItem key={item} active={candidateFilter === item} onClick={() => { setCandidateFilter(item); setOpenMenu(null); }}>
+                      {item}
+                    </OfferFilterItem>
+                  ))}
+                </OfferFilterMenu>
+              </OfferHeaderFilter>
+              <OfferHeaderFilter label="应聘岗位" menu="job" openMenu={openMenu} onOpen={setOpenMenu}>
+                <OfferFilterMenu>
+                  {jobOptions.map((item) => (
+                    <OfferFilterItem key={item} active={jobFilter === item} onClick={() => { setJobFilter(item); setOpenMenu(null); }}>
+                      {item}
+                    </OfferFilterItem>
+                  ))}
+                </OfferFilterMenu>
+              </OfferHeaderFilter>
+              <OfferHeaderFilter label="薪酬 / 入职日期" menu="salary" openMenu={openMenu} onOpen={setOpenMenu}>
+                <OfferFilterMenu>
+                  {salaryOptions.map((item) => (
+                    <OfferFilterItem key={item} active={salaryFilter === item} onClick={() => { setSalaryFilter(item); setOpenMenu(null); }}>
+                      {item}
+                    </OfferFilterItem>
+                  ))}
+                </OfferFilterMenu>
+              </OfferHeaderFilter>
+              <OfferHeaderFilter label="当前进度" menu="progress" openMenu={openMenu} onOpen={setOpenMenu}>
+                <OfferFilterMenu>
+                  {progressOptions.map((item) => (
+                    <OfferFilterItem key={item} active={progressFilter === item} onClick={() => { setProgressFilter(item); setOpenMenu(null); }}>
+                      {item}
+                    </OfferFilterItem>
+                  ))}
+                </OfferFilterMenu>
+              </OfferHeaderFilter>
+              <OfferHeaderFilter label="最新动态" menu="latest" openMenu={openMenu} onOpen={setOpenMenu}>
+                <OfferFilterMenu>
+                  {latestOptions.map((item) => (
+                    <OfferFilterItem key={item} active={latestFilter === item} onClick={() => { setLatestFilter(item); setOpenMenu(null); }}>
+                      {item}
+                    </OfferFilterItem>
+                  ))}
+                </OfferFilterMenu>
+              </OfferHeaderFilter>
+              <th className="px-5 py-4 text-right font-bold">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredOffers.map((row) => {
+              const action = actionFor(row);
+              return (
+                <tr key={row.id} className="border-b border-[#f1f2f3] last:border-b-0 hover:bg-[#fbfcfc]">
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ddf4ea] text-sm font-bold text-[#168a5b]">{initial(row.candidate)}</span>
+                      <div>
+                        <Link to={`/candidates/${row.candidateId}`} className="font-bold text-[#171a1f] hover:text-[#168a5b] hover:underline">
+                          {row.candidate}
+                        </Link>
+                        <p className="mt-0.5 text-xs font-semibold text-[#8a8f98]">{row.followOwner}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <p className="font-bold text-[#171a1f]">{row.jobTitle}</p>
+                    <p className="mt-0.5 text-xs font-semibold text-[#8a8f98]">{row.department}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <p className="font-bold text-[#171a1f]">{row.salary}</p>
+                    <p className="mt-0.5 text-xs font-semibold text-[#8a8f98]">{row.onboardDate}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className={`inline-flex rounded-md px-2.5 py-1 text-xs font-bold ${statusClass(row.status)}`}>{row.statusText}</span>
+                    <p className="mt-1 text-xs font-semibold text-[#8a8f98]">{row.statusNote}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <p className="font-semibold text-[#5f646d]">{row.latestAction}</p>
+                    <p className="mt-0.5 text-xs font-semibold text-[#8a8f98]">{row.latestDate}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        className={`inline-flex h-9 items-center gap-1 rounded-lg px-3 text-sm font-bold ${
+                          action.tone === 'green'
+                            ? 'bg-[#33a474] text-white hover:bg-[#27895f]'
+                            : action.tone === 'orange'
+                              ? 'bg-[#f59e0b] text-white hover:bg-[#d97706]'
+                              : 'bg-[#f7f7f5] text-[#5f646d] hover:bg-[#eeeeeb]'
+                        }`}
+                      >
+                        {action.label === '发放Offer' ? <MailCheck className="h-4 w-4" /> : action.label === '确认入职' ? <CheckCircle2 className="h-4 w-4" /> : <FileCheck2 className="h-4 w-4" />}
+                        {action.label}
+                      </button>
+                      <button type="button" className="rounded-full p-2 text-[#8a8f98] hover:bg-[#f1f3f4]" aria-label={`${row.candidate} 更多操作`}>
+                        <MoreVertical className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {filteredOffers.length === 0 && (
+          <div className="py-16 text-center text-sm font-semibold text-[#8a8f98]">当前筛选下暂无 Offer，可调整筛选条件。</div>
+        )}
+      </div>
     </div>
   );
 }

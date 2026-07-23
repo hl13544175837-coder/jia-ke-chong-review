@@ -6,7 +6,7 @@ export const candidatesFeature: AppFeature = {
   id: 'candidates',
   navItems: candidatesNavItems,
   routes: candidatesRoutes,
-  topLevelPaths: ['/candidates'],
+  topLevelPaths: ['/candidates', '/talent-map'],
 };
 
 export { candidatesApi } from './api';

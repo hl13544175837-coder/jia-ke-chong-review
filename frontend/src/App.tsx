@@ -15,25 +15,18 @@ import { PermissionsProvider } from './lib/permissions';
 import { AppShell } from './components/AppShell';
 import { defaultRouteForRole } from './lib/nav';
 import { featureRoutes } from './app/featureRegistry';
+import { DashboardPage, NotificationCenterPage } from './features/workbench';
+import { AgentPage } from './features/assistant';
+import { UploadPage } from './features/candidates/pageEntries';
+import { JobsPage, JobMatchPage } from './features/demands/pageEntries';
+import { PipelinePage } from './features/pipeline';
+import { InterviewListPage, InterviewsPage, InterviewReportPage } from './features/interviews';
+import { BiPage } from './features/analytics';
+import { UsersPage, SystemSettingsPage, AiArchitecturePage, AgentCallLogsPage } from './features/admin';
 import { ToastProvider } from './components/ui';
 import type { Role } from './types';
 
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })));
-const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
-const AgentPage = lazy(() => import('./pages/AgentPage').then((module) => ({ default: module.AgentPage })));
-const NotificationCenterPage = lazy(() => import('./pages/NotificationCenterPage').then((module) => ({ default: module.NotificationCenterPage })));
-const UploadPage = lazy(() => import('./pages/UploadPage').then((module) => ({ default: module.UploadPage })));
-const JobsPage = lazy(() => import('./pages/JobsPage').then((module) => ({ default: module.JobsPage })));
-const JobMatchPage = lazy(() => import('./pages/JobMatchPage').then((module) => ({ default: module.JobMatchPage })));
-const PipelinePage = lazy(() => import('./pages/PipelinePage').then((module) => ({ default: module.PipelinePage })));
-const InterviewListPage = lazy(() => import('./pages/InterviewListPage').then((module) => ({ default: module.InterviewListPage })));
-const InterviewsPage = lazy(() => import('./pages/InterviewsPage').then((module) => ({ default: module.InterviewsPage })));
-const InterviewReportPage = lazy(() => import('./pages/InterviewReportPage').then((module) => ({ default: module.InterviewReportPage })));
-const BiPage = lazy(() => import('./pages/BiPage').then((module) => ({ default: module.BiPage })));
-const UsersPage = lazy(() => import('./pages/admin/UsersPage').then((module) => ({ default: module.UsersPage })));
-const SystemSettingsPage = lazy(() => import('./pages/admin/SystemSettingsPage').then((module) => ({ default: module.SystemSettingsPage })));
-const AiArchitecturePage = lazy(() => import('./pages/admin/AiArchitecturePage').then((module) => ({ default: module.AiArchitecturePage })));
-const AgentCallLogsPage = lazy(() => import('./pages/admin/AgentCallLogsPage').then((module) => ({ default: module.AgentCallLogsPage })));
 
 // Gate for the authenticated app area.
 function RequireAuth() {

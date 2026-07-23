@@ -1,0 +1,63 @@
+sequenceDiagram
+  autonumber off
+  participant OA as OA
+  participant ZP as 智聘
+  actor R as 招聘专员
+  actor C as 候选人
+  participant WX as 企业微信
+  actor I as 面试官
+  participant MT as 会议平台／会议室
+  participant OF as Offer发放／电子签
+  participant HR as HRIS
+
+  OA-->>ZP: ① 招聘需求MQ（审批通过的招聘需求）
+  ZP->>ZP: 生成招聘需求并进入招聘
+  R->>ZP: 候选人入库／匹配后，选择候选人
+  ZP-->>WX: ② 候选人资料／完整简历
+  WX-->>I: 候选人资料送达
+
+  loop 每轮面试（选择“下一轮”时重新执行本段）
+    R->>C: 确认面试时间与线上／线下形式
+    R->>ZP: 创建本轮面试安排
+    ZP->>MT: ⑤ 创建线上会议或预订线下会议室
+    MT-->>ZP: 返回会议链接或地点
+    ZP->>WX: ③ 同步企业微信日程
+    WX-->>I: 面试日程送达
+    R->>C: 通知面试时间、会议链接或地点
+    Note over C,I: 本轮面试开始
+    ZP->>WX: ④ 面试开始30分钟后发送JD评分卡
+    WX-->>I: JD评分卡送达
+    I->>WX: 提交逐项0～10分及Yes／No
+    WX-->>ZP: 评分结果回传
+    R->>ZP: 如进入下一轮：指定下一轮负责人
+  end
+
+  alt 最终决定：直接录用
+    R->>ZP: 进入Offer流程
+    ZP->>OA: ⑥ Offer审批MQ
+    Note over OA,ZP: 审批结果同步智聘的方式待接口评审
+    opt Offer审批通过
+      OF->>OF: ⑦ 进入现有Offer发放／电子签流程
+      Note over ZP,OF: 触发方与结果回传方式待接口评审
+      OF->>C: 发放Offer
+      alt 候选人接受
+        C-->>OF: 签署并接受Offer
+        Note over C,HR: 进入待入职，等待HRIS结果
+        HR-->>ZP: ⑧ 正式入职或放弃结果
+        alt 正式入职
+          ZP->>ZP: 已入职人数＋1，剩余HC－1
+          Note over R,ZP: 达到HC仅提示，不自动关闭需求
+          opt 招聘需求已完成
+            R->>ZP: 手动关闭招聘需求
+          end
+        else 放弃入职
+          ZP->>ZP: 记录放弃，HC不变
+        end
+      else 候选人拒绝
+        C-->>OF: 拒绝Offer，Offer流程结束
+      end
+    end
+  else 最终决定：淘汰
+    R->>ZP: 提交淘汰决定
+    ZP->>ZP: 记录淘汰并结束候选人流程
+  end

@@ -11,36 +11,30 @@ function readSource(path) {
 }
 
 [
-  'components/pipeline/PipelineStageTabs.tsx',
-  'components/pipeline/PipelineCandidateList.tsx',
-  'components/pipeline/PipelineCandidatePanel.tsx',
   'lib/pipelineInsights.ts',
 ].forEach((path) => {
   assert.ok(existsSync(join(srcRoot, path)), `${path} should exist`);
 });
 
 const pipelinePage = readSource('pages/PipelinePage.tsx');
-const stageTabs = readSource('components/pipeline/PipelineStageTabs.tsx');
-const candidateList = readSource('components/pipeline/PipelineCandidateList.tsx');
-const candidatePanel = readSource('components/pipeline/PipelineCandidatePanel.tsx');
 const insights = readSource('lib/pipelineInsights.ts');
 
 assert.match(
   pipelinePage,
-  /PipelineStageTabs/,
-  'Candidate pipeline should use stage tabs instead of a long full-width kanban as the primary navigation',
+  /InterviewAdjustModal/,
+  'Interview management should use a modal for schedule and adjustment actions',
 );
 
 assert.match(
   pipelinePage,
-  /PipelineCandidateList/,
-  'Candidate pipeline should show the selected stage as a focused candidate list',
+  /listInterviewAssignments/,
+  'Interview management should load real interview assignment data',
 );
 
 assert.match(
   pipelinePage,
-  /PipelineCandidatePanel/,
-  'Candidate pipeline should keep candidate details and actions in a side panel',
+  /createInterviewAssignment/,
+  'Interview management should save schedule changes through the existing assignment API',
 );
 
 assert.doesNotMatch(
@@ -50,45 +44,9 @@ assert.doesNotMatch(
 );
 
 assert.match(
-  stageTabs,
-  /aria-label="候选人流程阶段"/,
-  'Stage tabs should be accessible as the candidate-pipeline stage navigator',
-);
-
-assert.match(
-  candidateList,
-  /当前阶段候选人/,
-  'Candidate list should clearly describe that it is showing the active stage only',
-);
-
-assert.match(
-  candidateList,
-  /showAll[\s\S]*stageLabel\(candidate\.stage\)/,
-  'All-stage candidate rows should show each candidate current stage',
-);
-
-assert.match(
-  candidatePanel,
-  /AI 建议/,
-  'Candidate detail panel should expose lightweight AI guidance',
-);
-
-assert.match(
-  candidatePanel,
-  /下一步动作/,
-  'Candidate detail panel should keep the next action obvious',
-);
-
-assert.match(
-  candidatePanel,
-  /填写面试反馈/,
-  'Interview-stage actions should send users to the concrete feedback task',
-);
-
-assert.match(
-  candidatePanel,
-  /记录 Offer/,
-  'Offer-stage actions should still preserve offer recording',
+  pipelinePage,
+  /HeaderFilter[\s\S]*FilterMenu[\s\S]*FilterItem/,
+  'Interview management should provide clickable table filters',
 );
 
 assert.match(

@@ -4,6 +4,7 @@ import { CANDIDATE_DETAIL_ROLES, CANDIDATE_LIST_ROLES } from './permissions';
 
 const CandidatesPage = lazy(() => import('./pages/CandidatesPage').then((module) => ({ default: module.CandidatesPage })));
 const CandidateProfilePage = lazy(() => import('./pages/CandidateProfilePage').then((module) => ({ default: module.CandidateProfilePage })));
+const TalentMapPage = lazy(() => import('../../pages/TalentMapPage').then((module) => ({ default: module.TalentMapPage })));
 
 export const candidatesRoutes: FeatureRoute[] = [
   {
@@ -15,5 +16,10 @@ export const candidatesRoutes: FeatureRoute[] = [
     path: '/candidates/:id',
     element: <CandidateProfilePage />,
     roles: CANDIDATE_DETAIL_ROLES,
+  },
+  {
+    path: '/talent-map',
+    element: <TalentMapPage />,
+    roles: CANDIDATE_LIST_ROLES,
   },
 ];

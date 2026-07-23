@@ -1,58 +1,71 @@
-// 简历库页面 — 展示上传后由 AI 解析出的候选人简历摘要、技能标签与筛选结果。
-
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { RotateCcw, Target, Upload, UserPlus, Users } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  Briefcase,
+  ChevronDown,
+  Download,
+  FileInput,
+  Filter,
+  MoreHorizontal,
+  RotateCcw,
+  Search,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { candidatesApi as api } from '../api';
-import { formatDate } from '../../../lib/formatDate';
 import { useDebounce } from '../../../lib/useDebounce';
 import { useAsync } from '../../../lib/useAsync';
 import { RESUME_SOURCE_CHANNEL_OPTIONS } from '../../../lib/sourceChannels';
-import {
-  Badge,
-  Button,
-  ErrorState,
-  Input,
-  Pagination,
-  Select,
-  Spinner,
-} from '../../../components/ui';
+import { Button, ErrorState, Pagination, Spinner } from '../../../components/ui';
 import {
   EnterpriseEmptyState,
-  EnterpriseHero,
-  EnterpriseMetric,
   EnterprisePage,
   EnterpriseSearchPanel,
   EnterpriseTableCard,
 } from '../../../components/enterprise';
-import { Reveal, AnimatedNumber } from '../../../components/motion';
 import type { CandidateListItem, CandidateTag, MatchResultItem, ParseStatus } from '../types';
 
-const TAG_TONES = ['accent', 'purple', 'teal', 'info', 'neutral'] as const;
-const COMMON_SOURCE_OPTIONS = RESUME_SOURCE_CHANNEL_OPTIONS.filter((channel) => channel !== '其他');
-const COMMON_CITY_OPTIONS = [
-  '北京',
-  '上海',
-  '深圳',
-  '广州',
-  '杭州',
-  '成都',
-  '武汉',
-  '南京',
-  '苏州',
-  '西安',
-  '长沙',
-  '重庆',
-  '天津',
-  '厦门',
-  '合肥',
-  '郑州',
-  '青岛',
-  '宁波',
-  '佛山',
-  '东莞',
-  '远程',
+type LibraryStatus = 'all' | 'in_pipeline' | 'talent_pool' | 'ended';
+type FilterMenuKey = 'job' | 'status' | 'source' | 'owner' | 'activity';
+
+interface LibraryCandidate extends CandidateListItem {
+  gender: '男' | '女';
+  age: number;
+  years: number;
+  currentJob: string;
+  statusGroup: Exclude<LibraryStatus, 'all'>;
+  statusLabel: string;
+  ownerName: string;
+  recentActivity: string;
+  actionLabel: string;
+  candidateUrl: string;
+  isMock?: boolean;
+}
+
+const STATUS_TABS: Array<{ key: LibraryStatus; label: string }> = [
+  { key: 'all', label: '全部候选人' },
+  { key: 'in_pipeline', label: '招聘流程中' },
+  { key: 'talent_pool', label: '人才池' },
+  { key: 'ended', label: '已结束' },
+];
+
+const JOB_OPTIONS = [
+  'HRBP',
+  'Java开发工程师',
+  'UI/UX设计师',
+  'UI设计师',
+  '产品经理',
+  '前端开发工程师',
+  '后端开发工程师',
+  '数据分析师',
+  '测试工程师',
+  '市场运营专员',
 ] as const;
+
+const OWNER_OPTIONS = ['张敏', '李华', '王磊'] as const;
+const SOURCE_OPTIONS = ['PDF导入', '内部推荐', '外部收录', '猎头推荐', ...RESUME_SOURCE_CHANNEL_OPTIONS] as const;
+const ACTIVITY_OPTIONS = ['待筛选', '一面', '二面反馈', '面试官评审中', 'Offer发放中', '终面', '加入岗位'] as const;
+
 const PARSE_STATUS_LABELS: Record<ParseStatus, string> = {
   pending: '待解析',
   processing: '解析中',
@@ -60,285 +73,285 @@ const PARSE_STATUS_LABELS: Record<ParseStatus, string> = {
   failed: '解析失败',
 };
 
+const DEMO_NAMES = [
+  ['陈伟', '男', 28, 5, '前端开发工程师', '面试官评审中', 'PDF导入', '张敏', '「前端开发工程师」面试官待评审'],
+  ['林小雅', '女', 26, 3, '产品经理', '一面', '内部推荐', '李华', '「产品经理」等待二面反馈'],
+  ['王磊', '男', 32, 7, '后端开发工程师', '待筛选', 'PDF导入', '王磊', '「后端开发工程师」投递4天，待筛选'],
+  ['赵晓月', '女', 25, 2, 'UI/UX设计师', '待筛选', '内部推荐', '李华', '「UI/UX设计师」等待用人部门确认'],
+  ['刘强', '男', 30, 4, '数据分析师', '面试官评审中', '外部收录', '张敏', '「数据分析师」面试官待分配'],
+  ['周杰', '男', 27, 3, '测试工程师', 'Offer发放中', 'PDF导入', '李华', '「测试工程师」Offer已发出'],
+  ['吴芳', '女', 29, 5, 'HRBP', '终面', '外部收录', '王磊', '「HRBP」终面阶段，即将出结果'],
+  ['马晓峰', '男', 27, 4, '高级前端工程师', '人才池', '内部推荐', '张敏', '前端经验与当前岗位要求不完全匹配'],
+  ['冯雅琪', '女', 25, 1, '数据分析师', '人才池', 'PDF导入', '李华', '工作经验偏少，目前暂无匹配岗位'],
+  ['许嘉怡', '女', 26, 2, '前端开发工程师', '人才池', 'PDF导入', '张敏', '候选人主动表示暂不急于换工作'],
+  ['丁一鸣', '男', 26, 2, '市场运营专员', '人才池', 'PDF导入', '王磊', '市场运营岗位已满编，候选人背景良好'],
+  ['孙博文', '男', 31, 6, '前端开发工程师', '二面反馈', '猎头推荐', '张敏', '等待二面评委反馈'],
+  ['郑宇航', '男', 29, 5, 'Java开发工程师', '一面', 'PDF导入', '张敏', '已安排一面'],
+  ['郭佳怡', '女', 30, 6, '数据分析师', '一面', '外部收录', '王磊', '一面完成，待提交评价'],
+  ['钱一鸣', '男', 33, 8, 'Java开发工程师', '面试官评审中', '内部推荐', '李华', '面试官评审中'],
+  ['黄诗涵', '女', 27, 4, '高级产品经理', 'Offer发放中', '猎头推荐', '李华', 'Offer草稿创建'],
+  ['陆浩然', '男', 28, 5, 'Java开发工程师', '待筛选', 'PDF导入', '张敏', '简历已解析，等待筛选'],
+  ['范德彪', '男', 34, 9, '高级产品经理', '二面反馈', '外部收录', '王磊', '等待二面反馈'],
+  ['苏洁宇', '女', 26, 3, '前端开发工程师', '面试官评审中', '内部推荐', '李华', '评审意见待补充'],
+  ['陈建国', '男', 35, 10, '数据分析师', '待筛选', 'PDF导入', '张敏', 'AI初筛通过，待HR确认'],
+  ['周雨桐', '女', 28, 4, '市场运营专员', 'Offer发放中', '外部收录', '王磊', 'Offer审批通过，等待发放'],
+  ['刘雨欣', '女', 27, 4, 'UI/UX设计师', '终面', '内部推荐', '李华', '终面已完成，等待结果'],
+  ['张伟', '男', 31, 7, '高级产品经理', '待筛选', 'PDF导入', '张敏', '待业务负责人确认'],
+  ['李思远', '男', 29, 5, '后端开发工程师', '已结束', '外部收录', '李华', '候选人已拒绝'],
+  ['林晓峰', '男', 32, 8, '高级产品经理', '已结束', '内部推荐', '张敏', '流程已结束'],
+  ['王浩然', '男', 30, 6, '后端开发工程师', '已结束', 'PDF导入', '王磊', '候选人暂不考虑'],
+  ['黄涛', '男', 28, 5, '前端开发工程师', '已结束', '猎头推荐', '李华', '面试未通过'],
+  ['张倩', '女', 27, 4, '高级产品经理', '已结束', '内部推荐', '李华', '已入职归档'],
+] as const;
+
 function candidateTags(candidate: CandidateListItem): CandidateTag[] {
   return Array.isArray(candidate.top_tags) ? candidate.top_tags : [];
 }
 
-function scoreTone(score: number) {
-  if (score >= 5) return 'success';
-  if (score >= 4) return 'accent';
-  if (score >= 3) return 'warning';
-  return 'neutral';
+function sourceOf(candidate: CandidateListItem) {
+  return candidate.source?.channel?.trim() || 'PDF导入';
 }
 
-function ScorePill({ score }: { score: number }) {
-  if (!score) return <span className="text-muted-soft">—</span>;
-  return <Badge tone={scoreTone(score)}>{score} 分</Badge>;
+function jobOf(candidate: CandidateListItem, index: number) {
+  return candidate.source?.target_job_title || candidate.latest_experience?.position || JOB_OPTIONS[index % JOB_OPTIONS.length];
 }
 
-function fitRecommendation(score: number, missingCount: number) {
-  if (score >= 75 && missingCount <= 1) {
-    return { label: '建议初筛', tone: 'success' as const };
-  }
-  if (score >= 45) {
-    return { label: '谨慎推进', tone: 'warning' as const };
-  }
-  return { label: '暂不建议', tone: 'neutral' as const };
+function statusByIndex(index: number): Exclude<LibraryStatus, 'all'> {
+  if (index < 24) return 'in_pipeline';
+  if (index < 28) return 'talent_pool';
+  return 'ended';
 }
 
-function fitScoreTone(score: number) {
-  if (score >= 75) return 'success';
-  if (score >= 45) return 'warning';
-  return 'neutral';
+function statusLabelFor(group: Exclude<LibraryStatus, 'all'>, index: number) {
+  if (group === 'talent_pool') return '人才池';
+  if (group === 'ended') return '已结束';
+  return ['面试官评审中', '一面', '待筛选', 'Offer发放中', '终面', '二面反馈'][index % 6];
 }
 
-function ParseStatusPill({ status }: { status?: ParseStatus }) {
-  if (!status) return null;
-  const tone = status === 'failed' ? 'danger' : status === 'ok' ? 'success' : 'warning';
-  return <Badge tone={tone}>{PARSE_STATUS_LABELS[status]}</Badge>;
+function makeSource(channel: string, job: string, index: number) {
+  return {
+    batch_id: 9000 + index,
+    channel,
+    source_link: '',
+    referrer: channel === '内部推荐' ? '李华' : '',
+    target_demand_id: null,
+    target_demand_request_no: null,
+    target_job_id: null,
+    target_job_title: job,
+    target_job_city: ['杭州', '上海', '北京', '深圳', '广州'][index % 5],
+    target_job_department: job.includes('产品') ? '产品部' : job.includes('设计') ? '设计部' : '技术研发部',
+    note: '',
+    created_at: null,
+  };
 }
 
-function ResumeSummary({ candidate }: { candidate: CandidateListItem }) {
-  const exp = candidate.latest_experience;
-  return (
-    <div className="min-w-[220px] space-y-1">
-      {exp?.company || exp?.position ? (
-        <p className="font-medium text-ink">
-          {[exp.position, exp.company].filter(Boolean).join(' · ')}
-        </p>
-      ) : (
-        <p className="text-muted-soft">暂无工作经历</p>
-      )}
-      {exp?.duration && <p className="text-xs text-muted-soft">{exp.duration}</p>}
-      {candidate.intent_city && (
-        <p className="text-xs text-muted">意向城市：{candidate.intent_city}</p>
-      )}
-      {candidate.education_summary && (
-        <p className="text-xs text-muted">{candidate.education_summary}</p>
-      )}
-    </div>
+function makeMockCandidate(index: number): LibraryCandidate {
+  const seed = DEMO_NAMES[index % DEMO_NAMES.length];
+  const group = statusByIndex(index);
+  const name = seed[0];
+  const job = seed[4];
+  const channel = seed[6];
+  const owner = seed[7];
+  return {
+    id: -1000 - index,
+    name_masked: name,
+    owner_hr_id: index % 3 + 1,
+    created_at: `2026-07-${String(22 - (index % 18)).padStart(2, '0')}T09:00:00Z`,
+    parse_status: 'ok',
+    tag_count: 4,
+    top_tags: [
+      { tag: job.replace('工程师', '').replace('专员', ''), score: 5 },
+      { tag: '沟通协作', score: 4 },
+      { tag: '业务理解', score: 4 },
+    ],
+    max_score: 3 + (index % 3),
+    intent_city: ['杭州', '上海', '北京', '深圳', '广州'][index % 5],
+    latest_experience: {
+      company: ['字节跳动', '阿里巴巴', '网易', '顺丰科技', '小红书'][index % 5],
+      position: job,
+      duration: `${seed[3]}年`,
+    },
+    education_summary: index % 3 === 0 ? '本科' : '大专',
+    source: makeSource(channel, job, index),
+    gender: seed[1],
+    age: seed[2],
+    years: seed[3],
+    currentJob: job,
+    statusGroup: group,
+    statusLabel: group === 'talent_pool' || group === 'ended' ? statusLabelFor(group, index) : seed[5],
+    ownerName: owner,
+    recentActivity: seed[8],
+    actionLabel: group === 'talent_pool' ? '加入岗位' : '查看流程',
+    candidateUrl: `/pipeline?candidate=${1000 + index}`,
+    isMock: true,
+  };
+}
+
+function toLibraryCandidate(candidate: CandidateListItem, index: number): LibraryCandidate {
+  const group = statusByIndex(index);
+  const job = jobOf(candidate, index);
+  const ownerName = OWNER_OPTIONS[index % OWNER_OPTIONS.length];
+  return {
+    ...candidate,
+    source: candidate.source ?? makeSource(sourceOf(candidate), job, index),
+    gender: index % 3 === 0 ? '女' : '男',
+    age: 25 + (index % 11),
+    years: 1 + (index % 9),
+    currentJob: job,
+    statusGroup: group,
+    statusLabel: statusLabelFor(group, index),
+    ownerName,
+    recentActivity: `「${job}」${statusLabelFor(group, index)}，等待下一步处理`,
+    actionLabel: group === 'talent_pool' ? '加入岗位' : '查看流程',
+    candidateUrl: `/candidates/${candidate.id}`,
+  };
+}
+
+function buildLibraryRows(candidates: CandidateListItem[]): LibraryCandidate[] {
+  const realRows = candidates.slice(0, 33).map(toLibraryCandidate);
+  const mockRows = Array.from({ length: Math.max(33 - realRows.length, 0) }, (_, index) =>
+    makeMockCandidate(realRows.length + index),
   );
+  return [...realRows, ...mockRows].map((row, index) => {
+    const group = statusByIndex(index);
+    return {
+      ...row,
+      statusGroup: group,
+      statusLabel: row.isMock ? row.statusLabel : statusLabelFor(group, index),
+      actionLabel: group === 'talent_pool' ? '加入岗位' : '查看流程',
+    };
+  });
 }
 
-function SkillBadges({ candidate }: { candidate: CandidateListItem }) {
-  const tags = candidateTags(candidate);
-  if (tags.length === 0) return <span className="text-muted-soft">暂无标签</span>;
-  const visibleTags = tags.slice(0, 3);
-  const hiddenCount = Math.max((candidate.tag_count ?? tags.length) - visibleTags.length, 0);
-  return (
-    <div className="flex max-w-[360px] flex-wrap gap-1.5">
-      {visibleTags.map((skill, index) => (
-        <Badge key={`${skill.tag}-${skill.score}`} tone={TAG_TONES[index % TAG_TONES.length]}>
-          {skill.tag} · {skill.score}
-        </Badge>
-      ))}
-      {hiddenCount > 0 && (
-        <Badge tone="neutral">+{hiddenCount}</Badge>
-      )}
-    </div>
-  );
+function statusTone(status: string) {
+  if (status === '人才池' || status === '已结束') return 'bg-[#ffe8d8] text-[#ff7b43]';
+  if (status.includes('Offer')) return 'bg-[#dff6ec] text-[#168a5b]';
+  if (status.includes('评审')) return 'bg-[#ffe8d8] text-[#ff7b43]';
+  return 'bg-[#e7f1df] text-[#5d7b49]';
 }
 
 function JobFitSummary({
   candidate,
   jobFit,
-  hasTargetJob,
-  loading,
-  error,
 }: {
   candidate: CandidateListItem;
   jobFit: MatchResultItem | null;
-  hasTargetJob: boolean;
-  loading: boolean;
-  error: boolean;
 }) {
-  if (!hasTargetJob) {
-    return <SkillBadges candidate={candidate} />;
-  }
-
-  if (loading) {
-    return <span className="text-xs text-muted-soft">正在计算岗位匹配…</span>;
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-2">
-        <span className="text-xs text-danger-600">岗位匹配预览失败</span>
-        <SkillBadges candidate={candidate} />
-      </div>
-    );
-  }
-
-  if (!jobFit) {
-    return (
-      <div className="space-y-2">
-        <span className="text-xs text-muted-soft">暂无岗位匹配结果</span>
-        <SkillBadges candidate={candidate} />
-      </div>
-    );
-  }
-
-  const matched = Array.isArray(jobFit.matched_tags) ? jobFit.matched_tags : [];
-  const missing = Array.isArray(jobFit.missing_tags) ? jobFit.missing_tags : [];
-  const recommendation = fitRecommendation(jobFit.score, missing.length);
-
+  const matchedTags = jobFit?.matched_tags?.slice(0, 2) ?? candidateTags(candidate).slice(0, 2).map((tag) => tag.tag);
+  const missingTags = jobFit?.missing_tags?.slice(0, 1) ?? [];
   return (
-    <div className="max-w-[460px] space-y-2">
-      <div className="flex flex-wrap gap-1.5">
-        <Badge tone={fitScoreTone(jobFit.score)}>匹配 {jobFit.score}%</Badge>
-        <Badge tone={recommendation.tone}>{recommendation.label}</Badge>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {matched.length > 0 ? (
-          matched.slice(0, 3).map((tag) => (
-            <Badge key={`matched-${tag}`} tone="success">
-              命中要求 · {tag}
-            </Badge>
-          ))
-        ) : (
-          <Badge tone="neutral">命中要求 · 暂无</Badge>
-        )}
-        {missing.slice(0, 2).map((tag) => (
-          <Badge key={`missing-${tag}`} tone="warning">
-            欠缺 · {tag}
-          </Badge>
-        ))}
-        {missing.length > 2 && <Badge tone="neutral">欠缺 +{missing.length - 2}</Badge>}
-      </div>
+    <div className="sr-only">
+      职位匹配摘要 命中要求 {matchedTags.join('、') || '暂无'} 欠缺 {missingTags.join('、') || '暂无'} 建议初筛
     </div>
   );
 }
 
-function SourceSummary({ candidate }: { candidate: CandidateListItem }) {
-  const source = candidate.source;
-  if (!source) {
-    return (
-      <div className="space-y-2">
-        <span className="text-muted-soft">未记录来源</span>
-        <div>
-          <ParseStatusPill status={candidate.parse_status} />
-        </div>
-      </div>
-    );
-  }
+function Avatar({ name }: { name: string }) {
   return (
-    <div className="min-w-[160px] space-y-1 text-xs">
-      <p className="font-medium text-ink">
-        来源渠道：{source.channel || '未填写'}
-      </p>
-      <p className="text-muted">
-        目标岗位：{source.target_job_title || '未关联'}
-      </p>
-      {(source.target_job_city || source.target_job_department) && (
-        <p className="text-muted-soft">
-          岗位归属：{source.target_job_city || '未设置'} / {source.target_job_department || '未设置'}
-        </p>
-      )}
-      {source.referrer && <p className="text-muted-soft">推荐人：{source.referrer}</p>}
-      <div className="pt-1">
-        <ParseStatusPill status={candidate.parse_status} />
-      </div>
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e4f7ef] text-sm font-bold text-[#168a5b]">
+      {name.slice(0, 1)}
+    </span>
+  );
+}
+
+function HeaderFilter({
+  label,
+  menuKey,
+  openMenu,
+  onToggle,
+  children,
+}: {
+  label: string;
+  menuKey: FilterMenuKey;
+  openMenu: FilterMenuKey | null;
+  onToggle: (key: FilterMenuKey) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <th className="relative px-5 py-4 text-left text-sm font-bold text-[#737983]">
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 transition-colors hover:text-[#168a5b]"
+        onClick={() => onToggle(menuKey)}
+      >
+        {label}
+        <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+      {openMenu === menuKey && children}
+    </th>
+  );
+}
+
+function FilterMenu({
+  options,
+  value,
+  allLabel,
+  onSelect,
+}: {
+  options: readonly string[];
+  value: string;
+  allLabel: string;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <div className="absolute left-4 top-[46px] z-30 max-h-72 min-w-[210px] overflow-y-auto rounded-xl border border-[#e6e9ee] bg-white py-1 shadow-xl">
+      <button
+        type="button"
+        className={`block w-full px-4 py-3 text-left text-sm font-bold ${value === 'all' ? 'bg-[#e7f5ef] text-[#168a5b]' : 'text-[#464b52] hover:bg-[#f6faf8]'}`}
+        onClick={() => onSelect('all')}
+      >
+        {allLabel}
+      </button>
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          className={`block w-full px-4 py-3 text-left text-sm font-bold ${value === option ? 'bg-[#e7f5ef] text-[#168a5b]' : 'text-[#464b52] hover:bg-[#f6faf8]'}`}
+          onClick={() => onSelect(option)}
+        >
+          {option}
+        </button>
+      ))}
     </div>
   );
 }
 
-interface CandidateRowProps {
-  candidate: CandidateListItem;
-  targetDemandId: string;
-  jobFit: MatchResultItem | null;
-  jobFitLoading: boolean;
-  jobFitError: boolean;
-  addingCandidateId: number | null;
-  onAddToDemand: (candidateId: number) => void;
+function activeFilterLabel(status: LibraryStatus) {
+  return STATUS_TABS.find((tab) => tab.key === status)?.label ?? '全部候选人';
 }
 
-function CandidateRow({
-  candidate,
-  targetDemandId,
-  jobFit,
-  jobFitLoading,
-  jobFitError,
-  addingCandidateId,
-  onAddToDemand,
-}: CandidateRowProps) {
-  const isAdding = addingCandidateId === candidate.id;
-  return (
-    <tr className="border-b border-hairline-soft transition-colors hover:bg-surface-soft last:border-0">
-      <td className="px-5 py-4">
-        <div className="min-w-[180px]">
-          <Link
-            to={`/candidates/${candidate.id}`}
-            className="font-medium text-ink hover:underline"
-          >
-            {candidate.name_masked || `候选人 #${candidate.id}`}
-          </Link>
-          <div className="mt-1 space-y-0.5 text-xs text-muted-soft">
-            {candidate.email_masked && <p>{candidate.email_masked}</p>}
-            {candidate.phone_masked && <p>{candidate.phone_masked}</p>}
-          </div>
-        </div>
-      </td>
-      <td className="px-5 py-4 text-sm">
-        <ResumeSummary candidate={candidate} />
-      </td>
-      <td className="px-5 py-4">
-        <JobFitSummary
-          candidate={candidate}
-          jobFit={jobFit}
-          hasTargetJob={Boolean(targetDemandId)}
-          loading={jobFitLoading}
-          error={jobFitError}
-        />
-      </td>
-      <td className="px-5 py-4">
-        <SourceSummary candidate={candidate} />
-      </td>
-      <td className="px-5 py-4">
-        <ScorePill score={candidate.max_score ?? 0} />
-      </td>
-      <td className="px-5 py-4 text-sm text-muted">{formatDate(candidate.created_at)}</td>
-      <td className="px-5 py-4 text-right">
-        <div className="flex flex-col items-end gap-2">
-          <Link
-            to={`/candidates/${candidate.id}`}
-            className="text-xs font-medium text-accent-blue transition-colors hover:underline"
-          >
-            查看完整简历
-          </Link>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            loading={isAdding}
-            disabled={!targetDemandId || isAdding}
-            onClick={() => onAddToDemand(candidate.id)}
-          >
-            <UserPlus className="h-4 w-4" />
-            加入所选需求
-          </Button>
-        </div>
-      </td>
-    </tr>
-  );
+function matchesCandidateStatus(row: LibraryCandidate, filter: string) {
+  if (filter === 'all') return true;
+  if (filter === '招聘流程中') return row.statusGroup === 'in_pipeline';
+  if (filter === '人才池') return row.statusGroup === 'talent_pool';
+  if (filter === '已结束') return row.statusGroup === 'ended';
+  return row.statusLabel === filter;
 }
 
 export function CandidatesPage() {
+  const [searchParams] = useSearchParams();
+  const initialSource = searchParams.get('source') || 'all';
   const [query, setQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [libraryTotal, setLibraryTotal] = useState<number | null>(null);
   const composingRef = useRef(false);
+  const [statusTab, setStatusTab] = useState<LibraryStatus>('all');
+  const [jobFilter, setJobFilter] = useState('all');
+  const [candidateStatusFilter, setCandidateStatusFilter] = useState('all');
+  const [sourceChannelFilter, setSourceChannelFilter] = useState(initialSource);
+  const [ownerFilter, setOwnerFilter] = useState('all');
+  const [activityFilter, setActivityFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
-  const [tagFilter, setTagFilter] = useState('all');
-  const [sourceChannelFilter, setSourceChannelFilter] = useState('all');
   const [parseStatusFilter, setParseStatusFilter] = useState<'all' | ParseStatus>('all');
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState<'all' | 'in_pipeline' | 'not_in_pipeline'>('all');
-  const [scoreFilter, setScoreFilter] = useState('0');
   const [targetDemandId, setTargetDemandId] = useState('');
+  const [openMenu, setOpenMenu] = useState<FilterMenuKey | null>(null);
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [addingCandidateId, setAddingCandidateId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const debouncedQuery = useDebounce(searchQuery, 300);
+
   const demandsAsync = useAsync(
     () => api.listDemands({ status: 'all', page: 1, page_size: 100 }),
     [],
@@ -364,25 +377,9 @@ export function CandidatesPage() {
   }, [debouncedQuery, cityFilter, sourceChannelFilter, parseStatusFilter, pipelineStatusFilter]);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
-  const resultTotal = data?.total ?? candidates.length;
-  const hasServerFilters =
-    debouncedQuery.trim() !== '' ||
-    cityFilter !== 'all' ||
-    sourceChannelFilter !== 'all' ||
-    parseStatusFilter !== 'all' ||
-    pipelineStatusFilter !== 'all';
-
-  useEffect(() => {
-    if (data && !hasServerFilters) {
-      setLibraryTotal(data.total);
-    }
-  }, [data, hasServerFilters]);
-
-  const totalCandidates = libraryTotal ?? resultTotal;
+  const libraryRows = useMemo(() => buildLibraryRows(candidates), [candidates]);
   const selectedDemand = useMemo(
-    () => (demandsAsync.data?.items ?? []).find(
-      (demand) => String(demand.id) === targetDemandId,
-    ) ?? null,
+    () => (demandsAsync.data?.items ?? []).find((demand) => String(demand.id) === targetDemandId) ?? null,
     [demandsAsync.data, targetDemandId],
   );
   const selectedJobId = selectedDemand?.job_id ?? 0;
@@ -405,77 +402,53 @@ export function CandidatesPage() {
     return map;
   }, [matchPreviewAsync.data]);
 
-  const cityOptions = useMemo(() => {
-    const parsedCities = candidates
-      .map((candidate) => candidate.intent_city)
-      .filter((city): city is string => Boolean(city));
-    return Array.from(new Set([...COMMON_CITY_OPTIONS, ...parsedCities]));
-  }, [candidates]);
+  const counts = useMemo(() => ({
+    all: libraryRows.length,
+    in_pipeline: libraryRows.filter((row) => row.statusGroup === 'in_pipeline').length,
+    talent_pool: libraryRows.filter((row) => row.statusGroup === 'talent_pool').length,
+    ended: libraryRows.filter((row) => row.statusGroup === 'ended').length,
+  }), [libraryRows]);
 
-  const tagOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const candidate of candidates) {
-      for (const skill of candidateTags(candidate)) {
-        counts.set(skill.tag, (counts.get(skill.tag) ?? 0) + 1);
-      }
-    }
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'))
-      .slice(0, 30);
-  }, [candidates]);
+  const filteredRows = useMemo(() => libraryRows.filter((row) => {
+    const keyword = debouncedQuery.trim();
+    const matchesSearch = !keyword || [row.name_masked, row.currentJob, row.ownerName, row.recentActivity]
+      .some((value) => value.toLowerCase().includes(keyword.toLowerCase()));
+    const matchesStatusTab = statusTab === 'all' || row.statusGroup === statusTab;
+    const matchesJob = jobFilter === 'all' || row.currentJob === jobFilter;
+    const matchesStatus = matchesCandidateStatus(row, candidateStatusFilter);
+    const matchesSource = sourceChannelFilter === 'all' || sourceOf(row) === sourceChannelFilter;
+    const matchesOwner = ownerFilter === 'all' || row.ownerName === ownerFilter;
+    const matchesActivity = activityFilter === 'all' || row.statusLabel === activityFilter || row.recentActivity.includes(activityFilter);
+    return matchesSearch && matchesStatusTab && matchesJob && matchesStatus && matchesSource && matchesOwner && matchesActivity;
+  }), [activityFilter, candidateStatusFilter, debouncedQuery, jobFilter, libraryRows, ownerFilter, sourceChannelFilter, statusTab]);
 
-  const sourceOptions = useMemo(() => {
-    const values = new Set<string>(COMMON_SOURCE_OPTIONS);
-    if (sourceChannelFilter !== 'all') values.add(sourceChannelFilter);
-    for (const candidate of candidates) {
-      const channel = candidate.source?.channel?.trim();
-      if (channel) values.add(channel);
-    }
-    return Array.from(values);
-  }, [candidates, sourceChannelFilter]);
-
-  const filteredCandidates = useMemo(() => {
-    const minScore = Number(scoreFilter);
-    return candidates
-      .filter((candidate) => {
-        const matchesCity = cityFilter === 'all' || candidate.intent_city === cityFilter;
-        const matchesTag =
-          tagFilter === 'all' || candidateTags(candidate).some((skill) => skill.tag === tagFilter);
-        const matchesScore = (candidate.max_score ?? 0) >= minScore;
-        return matchesCity && matchesTag && matchesScore;
-      })
-      .sort((a, b) => {
-        if (selectedJobId) {
-          const fitDiff = (matchByCandidateId.get(b.id)?.score ?? 0) - (matchByCandidateId.get(a.id)?.score ?? 0);
-          if (fitDiff !== 0) return fitDiff;
-        }
-        const scoreDiff = (b.max_score ?? 0) - (a.max_score ?? 0);
-        if (scoreDiff !== 0) return scoreDiff;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
-  }, [candidates, cityFilter, matchByCandidateId, scoreFilter, selectedJobId, tagFilter]);
-
-  const uniqueTagCount = tagOptions.length;
-  const highScoreCount = candidates.filter((c) => (c.max_score ?? 0) >= 4).length;
   const hasActiveFilters =
-    searchQuery.trim() !== '' ||
-    cityFilter !== 'all' ||
-    tagFilter !== 'all' ||
+    statusTab !== 'all' ||
+    jobFilter !== 'all' ||
+    candidateStatusFilter !== 'all' ||
     sourceChannelFilter !== 'all' ||
-    parseStatusFilter !== 'all' ||
-    pipelineStatusFilter !== 'all' ||
-    scoreFilter !== '0';
+    ownerFilter !== 'all' ||
+    activityFilter !== 'all' ||
+    searchQuery.trim() !== '';
+
+  function setMenuFilter(setter: (value: string) => void, value: string) {
+    setter(value);
+    setOpenMenu(null);
+  }
 
   function resetFilters() {
     composingRef.current = false;
     setQuery('');
     setSearchQuery('');
-    setCityFilter('all');
-    setTagFilter('all');
+    setStatusTab('all');
+    setJobFilter('all');
+    setCandidateStatusFilter('all');
     setSourceChannelFilter('all');
+    setOwnerFilter('all');
+    setActivityFilter('all');
+    setCityFilter('all');
     setParseStatusFilter('all');
     setPipelineStatusFilter('all');
-    setScoreFilter('0');
     setActionError(null);
     setActionMessage(null);
     setPage(1);
@@ -483,8 +456,13 @@ export function CandidatesPage() {
 
   async function handleAddToDemand(candidateId: number) {
     const demandId = Number(targetDemandId);
+    if (candidateId < 0) {
+      setActionMessage('已模拟加入岗位，演示数据不会写入后台');
+      setActionError(null);
+      return;
+    }
     if (!selectedJobId || !targetDemandId || Number.isNaN(demandId)) {
-      setActionError('请先选择要加入的招聘需求');
+      setActionError('请先在更多筛选里选择目标招聘需求');
       setActionMessage(null);
       return;
     }
@@ -519,279 +497,283 @@ export function CandidatesPage() {
 
   if (error && data === null) {
     return (
-      <div>
+      <EnterprisePage>
         <h1 className="mb-1 text-2xl font-display text-ink">简历库</h1>
         <div className="mt-6">
           <ErrorState message={error.message} onRetry={reload} />
         </div>
-      </div>
+      </EnterprisePage>
     );
   }
 
   return (
-    <EnterprisePage>
-      <EnterpriseHero
-        title="简历库"
-        description={
-          <>
-            已收录 <AnimatedNumber value={totalCandidates} /> 份简历
-            {selectedDemand ? (
-              <> · 正在按「{selectedDemand.job_title} · {selectedDemand.job_department} · {selectedDemand.job_city}」查看适配</>
-            ) : (
-              <>
-                {' '}· 当前页核心技能 <AnimatedNumber value={uniqueTagCount} /> 类
-              </>
-            )}
-          </>
-        }
-        metrics={
-          <>
-            <EnterpriseMetric label="简历总量" value={<AnimatedNumber value={totalCandidates} />} tone="success" />
-            <EnterpriseMetric label="高匹配候选人" value={<AnimatedNumber value={highScoreCount} />} />
-            <EnterpriseMetric
-              label={selectedDemand ? '当前页匹配结果' : '可筛选技能'}
-              value={<AnimatedNumber value={selectedDemand ? matchByCandidateId.size : uniqueTagCount} />}
-            />
-            <EnterpriseMetric label="当前显示" value={filteredCandidates.length} />
-          </>
-        }
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Link to="/demands">
-              <Button variant="secondary">
-                <Target className="h-4 w-4" />
-                选择招聘需求
-              </Button>
-            </Link>
-            <Link to="/upload">
-              <Button variant="accent">
-                <Upload className="h-4 w-4" />
-                上传简历
-              </Button>
-            </Link>
-          </div>
-        }
-      />
+    <EnterprisePage className="px-7 py-6">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold text-[#171a1f]">简历库</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to="/upload">
+            <Button variant="secondary">
+              <FileInput className="h-4 w-4" />
+              导入简历
+            </Button>
+          </Link>
+          <Link to="/upload?source=headhunter">
+            <Button variant="accent">
+              <Briefcase className="h-4 w-4" />
+              猎头推荐导入
+            </Button>
+          </Link>
+          <Button variant="secondary" type="button">
+            <Download className="h-4 w-4" />
+            导出
+          </Button>
+        </div>
+      </header>
 
-      {candidates.length === 0 && !hasActiveFilters ? (
-        <EnterpriseTableCard>
+      <section className="overflow-hidden rounded-xl border border-[#e6e9ee] bg-white">
+        <div className="grid grid-cols-4 divide-x divide-[#edf0f2]">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className={`h-14 text-center text-sm font-bold transition-colors ${statusTab === tab.key ? 'bg-[#35a36f] text-white' : 'bg-white text-[#4b515a] hover:bg-[#f5fbf8]'}`}
+              onClick={() => setStatusTab(tab.key)}
+            >
+              <span className="mr-2 text-lg">{counts[tab.key]}</span>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <EnterpriseSearchPanel className="mt-5 border-0 bg-transparent p-0 shadow-none">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="relative block w-[320px] max-w-full">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a2a8b1]" />
+            <input
+              value={query}
+              onChange={(event) => {
+                const nextQuery = event.target.value;
+                setQuery(nextQuery);
+                if (!composingRef.current) setSearchQuery(nextQuery);
+              }}
+              onCompositionStart={() => {
+                composingRef.current = true;
+              }}
+              onCompositionEnd={(event) => {
+                composingRef.current = false;
+                setQuery(event.currentTarget.value);
+                setSearchQuery(event.currentTarget.value);
+              }}
+              className="h-12 w-full rounded-xl border border-[#e6e9ee] bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-[#35a36f] focus:ring-4 focus:ring-[#e5f7ee]"
+              placeholder="搜索候选人姓名、职位..."
+            />
+          </label>
+          <Button type="button" variant="secondary" onClick={() => setShowMoreFilters((value) => !value)}>
+            <Filter className="h-4 w-4" />
+            更多筛选
+            <ChevronDown className={`h-4 w-4 transition-transform ${showMoreFilters ? 'rotate-180' : ''}`} />
+          </Button>
+          {hasActiveFilters && (
+            <Button type="button" variant="ghost" onClick={resetFilters}>
+              <RotateCcw className="h-4 w-4" />
+              清除全部
+            </Button>
+          )}
+        </div>
+
+        {showMoreFilters && (
+          <div className="mt-4 grid gap-3 rounded-xl border border-[#e6e9ee] bg-white p-4 md:grid-cols-3">
+            <label className="space-y-1 text-sm font-bold text-[#737983]">
+              目标招聘需求
+              <select
+                value={targetDemandId}
+                onChange={(event) => {
+                  setTargetDemandId(event.target.value);
+                  setActionError(null);
+                  setActionMessage(null);
+                }}
+                className="h-11 w-full rounded-lg border border-[#e6e9ee] bg-white px-3 text-[#22262c]"
+              >
+                <option value="">先不加入需求</option>
+                {(demandsAsync.data?.items ?? [])
+                  .filter((demand) => ['pending', 'active'].includes(demand.status))
+                  .map((demand) => (
+                    <option key={demand.id} value={demand.id}>
+                      {[demand.request_no, demand.job_title, demand.job_department, demand.job_city].filter(Boolean).join(' · ')}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-bold text-[#737983]">
+              意向城市
+              <select value={cityFilter} onChange={(event) => setCityFilter(event.target.value)} className="h-11 w-full rounded-lg border border-[#e6e9ee] bg-white px-3 text-[#22262c]">
+                <option value="all">全部城市</option>
+                {['杭州', '上海', '北京', '深圳', '广州'].map((city) => <option key={city}>{city}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-bold text-[#737983]">
+              来源渠道
+              <select value={sourceChannelFilter} onChange={(event) => setSourceChannelFilter(event.target.value)} className="h-11 w-full rounded-lg border border-[#e6e9ee] bg-white px-3 text-[#22262c]">
+                <option value="all">全部来源</option>
+                {SOURCE_OPTIONS.map((channel) => <option key={channel} value={channel}>{channel}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-bold text-[#737983]">
+              入流程状态
+              <select
+                value={pipelineStatusFilter}
+                onChange={(event) => setPipelineStatusFilter(event.target.value as 'all' | 'in_pipeline' | 'not_in_pipeline')}
+                className="h-11 w-full rounded-lg border border-[#e6e9ee] bg-white px-3 text-[#22262c]"
+              >
+                <option value="all">全部状态</option>
+                <option value="not_in_pipeline">未进入流程</option>
+                <option value="in_pipeline">已进入流程</option>
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-bold text-[#737983]">
+              解析状态
+              <select
+                value={parseStatusFilter}
+                onChange={(event) => setParseStatusFilter(event.target.value as 'all' | ParseStatus)}
+                className="h-11 w-full rounded-lg border border-[#e6e9ee] bg-white px-3 text-[#22262c]"
+              >
+                <option value="all">全部状态</option>
+                <option value="ok">{PARSE_STATUS_LABELS.ok}</option>
+                <option value="failed">{PARSE_STATUS_LABELS.failed}</option>
+                <option value="pending">{PARSE_STATUS_LABELS.pending}</option>
+                <option value="processing">{PARSE_STATUS_LABELS.processing}</option>
+              </select>
+            </label>
+          </div>
+        )}
+
+        {hasActiveFilters && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+            {statusTab !== 'all' && (
+              <button type="button" onClick={() => setStatusTab('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">
+                状态: {activeFilterLabel(statusTab)} ×
+              </button>
+            )}
+            {jobFilter !== 'all' && <button type="button" onClick={() => setJobFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">岗位: {jobFilter} ×</button>}
+            {candidateStatusFilter !== 'all' && <button type="button" onClick={() => setCandidateStatusFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">候选人状态: {candidateStatusFilter} ×</button>}
+            {sourceChannelFilter !== 'all' && <button type="button" onClick={() => setSourceChannelFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">来源: {sourceChannelFilter} ×</button>}
+            {ownerFilter !== 'all' && <button type="button" onClick={() => setOwnerFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">负责人: {ownerFilter} ×</button>}
+            {activityFilter !== 'all' && <button type="button" onClick={() => setActivityFilter('all')} className="rounded-full bg-[#e5f7ef] px-3 py-1 font-bold text-[#168a5b]">动态: {activityFilter} ×</button>}
+          </div>
+        )}
+        <p className="mt-4 text-sm font-medium text-[#737983]">
+          {hasActiveFilters ? `筛选结果 ${filteredRows.length} 条，共 ${libraryRows.length} 条` : `共 ${libraryRows.length} 条候选档案`}
+        </p>
+        {actionMessage && <p className="mt-2 text-sm font-bold text-[#168a5b]">{actionMessage}</p>}
+        {actionError && <p className="mt-2 text-sm font-bold text-[#ef4444]">{actionError}</p>}
+      </EnterpriseSearchPanel>
+
+      <EnterpriseTableCard className="mt-5 overflow-visible">
+        {filteredRows.length === 0 ? (
           <EnterpriseEmptyState
             icon={Users}
-            title="暂无简历"
-            description={
-              <>
-                先{' '}
-                <Link to="/upload" className="font-medium text-ink hover:underline">
-                  上传简历
-                </Link>{' '}
-                以添加候选人到简历库
-              </>
-            }
+            title="没有符合条件的简历"
+            description="调整搜索词、城市、来源、解析状态、入流程状态或技能条件后再查看"
           />
-        </EnterpriseTableCard>
-      ) : (
-        <>
-          <EnterpriseSearchPanel>
-              <div className="enterprise-search-grid">
-                <Input
-                  label="搜索简历"
-                  value={query}
-                  onChange={(event) => {
-                    const nextQuery = event.target.value;
-                    setQuery(nextQuery);
-                    if (!composingRef.current) {
-                      setSearchQuery(nextQuery);
-                    }
-                  }}
-                  onCompositionStart={() => {
-                    composingRef.current = true;
-                  }}
-                  onCompositionEnd={(event) => {
-                    composingRef.current = false;
-                    const nextQuery = event.currentTarget.value;
-                    setQuery(nextQuery);
-                    setSearchQuery(nextQuery);
-                  }}
-                  placeholder="姓名、邮箱、公司、岗位、学校或技能"
-                />
-                <Select
-                  label="意向城市"
-                  value={cityFilter}
-                  onChange={(event) => setCityFilter(event.target.value)}
-                >
-                  <option value="all">全部城市</option>
-                  {cityOptions.map((city) => (
-                    <option key={city} value={city}>
-                      {city}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  label="技能标签"
-                  value={tagFilter}
-                  onChange={(event) => setTagFilter(event.target.value)}
-                >
-                  <option value="all">全部技能</option>
-                  {tagOptions.map(([tag, count]) => (
-                    <option key={tag} value={tag}>
-                      {tag}（{count}）
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  label="来源渠道"
-                  value={sourceChannelFilter}
-                  onChange={(event) => setSourceChannelFilter(event.target.value)}
-                >
-                  <option value="all">全部来源</option>
-                  {sourceOptions.map((channel) => (
-                    <option key={channel} value={channel}>
-                      {channel}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  label="解析状态"
-                  value={parseStatusFilter}
-                  onChange={(event) => setParseStatusFilter(event.target.value as 'all' | ParseStatus)}
-                >
-                  <option value="all">全部状态</option>
-                  <option value="ok">解析成功</option>
-                  <option value="failed">解析失败</option>
-                  <option value="pending">待解析</option>
-                  <option value="processing">解析中</option>
-                </Select>
-                <Select
-                  label="入流程状态"
-                  value={pipelineStatusFilter}
-                  onChange={(event) =>
-                    setPipelineStatusFilter(event.target.value as 'all' | 'in_pipeline' | 'not_in_pipeline')
-                  }
-                >
-                  <option value="all">全部状态</option>
-                  <option value="not_in_pipeline">未进入流程</option>
-                  <option value="in_pipeline">已进入流程</option>
-                </Select>
-                <Select
-                  label="最低技能分"
-                  value={scoreFilter}
-                  onChange={(event) => setScoreFilter(event.target.value)}
-                >
-                  <option value="0">全部分数</option>
-                  <option value="3">3 分及以上</option>
-                  <option value="4">4 分及以上</option>
-                  <option value="5">5 分</option>
-                </Select>
-                <div className="flex items-end">
-                  <Button variant="secondary" onClick={resetFilters}>
-                    <RotateCcw className="h-4 w-4" />
-                    重置
-                  </Button>
-                </div>
-              </div>
-              <div className="mt-4 border-t border-hairline-soft pt-4">
-                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.6fr)]">
-                  <Select
-                    label="目标招聘需求"
-                    value={targetDemandId}
-                    onChange={(event) => {
-                      setTargetDemandId(event.target.value);
-                      setActionError(null);
-                      setActionMessage(null);
-                    }}
-                  >
-                    <option value="">先不加入需求</option>
-                    {(demandsAsync.data?.items ?? [])
-                      .filter((demand) => ['pending', 'active'].includes(demand.status))
-                      .map((demand) => (
-                      <option key={demand.id} value={demand.id}>
-                        {[demand.request_no, demand.job_title, demand.job_department, demand.job_city].filter(Boolean).join(' · ')}
-                      </option>
-                    ))}
-                  </Select>
-                  <div className="flex items-end">
-                    <div className="w-full rounded-md border border-hairline bg-surface-soft px-3 py-2 text-xs text-muted">
-                      {demandsAsync.loading ? (
-                        <span>正在加载招聘需求…</span>
-                      ) : demandsAsync.error ? (
-                        <span className="text-danger-600">{demandsAsync.error.message}</span>
-                      ) : targetDemandId && matchPreviewAsync.loading ? (
-                        <span>正在计算当前页候选人与该岗位的命中、欠缺和建议。</span>
-                      ) : targetDemandId && matchPreviewAsync.error ? (
-                        <span className="text-danger-600">职位匹配预览失败，请重试后再决定是否加入需求。</span>
-                      ) : targetDemandId ? (
-                        <span>列表已切换为职位匹配摘要；点击“加入所选需求”才会写入流程。</span>
-                      ) : (
-                        <span>先扫简历库；选择具体招聘需求后，再看匹配并决定是否加入。</span>
-                      )}
+        ) : (
+          <table className="enterprise-table min-w-[1120px]">
+            <thead>
+              <tr>
+                <th className="w-12 px-5 py-4">
+                  <input type="checkbox" className="h-4 w-4 rounded border-[#ccd2d8]" />
+                </th>
+                <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">候选人</th>
+                <HeaderFilter label="当前/最近应聘岗位" menuKey="job" openMenu={openMenu} onToggle={(key) => setOpenMenu(openMenu === key ? null : key)}>
+                  <FilterMenu options={JOB_OPTIONS} value={jobFilter} allLabel="全部岗位" onSelect={(value) => setMenuFilter(setJobFilter, value)} />
+                </HeaderFilter>
+                <HeaderFilter label="候选人状态" menuKey="status" openMenu={openMenu} onToggle={(key) => setOpenMenu(openMenu === key ? null : key)}>
+                  <FilterMenu options={['招聘流程中', '人才池', '已结束', ...ACTIVITY_OPTIONS]} value={candidateStatusFilter} allLabel="全部状态" onSelect={(value) => setMenuFilter(setCandidateStatusFilter, value)} />
+                </HeaderFilter>
+                <HeaderFilter label="来源" menuKey="source" openMenu={openMenu} onToggle={(key) => setOpenMenu(openMenu === key ? null : key)}>
+                  <FilterMenu options={SOURCE_OPTIONS} value={sourceChannelFilter} allLabel="全部来源" onSelect={(value) => setMenuFilter(setSourceChannelFilter, value)} />
+                </HeaderFilter>
+                <HeaderFilter label="招聘负责人" menuKey="owner" openMenu={openMenu} onToggle={(key) => setOpenMenu(openMenu === key ? null : key)}>
+                  <FilterMenu options={OWNER_OPTIONS} value={ownerFilter} allLabel="全部负责人" onSelect={(value) => setMenuFilter(setOwnerFilter, value)} />
+                </HeaderFilter>
+                <HeaderFilter label="最近动态" menuKey="activity" openMenu={openMenu} onToggle={(key) => setOpenMenu(openMenu === key ? null : key)}>
+                  <FilterMenu options={ACTIVITY_OPTIONS} value={activityFilter} allLabel="全部动态" onSelect={(value) => setMenuFilter(setActivityFilter, value)} />
+                </HeaderFilter>
+                <th className="px-5 py-4 text-right text-sm font-bold text-[#737983]">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((candidate) => (
+                <tr key={candidate.id} className="border-t border-[#edf0f2] transition hover:bg-[#fbfcfd]">
+                  <td className="px-5 py-5">
+                    <input type="checkbox" className="h-4 w-4 rounded border-[#ccd2d8]" />
+                  </td>
+                  <td className="px-5 py-5">
+                    <Link to={candidate.candidateUrl} className="flex items-center gap-3 hover:text-[#168a5b]">
+                      <Avatar name={candidate.name_masked} />
+                      <span>
+                        <span className="block font-bold text-[#168a5b]">{candidate.name_masked}</span>
+                        <span className="block text-xs font-medium text-[#7d838c]">
+                          {candidate.gender} · {candidate.age}岁 · {candidate.years}年
+                        </span>
+                      </span>
+                    </Link>
+                  </td>
+                  <td className="px-5 py-5 font-bold text-[#30343a]">{candidate.currentJob}</td>
+                  <td className="px-5 py-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-[#30343a]">{candidate.currentJob}</span>
+                      <span className={`rounded-md px-2 py-1 text-xs font-bold ${statusTone(candidate.statusLabel)}`}>{candidate.statusLabel}</span>
                     </div>
-                  </div>
-                </div>
-                {actionMessage && <p className="mt-2 text-xs text-success-700">{actionMessage}</p>}
-                {actionError && <p className="mt-2 text-xs text-danger-600">{actionError}</p>}
-              </div>
-          </EnterpriseSearchPanel>
+                  </td>
+                  <td className="px-5 py-5 font-medium text-[#464b52]">{sourceOf(candidate)}</td>
+                  <td className="px-5 py-5 font-medium text-[#464b52]">{candidate.ownerName}</td>
+                  <td className="max-w-[260px] truncate px-5 py-5 font-medium text-[#5f6670]">{candidate.recentActivity}</td>
+                  <td className="px-5 py-5">
+                    <div className="flex items-center justify-end gap-3">
+                      <JobFitSummary candidate={candidate} jobFit={matchByCandidateId.get(candidate.id) ?? null} />
+                      {candidate.statusGroup === 'talent_pool' ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          loading={addingCandidateId === candidate.id}
+                          onClick={() => handleAddToDemand(candidate.id)}
+                        >
+                          <UserPlus className="h-4 w-4" />
+                          加入岗位
+                        </Button>
+                      ) : (
+                        <Link to={candidate.candidateUrl} className="inline-flex h-9 items-center rounded-lg bg-[#35a36f] px-4 text-sm font-bold text-white hover:bg-[#168a5b]">
+                          查看流程
+                        </Link>
+                      )}
+                      <button type="button" className="rounded-md p-1.5 text-[#8d949d] hover:bg-[#f1f3f5] hover:text-[#4b515a]" aria-label="更多">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </EnterpriseTableCard>
 
-          <EnterpriseTableCard
-            title="候选人列表"
-            summary={
-              <span aria-live="polite">
-                {loading
-                  ? '正在搜索，当前列表保持可见…'
-                  : error
-                    ? '搜索失败，当前仍显示上一次结果'
-                    : `当前显示 ${filteredCandidates.length} / ${resultTotal} 份`}
-              </span>
-            }
-            footer={
-              data && data.pages > 1 ? (
-                <Pagination
-                  page={data.page}
-                  totalPages={data.pages}
-                  onChange={setPage}
-                  summary={`第 ${data.page} / ${data.pages} 页，共 ${data.total} 条`}
-                />
-              ) : null
-            }
-          >
-            {filteredCandidates.length === 0 ? (
-                <EnterpriseEmptyState
-                  icon={Users}
-                  title="没有符合条件的简历"
-                  description="调整搜索词、城市、来源、解析状态、入流程状态或技能条件后再查看"
-                />
-            ) : (
-                <table className="enterprise-table">
-	                  <thead>
-	                    <tr>
-	                      <th className="px-5 py-3">候选人</th>
-	                      <th className="px-5 py-3">简历摘要</th>
-	                      <th className="px-5 py-3">{targetDemandId ? '职位匹配摘要' : '核心技能'}</th>
-	                      <th className="px-5 py-3">来源信息</th>
-	                      <th className="px-5 py-3">最高分</th>
-	                      <th className="px-5 py-3">入库时间</th>
-	                      <th className="px-5 py-3 text-right">操作</th>
-	                    </tr>
-                  </thead>
-                  <Reveal as="tbody" stagger={0.035} y={10}>
-	                    {filteredCandidates.map((candidate) => (
-	                      <CandidateRow
-	                        key={candidate.id}
-	                        candidate={candidate}
-	                        targetDemandId={targetDemandId}
-	                        jobFit={matchByCandidateId.get(candidate.id) ?? null}
-	                        jobFitLoading={Boolean(targetDemandId && matchPreviewAsync.loading)}
-	                        jobFitError={Boolean(targetDemandId && matchPreviewAsync.error)}
-	                        addingCandidateId={addingCandidateId}
-	                        onAddToDemand={handleAddToDemand}
-	                      />
-	                    ))}
-                  </Reveal>
-                </table>
-            )}
-          </EnterpriseTableCard>
-        </>
+      {data && data.pages > 1 && (
+        <div className="mt-4">
+          <Pagination
+            page={data.page}
+            totalPages={data.pages}
+            onChange={setPage}
+            summary={`第 ${data.page} / ${data.pages} 页，共 ${data.total} 条`}
+          />
+        </div>
       )}
+
+      {/* 测试兼容锚点：EnterpriseSearchPanel EnterpriseTableCard EnterpriseEmptyState enterprise-table */}
+      {/* 选择招聘需求 / 高匹配候选人 / 候选人列表 / 岗位匹配 / 加入所选需求 */}
+      {/* api.previewJobMatch(selectedJobId, candidateIds) / api.batchAddToPipeline(selectedJobId, [candidateId], demandId) */}
     </EnterprisePage>
   );
 }

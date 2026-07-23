@@ -42,8 +42,8 @@ assert.match(
 
 assert.match(
   workflowGuidance,
-  /暂无可加入候选人[\s\S]*修正阶段[\s\S]*暂无招聘需求[\s\S]*面试反馈跟进[\s\S]*当前协同责任/,
-  'Workflow guidance tests should cover empty data, recovery, and BI management interpretation without a separate help entry',
+  /暂无可加入候选人[\s\S]*修正阶段[\s\S]*Offer 管理[\s\S]*最新动态/,
+  'Workflow guidance tests should cover empty data, recovery, and Offer management without a separate help entry',
 );
 
 assert.match(

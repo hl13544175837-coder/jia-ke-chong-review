@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { FileCode2, ScrollText, ShieldCheck } from 'lucide-react';
+import { Cable, FileCode2, ScrollText, ShieldCheck } from 'lucide-react';
 import { Badge, PageHeader } from '../../components/ui';
+import { IntegrationStatusPanel } from '../../features/integrations';
 import { cn } from '../../lib/cn';
 import { AiArchitectureContent } from './AiArchitecturePage';
 import { AuditLogContent } from './AuditLogPage';
 import { UsersManagementContent } from './UsersPage';
 
-type SettingsSection = 'users' | 'ai' | 'audit';
+type SettingsSection = 'users' | 'integrations' | 'ai' | 'audit';
 type SectionIcon = typeof ShieldCheck;
 
 const SECTIONS: Array<{
@@ -29,6 +30,13 @@ const SECTIONS: Array<{
     description: '查看关键写操作流水，排查谁在什么时候改了什么。',
     icon: ScrollText,
     badge: '审计',
+  },
+  {
+    id: 'integrations',
+    title: '外部接口',
+    description: '查看 OA、企业微信、Offer 和 HRIS 等系统的接入阶段与当前状态。',
+    icon: Cable,
+    badge: '接入',
   },
   {
     id: 'ai',
@@ -91,6 +99,7 @@ export function SystemSettingsPage() {
         </div>
         {openSection === 'users' && <UsersManagementContent />}
         {openSection === 'audit' && <AuditLogContent />}
+        {openSection === 'integrations' && <IntegrationStatusPanel />}
         {openSection === 'ai' && <AiArchitectureContent />}
       </section>
     </div>

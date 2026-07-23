@@ -27,8 +27,8 @@ assert.match(
 
 assert.match(
   nav,
-  /label:\s*'候选人流程'/,
-  'Candidate flow should be the main candidate-stage progression entry',
+  /label:\s*'面试管理'/,
+  'Interview management should be the main candidate-stage progression entry',
 );
 
 assert.match(
@@ -45,7 +45,7 @@ assert.doesNotMatch(
 
 assert.match(
   jobsPage,
-  /查看候选人流程/,
+  /查看面试管理/,
   'Job rows should expose the next step from a job into its candidate flow',
 );
 
@@ -57,14 +57,14 @@ assert.match(
 
 assert.match(
   jobMatchPage,
-  /去候选人流程查看/,
+  /去面试管理查看/,
   'After joining from matching, the CTA should tell HR the next destination plainly',
 );
 
-assert.match(
+assert.doesNotMatch(
   pipelinePage,
   /待筛选 → AI 初筛 → 业务反馈 → 面试中 → Offer → 已入职 \/ 淘汰沉淀/,
-  'Pipeline page should explain the simplified MVP hiring path including business feedback ownership',
+  'Interview management should not show the removed top explanatory path',
 );
 
 assert.match(
