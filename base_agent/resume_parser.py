@@ -13,13 +13,12 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 from pypdf import PdfReader
-import requests
-import time
 
 try:
     from tag_rate import (
@@ -32,6 +31,7 @@ except ImportError:
     logging.error("无法导入 tag_rate 模块，请确保 tag_rate.py 在同一目录")
     raise
 
+from image_resume_parser import IMAGE_RESUME_EXTENSIONS, ImageResumeVisionParser
 from llm_client import LLMClient, resolve_secret_value
 
 # 配置
@@ -45,8 +45,8 @@ _TAG_SCORE_RE = re.compile(r"([^:：\s]+?)\s*[:：]\s*([1-5])(?=\s|$)")
 
 class ResumeParser:
     """简历解析器"""
-    
-    def __init__(self):
+
+    def __init__(self, image_parser: Optional[ImageResumeVisionParser] = None):
         import os
         if DEFAULT_API_KEY_FILE.exists():
             api_keys = [resolve_secret_value(key) for key in load_api_keys(DEFAULT_API_KEY_FILE)]
@@ -62,6 +62,7 @@ class ResumeParser:
             )
             self.api_key_manager = APIKeyManager([resolve_secret_value(env_key)]) if env_key else None
         self.llm = LLMClient(self.api_key_manager)
+        self._image_parser = image_parser
         
         # 加载技能标签库与岗位族(level_3rd -> tags)
         self.all_tags = self._load_tags()
@@ -512,8 +513,19 @@ class ResumeParser:
             return "其他"
     
     def parse_resume(self, file_path: str) -> Dict[str, Any]:
-        """解析简历的主方法（支持 PDF / Word .docx）"""
-        logging.info(f"开始解析简历: {file_path}")
+        """解析简历的主方法（支持文档与图片简历）"""
+        extension = Path(file_path).suffix.lower().lstrip(".")
+        logging.info("开始解析简历，格式: %s", extension or "未知")
+
+        if extension in IMAGE_RESUME_EXTENSIONS:
+            parser = self._image_parser or ImageResumeVisionParser()
+            image_result = parser.parse(file_path)
+            return {
+                "extracted_info": image_result.extracted_info,
+                "skills": image_result.skills,
+                "upload_date": datetime.now().isoformat(),
+                "parse_method": "vision",
+            }
 
         # 1. 按文件类型提取文本
         resume_text = self.extract_text(file_path)
@@ -529,7 +541,6 @@ class ResumeParser:
         skills = self.score_resume_skills(resume_text, extracted_info)
         logging.info(f"技能评分完成，共 {len(skills)} 个技能")
         
-        from datetime import datetime
         return {
             "extracted_info": extracted_info,
             "skills": skills,

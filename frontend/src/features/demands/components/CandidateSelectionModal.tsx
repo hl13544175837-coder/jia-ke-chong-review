@@ -572,7 +572,7 @@ export function CandidateSelectionModal({ demand, open, onClose, onChanged }: Ca
             type="file"
             className="hidden"
             multiple
-            accept=".pdf,.docx,.txt,.zip"
+            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,.zip"
             onChange={(event) => handleFiles(event.target.files)}
           />
           {offlineConfirmOpen && (

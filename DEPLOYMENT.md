@@ -32,7 +32,7 @@
     ▼
 后端 (Flask + SQLAlchemy)  开发 localhost:5001 / 生产 localhost:5000
     ├── /api/auth          认证 (JWT + RBAC)
-    ├── /api/resume        简历上传/解析 (PDF + Word)
+    ├── /api/resume        简历上传/解析 (PDF + Word + 图片)
     ├── /api/candidates    候选人管理
     ├── /api/jobs          岗位管理 + JD 智能解析
     ├── /api/match         候选人-岗位匹配
@@ -114,6 +114,12 @@ OPENAI_API_KEY=sk-your-deepseek-key-here   # 主推荐字段
 DEEPSEEK_API_KEY=sk-your-deepseek-key-here  # 兼容旧模块，建议同值
 API_KEY=sk-your-deepseek-key-here           # 兼容旧模块，建议同值
 LLM_API_KEY=sk-your-deepseek-key-here       # 兼容旧模块，建议同值
+
+# 图片简历视觉识别（百炼业务空间 OpenAI 兼容接口）
+DASHSCOPE_API_KEY=sk-your-dashscope-key
+DASHSCOPE_BASE_URL=https://your-workspace-id.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+DASHSCOPE_VISION_MODEL=qwen3.7-plus
+DASHSCOPE_VISION_TIMEOUT_S=120
 
 # JWT 密钥（生产环境请修改）
 JWT_SECRET=change-me-in-production
@@ -225,7 +231,8 @@ OPENAI_API_KEY=sk-your-openai-key
 
 | 功能 | 离线可用 |
 |------|---------|
-| 简历 AI 解析 (PDF/DOCX) | ❌ 需要 LLM |
+| 简历 AI 解析 (PDF/DOCX) | ❌ 需要通用 LLM |
+| 图片简历 AI 解析 (JPG/PNG/WebP/GIF) | ❌ 需要百炼视觉模型 |
 | JD 结构化 + 澄清追问 | ❌ 需要 LLM |
 | AI 面试题生成 + 评估 | ❌ 需要 LLM |
 | LangGraph AI 助手对话 | ❌ 需要 LLM |
@@ -381,7 +388,7 @@ python run.py
 - 重复推进同一候选人到同一阶段、重复安排同一面试、重复提交同一轮反馈，会返回已有记录。
 - 普通 JSON/表单写接口支持 `Idempotency-Key`：同一用户、同一路径、同一请求体和同一个 key 的重试会返回第一次结果；同 key 不同请求体返回 409。
 - 同一面试官同一时间不能被安排两场不同面试；完全相同的重复安排仍返回已有记录。
-- 上传只支持 PDF、DOCX 和 ZIP；旧版 `.doc` 因宏风险会被跳过，需转换后再上传。
+- 上传支持 PDF、DOCX、JPG、PNG、WebP、GIF 和 ZIP；旧版 `.doc` 因宏风险会被跳过，需转换后再上传。图片单张不超过 10 MB，GIF 取首帧，结构化结果必须人工复核。
 - 误导入可按上传批次撤回：候选人会软删除、匿名化并删除原文件，保留审计事件。
 - 候选人导出继续开放，但同一账号 10 分钟内第 6 次起会在审计日志标为 `warning`，管理员页标红。
 - demand-scoped P0 中 AI 只保留解析、匹配、总结和建议；自动推进、淘汰、Offer、转派和关闭工具不进入试点工具目录。
@@ -635,7 +642,7 @@ MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录 Demand/�
 | 工作台 | `/` | 角色化欢迎页 + KPI 看板 + 快速入口 |
 | AI 助手 | `/agent` | LangGraph ReAct 智能体，自然语言查询系统数据 |
 | 候选人 | `/candidates` | 简历库 + 技能标签 + 档案详情 + 受控 CSV 导出 |
-| 简历上传 | `/upload` | 拖拽上传 PDF/DOCX/ZIP，AI 自动解析技能标签；旧版 DOC 跳过 |
+| 简历上传 | `/upload` | 拖拽上传 PDF/DOCX/图片/ZIP，AI 自动解析技能标签；旧版 DOC 跳过 |
 | 岗位管理 | `/jobs` | 创建岗位，AI 追问补全 JD，智能解析技能要求 |
 | 候选人匹配 | `/jobs/:id/match` | 按岗位 AI 匹配并排名候选人 |
 | 候选人管道 | `/pipeline` | 阶段管理（待筛选→AI初筛→业务待反馈→面试中→Offer→已入职/淘汰），支持误推进后的“修正阶段”并保留历史流水 |
@@ -654,6 +661,10 @@ A：已修复（2026-06-14）。确保运行的是最新代码。`.docx` 和 PDF
 ### Q：简历上传失败，接口返回 500？
 
 A：先检查后端日志。如果出现 `Permission denied: '/app/backend/uploads'`，说明容器内上传目录不可写。`/tmp/zhipin_uploads` 只是本地 debug 的可写默认；试点/生产启动护栏要求显式配置 `UPLOAD_FOLDER` 到非临时的绝对挂载目录，并保证运行用户有写权限。
+
+### Q：图片简历提示“图片简历识别未配置”？
+
+A：配置 `DASHSCOPE_API_KEY`、含真实业务空间 ID 的 `DASHSCOPE_BASE_URL`，并确认当前地域可用 `DASHSCOPE_VISION_MODEL`（默认 `qwen3.7-plus`）。配置缺失或上游失败时不会伪造成功；候选人保留为解析失败状态，补齐配置后可重新解析。
 
 ### Q：AI 功能不可用，提示 LLM 调用失败？
 

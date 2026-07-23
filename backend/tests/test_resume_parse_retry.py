@@ -1,8 +1,88 @@
 from pathlib import Path
 
+import pytest
+from PIL import Image
+
 
 def _auth(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_image_resume_uses_base64_vision_and_normalizes_result(tmp_path):
+    from image_resume_parser import DashScopeVisionConfig, ImageResumeVisionParser
+
+    image_path = tmp_path / "resume.png"
+    image = Image.new("RGB", (32, 32), "white")
+    image.save(image_path, format="PNG")
+
+    class FakeResponse:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"extracted_info":{"name":"候选人图",'
+                                '"email":"image@example.com","phone":"13800000000",'
+                                '"summary":"后端工程师","intent_city":"杭州",'
+                                '"education":[],"experience":[],"projects":[],'
+                                '"certifications":[],"languages":[],"additional_info":""},'
+                                '"skills":[{"skill_name":"Python","score":5,'
+                                '"category":"编程语言"}]}'
+                            )
+                        }
+                    }
+                ]
+            }
+
+    class FakeHttpClient:
+        def __init__(self):
+            self.request_json = None
+
+        def post(self, url, headers, json, timeout):
+            assert url == "https://workspace.example.com/compatible-mode/v1/chat/completions"
+            assert headers["Authorization"] == "Bearer secret"
+            assert timeout == 120
+            self.request_json = json
+            return FakeResponse()
+
+    http_client = FakeHttpClient()
+    parser = ImageResumeVisionParser(
+        config=DashScopeVisionConfig(
+            endpoint="https://workspace.example.com/compatible-mode/v1/chat/completions",
+            api_key="secret",
+            model="qwen3.7-plus",
+            timeout_seconds=120,
+        ),
+        http_client=http_client,
+    )
+
+    result = parser.parse(str(image_path))
+
+    assert result.extracted_info["name"] == "候选人图"
+    assert result.extracted_info["intent_city"] == "杭州"
+    assert result.skills[0]["skill_name"] == "Python"
+    assert result.skills[0]["score"] == 5
+    content = http_client.request_json["messages"][1]["content"]
+    image_url = content[0]["image_url"]["url"]
+    assert image_url.startswith("data:image/png;base64,")
+    assert str(image_path) not in str(http_client.request_json)
+
+
+def test_image_resume_rejects_placeholder_workspace_url(monkeypatch):
+    from image_resume_parser import DashScopeVisionConfig
+
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
+    monkeypatch.setenv(
+        "DASHSCOPE_BASE_URL",
+        "https://your-workspace-id.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    )
+
+    with pytest.raises(RuntimeError, match="占位符"):
+        DashScopeVisionConfig.from_environment()
 
 
 def test_failed_resume_upload_keeps_retryable_candidate(client, make_user, app, monkeypatch, tmp_path):
