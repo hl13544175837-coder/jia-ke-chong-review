@@ -1,7 +1,3 @@
-// 简历上传页面（HR 操作视角）— 拖拽或点击选择 PDF/Word 文件或 ZIP 压缩包，支持批量上传。
-// 调用 api.uploadResumes(files) → 一次性 POST 多文件，后端同步解析（zip 自动解压逐份解析）。
-// 展示已选文件列表、上传/解析进度、以及每条结果（含 zip 展开的多条）。
-
 import { useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 
 import { Link } from 'react-router-dom';
@@ -21,11 +17,13 @@ import {
 import { RESUME_SOURCE_CHANNEL_OPTIONS } from '../lib/sourceChannels';
 import type { ResumeUploadResultItem } from '../types';
 
-const ACCEPTED = ['.pdf', '.doc', '.docx', '.zip'];
+const ACCEPTED = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.zip'];
 const ACCEPT_MIME =
   'application/pdf,application/msword,' +
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document,' +
-  'application/zip,application/x-zip-compressed,.zip,.pdf,.doc,.docx';
+  'image/jpeg,image/png,image/webp,image/gif,' +
+  'application/zip,application/x-zip-compressed,' +
+  '.zip,.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif';
 
 function isAccepted(file: File): boolean {
   return ACCEPTED.some((ext) => file.name.toLowerCase().endsWith(ext));
@@ -33,6 +31,11 @@ function isAccepted(file: File): boolean {
 
 function isZip(name: string): boolean {
   return name.toLowerCase().endsWith('.zip');
+}
+
+function isImage(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return ['.jpg', '.jpeg', '.png', '.webp', '.gif'].some((ext) => normalized.endsWith(ext));
 }
 
 // 友好的文件大小展示
@@ -59,6 +62,16 @@ function ZipIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M5 4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M11 3v2m0 2v2m0 2v2m1-9v2m-1 2h1m-1 4h1m-1-2h-1m1-4h-1" />
+    </svg>
+  );
+}
+
+function ImageResumeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="1.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m5.5 18 4.5-4 3 2.5 2.5-2 3 3.5" />
     </svg>
   );
 }
@@ -151,6 +164,7 @@ export function UploadPage() {
   const hasFiles = selectedFiles.length > 0;
   const canUpload = hasFiles && !uploading;
   const zipCount = useMemo(() => selectedFiles.filter((f) => isZip(f.name)).length, [selectedFiles]);
+  const imageCount = useMemo(() => selectedFiles.filter((f) => isImage(f.name)).length, [selectedFiles]);
 
   // 结果汇总：成功 / 失败 / 跳过
   const summary = useMemo(() => {
@@ -172,7 +186,7 @@ export function UploadPage() {
       <div className="mb-6">
         <h1 className="mb-1 text-2xl font-display text-ink">简历上传</h1>
         <p className="text-sm text-muted">
-          拖拽或选择 PDF / Word 简历，或上传 ZIP 压缩包批量导入，AI 自动解析并提取技能标签。
+          拖拽或选择 PDF、Word、图片简历，或上传 ZIP 压缩包批量导入，AI 自动解析并提取技能标签。
         </p>
       </div>
 
@@ -289,7 +303,7 @@ export function UploadPage() {
               <span className="underline decoration-dotted underline-offset-2">点击选择</span>
             </p>
             <p className="mt-1 text-xs text-muted">
-              支持 PDF / Word 简历，或上传 ZIP 压缩包批量导入，可一次选择多个文件
+              支持 PDF / Word / 图片简历，或上传 ZIP 压缩包批量导入，可一次选择多个文件
             </p>
           </button>
           <input
@@ -309,7 +323,8 @@ export function UploadPage() {
       <div className="mb-6 rounded-lg border border-hairline bg-surface-soft px-4 py-3 text-xs text-muted">
         <ul className="space-y-1">
           <li>· 上传成功后先进入简历库，后续可按城市、技能、来源筛选后再加入岗位流程。</li>
-          <li>· 支持格式：PDF、Word（.doc / .docx）以及 ZIP 压缩包。</li>
+          <li>· 支持格式：PDF、DOCX、JPG、PNG、WebP、GIF 以及 ZIP；旧版 DOC 会提示转换。</li>
+          <li>· 图片简历单张不超过 10 MB，将交由已配置的百炼视觉模型识别，结果需人工复核。</li>
           <li>· ZIP 压缩包会自动解压，逐份解析其中的简历（自动跳过非简历文件）。</li>
           <li>· 简历解析由 AI 完成，文件较多或较大时可能需要一些时间，请耐心等待。</li>
           <li>· 个别文件解析失败不影响其他文件，可针对失败项重新上传。</li>
@@ -322,13 +337,16 @@ export function UploadPage() {
           <CardHeader>
             <CardTitle>
               已选文件（{selectedFiles.length}
-              {zipCount > 0 ? `，含 ${zipCount} 个压缩包` : ''}）
+              {zipCount > 0 ? `，含 ${zipCount} 个压缩包` : ''}
+              {imageCount > 0 ? `，含 ${imageCount} 张图片简历` : ''}
+              ）
             </CardTitle>
           </CardHeader>
           <CardBody className="p-0">
             <ul role="list">
               {selectedFiles.map((f, i) => {
                 const zip = isZip(f.name);
+                const image = isImage(f.name);
                 return (
                   <li
                     key={f.name}
@@ -340,11 +358,14 @@ export function UploadPage() {
                     <div className="flex min-w-0 items-center gap-3">
                       {zip ? (
                         <ZipIcon className="h-5 w-5 shrink-0 text-muted" />
+                      ) : image ? (
+                        <ImageResumeIcon className="h-5 w-5 shrink-0 text-muted" />
                       ) : (
                         <DocIcon className="h-5 w-5 shrink-0 text-muted" />
                       )}
                       <span className="truncate text-ink">{f.name}</span>
                       {zip && <Badge tone="brand">压缩包</Badge>}
+                      {image && <Badge tone="neutral">图片简历</Badge>}
                     </div>
                     <div className="flex shrink-0 items-center gap-4">
                       <span className="text-xs text-muted-soft">{formatSize(f.size)}</span>

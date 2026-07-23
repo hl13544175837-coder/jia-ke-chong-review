@@ -1,8 +1,17 @@
 import io
+from pathlib import Path
+
+from PIL import Image
 
 
 def _auth(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def _png_resume_bytes() -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (32, 32), "white").save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 def _seed_job_candidate(app, owner_id, *, parse_status="ok"):
@@ -46,6 +55,88 @@ def test_upload_rejects_spoofed_pdf_before_parse(client, make_user, monkeypatch)
     assert result["status"] == "skipped"
     assert "文件内容" in result["reason"]
     assert "candidate_id" not in result
+
+
+def test_upload_rejects_damaged_image_before_parse(client, make_user, monkeypatch):
+    _, token = make_user("upload-damaged-image@x.com", role="recruiter")
+
+    def fail_if_called(self, *args, **kwargs):
+        raise AssertionError("parser should not receive a damaged image")
+
+    monkeypatch.setattr(
+        "app.services.resume_service.ResumeBatchService.parse_and_save",
+        fail_if_called,
+    )
+
+    response = client.post(
+        "/api/resume/upload",
+        headers=_auth(token),
+        data={"files": (io.BytesIO(b"\x89PNG\r\n\x1a\nbroken"), "damaged.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 202
+    result = response.get_json()["results"][0]
+    assert result["status"] == "skipped"
+    assert "损坏" in result["reason"] or "无法识别" in result["reason"]
+    assert "candidate_id" not in result
+
+
+def test_upload_accepts_image_resume_and_preserves_original(
+    client,
+    make_user,
+    app,
+    monkeypatch,
+    tmp_path,
+):
+    owner_id, token = make_user("upload-image@x.com", role="recruiter")
+    app.config["UPLOAD_FOLDER"] = str(tmp_path)
+
+    def fake_parse(self, file_path, owner_hr_id, upload_batch_id=None):
+        from app import db
+        from app.models import Candidate
+
+        assert owner_hr_id == owner_id
+        assert upload_batch_id is not None
+        assert Path(file_path).suffix == ".png"
+        candidate = Candidate(
+            owner_hr_id=owner_hr_id,
+            upload_batch_id=upload_batch_id,
+            name_masked="图片候选人",
+            raw_file_path=file_path,
+            resume_json={
+                "extracted_info": {"name": "图片候选人"},
+                "skills": [{"skill_name": "Python", "score": 5}],
+                "parse_method": "vision",
+            },
+            parse_status="ok",
+        )
+        db.session.add(candidate)
+        db.session.flush()
+        return candidate
+
+    monkeypatch.setattr(
+        "app.services.resume_service.ResumeBatchService.parse_and_save",
+        fake_parse,
+    )
+
+    response = client.post(
+        "/api/resume/upload",
+        headers=_auth(token),
+        data={"files": (io.BytesIO(_png_resume_bytes()), "candidate.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 202
+    result = response.get_json()["results"][0]
+    assert result["status"] == "ok"
+    detail = client.get(
+        f"/api/resume/{result['candidate_id']}",
+        headers=_auth(token),
+    ).get_json()
+    assert detail["parse_status"] == "ok"
+    assert detail["resume_json"]["parse_method"] == "vision"
+    assert detail["original_resume"]["mime_type"] == "image/png"
 
 
 def test_upload_rejects_oversized_resume_before_parse(client, make_user, monkeypatch):

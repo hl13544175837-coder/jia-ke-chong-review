@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, FileText, RefreshCw } from 'lucide-react';
+import { Download, FileText, Image as ImageIcon, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button, Spinner } from '../../../components/ui';
 import { candidatesApi } from '../api';
@@ -74,13 +74,18 @@ export function OriginalResumeViewer({
 
   const unavailable = !info.available || Boolean(error);
   const isPdf = info.mime_type === 'application/pdf';
+  const isImage = info.mime_type?.startsWith('image/') ?? false;
 
   return (
     <section className="overflow-hidden rounded-xl border border-hairline bg-canvas shadow-card">
       <header className="flex flex-col gap-3 border-b border-hairline-soft bg-surface-soft/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-hairline bg-canvas">
-            <FileText className="h-5 w-5 text-ink" aria-hidden="true" />
+            {isImage ? (
+              <ImageIcon className="h-5 w-5 text-ink" aria-hidden="true" />
+            ) : (
+              <FileText className="h-5 w-5 text-ink" aria-hidden="true" />
+            )}
           </div>
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-ink">原始简历</h2>
@@ -135,6 +140,14 @@ export function OriginalResumeViewer({
             src={previewUrl}
             className="h-[66vh] w-full rounded-lg border border-hairline bg-canvas shadow-apple-sm"
           />
+        ) : isImage && previewUrl ? (
+          <div className="flex min-h-[60vh] items-center justify-center overflow-auto rounded-lg border border-hairline bg-canvas p-4 shadow-apple-sm">
+            <img
+              src={previewUrl}
+              alt="候选人原始图片简历"
+              className="max-h-[72vh] max-w-full object-contain"
+            />
+          </div>
         ) : (
           <div className="flex min-h-[60vh] flex-col items-center justify-center rounded-lg bg-canvas px-6 text-center">
             <FileText className="h-10 w-10 text-muted-soft" aria-hidden="true" />

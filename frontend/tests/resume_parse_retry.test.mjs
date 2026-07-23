@@ -32,3 +32,12 @@ assert.match(profile, /重新解析/, 'Profile page should label the retry actio
 assert.match(profile, /编辑档案/, 'Profile page should let HR edit parsed resume details');
 assert.match(profile, /项目经历/, 'Profile page should expose project experience as a first-class resume section');
 assert.match(profile, /handleSaveProfile/, 'Profile page should wire manual profile save');
+
+const upload = readSource('pages/UploadPage.tsx');
+assert.match(upload, /\.jpg.*\.jpeg.*\.png.*\.webp.*\.gif/, 'Upload page should accept supported image resumes');
+assert.match(upload, /图片简历单张不超过 10 MB/, 'Upload page should explain the image resume size limit');
+assert.match(upload, /百炼视觉模型识别/, 'Upload page should disclose that image resumes use the configured vision model');
+
+const originalViewer = readSource('features/candidates/components/OriginalResumeViewer.tsx');
+assert.match(originalViewer, /mime_type\?\.startsWith\('image\/'\)/, 'Original resume viewer should detect image resumes');
+assert.match(originalViewer, /候选人原始图片简历/, 'Original resume viewer should render an accessible image preview');
