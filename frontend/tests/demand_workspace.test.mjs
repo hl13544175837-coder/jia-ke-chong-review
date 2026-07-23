@@ -8,8 +8,8 @@ const read = (path) => readFileSync(join(root, path), 'utf8');
 
 for (const file of [
   'features/demands/components/DemandForm.tsx',
-  'features/demands/components/DemandFilters.tsx',
   'features/demands/components/DemandTable.tsx',
+  'features/demands/components/DemandCreateModal.tsx',
   'features/demands/pages/DemandDetailPage.tsx',
 ]) {
   assert.ok(existsSync(join(root, file)), `${file} should exist`);
@@ -18,49 +18,34 @@ for (const file of [
 const routes = read('features/demands/routes.tsx');
 const page = read('features/demands/pages/DemandsPage.tsx');
 const form = read('features/demands/components/DemandForm.tsx');
-const filters = read('features/demands/components/DemandFilters.tsx');
 const table = read('features/demands/components/DemandTable.tsx');
+const createModal = read('features/demands/components/DemandCreateModal.tsx');
 const detail = read('features/demands/pages/DemandDetailPage.tsx');
 const api = read('lib/api.ts');
 const types = read('types/index.ts');
 const input = read('components/ui/Input.tsx');
 
 assert.match(routes, /path:\s*'\/demands\/:id'/, 'Demand detail route should be registered');
-assert.match(page, /DemandFilters/, 'Demand list should use filters');
+assert.match(page, /STATUS_TABS/, 'Demand list should expose status filters');
 assert.match(page, /DemandTable/, 'Demand list should use a table instead of demand cards');
 assert.doesNotMatch(page, /function DemandCard/, 'The list page should not render a card stream');
-assert.match(page, /useNavigate/, 'Create success should navigate to detail');
-assert.match(page, /navigate\(`\/demands\/\$\{created\.id\}`\)/, '201 should open the new demand');
+assert.match(page, /DemandCreateModal/, 'Demand creation should use the target-mode modal');
+assert.match(page, /setCreateOpen\(false\)[\s\S]*demands\.reload\(\)/, 'Create success should close the modal and refresh the real list');
 assert.match(page, /submitGuardRef\.current/, 'A synchronous guard should prevent double clicks');
 assert.match(
   page,
-  /const \[showCreateForm, setShowCreateForm\] = useState\(false\)/,
-  'Demand creation should be collapsed by default so the demand table stays near the top',
+  /const \[createOpen, setCreateOpen\] = useState\(false\)/,
+  'Demand creation should stay closed until the user requests it',
 );
 assert.match(
   page,
-  /aria-expanded=\{showCreateForm\}/,
-  'The create-demand toggle should expose its expanded state to assistive technology',
+  /open=\{createOpen\}/,
+  'The create-demand modal should consume the explicit open state',
 );
 assert.match(
-  page,
-  /aria-controls="demand-create-panel"/,
-  'The create-demand toggle should identify the panel it controls',
-);
-assert.match(
-  page,
-  /id="demand-create-panel"/,
-  'The create-demand panel should remain mounted so collapsing it does not clear partial input',
-);
-assert.match(
-  page,
-  /hidden=\{!showCreateForm\}/,
-  'The full existing form should be hidden, rather than unmounted, while the create area is collapsed',
-);
-assert.match(
-  page,
-  /showCreateForm \? '收起' : '展开'/,
-  'The create-demand toggle should clearly switch between expand and collapse actions',
+  createModal,
+  /role="dialog"[\s\S]*aria-modal="true"/,
+  'The create-demand modal should expose dialog semantics',
 );
 
 for (const label of [
@@ -79,13 +64,12 @@ assert.match(form, /required/, 'Required fields should use native required seman
 assert.match(input, /aria-required/, 'Shared Input should expose accessible required state');
 assert.match(input, /text-danger-600[^]*\*/, 'Required Input labels should show a red star');
 
-assert.match(filters, /全部/, 'Status categories should include all demands');
-assert.match(filters, /招聘中/, 'Status categories should include active demands');
-assert.match(filters, /暂停/, 'Status categories should include paused demands');
-assert.match(filters, /已完成/, 'Status categories should include filled demands');
-assert.match(filters, /已取消/, 'Status categories should include cancelled demands');
-assert.match(filters, /department/, 'Demand filters should support department');
-assert.match(filters, /owner_hr_id/, 'Demand filters should support owner');
+assert.match(page, /全部/, 'Status categories should include all demands');
+assert.match(page, /招聘中/, 'Status categories should include active demands');
+assert.match(page, /已完成/, 'Status categories should include filled demands');
+assert.match(page, /已关闭/, 'Status categories should include closed demands');
+assert.match(table, /query\.department/, 'Demand filters should support department');
+assert.match(table, /query\.owner_hr_id/, 'Demand filters should support owner');
 
 assert.match(table, /<table/, 'Demand results should render as a table');
 assert.match(table, /demand=\$\{demand\.id\}/, 'Stage drill-down should carry demand_id');

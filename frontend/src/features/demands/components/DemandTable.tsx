@@ -239,7 +239,7 @@ export function DemandTable({
                     <p className="font-semibold">{demand.job_department || '未记录部门'}</p>
                     <p className="mt-2 text-sm text-[#8a8f98]">{demand.job_city || '未记录城市'}</p>
                   </td>
-                  <td className="px-7 py-6 font-semibold text-[#4f555d]">{demand.owner_hr_name || `专员 #${demand.owner_hr_id}`}</td>
+                  <td className="px-7 py-6 font-semibold text-[#4f555d]">{demand.owner_hr_name || '未记录负责人'}</td>
                   <td className="px-7 py-6 text-[#4f555d]">
                     <p className="text-base font-bold text-[#303133]">{demand.metrics.onboarded_count} / {demand.headcount}</p>
                     <p className="mt-2 text-sm text-[#8a8f98]">{demand.target_date || '未记录日期'}</p>
