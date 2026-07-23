@@ -1210,6 +1210,10 @@ export function PipelinePage() {
             </div>
           )}
 
+          <div className="rounded-xl border border-[#dcefe7] bg-[#f7fcfa] px-4 py-3 text-sm font-semibold text-[#4f665b]">
+            流程提示：业务评审阶段由用人部门提交业务反馈；确认通过后，招聘专员再安排面试。
+          </div>
+
           {/* 面试管理工作区 */}
           {!demandResolutionError && effectiveDemandId !== null && !boardAsync.loading && boardAsync.error && (
             <ErrorState message={boardAsync.error.message} onRetry={boardAsync.reload} />

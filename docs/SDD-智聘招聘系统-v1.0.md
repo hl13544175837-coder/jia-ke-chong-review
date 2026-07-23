@@ -219,6 +219,8 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `/admin/settings` | `SystemSettingsPage` | admin |
 | `/admin/ai-architecture` | `AiArchitecturePage` | admin |
 
+`DashboardPage` 按角色并行读取后端数据：招聘专员读取候选人、岗位和个人 BI workload，经理/管理员读取候选人、岗位和团队 BI overview，面试官只读取分配给本人的面试安排。各数据分区使用独立错误状态，部分接口失败时保留其他已成功结果，不以演示数据或数字 0 兜底。
+
 ### 5.2 后端权限
 
 后端使用 `require_auth` 解 JWT，再从数据库读取用户，把 `user_id`、`role` 与 `org_id` 写入 Flask `g`。部分接口通过 `require_role(...)` 限制角色。
