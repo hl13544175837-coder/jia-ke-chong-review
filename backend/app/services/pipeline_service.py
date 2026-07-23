@@ -144,6 +144,25 @@ def _require_writable_demand(demand):
         raise PipelineServiceError("需求当前不可推进", 409, "demand_not_open")
 
 
+def _require_business_reviewer(demand):
+    reviewer = (
+        db.session.get(User, demand.default_interviewer_id)
+        if demand.default_interviewer_id
+        else None
+    )
+    if (
+        reviewer is None
+        or reviewer.org_id != demand.org_id
+        or not reviewer.is_active
+        or reviewer.role not in {"interviewer", "manager", "admin"}
+    ):
+        raise PipelineServiceError(
+            "该需求尚未设置有效的用人负责人，请先补齐后再提交业务评审",
+            409,
+            "business_reviewer_required",
+        )
+
+
 def _require_candidate(candidate_id, org_id):
     candidate = _locked_candidate(candidate_id, org_id)
     if candidate is None:
@@ -253,6 +272,8 @@ def move_candidate(
     try:
         demand = _require_demand(demand_id, org_id)
         _require_writable_demand(demand)
+        if to_stage == "business_review":
+            _require_business_reviewer(demand)
         candidate = _require_candidate(candidate_id, org_id)
         previous = _latest_stage(candidate.id, demand.id)
         from_stage = normalize_pipeline_stage(previous.stage) if previous else None

@@ -46,8 +46,6 @@ assert.match(types, /interface RecruitmentDemand/, 'Shared types should expose R
 assert.match(types, /business_review_count/, 'Demand metrics should expose business feedback backlog');
 
 const page = readSource('features/demands/pages/DemandsPage.tsx');
-const form = readSource('features/demands/components/DemandForm.tsx');
-const filters = readSource('features/demands/components/DemandFilters.tsx');
 const table = readSource('features/demands/components/DemandTable.tsx');
 const createModal = readSource('features/demands/components/DemandCreateModal.tsx');
 const candidateModal = readSource('features/demands/components/CandidateSelectionModal.tsx');
@@ -59,14 +57,15 @@ assert.match(page, /DemandCreateModal/, 'Demand page should create demands throu
 assert.match(page, /CandidateSelectionModal/, 'Demand page should select candidates through a modal');
 assert.match(recruitmentTabs, /用人需求/, 'Recruitment tabs should expose the demand tab label');
 assert.doesNotMatch(recruitmentTabs, /岗位画像|人才地图/, 'Template and placeholder modules should not occupy trial tabs');
-assert.match(form, /提需求日期/, 'Demand form should capture when business raised the request');
-assert.match(form, /HR 接手日期/, 'Demand form may capture when HR accepted the request');
-assert.match(filters, /最新创建在前/, 'Demand list should default to newest-first sorting');
 assert.match(table, /<table/, 'Demand list should be a scannable table rather than cards');
+assert.match(table, /最新发布/, 'Demand list should expose newest-first sorting');
+assert.match(table, /stage_focus/, 'Demand stage filters should update the real list query');
 assert.match(table, /demand=\$\{demand\.id\}/, 'Demand metrics should drill into scoped candidates');
 assert.match(table, /onSelectCandidates/, 'Demand rows should open candidate selection directly');
 assert.match(createModal, /job_title/, 'Create-demand modal should support direct job-title input instead of only existing templates');
 assert.match(createModal, /jd_text/, 'Create-demand modal should submit a JD text body');
+assert.match(createModal, /招聘起始日期/, 'Create-demand modal should capture when recruiting starts');
+assert.match(createModal, /用人负责人（默认面试官）/, 'Create-demand modal should use the confirmed business role');
 assert.match(candidateModal, /searchCandidates/, 'Candidate selection modal should use real resume-library data');
 assert.match(candidateModal, /uploadResumes/, 'Candidate selection modal should open file import and upload resumes');
 assert.match(candidateModal, /更多筛选/, 'Candidate selection modal should expose expanded filters');

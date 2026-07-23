@@ -63,7 +63,10 @@ const JD_TEMPLATES: Record<string, string> = {
 function localDate(offsetDays = 0) {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function RequiredMark() {
@@ -147,6 +150,7 @@ export function DemandCreateModal({
       return { ...current, [field]: value };
     });
     onFieldChange?.(String(field));
+    if (field === 'default_interviewer_id') onFieldChange?.('hiring_manager_name');
     setLocalErrors((current) => {
       if (!current[field]) return current;
       const next = { ...current };
@@ -163,10 +167,12 @@ export function DemandCreateModal({
   function submit(event: FormEvent) {
     event.preventDefault();
     const errors: Record<string, string> = {};
+    const selectedInterviewer = interviewers.find((interviewer) => interviewer.id === Number(form.default_interviewer_id));
     if (!form.job_title.trim()) errors.job_title = '请填写职位名称';
     if (!form.department.trim()) errors.requester_department = '请选择所属部门';
     if (!form.city.trim()) errors.city = '请选择招聘城市';
     if (!form.owner_hr_id) errors.owner_hr_id = '请选择招聘负责人';
+    if (!selectedInterviewer) errors.default_interviewer_id = '请选择用人负责人';
     if (!form.headcount || Number(form.headcount) <= 0) errors.headcount = 'HC 必须大于 0';
     if (!form.requested_at) errors.requested_at = '请选择招聘起始日期';
     if (!form.target_date) errors.target_date = '请选择截止日期';
@@ -175,16 +181,16 @@ export function DemandCreateModal({
       errors.target_date = '截止日期不能早于起始日期';
     }
     setLocalErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    if (Object.keys(errors).length > 0 || !selectedInterviewer) return;
 
     onSubmit({
       job_title: form.job_title.trim(),
       jd_text: form.jd_text.trim(),
       owner_hr_id: Number(form.owner_hr_id),
-      default_interviewer_id: form.default_interviewer_id ? Number(form.default_interviewer_id) : null,
+      default_interviewer_id: selectedInterviewer.id,
       city: form.city.trim(),
       requester_department: form.department.trim(),
-      hiring_manager_name: form.department.trim(),
+      hiring_manager_name: selectedInterviewer.name,
       requester_name: '',
       requested_at: form.requested_at,
       target_date: form.target_date,
@@ -296,15 +302,18 @@ export function DemandCreateModal({
                     {error('owner_hr_id') && <p className="mt-1 text-xs text-danger-600">{error('owner_hr_id')}</p>}
                   </label>
                   <label className="block">
-                    <span className="mb-2 block text-sm font-semibold text-[#303133]">默认面试官</span>
+                    <FieldLabel>用人负责人（默认面试官）</FieldLabel>
                     <select
                       value={form.default_interviewer_id}
                       onChange={(event) => patch('default_interviewer_id', event.target.value)}
                       className="h-12 w-full rounded-lg border border-[#edf0f2] bg-white px-4 text-sm outline-none focus:border-[#33a474]"
                     >
-                      <option value="">请选择</option>
+                      <option value="">请选择用人负责人</option>
                       {interviewers.map((interviewer) => <option key={interviewer.id} value={interviewer.id}>{interviewer.name}</option>)}
                     </select>
+                    {(error('default_interviewer_id') || error('hiring_manager_name')) && (
+                      <p className="mt-1 text-xs text-danger-600">{error('default_interviewer_id') || error('hiring_manager_name')}</p>
+                    )}
                   </label>
                 </div>
               </section>

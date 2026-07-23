@@ -6,63 +6,50 @@ import { fileURLToPath } from 'node:url';
 const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '../src');
 const read = (path) => readFileSync(join(srcRoot, path), 'utf8');
 
-const form = read('features/demands/components/DemandForm.tsx');
+const form = read('features/demands/components/DemandCreateModal.tsx');
 const page = read('features/demands/pages/DemandsPage.tsx');
 
 assert.doesNotMatch(
   form,
-  /const today\s*=\s*new Date\(\)\.toISOString\(\)/,
+  /toISOString\(\)\.slice\(0,\s*10\)/,
   'The requested date must not be frozen at module load or derived in UTC',
 );
 assert.match(
   form,
-  /function localDateInputValue\([\s\S]*getFullYear\(\)[\s\S]*getMonth\(\)[\s\S]*getDate\(\)/,
+  /function localDate\([\s\S]*getFullYear\(\)[\s\S]*getMonth\(\)[\s\S]*getDate\(\)/,
   'Date input defaults should be assembled from local calendar fields',
 );
 assert.match(
   form,
-  /useState<FormState>\(\(\)\s*=>\s*\([\s\S]*requested_at:\s*localDateInputValue\(\)/,
-  'The local requested date should be computed lazily when the form instance is created',
+  /requested_at:\s*localDate\(\)/,
+  'The requested date should use the local calendar helper',
 );
 
 assert.match(
   form,
-  /job_id:\s*''/,
-  'A required job should start empty until the user explicitly selects a template',
+  /job_title:\s*''/,
+  'A required job title should start empty',
 );
 assert.doesNotMatch(
   form,
-  /if\s*\(!form\.job_id\s*&&\s*jobs\.length\s*>\s*0\)/,
-  'Loading jobs must not silently select the first required option',
+  /default_interviewer_id:\s*\d+/,
+  'Loading options must not silently select a business owner',
 );
 
-const selectJob = form.match(/function selectJob\(value: string\)\s*\{[\s\S]*?\n  \}/)?.[0] ?? '';
 assert.match(
-  selectJob,
-  /city:\s*selected\?\.city\s*\|\|\s*''/,
-  'Explicit job selection should copy that template city instead of an earlier implicit default',
+  form,
+  /if \(field === 'province'\)[\s\S]*city:\s*nextCities\[0\]\s*\?\?\s*''/,
+  'Changing province should update city from the same selection',
 );
 assert.match(
-  selectJob,
-  /requester_department:\s*selected\?\.department\s*\|\|\s*''/,
-  'Explicit job selection should copy that template department',
-);
-for (const field of ['job_id', 'city', 'requester_department']) {
-  assert.match(
-    selectJob,
-    new RegExp(`['"]${field}['"]`),
-    `Selecting a job should clear stale ${field} errors`,
-  );
-}
-assert.match(
-  selectJob,
-  /onFieldChange\?\./,
-  'Job selection should notify the page so matching server errors are cleared',
+  form,
+  /onFieldChange\?\.\(String\(field\)\)/,
+  'Changing a field should clear its stale server error',
 );
 assert.match(
-  selectJob,
+  form,
   /setLocalErrors/,
-  'Job selection should clear matching local validation errors',
+  'Field changes should clear matching local validation errors',
 );
 
 assert.match(
@@ -73,5 +60,5 @@ assert.match(
 assert.match(
   page,
   /onFieldChange=\{clearCreateError\}/,
-  'The form should route all field changes through stale-error cleanup',
+  'The create modal should route all field changes through stale-error cleanup',
 );

@@ -7,7 +7,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   CalendarCheck,
   CalendarDays,
-  Eye,
   KanbanSquare,
   List,
   Search,
@@ -34,7 +33,7 @@ import type {
   PipelineBoardCandidate,
   RecruitmentDemand,
 } from '../types';
-import { STAGES, stageLabel } from '../lib/pipelineStages';
+import { STAGES } from '../lib/pipelineStages';
 import { AddToPipeline } from '../components/pipeline/AddToPipeline';
 import { PipelineCandidatePanel } from '../components/pipeline/PipelineCandidatePanel';
 
@@ -85,17 +84,11 @@ const ROUND_LABELS: Record<string, string> = {
   interview_final: '终面',
 };
 
-const ROUND_ACTIONS: InterviewRound[] = ['round_1', 'round_2', 'round_3', 'hr'];
-const EMPTY_PIPELINE_CANDIDATES: PipelineBoardCandidate[] = [];
-const EMPTY_ASSIGNMENTS: InterviewAssignment[] = [];
-
 function candidateInitial(name: string) {
   return name.replace(/^候选人\s*/, '').trim().slice(0, 1) || '候';
 }
 
-function roundForCandidate(candidate: PipelineBoardCandidate): InterviewRound {
-  return candidate.stage === 'offer' ? 'round_2' : 'round_1';
-}
+const DEFAULT_INTERVIEW_ROUND: InterviewRound = 'round_1';
 
 function roundLabel(round: string | null | undefined) {
   return round ? ROUND_LABELS[round] ?? round : '一面';
@@ -193,8 +186,8 @@ function InterviewAdjustModal({
   interviewers,
   saving,
   onClose,
-  onCancel,
   onSubmit,
+  onCancelAssignment,
 }: {
   candidate: PipelineBoardCandidate;
   demand: RecruitmentDemand;
@@ -202,7 +195,6 @@ function InterviewAdjustModal({
   interviewers: InterviewerOption[];
   saving: boolean;
   onClose: () => void;
-  onCancel: (assignment: InterviewAssignment) => void;
   onSubmit: (payload: {
     interviewerId: number;
     date: string;
@@ -211,6 +203,7 @@ function InterviewAdjustModal({
     mode: string;
     location: string;
   }) => void;
+  onCancelAssignment: (reason: string) => void;
 }) {
   const defaultInterviewer = assignment?.interviewer_id ?? demand.default_interviewer_id ?? interviewers[0]?.id ?? 0;
   const [interviewerId, setInterviewerId] = useState(String(defaultInterviewer));
@@ -218,7 +211,9 @@ function InterviewAdjustModal({
   const [time, setTime] = useState(formatTimeInput(assignment?.scheduled_at));
   const [duration, setDuration] = useState('60');
   const [mode, setMode] = useState(assignment?.location?.includes('视频') ? 'video' : assignment?.location?.includes('微信') ? 'wechat' : 'offline');
-  const [location, setLocation] = useState(assignment?.location || '');
+  const [location, setLocation] = useState(assignment?.location || '总部2楼设计室');
+  const [showCancelForm, setShowCancelForm] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -234,7 +229,7 @@ function InterviewAdjustModal({
           <div>
             <h2 className="text-2xl font-bold text-[#171a1f]">{assignment ? '查看面试安排' : '安排面试'}</h2>
             <p className="mt-2 text-sm font-semibold text-[#777c84]">
-              {candidate.name_masked} · {demand.job_title} · {roundLabel(assignment?.round ?? roundForCandidate(candidate))}
+              {candidate.name_masked} · {demand.job_title} · {roundLabel(assignment?.round ?? DEFAULT_INTERVIEW_ROUND)}
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-full p-2 text-[#8a8f98] hover:bg-[#f4f5f6]" aria-label="关闭调整面试">
@@ -242,21 +237,14 @@ function InterviewAdjustModal({
           </button>
         </div>
 
-        <fieldset
-          disabled={Boolean(assignment)}
-          className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-7 py-6 disabled:opacity-75"
-        >
-          {assignment && (
-            <p className="rounded-xl border border-[#ffd9bd] bg-[#fff7ef] px-4 py-3 text-sm font-semibold text-[#a85c2e]">
-              已有生效中的面试安排。如需改期、更换面试官或调整轮次，请先取消原任务并填写原因，再重新安排。
-            </p>
-          )}
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-7 py-6">
           <label className="block">
             <span className="mb-2 block text-sm font-bold text-[#303133]">面试官 <span className="text-[#f05a48]">*</span></span>
             <select
               value={interviewerId}
+              disabled={Boolean(assignment)}
               onChange={(event) => setInterviewerId(event.target.value)}
-              className="h-14 w-full rounded-xl border border-[#edf0f2] bg-white px-4 font-semibold outline-none focus:border-[#33a474]"
+              className="h-14 w-full rounded-xl border border-[#edf0f2] bg-white px-4 font-semibold outline-none focus:border-[#33a474] disabled:bg-[#f6f7f8]"
             >
               <option value="">请选择面试官</option>
               {interviewers.map((interviewer) => (
@@ -270,17 +258,17 @@ function InterviewAdjustModal({
           <div className="grid gap-5 sm:grid-cols-2">
             <label>
               <span className="mb-2 block text-sm font-bold text-[#303133]">面试日期 <span className="text-[#f05a48]">*</span></span>
-              <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="h-14 w-full rounded-xl border border-[#edf0f2] px-4 text-lg outline-none focus:border-[#33a474]" />
+              <input type="date" value={date} disabled={Boolean(assignment)} onChange={(event) => setDate(event.target.value)} className="h-14 w-full rounded-xl border border-[#edf0f2] px-4 text-lg outline-none focus:border-[#33a474] disabled:bg-[#f6f7f8]" />
             </label>
             <label>
               <span className="mb-2 block text-sm font-bold text-[#303133]">开始时间 <span className="text-[#f05a48]">*</span></span>
-              <input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-14 w-full rounded-xl border border-[#edf0f2] px-4 text-lg outline-none focus:border-[#33a474]" />
+              <input type="time" value={time} disabled={Boolean(assignment)} onChange={(event) => setTime(event.target.value)} className="h-14 w-full rounded-xl border border-[#edf0f2] px-4 text-lg outline-none focus:border-[#33a474] disabled:bg-[#f6f7f8]" />
             </label>
           </div>
 
           <label className="block">
             <span className="mb-2 block text-sm font-bold text-[#303133]">预计时长</span>
-            <select value={duration} onChange={(event) => setDuration(event.target.value)} className="h-14 w-full rounded-xl border border-[#edf0f2] px-4 text-lg outline-none">
+            <select value={duration} disabled={Boolean(assignment)} onChange={(event) => setDuration(event.target.value)} className="h-14 w-full rounded-xl border border-[#edf0f2] px-4 text-lg outline-none disabled:bg-[#f6f7f8]">
               <option value="30">30 分钟</option>
               <option value="45">45 分钟</option>
               <option value="60">60 分钟</option>
@@ -299,10 +287,11 @@ function InterviewAdjustModal({
                 <button
                   key={key}
                   type="button"
+                  disabled={Boolean(assignment)}
                   onClick={() => setMode(key)}
                   className={`h-12 rounded-xl px-5 font-bold ${
                     mode === key ? 'bg-[#33a474] text-white' : 'bg-[#f6f5f2] text-[#555b64] hover:bg-[#ecefeb]'
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
                 >
                   {label}
                 </button>
@@ -312,31 +301,54 @@ function InterviewAdjustModal({
 
           <label className="block">
             <span className="mb-2 block text-sm font-bold text-[#303133]">会议室 <span className="text-[#f05a48]">*</span></span>
-            <input value={location} onChange={(event) => setLocation(event.target.value)} className="h-14 w-full rounded-xl border border-[#edf0f2] px-4 text-lg outline-none focus:border-[#33a474]" />
+            <input value={location} disabled={Boolean(assignment)} onChange={(event) => setLocation(event.target.value)} className="h-14 w-full rounded-xl border border-[#edf0f2] px-4 text-lg outline-none focus:border-[#33a474] disabled:bg-[#f6f7f8]" />
           </label>
 
-          <p className="rounded-2xl bg-[#fbfaf8] px-5 py-4 text-sm font-semibold text-[#6b717a]">
-            保存后系统会生成面试任务，并按当前通知配置向面试官发送通知；投递失败可在面试任务中重试。
-          </p>
-        </fieldset>
+          {assignment && !showCancelForm && (
+            <p className="rounded-xl bg-[#fff7ef] px-4 py-3 text-sm font-semibold text-[#a95a2b]">
+              如需调整，请先取消当前安排，再为候选人重新安排面试。
+            </p>
+          )}
+          {assignment && showCancelForm && (
+            <label className="block rounded-xl border border-[#ffd2cc] bg-[#fff7f5] p-4">
+              <span className="mb-2 block text-sm font-bold text-[#b42318]">取消原因 <span className="text-[#f05a48]">*</span></span>
+              <textarea
+                value={cancelReason}
+                onChange={(event) => setCancelReason(event.target.value)}
+                rows={4}
+                placeholder="例如：候选人时间冲突，需要重新安排"
+                className="w-full rounded-xl border border-[#ffd2cc] bg-white px-4 py-3 text-sm outline-none focus:border-[#ef4444]"
+              />
+            </label>
+          )}
+        </div>
 
         <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t border-[#edf0f2] bg-white px-7 py-5">
           {assignment ? (
             <Button
               type="button"
               variant="danger"
-              loading={saving}
-              disabled={saving}
               className="border border-[#ffb6ad] bg-white text-[#f04438] hover:bg-[#fff1ef]"
-              onClick={() => onCancel(assignment)}
+              disabled={saving}
+              onClick={() => setShowCancelForm((current) => !current)}
             >
               <XCircle className="h-4 w-4" />
-              取消面试
+              {showCancelForm ? '返回安排' : '取消面试'}
             </Button>
           ) : <span />}
           <div className="flex gap-3">
             <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
-            {!assignment && (
+            {assignment && showCancelForm ? (
+              <Button
+                type="button"
+                variant="danger"
+                loading={saving}
+                disabled={saving || !cancelReason.trim()}
+                onClick={() => onCancelAssignment(cancelReason.trim())}
+              >
+                确认取消面试
+              </Button>
+            ) : !assignment ? (
               <Button
                 type="button"
                 loading={saving}
@@ -353,7 +365,7 @@ function InterviewAdjustModal({
                 <CalendarCheck className="h-4 w-4" />
                 确认安排
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -368,9 +380,7 @@ function InterviewActionDrawer({
   currentRound,
   onClose,
   onSchedule,
-  onManageProcess,
-  onRoundChange,
-  onShowDetail,
+  onOpenFlow,
 }: {
   candidate: PipelineBoardCandidate;
   demand: RecruitmentDemand;
@@ -378,13 +388,11 @@ function InterviewActionDrawer({
   currentRound: InterviewRound;
   onClose: () => void;
   onSchedule: () => void;
-  onManageProcess: () => void;
-  onRoundChange: (round: InterviewRound) => void;
-  onShowDetail: () => void;
+  onOpenFlow: () => void;
 }) {
   const scheduled = Boolean(assignment?.scheduled_at);
   const feedbackDone = Boolean(assignment?.feedback_submitted);
-  const primaryLabel = !scheduled ? '安排面试' : feedbackDone ? '管理流程结果' : '查看或取消安排';
+  const primaryLabel = !scheduled ? '安排面试' : feedbackDone ? '查看面试安排' : '查看或取消安排';
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -439,44 +447,22 @@ function InterviewActionDrawer({
             )}
           </div>
 
-          <div className="mt-4 rounded-2xl border border-[#edf0f2] p-4">
-            <p className="font-bold text-[#171a1f]">选择面试轮次</p>
-            <p className="mt-1 text-sm font-semibold text-[#8a8f98]">选择后进入安排页；只有保存成功才会写入面试任务。</p>
-            <div className="mt-4 grid grid-cols-4 gap-2">
-              {ROUND_ACTIONS.map((round) => (
-                <button
-                  key={round}
-                  type="button"
-                  onClick={() => onRoundChange(round)}
-                  className={`h-10 rounded-xl text-sm font-bold transition ${
-                    currentRound === round
-                      ? 'bg-[#33a474] text-white'
-                      : 'bg-[#f6f5f2] text-[#555b64] hover:bg-[#eef8f3] hover:text-[#168a5b]'
-                  }`}
-                >
-                  {roundLabel(round)}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="mt-4 space-y-3">
-            <Button
-              type="button"
-              className="h-12 w-full justify-center"
-              onClick={feedbackDone ? onManageProcess : onSchedule}
-            >
+            <Button type="button" className="h-12 w-full justify-center" onClick={onSchedule}>
               <CalendarCheck className="h-4 w-4" />
               {primaryLabel}
             </Button>
-            <button
-              type="button"
-              onClick={onShowDetail}
-              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-[#edf0f2] font-bold text-[#303133] hover:bg-[#f7f8f8]"
+            <Link
+              to={`/candidates/${candidate.candidate_id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-12 items-center justify-center rounded-xl border border-[#edf0f2] font-bold text-[#303133] hover:bg-[#f7f8f8]"
             >
-              <Eye className="h-4 w-4" />
               查看候选人档案
-            </button>
+            </Link>
+            <Button type="button" variant="secondary" className="h-12 w-full justify-center" onClick={onOpenFlow}>
+              查看招聘流程
+            </Button>
           </div>
 
           <div className="mt-4 rounded-2xl border border-[#edf0f2] p-4">
@@ -494,205 +480,64 @@ function InterviewActionDrawer({
   );
 }
 
-function CandidateDetailDialog({
+function CandidateFlowDrawer({
   candidate,
   demand,
-  assignment,
-  round,
+  busy,
   onClose,
-  onProcess,
+  onMove,
+  onTransferred,
 }: {
   candidate: PipelineBoardCandidate;
   demand: RecruitmentDemand;
-  assignment: InterviewAssignment | null;
-  round: InterviewRound;
+  busy: boolean;
   onClose: () => void;
-  onProcess: () => void;
+  onMove: (
+    candidateId: number,
+    toStage: PipelineStage,
+    note?: string,
+    disposition?: CandidateDispositionInput,
+  ) => void | Promise<void>;
+  onTransferred: () => void | Promise<void>;
 }) {
-  const detailRows = [
-    ['候选人', candidate.name_masked],
-    ['招聘需求', demand.request_no || '未记录需求编号'],
-    ['应聘岗位', demand.job_title || '未记录岗位'],
-    ['城市', demand.job_city || '未记录城市'],
-    ['部门', demand.job_department || '未记录部门'],
-    ['招聘负责人', demand.owner_hr_name || '未分配负责人'],
-    ['当前阶段', STAGES.find((stage) => stage.key === candidate.stage)?.label ?? candidate.stage],
-    ['面试轮次', roundLabel(round)],
-    ['面试官', assignment?.interviewer_name || demand.default_interviewer_name || '尚未安排'],
-    ['面试时间', formatSchedule(assignment?.scheduled_at)],
-    ['面试地点', assignment?.location || '尚未安排'],
-    ['最近更新', formatSchedule(candidate.updated_at)],
-    ['操作人', candidate.updated_by_name || '未记录'],
-  ];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 py-6" role="dialog" aria-modal="true">
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <header className="flex items-start justify-between border-b border-[#edf0f2] px-6 py-5">
-          <div>
-            <p className="text-sm font-bold text-[#33a474]">候选人详情</p>
-            <h2 className="mt-2 text-2xl font-bold text-[#171a1f]">{candidate.name_masked}</h2>
-          </div>
-          <button type="button" onClick={onClose} className="rounded-full p-2 text-[#8a8f98] hover:bg-[#f4f5f6]" aria-label="关闭候选人详情">
-            <X className="h-5 w-5" />
-          </button>
-        </header>
-        <div className="p-6">
-          <table className="w-full overflow-hidden rounded-xl border border-[#edf0f2] text-sm">
-            <tbody>
-              {detailRows.map(([label, value]) => (
-                <tr key={label} className="border-b border-[#edf0f2] last:border-0">
-                  <th className="w-36 bg-[#f8faf9] px-4 py-3 text-left font-bold text-[#6b717a]">{label}</th>
-                  <td className="px-4 py-3 font-semibold text-[#303133]">{value}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="mt-5 flex justify-end gap-3">
-            <Button type="button" variant="secondary" onClick={onClose}>关闭</Button>
-            <Button type="button" onClick={onProcess}>
-              <CalendarCheck className="h-4 w-4" />
-              处理面试
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function JobDetailDrawer({
-  candidate,
-  demand,
-  assignment,
-  round,
-  onClose,
-  onShowCandidate,
-  onProcess,
-}: {
-  candidate: PipelineBoardCandidate;
-  demand: RecruitmentDemand;
-  assignment: InterviewAssignment | null;
-  round: InterviewRound;
-  onClose: () => void;
-  onShowCandidate: () => void;
-  onProcess: () => void;
-}) {
-  const planned = Math.max(demand.headcount ?? 1, 1);
-  const onboarded = Math.max(demand.metrics?.onboarded_count ?? 0, 0);
-  const remaining = Math.max(planned - onboarded, 0);
-  const progressCards = [
-    ['已推荐', `${demand.metrics?.recommended_count ?? 0}人`],
-    ['面试中', `${demand.metrics?.interview_count ?? 0}人`],
-    ['Offer中', `${demand.metrics?.offer_count ?? 0}人`],
-    ['已入职', `${onboarded}人`],
-  ];
-  const infoRows = [
-    ['所属部门', demand.job_department || '未记录部门'],
-    ['工作城市', demand.job_city || '未记录城市'],
-    ['招聘负责人', demand.owner_hr_name || '未分配负责人'],
-    ['薪资范围', '未设置'],
-    ['计划招聘', `${planned}人`],
-    ['已入职', `${onboarded}人`],
-    ['剩余HC', `${remaining}人`],
-    ['面试轮次', roundLabel(round)],
-    ['招聘开始日期', demand.created_at ? formatSchedule(demand.created_at).slice(0, 10) : '未记录'],
-    ['计划关闭日期', demand.target_date || '未设置'],
-  ];
-
   useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
     };
   }, []);
 
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/35" role="dialog" aria-modal="true">
-      <button type="button" className="flex-1 cursor-default" aria-label="关闭岗位详情" onClick={onClose} />
-      <aside className="flex h-full w-full max-w-[620px] flex-col bg-white shadow-2xl">
-        <header className="border-b border-[#edf0f2] px-8 py-7">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-3xl font-bold text-[#171a1f]">{demand.job_title || '当前岗位'}</h2>
-                <span className="rounded-lg bg-[#dff6ec] px-3 py-1 text-sm font-bold text-[#168a5b]">
-                  {demand.status === 'active' ? '招聘中' : demand.status === 'pending' ? '待确认' : demand.status === 'filled' ? '已完成' : '已关闭'}
-                </span>
-              </div>
-              <p className="mt-2 text-sm font-semibold text-[#777c84]">
-                {demand.job_department || '未记录部门'} · {demand.job_city || '未记录城市'} · 招聘负责人：{demand.owner_hr_name || '未分配负责人'}
-              </p>
-            </div>
-            <button type="button" onClick={onClose} className="rounded-full p-2 text-[#8a8f98] hover:bg-[#f4f5f6]" aria-label="关闭岗位详情">
-              <X className="h-5 w-5" />
-            </button>
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] justify-end overflow-hidden bg-black/30" role="dialog" aria-modal="true" aria-label="候选人招聘流程">
+      <button type="button" className="flex-1 cursor-default" aria-label="关闭候选人招聘流程" onClick={onClose} />
+      <aside className="h-[100dvh] max-h-[100dvh] w-full max-w-[560px] overflow-y-auto overscroll-contain bg-[#f7f8f8] shadow-2xl">
+        <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#edf0f2] bg-white px-6 py-5">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-[#33a474]">招聘流程</p>
+            <h2 className="mt-1 truncate text-2xl font-bold text-[#171a1f]">{candidate.name_masked}</h2>
+            <p className="mt-1 text-sm font-semibold text-[#777c84]">{demand.job_title} · {demand.request_no}</p>
           </div>
+          <button type="button" onClick={onClose} className="rounded-full p-2 text-[#8a8f98] hover:bg-[#f4f5f6]" aria-label="关闭">
+            <X className="h-5 w-5" />
+          </button>
         </header>
-
-        <div className="flex border-b border-[#edf0f2] px-8">
-          {['岗位信息', `候选人（${assignment ? 1 : 0}）`, '招聘进展'].map((tab, index) => (
-            <span
-              key={tab}
-              className={`mr-8 border-b-2 py-4 text-sm font-bold ${index === 0 ? 'border-[#33a474] text-[#168a5b]' : 'border-transparent text-[#6b717a]'}`}
-            >
-              {tab}
-            </span>
-          ))}
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-8 py-7">
-          <section>
-            <h3 className="text-lg font-bold text-[#171a1f]">基本信息</h3>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              {infoRows.map(([label, value]) => (
-                <div key={label} className="rounded-2xl bg-[#fafafa] px-5 py-4">
-                  <p className="text-sm font-bold text-[#9aa0a8]">{label}</p>
-                  <p className="mt-2 text-lg font-bold text-[#171a1f]">{value}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="mt-7">
-            <h3 className="text-lg font-bold text-[#171a1f]">关联招聘需求</h3>
-            <div className="mt-3 rounded-2xl bg-[#fafafa] px-5 py-4 text-lg font-bold text-[#171a1f]">
-              {demand.job_title || '当前岗位'}招聘需求
-            </div>
-          </section>
-
-          <section className="mt-7">
-            <h3 className="text-lg font-bold text-[#171a1f]">招聘进展</h3>
-            <div className="mt-4 grid gap-4 sm:grid-cols-4">
-              {progressCards.map(([label, value], index) => (
-                <div key={label} className={`rounded-2xl border px-4 py-5 text-center ${index === 1 ? 'border-[#ffd9bd] bg-[#fff7ef]' : 'border-[#cdebdc] bg-[#f4fbf7]'}`}>
-                  <p className="text-sm font-bold text-[#6b717a]">{label}</p>
-                  <p className="mt-2 text-2xl font-bold text-[#171a1f]">{value}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="mt-7 rounded-2xl border border-[#edf0f2] p-5">
-            <h3 className="text-lg font-bold text-[#171a1f]">当前候选人</h3>
-            <div className="mt-4 flex items-center justify-between gap-4">
-              <button type="button" onClick={onShowCandidate} className="flex items-center gap-3 text-left">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ddf4ea] font-bold text-[#168a5b]">
-                  {candidateInitial(candidate.name_masked)}
-                </span>
-                <span>
-                  <span className="block font-bold text-[#171a1f]">{candidate.name_masked}</span>
-                  <span className="block text-sm font-semibold text-[#8a8f98]">{roundLabel(round)} · {formatSchedule(assignment?.scheduled_at)}</span>
-                </span>
-              </button>
-              <Button type="button" size="sm" onClick={onProcess}>处理面试</Button>
-            </div>
-          </section>
+        <div className="p-5 pb-10">
+          <PipelineCandidatePanel
+            candidate={candidate}
+            demandId={demand.id}
+            jobId={demand.job_id}
+            busy={busy}
+            onMove={onMove}
+            onTransferred={onTransferred}
+          />
         </div>
       </aside>
-    </div>
+    </div>,
+    document.body,
   );
 }
+
 
 export function PipelinePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -771,14 +616,10 @@ export function PipelinePage() {
   const [cityFilter, setCityFilter] = useState('全部');
   const [roundFilter, setRoundFilter] = useState('全部');
   const [scheduleFilter, setScheduleFilter] = useState('全部');
-  const [roundOverrides, setRoundOverrides] = useState<Record<number, InterviewRound>>({});
-  const [detailCandidate, setDetailCandidate] = useState<PipelineBoardCandidate | null>(null);
-  const [jobDetailCandidate, setJobDetailCandidate] = useState<PipelineBoardCandidate | null>(null);
   const [actionCandidate, setActionCandidate] = useState<PipelineBoardCandidate | null>(null);
   const [adjustCandidate, setAdjustCandidate] = useState<PipelineBoardCandidate | null>(null);
+  const [flowCandidateId, setFlowCandidateId] = useState<number | null>(null);
   const [savingInterview, setSavingInterview] = useState(false);
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [showProcessPanel, setShowProcessPanel] = useState(false);
   const [activeStage, setActiveStage] = useState<PipelineStage>(requestedStage ?? 'pending');
   const [showAllStages, setShowAllStages] = useState(requestedAllStages);
   const [selectedCandidateId, setSelectedCandidateId] = useState<number | null>(
@@ -789,8 +630,14 @@ export function PipelinePage() {
   const [recentlyMovedCandidateId, setRecentlyMovedCandidateId] = useState<number | null>(null);
   const autoStageKeyRef = useRef<string | null>(null);
 
-  const candidates = boardAsync.data?.candidates ?? EMPTY_PIPELINE_CANDIDATES;
-  const assignments = assignmentsAsync.data ?? EMPTY_ASSIGNMENTS;
+  const candidates: PipelineBoardCandidate[] = useMemo(
+    () => boardAsync.data?.candidates ?? [],
+    [boardAsync.data?.candidates],
+  );
+  const assignments = useMemo(
+    () => assignmentsAsync.data ?? [],
+    [assignmentsAsync.data],
+  );
   const assignmentByCandidateId = useMemo(() => {
     const map = new Map<number, InterviewAssignment | null>();
     candidates.forEach((candidate) => {
@@ -799,9 +646,9 @@ export function PipelinePage() {
     return map;
   }, [assignments, candidates]);
   const effectiveRoundForCandidate = useCallback(
-    (candidate: PipelineBoardCandidate, assignment?: InterviewAssignment | null) =>
-      roundOverrides[candidate.candidate_id] ?? (assignment?.round as InterviewRound | undefined) ?? roundForCandidate(candidate),
-    [roundOverrides],
+    (...[, assignment]: [PipelineBoardCandidate, (InterviewAssignment | null)?]) =>
+      (assignment?.round as InterviewRound | undefined) ?? DEFAULT_INTERVIEW_ROUND,
+    [],
   );
   const departmentOptions = useMemo(
     () => Array.from(new Set(['全部', effectiveDemand?.job_department || '未记录部门'])),
@@ -825,6 +672,7 @@ export function PipelinePage() {
       if (normalizedSearch && !text.includes(normalizedSearch)) return false;
       if (departmentFilter !== '全部' && effectiveDemand?.job_department !== departmentFilter) return false;
       if (cityFilter !== '全部' && effectiveDemand?.job_city !== cityFilter) return false;
+      if ((roundFilter !== '全部' || scheduleFilter !== '全部') && candidate.stage !== 'interview') return false;
       if (roundFilter !== '全部' && roundLabel(effectiveRoundForCandidate(candidate, assignment)) !== roundFilter) return false;
       if (scheduleFilter === '尚未安排' && assignment?.scheduled_at) return false;
       if (scheduleFilter === '已安排' && !assignment?.scheduled_at) return false;
@@ -838,7 +686,7 @@ export function PipelinePage() {
           candidate,
           assignment: assignmentByCandidateId.get(candidate.candidate_id) ?? null,
         }))
-        .filter((item) => Boolean(item.assignment?.scheduled_at))
+        .filter((item) => item.candidate.stage === 'interview' && Boolean(item.assignment?.scheduled_at))
         .sort((a, b) => {
           const left = new Date(a.assignment?.scheduled_at ?? 0).getTime();
           const right = new Date(b.assignment?.scheduled_at ?? 0).getTime();
@@ -849,6 +697,9 @@ export function PipelinePage() {
   const highlightedCandidate = highlightedCandidateId
     ? candidates.find((c) => c.candidate_id === highlightedCandidateId)
     : null;
+  const flowCandidate = flowCandidateId === null
+    ? null
+    : candidates.find((candidate) => candidate.candidate_id === flowCandidateId) ?? null;
 
   useEffect(() => {
     setSelectedDemandId(requestedDemandId);
@@ -858,6 +709,7 @@ export function PipelinePage() {
     setShowAllStages(requestedAllStages);
     setSelectedCandidateId(highlightedCandidateId);
     setShowAddToPipeline(false);
+    setFlowCandidateId(null);
   }, [highlightedCandidateId, requestedAllStages, requestedDemandId, requestedStage]);
 
   // 已在本招聘需求流程中的候选人 id 集合（供"加入流程"排除）。
@@ -888,8 +740,6 @@ export function PipelinePage() {
     () => showAllStages ? candidates : (byStage[activeStage] ?? []),
     [activeStage, byStage, candidates, showAllStages],
   );
-  const selectedCandidate =
-    candidates.find((candidate) => candidate.candidate_id === selectedCandidateId) ?? null;
 
   useEffect(() => {
     if (highlightedCandidate) {
@@ -960,7 +810,6 @@ export function PipelinePage() {
     setSelectedCandidateId(pendingMove.candidateId);
     setRecentlyMovedCandidateId(pendingMove.candidateId);
     setPendingMove(null);
-    setBusyId(null);
   }, [candidates, pendingMove]);
 
   useEffect(() => {
@@ -976,7 +825,6 @@ export function PipelinePage() {
   useEffect(() => {
     if (!pendingMove || boardAsync.loading || !boardAsync.error) return;
     setPendingMove(null);
-    setBusyId(null);
   }, [boardAsync.error, boardAsync.loading, pendingMove]);
 
   useEffect(() => {
@@ -995,36 +843,6 @@ export function PipelinePage() {
     }
   }, [activeCandidates, pendingMove, selectedCandidateId]);
 
-  const handleMove = useCallback(
-    async (
-      candidateId: number,
-      toStage: PipelineStage,
-      note?: string,
-      disposition?: CandidateDispositionInput,
-    ) => {
-      if (effectiveDemandId === null) return;
-      setBusyId(candidateId);
-      setPendingMove(null);
-      setRecentlyMovedCandidateId(null);
-      try {
-        const result = await api.movePipeline({
-          candidate_id: candidateId,
-          demand_id: effectiveDemandId,
-          stage: toStage,
-          note,
-          disposition,
-        });
-        setPendingMove({ candidateId, toStage });
-        toast.success(`${result.name_masked || '候选人'} 已更新至「${stageLabel(toStage)}」`);
-        boardAsync.reload();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : '流程操作失败');
-        setBusyId(null);
-      }
-    },
-    [boardAsync, effectiveDemandId, toast],
-  );
-
   const handleDemandChange = useCallback(
     (demandId: number) => {
       setSelectedDemandId(demandId);
@@ -1033,7 +851,7 @@ export function PipelinePage() {
       setRecentlyMovedCandidateId(null);
       setSelectedCandidateId(null);
       setShowAddToPipeline(false);
-      setShowProcessPanel(false);
+      setFlowCandidateId(null);
     },
     [activeStage, setSearchParams, showAllStages],
   );
@@ -1078,26 +896,59 @@ export function PipelinePage() {
     }
   }, [adjustCandidate, assignmentByCandidateId, assignmentsAsync, boardAsync, effectiveDemandId, effectiveJobId, effectiveRoundForCandidate, toast]);
 
-  const handleCancelInterview = useCallback(async (assignment: InterviewAssignment) => {
-    const reason = window.prompt('请输入取消面试安排的原因');
-    if (reason === null) return;
-    if (!reason.trim()) {
-      toast.error('取消面试安排需要填写原因');
+  const handleCancelInterview = useCallback(async (reason: string) => {
+    if (!adjustCandidate) return;
+    const assignment = assignmentByCandidateId.get(adjustCandidate.candidate_id) ?? null;
+    if (!assignment) {
+      toast.error('当前没有可取消的面试安排');
       return;
     }
     setSavingInterview(true);
     try {
-      await api.cancelInterviewAssignment(assignment.id, reason.trim());
-      toast.success('面试安排已取消，可以重新安排');
+      await api.cancelInterviewAssignment(assignment.id, reason);
+      toast.success('面试已取消，可重新安排');
       setAdjustCandidate(null);
       setActionCandidate(null);
       assignmentsAsync.reload();
       boardAsync.reload();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '取消面试安排失败');
+      toast.error(error instanceof Error ? error.message : '取消面试失败');
     } finally {
       setSavingInterview(false);
     }
+  }, [adjustCandidate, assignmentByCandidateId, assignmentsAsync, boardAsync, toast]);
+
+  const handleMoveCandidate = useCallback(async (
+    candidateId: number,
+    toStage: PipelineStage,
+    note?: string,
+    disposition?: CandidateDispositionInput,
+  ) => {
+    if (effectiveDemandId === null) return;
+    setPendingMove({ candidateId, toStage });
+    try {
+      await api.movePipeline({
+        candidate_id: candidateId,
+        demand_id: effectiveDemandId,
+        stage: toStage,
+        note,
+        disposition,
+      });
+      boardAsync.reload();
+      assignmentsAsync.reload();
+      toast.success('候选人流程已更新');
+    } catch (error) {
+      setPendingMove(null);
+      toast.error(error instanceof Error ? error.message : '更新候选人流程失败');
+      throw error;
+    }
+  }, [assignmentsAsync, boardAsync, effectiveDemandId, toast]);
+
+  const handleCandidateTransferred = useCallback(async () => {
+    setFlowCandidateId(null);
+    boardAsync.reload();
+    assignmentsAsync.reload();
+    toast.success('候选人已转入其他招聘需求');
   }, [assignmentsAsync, boardAsync, toast]);
 
   return (
@@ -1210,10 +1061,6 @@ export function PipelinePage() {
             </div>
           )}
 
-          <div className="rounded-xl border border-[#dcefe7] bg-[#f7fcfa] px-4 py-3 text-sm font-semibold text-[#4f665b]">
-            流程提示：业务评审阶段由用人部门提交业务反馈；确认通过后，招聘专员再安排面试。
-          </div>
-
           {/* 面试管理工作区 */}
           {!demandResolutionError && effectiveDemandId !== null && !boardAsync.loading && boardAsync.error && (
             <ErrorState message={boardAsync.error.message} onRetry={boardAsync.reload} />
@@ -1261,41 +1108,44 @@ export function PipelinePage() {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-semibold text-[#8a8f98]">{formatSchedule(assignment?.scheduled_at)}</p>
-                            <button
-                              type="button"
-                              onClick={() => setDetailCandidate(candidate)}
+                            <Link
+                              to={`/candidates/${candidate.candidate_id}`}
+                              target="_blank"
+                              rel="noreferrer"
                               className="mt-2 text-left text-lg font-bold text-[#171a1f] hover:text-[#168a5b] hover:underline"
                             >
                               {candidate.name_masked}
-                            </button>
+                            </Link>
                           </div>
                           <span className="rounded-lg bg-[#e9f2e3] px-3 py-1 text-sm font-bold text-[#607a55]">
                             {roundLabel(effectiveRoundForCandidate(candidate, assignment))}
                           </span>
                         </div>
                         <div className="mt-4 space-y-2 text-sm font-semibold text-[#5f646d]">
-                          <button
-                            type="button"
-                            onClick={() => setJobDetailCandidate(candidate)}
+                          {effectiveDemand && <Link
+                            to={`/demands/${effectiveDemand.id}`}
+                            target="_blank"
+                            rel="noreferrer"
                             className="font-semibold text-[#5f646d] hover:text-[#168a5b] hover:underline"
                           >
                             {effectiveDemand?.job_title || '未记录岗位'} · {effectiveDemand?.job_city || '未记录城市'}
-                          </button>
+                          </Link>}
                           <p>面试官：{interviewerName}</p>
                           <p>地点：{assignment?.location || '待定'}</p>
                         </div>
                         <div className="mt-4 flex gap-2">
-                          <Button type="button" size="sm" onClick={() => setAdjustCandidate(candidate)}>
+                          <Button type="button" size="sm" onClick={() => setActionCandidate(candidate)}>
                             <CalendarCheck className="h-4 w-4" />
-                            调整面试
+                            查看安排
                           </Button>
-                          <button
-                            type="button"
-                            onClick={() => setDetailCandidate(candidate)}
+                          <Link
+                            to={`/candidates/${candidate.candidate_id}`}
+                            target="_blank"
+                            rel="noreferrer"
                             className="inline-flex h-8 items-center rounded-md px-3 text-sm font-bold text-[#168a5b] hover:bg-[#e9f7f1]"
                           >
                             查看档案
-                          </button>
+                          </Link>
                         </div>
                       </div>
                     );
@@ -1368,7 +1218,9 @@ export function PipelinePage() {
                       const assignment = assignmentByCandidateId.get(candidate.candidate_id) ?? null;
                       const scheduled = Boolean(assignment?.scheduled_at);
                       const interviewerName = assignment?.interviewer_name || effectiveDemand?.default_interviewer_name || '尚未安排';
-                      const rowRound = roundLabel(effectiveRoundForCandidate(candidate, assignment));
+                      const rowRound = candidate.stage === 'interview'
+                        ? roundLabel(effectiveRoundForCandidate(candidate, assignment))
+                        : '未进入面试';
                       return (
                         <tr key={candidate.candidate_id} className="border-b border-[#f1f2f3] hover:bg-[#fbfcfc]">
                           <td className="px-6 py-4">
@@ -1376,56 +1228,40 @@ export function PipelinePage() {
                               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ddf4ea] text-sm font-bold text-[#168a5b]">
                                 {candidateInitial(candidate.name_masked)}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => setDetailCandidate(candidate)}
+                              <Link
+                                to={`/candidates/${candidate.candidate_id}`}
+                                target="_blank"
+                                rel="noreferrer"
                                 className="font-bold text-[#171a1f] hover:text-[#168a5b] hover:underline"
                               >
                                 {candidate.name_masked}
-                              </button>
+                              </Link>
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <button
-                              type="button"
-                              onClick={() => setJobDetailCandidate(candidate)}
+                            {effectiveDemand && <Link
+                              to={`/demands/${effectiveDemand.id}`}
+                              target="_blank"
+                              rel="noreferrer"
                               className="font-semibold text-[#4f555d] hover:text-[#168a5b] hover:underline"
                             >
                               {effectiveDemand?.job_title || '未记录岗位'}
-                            </button>
+                            </Link>}
                           </td>
+                          <td className="px-6 py-4 font-semibold text-[#4f555d]">{effectiveDemand?.job_city || '未记录城市'}</td>
+                          <td className="px-6 py-4 font-semibold text-[#4f555d]">{effectiveDemand?.job_department || '未记录部门'}</td>
                           <td className="px-6 py-4">
-                            <button
-                              type="button"
-                              onClick={() => setDetailCandidate(candidate)}
-                              className="font-semibold text-[#4f555d] hover:text-[#168a5b] hover:underline"
-                            >
-                              {effectiveDemand?.job_city || '未记录城市'}
-                            </button>
-                          </td>
-                          <td className="px-6 py-4">
-                            <button
-                              type="button"
-                              onClick={() => setDetailCandidate(candidate)}
-                              className="font-semibold text-[#4f555d] hover:text-[#168a5b] hover:underline"
-                            >
-                              {effectiveDemand?.job_department || '未记录部门'}
-                            </button>
-                          </td>
-                          <td className="px-6 py-4">
-                            <button
-                              type="button"
-                              onClick={() => setDetailCandidate(candidate)}
-                              className="rounded-lg bg-[#e9f2e3] px-3 py-1.5 font-bold text-[#607a55] hover:bg-[#dcebd4]"
-                            >
+                            <span className="rounded-lg bg-[#e9f2e3] px-3 py-1.5 font-bold text-[#607a55]">
                               {rowRound}
-                            </button>
+                            </span>
                           </td>
                           <td className="px-6 py-4">
-                            {scheduled ? (
+                            {candidate.stage !== 'interview' ? (
+                              <span className="font-semibold text-[#8a8f98]">等待流程推进</span>
+                            ) : scheduled ? (
                               <button
                                 type="button"
-                                onClick={() => setDetailCandidate(candidate)}
+                                onClick={() => setActionCandidate(candidate)}
                                 className="flex items-center gap-3 text-left hover:text-[#168a5b]"
                               >
                                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ddf4ea] text-sm font-bold text-[#168a5b]">
@@ -1439,7 +1275,7 @@ export function PipelinePage() {
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => setDetailCandidate(candidate)}
+                                onClick={() => setActionCandidate(candidate)}
                                 className="font-semibold text-[#8a8f98] hover:text-[#168a5b] hover:underline"
                               >
                                 尚未安排
@@ -1447,23 +1283,20 @@ export function PipelinePage() {
                             )}
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => {
-                                  setSelectedCandidateId(candidate.candidate_id);
-                                  setShowProcessPanel(true);
-                                }}
-                              >
-                                管理流程
-                              </Button>
+                            {candidate.stage === 'interview' ? (
                               <Button type="button" size="sm" onClick={() => setActionCandidate(candidate)}>
                                 <CalendarCheck className="h-4 w-4" />
                                 处理面试
                               </Button>
-                            </div>
+                            ) : effectiveDemand ? (
+                              <button
+                                type="button"
+                                onClick={() => setFlowCandidateId(candidate.candidate_id)}
+                                className="inline-flex h-8 items-center rounded-md border border-[#edf0f2] px-3 text-sm font-bold text-[#555b64] hover:bg-[#f7f8f8]"
+                              >
+                                查看流程
+                              </button>
+                            ) : null}
                           </td>
                         </tr>
                       );
@@ -1483,7 +1316,7 @@ export function PipelinePage() {
           {/* 空流程提示 */}
           {!demandResolutionError && effectiveDemandId !== null && !boardAsync.loading && !boardAsync.error && candidates.length === 0 && (
             <p className="text-center text-sm text-muted-soft">
-              本招聘需求中暂无候选人，可先点击「添加候选人」或去匹配更多候选人。
+              本招聘需求中暂无候选人，可先点击「添加候选人」；候选人入池后需提交业务反馈，通过后再安排面试。
             </p>
           )}
 
@@ -1495,8 +1328,8 @@ export function PipelinePage() {
               interviewers={interviewersAsync.data ?? []}
               saving={savingInterview}
               onClose={() => setAdjustCandidate(null)}
-              onCancel={handleCancelInterview}
               onSubmit={handleSaveInterview}
+              onCancelAssignment={handleCancelInterview}
             />
           )}
 
@@ -1514,107 +1347,23 @@ export function PipelinePage() {
                 setActionCandidate(null);
                 setAdjustCandidate(actionCandidate);
               }}
-              onManageProcess={() => {
-                setSelectedCandidateId(actionCandidate.candidate_id);
-                setShowProcessPanel(true);
+              onOpenFlow={() => {
                 setActionCandidate(null);
-              }}
-              onRoundChange={(round) => {
-                setRoundOverrides((current) => ({ ...current, [actionCandidate.candidate_id]: round }));
-                toast.success(`已选择${roundLabel(round)}，保存面试安排后生效`);
-                setAdjustCandidate(actionCandidate);
-                setActionCandidate(null);
-              }}
-              onShowDetail={() => {
-                setDetailCandidate(actionCandidate);
-                setActionCandidate(null);
+                setFlowCandidateId(actionCandidate.candidate_id);
               }}
             />
           )}
 
-          {jobDetailCandidate && effectiveDemand && (
-            <JobDetailDrawer
-              candidate={jobDetailCandidate}
+          {flowCandidate && effectiveDemand && (
+            <CandidateFlowDrawer
+              candidate={flowCandidate}
               demand={effectiveDemand}
-              assignment={assignmentByCandidateId.get(jobDetailCandidate.candidate_id) ?? null}
-              round={effectiveRoundForCandidate(
-                jobDetailCandidate,
-                assignmentByCandidateId.get(jobDetailCandidate.candidate_id) ?? null,
-              )}
-              onClose={() => setJobDetailCandidate(null)}
-              onShowCandidate={() => {
-                setDetailCandidate(jobDetailCandidate);
-                setJobDetailCandidate(null);
-              }}
-              onProcess={() => {
-                setActionCandidate(jobDetailCandidate);
-                setJobDetailCandidate(null);
-              }}
+              busy={pendingMove?.candidateId === flowCandidate.candidate_id}
+              onClose={() => setFlowCandidateId(null)}
+              onMove={handleMoveCandidate}
+              onTransferred={handleCandidateTransferred}
             />
           )}
-
-          {detailCandidate && effectiveDemand && (
-            <CandidateDetailDialog
-              candidate={detailCandidate}
-              demand={effectiveDemand}
-              assignment={assignmentByCandidateId.get(detailCandidate.candidate_id) ?? null}
-              round={effectiveRoundForCandidate(
-                detailCandidate,
-                assignmentByCandidateId.get(detailCandidate.candidate_id) ?? null,
-              )}
-              onClose={() => setDetailCandidate(null)}
-              onProcess={() => {
-                setActionCandidate(detailCandidate);
-                setDetailCandidate(null);
-              }}
-            />
-          )}
-
-          {showProcessPanel
-            && selectedCandidate
-            && effectiveDemandId !== null
-            && effectiveJobId !== null
-            && createPortal(
-              <div className="fixed inset-0 z-50 flex justify-end bg-black/35" role="dialog" aria-modal="true">
-                <button
-                  type="button"
-                  className="flex-1 cursor-default"
-                  aria-label="关闭流程管理"
-                  onClick={() => setShowProcessPanel(false)}
-                />
-                <aside className="h-full w-full max-w-[460px] overflow-y-auto bg-[#f7f8f8] p-5 shadow-2xl">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-bold text-[#33a474]">候选人流程管理</p>
-                      <h2 className="mt-1 text-xl font-bold text-[#171a1f]">{selectedCandidate.name_masked}</h2>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowProcessPanel(false)}
-                      className="rounded-full p-2 text-[#8a8f98] hover:bg-white"
-                      aria-label="关闭流程管理"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
-                  <PipelineCandidatePanel
-                    candidate={selectedCandidate}
-                    demandId={effectiveDemandId}
-                    jobId={effectiveJobId}
-                    busy={
-                      busyId === selectedCandidate.candidate_id
-                      || pendingMove?.candidateId === selectedCandidate.candidate_id
-                    }
-                    onMove={handleMove}
-                    onTransferred={() => {
-                      toast.success('已转入目标需求；原需求保留「已转出」记录');
-                      boardAsync.reload();
-                    }}
-                  />
-                </aside>
-              </div>,
-              document.body,
-            )}
         </>
       )}
     </div>

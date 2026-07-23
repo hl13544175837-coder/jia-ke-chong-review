@@ -53,6 +53,7 @@ export function PipelineCandidatePanel({
   const [transferReason, setTransferReason] = useState('');
   const [transferError, setTransferError] = useState<string | null>(null);
   const [transferring, setTransferring] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [targetStage, setTargetStage] = useState<PipelineStage | ''>('');
   const [moveNote, setMoveNote] = useState('');
   const [correctionReason, setCorrectionReason] = useState('');
@@ -79,6 +80,7 @@ export function PipelineCandidatePanel({
     setTargetDemandId('');
     setTransferReason('');
     setTransferError(null);
+    setActionError(null);
   }, [candidateId, candidateStage]);
 
   const insight = buildPipelineInsight(candidate);
@@ -93,7 +95,7 @@ export function PipelineCandidatePanel({
           <div className={cn('rounded-md border px-4 py-3 text-sm', insightToneClass(insight.tone))}>
             <div className="flex items-center gap-2 font-semibold">
               <Lightbulb className="h-4 w-4" />
-              AI 建议
+              流程建议
             </div>
             <p className="mt-1 text-xs">{insight.detail}</p>
           </div>
@@ -110,8 +112,32 @@ export function PipelineCandidatePanel({
 
   async function move(toStage: PipelineStage) {
     const note = moveNote.trim() || undefined;
-    await onMove(currentCandidate.candidate_id, toStage, note);
-    setMoveNote('');
+    setActionError(null);
+    try {
+      await onMove(currentCandidate.candidate_id, toStage, note);
+      setMoveNote('');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '更新候选人流程失败');
+    }
+  }
+
+  async function rejectBusinessReview() {
+    if (!window.confirm('确认业务不通过并结束该岗位流程吗？候选人仍会保留在简历库。')) return;
+    setActionError(null);
+    try {
+      await onMove(
+        currentCandidate.candidate_id,
+        'rejected',
+        '业务不通过：不合适',
+        {
+          reason: '不合适',
+          enter_talent_pool: true,
+          note: '业务不通过',
+        },
+      );
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '提交业务评审结果失败');
+    }
   }
 
   async function correctStage() {
@@ -124,9 +150,13 @@ export function PipelineCandidatePanel({
     const message = '修正会影响当前阶段和 BI 当前存量，历史记录会保留。确认继续？';
     if (!window.confirm(message)) return;
     setCorrectionError(null);
-    await onMove(currentCandidate.candidate_id, targetStage, `阶段修正：${reason}`);
-    setTargetStage('');
-    setCorrectionReason('');
+    try {
+      await onMove(currentCandidate.candidate_id, targetStage, `阶段修正：${reason}`);
+      setTargetStage('');
+      setCorrectionReason('');
+    } catch (error) {
+      setCorrectionError(error instanceof Error ? error.message : '修正阶段失败');
+    }
   }
 
   async function transferDemand() {
@@ -173,6 +203,8 @@ export function PipelineCandidatePanel({
               <div className="min-w-0">
                 <Link
                   to={`/candidates/${candidate.candidate_id}`}
+                  target="_blank"
+                  rel="noreferrer"
                   className="truncate text-sm font-semibold text-ink hover:underline"
                 >
                   {candidate.name_masked}
@@ -190,7 +222,7 @@ export function PipelineCandidatePanel({
         <div className={cn('rounded-md border px-4 py-3 text-sm', insightToneClass(insight.tone))}>
           <div className="flex items-center gap-2 font-semibold">
             <Lightbulb className="h-4 w-4" />
-            AI 建议
+              流程建议
           </div>
           <p className="mt-1 font-medium">{insight.title}</p>
           <p className="mt-1 text-xs">{insight.detail}</p>
@@ -217,7 +249,22 @@ export function PipelineCandidatePanel({
             placeholder="例如：业务反馈通过，安排面试"
           />
           <div className="flex flex-wrap gap-2">
-            {next && (
+            {candidate.stage === 'business_review' ? (
+              <>
+                <Button size="sm" onClick={() => move('interview')} disabled={busy}>
+                  业务通过，去安排面试
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+                <Button size="sm" variant="danger" onClick={() => void rejectBusinessReview()} disabled={busy}>
+                  业务不通过
+                </Button>
+              </>
+            ) : candidate.stage === 'pending' || candidate.stage === 'ai_screen' ? (
+              <Button size="sm" onClick={() => move('business_review')} disabled={busy}>
+                提交业务评审
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            ) : next && (
               <Button size="sm" onClick={() => move(next)} disabled={busy}>
                 推进到 {stageLabel(next)}
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -241,7 +288,7 @@ export function PipelineCandidatePanel({
                 记录 Offer
               </Button>
             )}
-            {!terminal && (
+            {!terminal && candidate.stage !== 'business_review' && (
               <Button
                 size="sm"
                 variant="danger"
@@ -252,6 +299,7 @@ export function PipelineCandidatePanel({
               </Button>
             )}
           </div>
+          {actionError && <p className="mt-2 text-xs text-danger-600">{actionError}</p>}
         </section>
 
         <section className="border-t border-hairline-soft pt-3">
@@ -404,8 +452,13 @@ export function PipelineCandidatePanel({
             busy={busy}
             onCancel={() => setShowDisposition(false)}
             onSubmit={async (disposition, note) => {
-              await onMove(candidate.candidate_id, 'rejected', note, disposition);
-              setShowDisposition(false);
+              setActionError(null);
+              try {
+                await onMove(candidate.candidate_id, 'rejected', note, disposition);
+                setShowDisposition(false);
+              } catch (error) {
+                setActionError(error instanceof Error ? error.message : '淘汰候选人失败');
+              }
             }}
           />
         )}

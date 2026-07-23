@@ -323,11 +323,12 @@ export interface DemandListQuery {
   department?: string;
   city?: string;
   owner_hr_id?: number;
+  stage_focus?: 'business_review' | 'interview' | 'offer';
   created_from?: string;
   created_to?: string;
   page?: number;
   page_size?: number;
-  sort?: 'created_at_desc' | 'created_at_asc';
+  sort?: 'created_at_desc' | 'created_at_asc' | 'priority_desc';
 }
 
 export interface DemandListResponse {

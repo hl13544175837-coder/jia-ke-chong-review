@@ -10,6 +10,7 @@ from app.models import (
     OfferRecord,
     PipelineStage,
     RecruitmentDemand,
+    User,
 )
 
 
@@ -20,6 +21,13 @@ def _auth(token):
 def _seed_sibling_demands(app, first_owner_id, second_owner_id=None, *, headcount=1):
     with app.app_context():
         second_owner_id = second_owner_id or first_owner_id
+        reviewer = User(
+            name="用人负责人",
+            email=f"pipeline-reviewer-{first_owner_id}-{second_owner_id}@example.com",
+            role="interviewer",
+            is_active=True,
+            password_hash="not-used",
+        )
         job = Job(
             title="同一职位模板",
             city="上海",
@@ -27,11 +35,12 @@ def _seed_sibling_demands(app, first_owner_id, second_owner_id=None, *, headcoun
             jd_text="负责核心产品",
             owner_hr_id=first_owner_id,
         )
-        db.session.add(job)
+        db.session.add_all([job, reviewer])
         db.session.flush()
         first = RecruitmentDemand(
             job_id=job.id,
             owner_hr_id=first_owner_id,
+            default_interviewer_id=reviewer.id,
             request_no="REQ-PIPE-A",
             job_title_snapshot="产品经理（上海）",
             city="上海",
@@ -42,6 +51,7 @@ def _seed_sibling_demands(app, first_owner_id, second_owner_id=None, *, headcoun
         second = RecruitmentDemand(
             job_id=job.id,
             owner_hr_id=second_owner_id,
+            default_interviewer_id=reviewer.id,
             request_no="REQ-PIPE-B",
             job_title_snapshot="产品经理（宁波）",
             city="宁波",

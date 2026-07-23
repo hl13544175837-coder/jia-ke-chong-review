@@ -3,13 +3,21 @@ def _auth(t): return {"Authorization": f"Bearer {t}"}
 def _seed_job_candidate(app, owner_hr_id):
     with app.app_context():
         from app import db
-        from app.models import Candidate, Job, RecruitmentDemand
+        from app.models import Candidate, Job, RecruitmentDemand, User
         j = Job(title="后端", jd_text="x", owner_hr_id=owner_hr_id)
         c = Candidate(owner_hr_id=owner_hr_id, name_masked="候选人A", resume_json={})
-        db.session.add_all([j, c]); db.session.flush()
+        reviewer = User(
+            name="用人负责人",
+            email=f"reviewer-{owner_hr_id}@x.com",
+            role="interviewer",
+            is_active=True,
+            password_hash="not-used",
+        )
+        db.session.add_all([j, c, reviewer]); db.session.flush()
         demand = RecruitmentDemand(
             job_id=j.id,
             owner_hr_id=owner_hr_id,
+            default_interviewer_id=reviewer.id,
             request_no=f"REQ-ROUND-{j.id}",
             status="active",
         )
@@ -44,6 +52,27 @@ def test_business_review_appears_in_board_order(client, make_user, app):
     assert board["stage_order"].index("business_review") > board["stage_order"].index("ai_screen")
     assert board["stage_order"].index("business_review") < board["stage_order"].index("interview")
     assert board["candidates"][0]["stage"] == "business_review"
+
+
+def test_business_review_requires_an_active_business_owner(client, make_user, app):
+    hr_id, token = make_user("hr-reviewer-required@x.com", role="recruiter")
+    _, demand_id, cid = _seed_job_candidate(app, hr_id)
+    with app.app_context():
+        from app import db
+        from app.models import RecruitmentDemand
+
+        demand = db.session.get(RecruitmentDemand, demand_id)
+        demand.default_interviewer_id = None
+        db.session.commit()
+
+    response = client.post(
+        f"/api/pipeline/demands/{demand_id}/move",
+        headers=_auth(token),
+        json={"candidate_id": cid, "stage": "business_review"},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "business_reviewer_required"
 
 def test_invalid_stage_rejected(client, make_user, app):
     hr_id, token = make_user("hr-invalid@x.com", role="recruiter")

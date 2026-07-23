@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, MoreHorizontal, Search, UserRoundPlus, UsersRound } from 'lucide-react';
+import { ChevronDown, Search, UserRoundPlus, UsersRound } from 'lucide-react';
 import { Pagination } from '../../../components/ui';
 import { formatDate } from '../../../lib/formatDate';
 import type { CandidateOwnerOption, DemandListQuery, DemandListResponse, DemandPriority, DemandStatus, RecruitmentDemand } from '../../../types';
@@ -41,22 +41,13 @@ function patchQuery(query: DemandListQuery, patch: Partial<DemandListQuery>): De
   return { ...query, ...patch, page: 1 };
 }
 
-function metricValue(demand: RecruitmentDemand, key: 'business_review_count' | 'interview_count' | 'offer_count') {
-  const real = demand.metrics[key] ?? 0;
-  if (real > 0) return real;
-  if (demand.status !== 'active') return demand.id % 2;
-  if (key === 'business_review_count') return (demand.id % 3) + 1;
-  if (key === 'interview_count') return demand.id % 3;
-  return demand.id % 2;
-}
-
 function progressNote(demand: RecruitmentDemand) {
   if (demand.completion_suggested) return 'HC已达成，待确认完成';
   if (demand.status === 'filled') return '岗位已完成';
   if (demand.status === 'pending') return '需求待审批';
   if (demand.status === 'closed' || demand.status === 'cancelled') return demand.close_reason || '岗位取消';
-  const notes = ['HC调整，提前关闭', '岗位取消', '需求待审批', '正常推进'];
-  return notes[demand.id % notes.length];
+  if (demand.status === 'paused') return demand.close_reason || '需求已暂停';
+  return demand.risk_flags.length > 0 ? demand.risk_flags.join('、') : '正常推进';
 }
 
 function statusClass(status: DemandStatus) {
@@ -120,6 +111,10 @@ export function DemandTable({
     return Array.from(new Set(response.items.map((item) => item.job_department).filter(Boolean)));
   }, [response.items]);
 
+  const cities = useMemo(() => {
+    return Array.from(new Set(response.items.map((item) => item.job_city).filter(Boolean)));
+  }, [response.items]);
+
   const visibleItems = response.items;
 
   function setQuery(next: Partial<DemandListQuery>) {
@@ -159,7 +154,15 @@ export function DemandTable({
                   >
                     最新发布
                   </button>
-                  <button type="button" className="rounded-full bg-[#f5f5f3] px-4 py-1.5 text-xs font-bold text-[#666b73]">
+                  <button
+                    type="button"
+                    onClick={() => setQuery({ sort: 'priority_desc' })}
+                    className={`rounded-full px-4 py-1.5 text-xs font-bold ${
+                      query.sort === 'priority_desc'
+                        ? 'bg-[#33a474] text-white'
+                        : 'bg-[#f5f5f3] text-[#666b73]'
+                    }`}
+                  >
                     优先级
                   </button>
                 </div>
@@ -173,7 +176,7 @@ export function DemandTable({
                       <MenuItem key={department} active={query.department === department} onClick={() => setQuery({ department })}>{department}</MenuItem>
                     ))}
                     <div className="border-t border-[#eef0f2] px-5 py-3 text-xs font-semibold text-[#8a8f98]">城市</div>
-                    {['杭州', '上海', '北京', '深圳', '广州'].map((city) => (
+                    {cities.map((city) => (
                       <MenuItem key={city} active={query.city === city} onClick={() => setQuery({ city })}>{city}</MenuItem>
                     ))}
                   </MenuPanel>
@@ -195,9 +198,10 @@ export function DemandTable({
                 <HeaderButton menu="stage" openMenu={openMenu} onOpen={setOpenMenu}>阶段进度</HeaderButton>
                 {openMenu === 'stage' && (
                   <MenuPanel>
-                    <MenuItem onClick={() => setOpenMenu(null)}>业务待反馈优先</MenuItem>
-                    <MenuItem onClick={() => setOpenMenu(null)}>面试中优先</MenuItem>
-                    <MenuItem onClick={() => setOpenMenu(null)}>Offer中优先</MenuItem>
+                    <MenuItem active={!query.stage_focus} onClick={() => setQuery({ stage_focus: undefined })}>全部阶段</MenuItem>
+                    <MenuItem active={query.stage_focus === 'business_review'} onClick={() => setQuery({ stage_focus: 'business_review' })}>仅看业务待反馈</MenuItem>
+                    <MenuItem active={query.stage_focus === 'interview'} onClick={() => setQuery({ stage_focus: 'interview' })}>仅看面试中</MenuItem>
+                    <MenuItem active={query.stage_focus === 'offer'} onClick={() => setQuery({ stage_focus: 'offer' })}>仅看 Offer 中</MenuItem>
                   </MenuPanel>
                 )}
               </th>
@@ -218,10 +222,10 @@ export function DemandTable({
           </thead>
           <tbody>
             {visibleItems.map((demand) => {
-              const business = metricValue(demand, 'business_review_count');
-              const interview = metricValue(demand, 'interview_count');
-              const offer = metricValue(demand, 'offer_count');
-              const canSelect = ['pending', 'active', 'paused'].includes(demand.status);
+              const business = demand.metrics.business_review_count ?? 0;
+              const interview = demand.metrics.interview_count ?? 0;
+              const offer = demand.metrics.offer_count ?? 0;
+              const canSelect = demand.status === 'active';
               return (
                 <tr key={demand.id} className="border-b border-[#f1f2f3] hover:bg-[#fbfcfc]">
                   <td className="px-7 py-6">
@@ -265,21 +269,24 @@ export function DemandTable({
                   </td>
                   <td className="px-7 py-6 text-right">
                     <div className="flex items-center justify-end gap-3">
-                      <button
-                        type="button"
-                        onClick={() => canSelect ? onSelectCandidates(demand) : undefined}
-                        className={`inline-flex h-11 items-center gap-2 rounded-lg px-5 text-sm font-bold ${
-                          canSelect
-                            ? 'bg-[#ff8b5c] text-white hover:bg-[#ff7843]'
-                            : 'bg-[#eaf7f2] text-[#168a5b] hover:bg-[#dff3eb]'
-                        }`}
-                      >
-                        {canSelect ? <UserRoundPlus className="h-4 w-4" /> : <UsersRound className="h-4 w-4" />}
-                        {canSelect ? '选候选人' : '查看候选人'}
-                      </button>
-                      <button type="button" className="rounded-full p-2 text-[#8a8f98] hover:bg-[#f1f3f4]" aria-label="更多操作">
-                        <MoreHorizontal className="h-5 w-5" />
-                      </button>
+                      {canSelect ? (
+                        <button
+                          type="button"
+                          onClick={() => onSelectCandidates(demand)}
+                          className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#ff8b5c] px-5 text-sm font-bold text-white hover:bg-[#ff7843]"
+                        >
+                          <UserRoundPlus className="h-4 w-4" />
+                          选候选人
+                        </button>
+                      ) : (
+                        <Link
+                          to={`/pipeline?demand=${demand.id}&stage=all`}
+                          className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#eaf7f2] px-5 text-sm font-bold text-[#168a5b] hover:bg-[#dff3eb]"
+                        >
+                          <UsersRound className="h-4 w-4" />
+                          查看候选人
+                        </Link>
+                      )}
                     </div>
                   </td>
                 </tr>

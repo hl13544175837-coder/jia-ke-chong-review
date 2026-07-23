@@ -8,7 +8,7 @@ from datetime import date, datetime, time
 from math import ceil
 from uuid import uuid4
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, case, func, or_
 
 from .. import db
 from ..models import Candidate, Job, PipelineStage, RecruitmentDemand, User
@@ -449,6 +449,20 @@ def apply_list_filters(query, args):
     if owner_hr_id is not None:
         query = query.filter(RecruitmentDemand.owner_hr_id == owner_hr_id)
 
+    stage_focus = clean_text(args.get("stage_focus"), 40)
+    if stage_focus in {"business_review", "interview", "offer"}:
+        query = query.filter(
+            RecruitmentDemand.id.in_(
+                db.session.query(PipelineStage.demand_id)
+                .filter(
+                    PipelineStage.org_id == g.current_user.org_id,
+                    PipelineStage.demand_id.isnot(None),
+                    PipelineStage.stage == stage_focus,
+                )
+                .distinct()
+            )
+        )
+
     created_from = parse_date(args.get("created_from"))
     if created_from:
         query = query.filter(
@@ -467,7 +481,19 @@ def paginate_demands(query, args):
     page_size = args.get("page_size", default=20, type=int) or 20
     page_size = min(100, max(1, page_size))
     sort = clean_text(args.get("sort") or "created_at_desc", 40)
-    if sort == "created_at_asc":
+    if sort == "priority_desc":
+        priority_order = case(
+            (RecruitmentDemand.priority == "A", 0),
+            (RecruitmentDemand.priority == "B", 1),
+            (RecruitmentDemand.priority == "C", 2),
+            else_=3,
+        )
+        query = query.order_by(
+            priority_order.asc(),
+            RecruitmentDemand.created_at.desc(),
+            RecruitmentDemand.id.desc(),
+        )
+    elif sort == "created_at_asc":
         query = query.order_by(RecruitmentDemand.created_at.asc(), RecruitmentDemand.id.asc())
     else:
         query = query.order_by(RecruitmentDemand.created_at.desc(), RecruitmentDemand.id.desc())

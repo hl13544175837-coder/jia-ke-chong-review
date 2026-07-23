@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, ErrorState, PageHeader, Spinner } from '../../../components/ui';
-import { RecruitmentManagementTabs } from '../../../components/recruitment/RecruitmentManagementTabs';
 import { useAsync } from '../../../lib/useAsync';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
@@ -72,7 +71,6 @@ export function DemandDetailPage() {
         <ArrowLeft className="h-4 w-4" />返回需求列表
       </Link>
       <PageHeader title={demand.job_title} description={`${demand.request_no} · ${demand.job_department} · ${demand.job_city}`} />
-      <RecruitmentManagementTabs />
 
       <div className="flex flex-wrap gap-2">
         <Link
@@ -160,8 +158,7 @@ export function DemandDetailPage() {
           <CardHeader><CardTitle>责任与卡点</CardTitle></CardHeader>
           <CardBody className="space-y-3 text-sm text-body">
             <p>招聘负责人：{demand.owner_hr_name || `专员 #${demand.owner_hr_id}`}</p>
-            <p>用人负责人：{demand.hiring_manager_name}</p>
-            <p>默认面试官：{demand.default_interviewer_name || '未设置'}</p>
+            <p>用人负责人（默认面试官）：{demand.default_interviewer_name || demand.hiring_manager_name || '未设置'}</p>
             <p>当前状态：<Badge>{demand.status}</Badge></p>
             {demand.risk_flags.length > 0 ? (
               <div className="flex items-start gap-2 rounded-md bg-warning-50 p-3 text-warning-800">

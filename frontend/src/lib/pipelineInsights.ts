@@ -2,7 +2,7 @@ import type { PipelineBoardCandidate, PipelineStage } from '../types';
 import { stageLabel } from './pipelineStages';
 
 export const NEXT_STAGE: Partial<Record<PipelineStage, PipelineStage>> = {
-  pending: 'ai_screen',
+  pending: 'business_review',
   ai_screen: 'business_review',
   business_review: 'interview',
   interview: 'offer',
@@ -75,7 +75,7 @@ export function buildPipelineInsight(candidate: PipelineBoardCandidate | null): 
   if (candidate.stage === 'business_review') {
     return {
       title: '催业务反馈',
-      detail: '当前卡在业务待反馈，建议提醒用人经理确认是否进入面试。',
+      detail: '当前卡在业务待反馈，建议提醒用人负责人确认是否进入面试。',
       tone: 'warning',
     };
   }

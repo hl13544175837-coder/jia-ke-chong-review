@@ -4,13 +4,11 @@ import { Button, Card, EmptyState, ErrorState, Spinner } from '../../../componen
 import { ApiError, api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { useAsync } from '../../../lib/useAsync';
-import type { CandidateOwnerOption, DemandListQuery, DemandListResponse, RecruitmentDemand, RecruitmentDemandInput } from '../../../types';
+import type { CandidateOwnerOption, DemandListQuery, RecruitmentDemand, RecruitmentDemandInput } from '../../../types';
 import { demandsApi } from '../api';
 import { CandidateSelectionModal } from '../components/CandidateSelectionModal';
 import { DemandCreateModal } from '../components/DemandCreateModal';
 import { DemandTable } from '../components/DemandTable';
-
-const EMPTY_RESPONSE: DemandListResponse = { items: [], total: 0, page: 1, page_size: 20, pages: 0 };
 
 const STATUS_TABS: Array<{ value: DemandListQuery['status']; label: string }> = [
   { value: 'all', label: '全部' },
@@ -32,7 +30,7 @@ export function DemandsPage() {
 
   const demands = useAsync(
     () => demandsApi.listDemands(query),
-    [query.status, query.q, query.department, query.city, query.owner_hr_id, query.page, query.page_size, query.sort],
+    [query.status, query.q, query.department, query.city, query.owner_hr_id, query.stage_focus, query.page, query.page_size, query.sort],
   );
   const owners = useAsync(
     () => (role === 'manager' || role === 'admin'
@@ -76,8 +74,6 @@ export function DemandsPage() {
     });
   }
 
-  const response = demands.data ?? EMPTY_RESPONSE;
-
   return (
     <div className="space-y-7">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -107,7 +103,7 @@ export function DemandsPage() {
         <div className="flex justify-center py-20"><Spinner size="lg" /></div>
       ) : demands.error ? (
         <ErrorState message={demands.error.message} onRetry={demands.reload} />
-      ) : response.items.length === 0 ? (
+      ) : !demands.data || demands.data.items.length === 0 ? (
         <Card>
           <EmptyState
             icon={ClipboardList}
@@ -118,7 +114,7 @@ export function DemandsPage() {
         </Card>
       ) : (
         <DemandTable
-          response={response}
+          response={demands.data}
           query={query}
           owners={owners.data ?? []}
           onQueryChange={setQuery}

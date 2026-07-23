@@ -20,7 +20,7 @@ assert.doesNotMatch(
 assert.match(uiIndex, /useToast/, 'UI barrel should still export useToast for existing callers');
 
 const demandsPage = readSource('features/demands/pages/DemandsPage.tsx');
-const demandForm = readSource('features/demands/components/DemandForm.tsx');
+const demandForm = readSource('features/demands/components/DemandCreateModal.tsx');
 assert.match(
   demandsPage,
   /useAsync\([\s\S]*demandsApi\.listDemands\(query\)[\s\S]*query\.status/,
