@@ -484,7 +484,7 @@ export function CandidatesPage() {
                   <input type="checkbox" className="h-4 w-4 rounded border-[#ccd2d8]" />
                 </th>
                 <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">候选人</th>
-                <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">最近流程/来源岗位</th>
+                <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">当前/目标岗位</th>
                 <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">流程状态</th>
                 <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">来源</th>
                 <th className="px-5 py-4 text-left text-sm font-bold text-[#737983]">招聘负责人</th>
