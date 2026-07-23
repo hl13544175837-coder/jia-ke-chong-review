@@ -131,9 +131,20 @@
 ## 🚀 快速开始
 
 ### 环境要求
-- Python 3.11–3.13（推荐及容器基线 3.12）· Node.js 20.19–20.x 或 22.12+ · npm 10+
+- 推荐：Docker Desktop / Docker Engine + Docker Compose v2
+- 手工开发：Python 3.11–3.13（推荐及容器基线 3.12）· Node.js 20.19–20.x 或 22.12+ · npm 10+
 
-### 1. 后端
+### 1. 推荐：MySQL、前后端全容器启动
+
+在项目根目录使用 PowerShell 7：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
+```
+
+该方式使用 MySQL 8.0.32，宿主机仅绑定高位端口：前端 `15173`、后端 `15001`、MySQL `13306`、本地企微通知替身 `19090`。完整账号、环境变量和停止方式见 [RUNNING.md](RUNNING.md)。
+
+### 2. 手工启动后端
 ```bash
 cd backend
 python -m pip install --upgrade pip
@@ -144,7 +155,7 @@ PORT=5001 python run.py       # 开发联调后端：http://localhost:5001
 
 运行时默认 `FLASK_DEBUG=false`。`.env.example` 为本地开发显式开启 debug；只有自动化测试，或同时显式设置 `FLASK_DEBUG=true` + `LOCAL_SCHEMA_COMPAT=true` 的 SQLite 本地库，才允许应用兼容建表。RC/SIT/生产不会在 Flask worker 启动时执行 DDL。真正空库必须走显式 bootstrap，已有库必须走 Alembic，缺失任一旧基线业务表的异常库会 fail closed，不 stamp。详见 [RUNNING.md](RUNNING.md) 和 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
-### 2. 演示数据（可选，无需 LLM Key）
+### 3. 演示数据（可选，无需 LLM Key）
 ```bash
 cd backend && python seed_dev.py
 ```
@@ -163,7 +174,7 @@ python backend/scripts/cleanup_demo_data.py --confirm
 
 试点/生产执行 backup、restore 或 cleanup 前，`UPLOAD_FOLDER` 必须显式指向非 `/tmp` 的绝对持久目录；缺失、相对路径或临时目录会直接拒绝。新快照在 manifest 记录 uploads 源根目录，恢复时把根目录内的候选人附件引用规范为相对路径，可在新持久挂载目录下继续读取；旧快照缺少源根字段时只允许同根恢复。清理脚本会先生成带 manifest/校验和的可恢复快照，只删除 demo owner 的业务记录和仅被这些记录引用的上传文件；遇到真实 owner、跨范围引用或不支持自动确认的 MySQL 路线会 fail closed，不会把整个上传目录清空。
 
-### 3. 前端
+### 4. 手工启动前端
 ```bash
 cd frontend
 npm ci

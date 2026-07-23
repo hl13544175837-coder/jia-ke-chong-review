@@ -73,6 +73,16 @@
 
 ## 3. 快速启动（本地开发）
 
+### 3.0 推荐：本地全容器环境
+
+本地招聘闭环联调优先使用根目录 `compose.local.yaml`，不要占用常见宿主机端口。它会运行 MySQL 8.0.32、Flask/Gunicorn 后端、Nginx 前端和本地企微通知替身：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
+```
+
+默认宿主机端口为前端 `15173`、后端 `15001`、MySQL `13306`、企微替身 `19090`，且全部只绑定 `127.0.0.1`。端口可在根目录 `.env` 中覆盖；容器内部仍使用各服务标准端口，不会占用宿主机常见端口。该 Compose 仅用于本地可丢弃数据验收，不替代 Libra/SIT 或生产部署路线。账号和运行检查见 [RUNNING.md](RUNNING.md)。
+
 ### 3.1 克隆/解压项目
 
 ```bash

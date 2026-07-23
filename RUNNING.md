@@ -6,10 +6,46 @@
 
 ## 前置条件
 
+- Docker Desktop 或 Docker Engine，并启用 Docker Compose v2（推荐的全容器启动方式）
 - Python 3.11–3.13（推荐及容器基线 3.12）
 - Node.js 20.19–20.x 或 22.12+，npm 10+
 - pip 安装依赖前先升级安装器：`python -m pip install --upgrade pip`
 - 安装后端依赖：`python -m pip install -r backend/requirements.txt`
+
+---
+
+## 推荐：本地全容器启动
+
+在项目根目录使用 PowerShell 7：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
+```
+
+脚本首次运行时会生成被 Git 忽略的根目录 `.env`，随后构建并启动 MySQL、后端、前端和本地企微通知替身，等待健康检查通过，再创建本地招聘专员和面试官账号。宿主机只绑定回环地址和高位端口：
+
+| 服务 | 宿主机地址 | 容器内端口 |
+|---|---|---:|
+| 前端 | `http://127.0.0.1:15173` | 8080 |
+| 后端 | `http://127.0.0.1:15001` | 5000 |
+| MySQL 8.0.32 | `127.0.0.1:13306` | 3306 |
+| 本地企微通知替身 | `http://127.0.0.1:19090` | 8090 |
+
+本地账号：
+
+- 招聘专员：`hr.local@example.test` / `ZhipinLocal2026!`
+- 面试官：`interviewer.local@example.test` / `ZhipinLocal2026!`
+
+查看状态或停止容器：
+
+```powershell
+docker compose --env-file .env --file compose.local.yaml ps
+docker compose --env-file .env --file compose.local.yaml down
+```
+
+`down` 不删除 MySQL、上传文件和通知记录卷；不要在需要保留本地验收数据时追加 `--volumes`。
+
+本地全容器环境不提供公司 PGS OAuth 服务。业务账号登录走本项目 `/api/auth/login`；`/pgs/oauth/api/queryCurrentUserMenu` 不是本地健康检查接口，当前菜单权限请求失败后会按既有保护逻辑放行本地业务菜单。若要改变该行为或代理真实 PGS OAuth，必须由鉴权 Owner 明确批准并单独验收。
 
 ---
 
