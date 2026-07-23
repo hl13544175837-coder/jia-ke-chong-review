@@ -14,7 +14,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const base =
-  'inline-flex items-center justify-center gap-2 font-semibold ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap font-semibold ' +
   'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ' +
   'disabled:opacity-50 disabled:cursor-not-allowed ' +
   'active:scale-[0.97] transition-all duration-150';

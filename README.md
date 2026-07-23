@@ -15,6 +15,23 @@
 
 ---
 
+## 2026-07-24 独立整合版
+
+今晚的 Readdy 前端交互、公司招聘业务底座和 GitHub 图片简历能力已合并在一个完全独立的目录中。详细产品交互见 [docs/PRODUCT_INTERACTION_GUIDE.md](docs/PRODUCT_INTERACTION_GUIDE.md)，彻底删除边界见 [docs/ISOLATED_CLEANUP.md](docs/ISOLATED_CLEANUP.md)。
+
+```bash
+cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
+./scripts/serve-isolated-demo.sh
+```
+
+- 本机：`http://127.0.0.1:5190`
+- 同一内网：启动时自动打印当前内网地址
+- 管理员：`admin01`
+- 密码：`Zhipin2026`
+- 停止：另开终端执行 `./scripts/stop-isolated-demo.sh`
+
+本地演示使用独立数据库，不读取其他产品数据。正式 OAuth、业务 API、LLM 和图片识别密钥仍由研发后续接入；仓库不保存真实密钥。
+
 ## 接手先读
 
 如果你是下一任接手开发的人，先看 [docs/README.md](docs/README.md) 判断“先读哪份、信哪份”。本页只负责项目总览和快速开始；当前实现细节以 [docs/SDD-智聘招聘系统-v1.0.md](docs/SDD-智聘招聘系统-v1.0.md) 为准，本地运行以 [RUNNING.md](RUNNING.md) 为准，生产/试点部署以 [DEPLOYMENT.md](DEPLOYMENT.md) 和上线检查清单为准。

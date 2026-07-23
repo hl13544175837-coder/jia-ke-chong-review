@@ -1,0 +1,54 @@
+{
+  "date": "2026-07-24",
+  "branch": "codex/readdy-resume-ui-merge",
+  "runtime": {
+    "frontend": "http://127.0.0.1:5190",
+    "oauth_bridge": "http://127.0.0.1:5110",
+    "backend": "http://127.0.0.1:5010",
+    "health_checks_passed": true
+  },
+  "browser": {
+    "viewport": {
+      "width": 1280,
+      "height": 720,
+      "device_pixel_ratio": 2
+    },
+    "admin_route_checks": 23,
+    "interviewer_route_checks": 5,
+    "business_console_errors": 0,
+    "development_warnings": 2
+  },
+  "interactions": [
+    "local OAuth login",
+    "dashboard drilldown",
+    "candidate search and quick view",
+    "resume upload format contract",
+    "demand create panel and detail drawer",
+    "kanban candidate detail",
+    "interview list/calendar/search/schedule panel",
+    "admin settings tabs and create-account panel",
+    "interviewer feedback form"
+  ],
+  "resume_formats": [
+    "PDF",
+    "DOCX",
+    "JPG",
+    "JPEG",
+    "PNG",
+    "WebP",
+    "GIF",
+    "ZIP"
+  ],
+  "layout": {
+    "whole_page_horizontal_overflow": false,
+    "button_text_vertical_overflow_after_fix": false
+  },
+  "automation": {
+    "frontend_contract_test_files": 108,
+    "frontend_interaction_audit": "passed",
+    "frontend_typecheck": "passed",
+    "frontend_lint": "passed",
+    "frontend_production_build": "passed",
+    "backend_tests_passed": 505
+  }
+}

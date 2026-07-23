@@ -138,6 +138,10 @@ const server = createServer(async (request, response) => {
 
   try {
     const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+    if (request.method === 'GET' && url.pathname === '/health') {
+      sendJson(response, 200, { status: 'ok', service: 'local-oauth-bridge' });
+      return;
+    }
     if (request.method === 'POST' && url.pathname === '/pgs/oauth/login') {
       await login(request, response);
       return;
