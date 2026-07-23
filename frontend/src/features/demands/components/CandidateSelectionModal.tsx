@@ -44,20 +44,22 @@ function sourceLabel(candidate: CandidateListItem) {
   return candidate.source?.channel || '外部收录';
 }
 
-function fitScore(candidate: CandidateListItem, match?: MatchResultItem) {
+function fitScore(match?: MatchResultItem) {
   if (match) return match.score;
-  const raw = candidate.max_score ?? 0;
-  if (raw <= 5) return Math.round(raw * 16 + (candidate.id % 9));
-  return Math.min(96, Math.round(raw));
+  return null;
 }
 
-function stageMock(candidate: CandidateListItem) {
-  const labels = ['待筛选', 'Offer发放中', '业务待反馈', '面试中'];
-  return labels[candidate.id % labels.length];
-}
-
-function isDemoDemand(demand: RecruitmentDemand) {
-  return demand.id < 0;
+function parseStatusLabel(candidate: CandidateListItem) {
+  switch (candidate.parse_status) {
+    case 'ok':
+      return '已解析';
+    case 'processing':
+      return '解析中';
+    case 'failed':
+      return '解析失败';
+    default:
+      return '待解析';
+  }
 }
 
 function CandidateRow({
@@ -71,8 +73,8 @@ function CandidateRow({
   selected: boolean;
   onToggle: () => void;
 }) {
-  const score = fitScore(candidate, match);
-  const isStrong = score >= 75;
+  const score = fitScore(match);
+  const isStrong = score !== null && score >= 75;
   return (
     <tr className="border-t border-[#f0f1f2] hover:bg-[#fbfcfc]">
       <td className="w-12 px-4 py-3">
@@ -103,23 +105,27 @@ function CandidateRow({
       <td className="px-4 py-3 text-sm text-[#666b73]">{sourceLabel(candidate)}</td>
       <td className="px-4 py-3">
         <span className={`rounded-lg px-3 py-1 text-sm font-semibold ${
-          stageMock(candidate).includes('Offer')
-            ? 'bg-[#ddf4ea] text-[#168a5b]'
+          candidate.parse_status === 'failed'
+            ? 'bg-[#fff0ed] text-[#d85b43]'
             : 'bg-[#eef4e9] text-[#67805b]'
         }`}>
-          {stageMock(candidate)}
+          {parseStatusLabel(candidate)}
         </span>
       </td>
       <td className="px-4 py-3">
-        <div className="flex items-center gap-3">
-          <span className="h-2 w-16 overflow-hidden rounded-full bg-[#eef0ec]">
-            <span
-              className={`block h-full rounded-full ${isStrong ? 'bg-[#18bf83]' : 'bg-[#f6a215]'}`}
-              style={{ width: `${Math.max(12, score)}%` }}
-            />
-          </span>
-          <span className={`font-bold ${isStrong ? 'text-[#0e9c69]' : 'text-[#f08a00]'}`}>{score}%</span>
-        </div>
+        {score === null ? (
+          <span className="text-[#8a8f98]">暂无结果</span>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="h-2 w-16 overflow-hidden rounded-full bg-[#eef0ec]">
+              <span
+                className={`block h-full rounded-full ${isStrong ? 'bg-[#18bf83]' : 'bg-[#f6a215]'}`}
+                style={{ width: `${Math.max(0, Math.min(100, score))}%` }}
+              />
+            </span>
+            <span className={`font-bold ${isStrong ? 'text-[#0e9c69]' : 'text-[#f08a00]'}`}>{score}%</span>
+          </div>
+        )}
       </td>
       <td className="px-4 py-3 text-sm text-[#777c84]">
         {selected ? '已加入待推送' : '可加入当前岗位'}
@@ -183,7 +189,6 @@ export function CandidateSelectionModal({ demand, open, onClose, onChanged }: Ca
         const ids = response.candidates.map((candidate) => candidate.id);
         if (ids.length > 0) {
           const preview = await api.previewJobMatch(demand.job_id, ids);
-          if (cancelled) return;
           setMatches(new Map(preview.results.map((item) => [item.candidate_id, item])));
         } else {
           setMatches(new Map());
@@ -220,7 +225,9 @@ export function CandidateSelectionModal({ demand, open, onClose, onChanged }: Ca
         return true;
       })
       .sort((a, b) => {
-        if (sortMode === 'fit') return fitScore(b, matches.get(b.id)) - fitScore(a, matches.get(a.id));
+        if (sortMode === 'fit') {
+          return (fitScore(matches.get(b.id)) ?? -1) - (fitScore(matches.get(a.id)) ?? -1);
+        }
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
   }, [candidates, education, joinStatus, matches, role, selectedIds, sortMode, source]);
@@ -265,12 +272,6 @@ export function CandidateSelectionModal({ demand, open, onClose, onChanged }: Ca
       setMessage('请先勾选候选人');
       return;
     }
-    if (isDemoDemand(activeDemand)) {
-      setMessage(nextStep
-        ? `演示需求已选择 ${selectedIds.size} 人，可继续推送面试官评审。`
-        : `演示需求已加入 ${selectedIds.size} 人。`);
-      return;
-    }
     setAdding(true);
     setMessage(null);
     try {
@@ -288,11 +289,6 @@ export function CandidateSelectionModal({ demand, open, onClose, onChanged }: Ca
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    if (isDemoDemand(activeDemand)) {
-      setMessage(`已选择 ${files.length} 份简历，演示需求不会写入临时数据库。`);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
     setUploading(true);
     setMessage(null);
     try {
@@ -564,9 +560,9 @@ export function CandidateSelectionModal({ demand, open, onClose, onChanged }: Ca
                       />
                     </th>
                     <th className="px-4 py-3 font-semibold">候选人</th>
-                    <th className="px-4 py-3 font-semibold">当前/最近流程岗位</th>
+                    <th className="px-4 py-3 font-semibold">最近任职岗位</th>
                     <th className="px-4 py-3 font-semibold">来源</th>
-                    <th className="px-4 py-3 font-semibold">当前阶段</th>
+                    <th className="px-4 py-3 font-semibold">简历状态</th>
                     <th className="px-4 py-3 font-semibold">匹配度</th>
                     <th className="px-4 py-3 font-semibold">状态说明</th>
                     <th className="px-4 py-3 text-right font-semibold">操作</th>

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { ClipboardList, Plus } from 'lucide-react';
 import { Button, Card, EmptyState, ErrorState, Spinner } from '../../../components/ui';
 import { ApiError, api } from '../../../lib/api';
@@ -19,79 +19,6 @@ const STATUS_TABS: Array<{ value: DemandListQuery['status']; label: string }> = 
   { value: 'filled', label: '已完成' },
   { value: 'closed', label: '已关闭' },
 ];
-
-function demandMetrics(
-  business: number,
-  interview: number,
-  offer: number,
-  onboarded: number,
-): RecruitmentDemand['metrics'] {
-  return {
-    recommended_count: business + interview + offer + onboarded + 6,
-    business_review_count: business,
-    interview_count: interview,
-    offer_count: offer,
-    onboarded_count: onboarded,
-    transferred_count: Math.max(1, business - 1),
-    current_stage_counts: {
-      business_review: business,
-      interview,
-      offer,
-      onboarded,
-    },
-  };
-}
-
-const DEMO_DEMANDS: RecruitmentDemand[] = [
-  { id: -101, job_id: 1, job_title: '资深后端开发工程师', job_city: '杭州', job_department: '技术研发部', job_code: 'DEMO-BE-01', owner_hr_id: 1, owner_hr_name: '张敏', default_interviewer_id: null, default_interviewer_name: '刘思琪', request_no: 'REQ-20260718-BE01', requester_name: '周建国', requester_department: '技术研发部', hiring_manager_name: '周建国', requested_at: '2026-07-18', accepted_at: '2026-07-18', target_date: '2026-08-25', priority: 'A', headcount: 3, status: 'active', close_reason: '', downgrade_reason: '', note: '核心交易链路扩容', metrics: demandMetrics(4, 3, 1, 1), risk_flags: [], completion_suggested: false, created_at: '2026-07-18T09:30:00+08:00', updated_at: '2026-07-22T15:20:00+08:00' },
-  { id: -102, job_id: 1, job_title: '高级前端工程师', job_city: '上海', job_department: '技术研发部', job_code: 'DEMO-FE-01', owner_hr_id: 1, owner_hr_name: '张敏', default_interviewer_id: null, default_interviewer_name: '刘思琪', request_no: 'REQ-20260718-FE01', requester_name: '王浩然', requester_department: '技术研发部', hiring_manager_name: '王浩然', requested_at: '2026-07-18', accepted_at: '2026-07-18', target_date: '2026-08-20', priority: 'A', headcount: 2, status: 'active', close_reason: '', downgrade_reason: '', note: '招聘门户体验升级', metrics: demandMetrics(3, 2, 1, 0), risk_flags: [], completion_suggested: false, created_at: '2026-07-18T10:10:00+08:00', updated_at: '2026-07-22T12:00:00+08:00' },
-  { id: -103, job_id: 1, job_title: '数据分析师', job_city: '深圳', job_department: '数据部', job_code: 'DEMO-DA-01', owner_hr_id: 2, owner_hr_name: '李华', default_interviewer_id: null, default_interviewer_name: '陈建国', request_no: 'REQ-20260717-DA01', requester_name: '陈建国', requester_department: '数据部', hiring_manager_name: '陈建国', requested_at: '2026-07-17', accepted_at: '2026-07-17', target_date: '2026-08-18', priority: 'B', headcount: 2, status: 'active', close_reason: '', downgrade_reason: '', note: '经营看板补强', metrics: demandMetrics(2, 2, 1, 0), risk_flags: [], completion_suggested: false, created_at: '2026-07-17T14:00:00+08:00', updated_at: '2026-07-22T10:30:00+08:00' },
-  { id: -104, job_id: 1, job_title: '高级产品经理', job_city: '北京', job_department: '产品部', job_code: 'DEMO-PM-01', owner_hr_id: 2, owner_hr_name: '李华', default_interviewer_id: null, default_interviewer_name: '林小雅', request_no: 'REQ-20260716-PM01', requester_name: '林小雅', requester_department: '产品部', hiring_manager_name: '林小雅', requested_at: '2026-07-16', accepted_at: '2026-07-16', target_date: '2026-08-15', priority: 'A', headcount: 2, status: 'active', close_reason: '', downgrade_reason: '', note: 'B端产品线补位', metrics: demandMetrics(3, 1, 1, 1), risk_flags: [], completion_suggested: false, created_at: '2026-07-16T11:25:00+08:00', updated_at: '2026-07-22T09:00:00+08:00' },
-  { id: -105, job_id: 1, job_title: '招聘运营专员', job_city: '广州', job_department: '人力资源部', job_code: 'DEMO-HR-01', owner_hr_id: 1, owner_hr_name: '张敏', default_interviewer_id: null, default_interviewer_name: '李华', request_no: 'REQ-20260715-HR01', requester_name: '李华', requester_department: '人力资源部', hiring_manager_name: '李华', requested_at: '2026-07-15', accepted_at: '2026-07-15', target_date: '2026-08-12', priority: 'B', headcount: 1, status: 'active', close_reason: '', downgrade_reason: '', note: '校招项目支持', metrics: demandMetrics(2, 1, 1, 0), risk_flags: [], completion_suggested: false, created_at: '2026-07-15T16:30:00+08:00', updated_at: '2026-07-21T18:00:00+08:00' },
-  { id: -106, job_id: 1, job_title: '测试开发工程师', job_city: '上海', job_department: '技术研发部', job_code: 'DEMO-QA-01', owner_hr_id: 1, owner_hr_name: '张敏', default_interviewer_id: null, default_interviewer_name: '甄诚', request_no: 'REQ-20260714-QA01', requester_name: '甄诚', requester_department: '技术研发部', hiring_manager_name: '甄诚', requested_at: '2026-07-14', accepted_at: '2026-07-14', target_date: '2026-08-08', priority: 'B', headcount: 2, status: 'active', close_reason: '', downgrade_reason: '', note: '自动化测试补强', metrics: demandMetrics(2, 2, 1, 0), risk_flags: [], completion_suggested: false, created_at: '2026-07-14T15:20:00+08:00', updated_at: '2026-07-21T16:30:00+08:00' },
-  { id: -107, job_id: 1, job_title: 'UI/UX设计专家', job_city: '深圳', job_department: '设计部', job_code: 'DEMO-UX-01', owner_hr_id: 3, owner_hr_name: '王磊', default_interviewer_id: null, default_interviewer_name: '赵晓月', request_no: 'REQ-20260713-UX01', requester_name: '赵晓月', requester_department: '设计部', hiring_manager_name: '赵晓月', requested_at: '2026-07-13', accepted_at: '2026-07-13', target_date: '2026-08-10', priority: 'A', headcount: 1, status: 'active', close_reason: '', downgrade_reason: '', note: '统一工作台体验负责人', metrics: demandMetrics(2, 2, 1, 0), risk_flags: [], completion_suggested: false, created_at: '2026-07-13T13:45:00+08:00', updated_at: '2026-07-21T10:10:00+08:00' },
-  { id: -108, job_id: 1, job_title: '架构师', job_city: '杭州', job_department: '技术研发部', job_code: 'DEMO-ARCH-01', owner_hr_id: 1, owner_hr_name: '张敏', default_interviewer_id: null, default_interviewer_name: '周建国', request_no: 'REQ-20260712-ARCH01', requester_name: '周建国', requester_department: '技术研发部', hiring_manager_name: '周建国', requested_at: '2026-07-12', accepted_at: '2026-07-12', target_date: '2026-08-30', priority: 'A', headcount: 1, status: 'pending', close_reason: '', downgrade_reason: '', note: '技术中台方案评审中', metrics: demandMetrics(3, 1, 1, 0), risk_flags: [], completion_suggested: false, created_at: '2026-07-12T09:40:00+08:00', updated_at: '2026-07-20T15:00:00+08:00' },
-  { id: -109, job_id: 1, job_title: '市场增长经理', job_city: '广州', job_department: '市场部', job_code: 'DEMO-MKT-01', owner_hr_id: 3, owner_hr_name: '王磊', default_interviewer_id: null, default_interviewer_name: '周雨桐', request_no: 'REQ-20260711-MKT01', requester_name: '周雨桐', requester_department: '市场部', hiring_manager_name: '周雨桐', requested_at: '2026-07-11', accepted_at: '2026-07-11', target_date: '2026-08-16', priority: 'B', headcount: 2, status: 'active', close_reason: '', downgrade_reason: '', note: '区域获客增长', metrics: demandMetrics(2, 1, 1, 0), risk_flags: [], completion_suggested: false, created_at: '2026-07-11T10:00:00+08:00', updated_at: '2026-07-20T14:25:00+08:00' },
-  { id: -110, job_id: 1, job_title: 'HRBP', job_city: '北京', job_department: '人力资源部', job_code: 'DEMO-HRBP-01', owner_hr_id: 2, owner_hr_name: '李华', default_interviewer_id: null, default_interviewer_name: '李华', request_no: 'REQ-20260710-HRBP01', requester_name: '李华', requester_department: '人力资源部', hiring_manager_name: '李华', requested_at: '2026-07-10', accepted_at: '2026-07-10', target_date: '2026-08-05', priority: 'B', headcount: 1, status: 'filled', close_reason: '', downgrade_reason: '', note: '业务线组织支持', metrics: demandMetrics(1, 1, 1, 1), risk_flags: [], completion_suggested: true, created_at: '2026-07-10T10:10:00+08:00', updated_at: '2026-07-19T16:00:00+08:00' },
-  { id: -111, job_id: 1, job_title: 'Java开发工程师', job_city: '上海', job_department: '技术研发部', job_code: 'DEMO-JAVA-01', owner_hr_id: 1, owner_hr_name: '张敏', default_interviewer_id: null, default_interviewer_name: '王浩然', request_no: 'REQ-20260709-JAVA01', requester_name: '王浩然', requester_department: '技术研发部', hiring_manager_name: '王浩然', requested_at: '2026-07-09', accepted_at: '2026-07-09', target_date: '2026-08-22', priority: 'B', headcount: 4, status: 'active', close_reason: '', downgrade_reason: '', note: '支付结算团队扩招', metrics: demandMetrics(5, 4, 2, 1), risk_flags: [], completion_suggested: false, created_at: '2026-07-09T09:20:00+08:00', updated_at: '2026-07-19T12:40:00+08:00' },
-  { id: -112, job_id: 1, job_title: '算法工程师', job_city: '杭州', job_department: '数据部', job_code: 'DEMO-ALG-01', owner_hr_id: 3, owner_hr_name: '王磊', default_interviewer_id: null, default_interviewer_name: '陈建国', request_no: 'REQ-20260708-ALG01', requester_name: '陈建国', requester_department: '数据部', hiring_manager_name: '陈建国', requested_at: '2026-07-08', accepted_at: '2026-07-08', target_date: '2026-09-01', priority: 'A', headcount: 2, status: 'pending', close_reason: '', downgrade_reason: '', note: '推荐匹配模型升级', metrics: demandMetrics(3, 2, 1, 0), risk_flags: [], completion_suggested: false, created_at: '2026-07-08T14:30:00+08:00', updated_at: '2026-07-18T18:20:00+08:00' },
-  { id: -113, job_id: 1, job_title: '运维工程师', job_city: '深圳', job_department: '技术研发部', job_code: 'DEMO-SRE-01', owner_hr_id: 1, owner_hr_name: '张敏', default_interviewer_id: null, default_interviewer_name: '钱一鸣', request_no: 'REQ-20260707-SRE01', requester_name: '钱一鸣', requester_department: '技术研发部', hiring_manager_name: '钱一鸣', requested_at: '2026-07-07', accepted_at: '2026-07-07', target_date: '2026-08-18', priority: 'B', headcount: 2, status: 'active', close_reason: '', downgrade_reason: '', note: '云平台稳定性保障', metrics: demandMetrics(2, 2, 1, 0), risk_flags: [], completion_suggested: false, created_at: '2026-07-07T17:00:00+08:00', updated_at: '2026-07-18T11:20:00+08:00' },
-  { id: -114, job_id: 1, job_title: '产品运营专员', job_city: '北京', job_department: '产品部', job_code: 'DEMO-OPS-01', owner_hr_id: 2, owner_hr_name: '李华', default_interviewer_id: null, default_interviewer_name: '林小雅', request_no: 'REQ-20260706-OPS01', requester_name: '林小雅', requester_department: '产品部', hiring_manager_name: '林小雅', requested_at: '2026-07-06', accepted_at: '2026-07-06', target_date: '2026-08-03', priority: 'C', headcount: 1, status: 'filled', close_reason: '', downgrade_reason: '', note: '用户反馈闭环', metrics: demandMetrics(1, 1, 1, 1), risk_flags: [], completion_suggested: true, created_at: '2026-07-06T10:00:00+08:00', updated_at: '2026-07-17T10:00:00+08:00' },
-  { id: -115, job_id: 1, job_title: '财务分析经理', job_city: '上海', job_department: '财务部', job_code: 'DEMO-FIN-01', owner_hr_id: 3, owner_hr_name: '王磊', default_interviewer_id: null, default_interviewer_name: '黄诗涵', request_no: 'REQ-20260705-FIN01', requester_name: '黄诗涵', requester_department: '财务部', hiring_manager_name: '黄诗涵', requested_at: '2026-07-05', accepted_at: '2026-07-05', target_date: '2026-08-28', priority: 'B', headcount: 1, status: 'closed', close_reason: '预算冻结，暂缓招聘', downgrade_reason: '', note: '预算场景演示', metrics: demandMetrics(1, 1, 1, 0), risk_flags: [], completion_suggested: false, created_at: '2026-07-05T09:10:00+08:00', updated_at: '2026-07-16T14:00:00+08:00' },
-];
-
-function filterDemoDemands(items: RecruitmentDemand[], query: DemandListQuery) {
-  const keyword = query.q?.trim().toLowerCase();
-  return items
-    .filter((item) => {
-      if (query.status && query.status !== 'all') {
-        if (query.status === 'closed') {
-          if (item.status !== 'closed' && item.status !== 'cancelled') return false;
-        } else if (item.status !== query.status) {
-          return false;
-        }
-      }
-      if (query.department && item.job_department !== query.department) return false;
-      if (query.city && item.job_city !== query.city) return false;
-      if (query.owner_hr_id && item.owner_hr_id !== query.owner_hr_id) return false;
-      if (keyword) {
-        const haystack = [
-          item.request_no,
-          item.job_title,
-          item.owner_hr_name,
-          item.job_department,
-          item.job_city,
-        ].join(' ').toLowerCase();
-        if (!haystack.includes(keyword)) return false;
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      const left = new Date(a.created_at ?? a.requested_at ?? '').getTime();
-      const right = new Date(b.created_at ?? b.requested_at ?? '').getTime();
-      return query.sort === 'created_at_asc' ? left - right : right - left;
-    });
-}
 
 export function DemandsPage() {
   const { role, userId, name } = useAuth();
@@ -149,21 +76,7 @@ export function DemandsPage() {
     });
   }
 
-  const response = useMemo(() => {
-    const base = demands.data ?? EMPTY_RESPONSE;
-    const demoItems = filterDemoDemands(DEMO_DEMANDS, query);
-    const items = [...base.items, ...demoItems];
-    const total = base.total + demoItems.length;
-    const pageSize = Math.max(base.page_size || query.page_size || 20, items.length || 1);
-    return {
-      ...base,
-      items,
-      total,
-      page: base.page || query.page || 1,
-      page_size: pageSize,
-      pages: Math.max(1, Math.ceil(total / pageSize)),
-    };
-  }, [demands.data, query]);
+  const response = demands.data ?? EMPTY_RESPONSE;
 
   return (
     <div className="space-y-7">
