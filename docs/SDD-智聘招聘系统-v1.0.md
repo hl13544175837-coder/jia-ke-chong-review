@@ -52,7 +52,7 @@
 |---|---|---|
 | 登录与角色权限 | 已实现 | JWT + RBAC，角色包括 admin / manager / recruiter / interviewer |
 | 候选人库 | 已实现 | 列表、详情、候选人判断卡片、辅助雷达、折叠全量技能标签、候选人归属、受控 CSV 导出 |
-| 简历上传解析 | 已实现 | PDF / DOCX / ZIP 批量上传，旧版 DOC 因宏风险跳过，AI 解析入库 |
+| 简历上传解析 | 已实现 | PDF / DOCX / 图片 / ZIP 批量上传；图片走百炼视觉模型，旧版 DOC 因宏风险跳过，AI 解析入库 |
 | 岗位管理 | 已实现 | 创建、编辑、关闭岗位，JD AI 结构化与澄清追问 |
 | 智能匹配 | 已实现 | 岗位找候选人，生成匹配分、命中标签、缺失标签 |
 | 候选人流程 | 代码候选已实现，环境待验收 | 主阶段枚举保持稳定；归属键为 `demand_id`，转需求使用 `transferred` |
@@ -321,7 +321,7 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
-| `POST` | `/resume/upload` | recruiter/manager/admin | 批量上传 PDF / DOCX / ZIP 简历，AI 解析入库；旧版 `.doc` 跳过；旧调用若带 `target_job_id`，后端会校验岗位负责人、组织和在招状态；同一用户 10 分钟内重复上传同一批文件和来源信息时复用首次结果 |
+| `POST` | `/resume/upload` | recruiter/manager/admin | 批量上传 PDF / DOCX / JPG / PNG / WebP / GIF / ZIP 简历，AI 解析入库；旧版 `.doc` 跳过；图片单张不超过 10 MB；旧调用若带 `target_job_id`，后端会校验岗位负责人、组织和在招状态；同一用户 10 分钟内重复上传同一批文件和来源信息时复用首次结果 |
 | `POST` | `/resume/batches/<batch_id>/rollback` | 批次上传人/manager/admin | 撤回误导入批次，候选人软删除、匿名化、删除原文件并写审计 |
 | `GET` | `/resume/<candidate_id>` | 登录 + 候选人可见权限 | 候选人简历详情与技能标签，返回 `owner_hr_id` 供负责人展示与转派 |
 | `GET` | `/candidates` | 登录 | 候选人列表，recruiter 只看当前组织内自己负责的；`search` 会覆盖姓名、邮箱、电话、技能标签和简历解析 JSON 中的公司、岗位、学校等文本；软删除候选人不返回；列表项同时返回 `owner_hr_name`、`pipeline_status`、最近 `current_stage`、需求编号、流程岗位和更新时间摘要，供简历库展示真实责任与流程上下文 |
@@ -510,6 +510,7 @@ sequenceDiagram
 - 后端：`backend/app/api/resume.py`
 - 服务：`backend/app/services/resume_service.py`
 - AI：`base_agent/resume_parser.py`
+- 图片视觉适配：`base_agent/image_resume_parser.py`
 
 前端上传页只暴露一条主路径：
 
@@ -519,16 +520,22 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  A["HR 选择多个 PDF/DOCX 或 ZIP"] --> B["POST /api/resume/upload files[]"]
+  A["HR 选择多个 PDF/DOCX/图片或 ZIP"] --> B["POST /api/resume/upload files[]"]
   B --> C{"文件类型"}
   C -->|"pdf/docx"| D["保存到 uploads/"]
+  C -->|"jpg/png/webp/gif"| V["校验真实格式/尺寸/体积"]
+  V --> D
   C -->|"doc"| X["跳过: 旧版 DOC 宏风险"]
   C -->|"zip"| E["安全解压: 数量/大小/路径限制"]
   E --> D
   D --> F["ResumeBatchService.parse_and_save"]
-  F --> G["ResumeParser 调 LLM 解析结构化信息"]
-  G --> H["写 candidates"]
-  G --> I["写 candidate_tags"]
+  F --> G{"ResumeParser 按格式分派"}
+  G -->|"文档"| T["提取文本并调用通用 LLM"]
+  G -->|"图片"| Q["Base64 调用百炼视觉模型"]
+  T --> H["写 candidates"]
+  Q --> H
+  T --> I["写 candidate_tags"]
+  Q --> I
   H --> J["写 resume.uploaded event"]
   I --> K["返回每个文件 ok/skipped/error"]
 ```
@@ -537,7 +544,8 @@ flowchart TD
 
 | 项目 | 限制 |
 |---|---|
-| 支持格式 | `.pdf`, `.docx`, `.zip`；`.doc` 返回跳过原因，不进入解析 |
+| 支持格式 | `.pdf`, `.docx`, `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`, `.zip`；`.doc` 返回跳过原因，不进入解析 |
+| 图片简历 | 原文件不超过 10MB；Base64 原始载荷控制在 7MB 内；最大 6400 万源像素，超过模型 1600 万像素上限时本地缩放；GIF 取首帧 |
 | ZIP 文件条目 | 最多 100 条 |
 | ZIP 内单文件 | 20MB |
 | ZIP 解压总大小 | 200MB |
@@ -546,6 +554,7 @@ flowchart TD
 风险边界：
 
 - 该流程会调用 LLM，会写入候选人库和标签表。
+- 图片 Base64 只在请求内存中构造，不写数据库和日志；上游错误只保留 HTTP 状态与错误码，不记录完整模型响应。
 - 当前前端不会发送 `target_job_id`；后端 legacy 兼容逻辑仍会校验岗位权限，避免旧调用绕过权限。
 - 当前是同步解析，大批量简历可能导致请求等待较久。
 - 个别文件失败不影响同批其他文件。
@@ -749,6 +758,10 @@ OPENAI_API_KEY=keychain:zhipin-deepseek-api-key
 DEEPSEEK_API_KEY=keychain:zhipin-deepseek-api-key
 API_KEY=keychain:zhipin-deepseek-api-key
 LLM_API_KEY=keychain:zhipin-deepseek-api-key
+DASHSCOPE_API_KEY=keychain:zhipin-dashscope-api-key
+DASHSCOPE_BASE_URL=https://你的业务空间ID.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+DASHSCOPE_VISION_MODEL=qwen3.7-plus
+DASHSCOPE_VISION_TIMEOUT_S=120
 AI_RECRUITMENT_COMPLIANCE_ACK=true
 CANDIDATE_PRIVACY_NOTICE_URL=https://zhipin.内网域名/privacy
 AI_HUMAN_REVIEW_REQUIRED=true
@@ -757,6 +770,7 @@ AI_HUMAN_REVIEW_REQUIRED=true
 原则：
 
 - 不把真实 API Key 写入仓库。
+- `DASHSCOPE_BASE_URL` 必须包含实际业务空间 ID；图片解析配置独立于通用文本 LLM，未配置时图片候选人保留失败状态供重新解析。
 - 生产模式必须显式配置 AI 合规确认、候选人隐私告知地址和人工复核要求，否则 Flask 拒绝启动。
 - `keychain:` 是本地兼容扩展，合入云端前应更新文档。
 - DeepSeek v4 flash 默认给 `max_tokens=8192`，避免推理模型空输出。

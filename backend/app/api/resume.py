@@ -15,6 +15,12 @@ from ..middleware.auth import require_auth, require_role
 from ..middleware.rate_limit import rate_limit
 from ..middleware.events import record_event
 from ..services.resume_service import ResumeBatchService
+from image_resume_parser import (
+    IMAGE_RESUME_EXTENSIONS,
+    IMAGE_RESUME_MAX_FILE_SIZE,
+    inspect_image_file,
+    inspect_image_stream,
+)
 from ..services.demand_context_service import (
     DemandContextError,
     can_manage_demand,
@@ -29,17 +35,28 @@ from .access import can_access_candidate, same_org
 
 bp = Blueprint("resume", __name__)
 
-# 简历文件白名单。旧版 .doc 是 OLE 容器，存在宏风险，本轮只允许作为显式跳过项给出原因。
-RESUME_EXTS = {"pdf", "docx"}
+# 旧版 .doc 是 OLE 容器且存在宏风险，保留为显式拒绝项才能给用户可操作的转换提示。
+DOCUMENT_RESUME_EXTS = {"pdf", "docx"}
+RESUME_EXTS = DOCUMENT_RESUME_EXTS | set(IMAGE_RESUME_EXTENSIONS)
 BLOCKED_RESUME_EXTS = {"doc"}
-# 上传白名单：简历文件 + zip 压缩包
 ALLOWED = RESUME_EXTS | BLOCKED_RESUME_EXTS | {"zip"}
 RESUME_MAX_FILE_SIZE = 20 * 1024 * 1024
 FILE_SIGNATURES = {
     "pdf": (b"%PDF-",),
     "doc": (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",),
     "docx": (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"),
+    "jpg": (b"\xff\xd8\xff",),
+    "jpeg": (b"\xff\xd8\xff",),
+    "png": (b"\x89PNG\r\n\x1a\n",),
+    "gif": (b"GIF87a", b"GIF89a"),
     "zip": (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"),
+}
+IMAGE_FORMAT_BY_EXT = {
+    "jpg": "JPEG",
+    "jpeg": "JPEG",
+    "png": "PNG",
+    "webp": "WEBP",
+    "gif": "GIF",
 }
 
 # ---- zip 解压安全限制（防 zip 炸弹）----
@@ -50,6 +67,11 @@ UPLOAD_DEDUP_WINDOW = timedelta(minutes=10)
 ORIGINAL_RESUME_MIME_TYPES = {
     ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
 }
 
 
@@ -76,6 +98,16 @@ def _stream_size(file_storage):
 
 
 def _content_matches_extension(file_storage, ext):
+    if ext == "webp":
+        stream = file_storage.stream
+        current = stream.tell()
+        head = stream.read(12)
+        stream.seek(current)
+        return (
+            len(head) >= 12
+            and head.startswith(b"RIFF")
+            and head[8:12] == b"WEBP"
+        )
     signatures = FILE_SIGNATURES.get(ext)
     if not signatures:
         return True
@@ -93,10 +125,22 @@ def _validate_upload_file(file_storage):
         return "文件为空"
     if ext in BLOCKED_RESUME_EXTS:
         return "旧版 DOC 存在宏风险，请转换为 PDF 或 DOCX 后上传"
-    if ext in RESUME_EXTS and size > RESUME_MAX_FILE_SIZE:
-        return f"文件大小超过上限（{RESUME_MAX_FILE_SIZE // (1024 * 1024)}MB）"
+    max_file_size = (
+        IMAGE_RESUME_MAX_FILE_SIZE
+        if ext in IMAGE_RESUME_EXTENSIONS
+        else RESUME_MAX_FILE_SIZE
+    )
+    if ext in RESUME_EXTS and size > max_file_size:
+        return f"文件大小超过上限（{max_file_size // (1024 * 1024)}MB）"
     if not _content_matches_extension(file_storage, ext):
         return "文件内容与扩展名不匹配"
+    if ext in IMAGE_RESUME_EXTENSIONS:
+        try:
+            image_format, _, _ = inspect_image_stream(file_storage.stream)
+        except ValueError as error:
+            return str(error)
+        if image_format != IMAGE_FORMAT_BY_EXT[ext]:
+            return "图片实际格式与扩展名不匹配"
     return None
 
 
@@ -428,7 +472,7 @@ def _process_zip(
     target_demand_id=None,
     target_job_id=None,
 ):
-    """安全解压 zip，逐个解析其中的 pdf/doc/docx 简历。
+    """安全解压 zip，逐个解析其中的文档或图片简历。
     安全防护：
       - 防 zip 炸弹：限制条目数、单文件与总解压大小。
       - 防路径穿越（zip slip）：忽略含 `..`、绝对路径或跳出目标目录的条目，只取 basename。
@@ -493,12 +537,17 @@ def _process_zip(
                     })
                     continue
 
-                # 单文件大小防护
-                if info.file_size > ZIP_MAX_FILE_SIZE:
+                # 图片通过 Base64 发送到视觉模型，必须采用更严格的文件体积上限。
+                file_size_limit = (
+                    IMAGE_RESUME_MAX_FILE_SIZE
+                    if _ext(base) in IMAGE_RESUME_EXTENSIONS
+                    else ZIP_MAX_FILE_SIZE
+                )
+                if info.file_size > file_size_limit:
                     results.append({
                         "file": f"{zip_display_name} → {base}",
                         "status": "skipped",
-                        "reason": f"单个文件超过解压上限（{ZIP_MAX_FILE_SIZE // (1024 * 1024)}MB）",
+                        "reason": f"单个文件超过上限（{file_size_limit // (1024 * 1024)}MB）",
                     })
                     continue
 
@@ -535,6 +584,26 @@ def _process_zip(
                     })
                     continue
 
+                if _ext(base) in IMAGE_RESUME_EXTENSIONS:
+                    try:
+                        image_format, _, _ = inspect_image_file(out_path)
+                    except ValueError as error:
+                        out_path.unlink(missing_ok=True)
+                        results.append({
+                            "file": f"{zip_display_name} → {base}",
+                            "status": "skipped",
+                            "reason": str(error),
+                        })
+                        continue
+                    if image_format != IMAGE_FORMAT_BY_EXT[_ext(base)]:
+                        out_path.unlink(missing_ok=True)
+                        results.append({
+                            "file": f"{zip_display_name} → {base}",
+                            "status": "skipped",
+                            "reason": "图片实际格式与扩展名不匹配",
+                        })
+                        continue
+
                 # 解析入库，结果标明来源 zip
                 _process_resume(
                     svc,
@@ -552,7 +621,7 @@ def _process_zip(
                 results.append({
                     "file": zip_display_name,
                     "status": "skipped",
-                    "reason": "压缩包内未找到 PDF / Word 简历",
+                    "reason": "压缩包内未找到 PDF、Word 或图片简历",
                 })
 
     except zipfile.BadZipFile:
@@ -630,7 +699,11 @@ def upload():
         if not f.filename:
             continue
         if not _allowed(f.filename):
-            results.append({"file": f.filename, "status": "skipped", "reason": "unsupported format"})
+            results.append({
+                "file": f.filename,
+                "status": "skipped",
+                "reason": "不支持该格式，请上传 PDF、DOCX、JPG、PNG、WebP、GIF 或 ZIP",
+            })
             continue
         invalid_reason = _validate_upload_file(f)
         if invalid_reason:
