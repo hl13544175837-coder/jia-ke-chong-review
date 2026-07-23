@@ -104,16 +104,16 @@ assert.match(
 
 assert.match(
   candidatesPage,
-  /简历总量[\s\S]{0,220}<AnimatedNumber value=\{totalCandidates\} \/>/,
+  /tab\.key === 'all'[\s\S]{0,120}\? totalCandidates/,
   'Candidate total card should use the backend total, not the current page length',
 );
 assert.doesNotMatch(
   candidatesPage,
-  /简历总量[\s\S]{0,220}<AnimatedNumber value=\{candidates\.length\} \/>/,
+  /tab\.key === 'all'[\s\S]{0,120}\? candidates\.length/,
   'Candidate total card should not use the current page length',
 );
 assert.match(
   candidatesPage,
-  /当前显示 \$\{filteredCandidates\.length\} \/ \$\{resultTotal\} 份/,
+  /筛选结果 \$\{resultTotal\} 条，简历库共 \$\{totalCandidates\} 条/,
   'Candidate list summary should compare visible rows with the filtered backend total',
 );

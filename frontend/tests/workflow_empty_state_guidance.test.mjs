@@ -177,8 +177,8 @@ assert.match(
 
 assert.match(
   biPage,
-  /MOCK_OFFERS/,
-  'Offer management should provide presentation data instead of a blank report',
+  /Offer 管理/,
+  'Offer management should identify the workspace without treating presentation data as real business state',
 );
 assert.match(
   biPage,

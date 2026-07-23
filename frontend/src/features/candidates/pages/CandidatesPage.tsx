@@ -304,7 +304,7 @@ export function CandidatesPage() {
           <Link to="/demands">
             <Button variant="secondary">
               <Users className="h-4 w-4" />
-              选择招聘需求
+              岗位匹配 · 选择招聘需求
             </Button>
           </Link>
           <Link to="/upload">
