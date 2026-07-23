@@ -324,6 +324,7 @@ function CreateJobForm({ onCreated, onCancel }: CreateJobFormProps) {
             type="button"
             onClick={onCancel}
             disabled={clarifying || submitting}
+            title={clarifying || submitting ? '岗位信息处理中，暂不能关闭' : '收起新增岗位'}
             className="rounded-md p-2 text-muted hover:bg-surface-soft hover:text-ink disabled:opacity-50"
             aria-label="收起新增岗位"
           >
@@ -897,6 +898,7 @@ export function JobsPage() {
                             <button
                               onClick={() => handleSaveJobAttribution(job)}
                               disabled={savingJobId === job.id}
+                              title={savingJobId === job.id ? '岗位归属保存中' : '保存岗位归属'}
                               className="text-xs font-medium text-ink hover:text-body hover:underline disabled:opacity-50"
                             >
                               {savingJobId === job.id ? '保存中…' : '保存归属'}
@@ -904,6 +906,7 @@ export function JobsPage() {
                             <button
                               onClick={cancelEditJobAttribution}
                               disabled={savingJobId === job.id}
+                              title={savingJobId === job.id ? '岗位归属保存中，暂不能取消' : '取消编辑岗位归属'}
                               className="text-xs font-medium text-muted hover:text-ink hover:underline disabled:opacity-50"
                             >
                               取消
@@ -915,6 +918,7 @@ export function JobsPage() {
                               <button
                                 onClick={() => handleRestore(job.id, job.title)}
                                 disabled={restoringId === job.id}
+                                title={restoringId === job.id ? '岗位恢复中' : '恢复为在招岗位'}
                                 className="text-xs font-medium text-ink hover:text-body hover:underline disabled:opacity-50"
                               >
                                 {restoringId === job.id ? '恢复中…' : '恢复在招'}
@@ -942,6 +946,7 @@ export function JobsPage() {
                                 <button
                                   onClick={() => handleClose(job.id, job.title)}
                                   disabled={closingId === job.id}
+                                  title={closingId === job.id ? '岗位关闭中' : '关闭岗位'}
                                   className="text-xs font-medium text-muted hover:text-danger-600 disabled:opacity-50"
                                 >
                                   {closingId === job.id ? '关闭中…' : '关闭'}

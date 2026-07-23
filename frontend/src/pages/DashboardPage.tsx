@@ -350,6 +350,7 @@ function KpiCard({
       type="button"
       onClick={onActivate}
       disabled={!onActivate || value === null}
+      title={value === null ? `${label}暂无可用数据` : !onActivate ? `${label}暂无明细入口` : `查看${label}明细`}
       className="w-full overflow-hidden rounded-xl border border-[#e8e7e1] bg-white text-left shadow-[0_1px_2px_rgba(24,35,31,0.03)] transition-shadow hover:shadow-[0_8px_24px_rgba(24,35,31,0.07)] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-80"
       aria-label={onActivate && value !== null ? `${label} ${value}，查看明细` : undefined}
     >
@@ -706,6 +707,7 @@ function TodoCard({
         actionLabel: '进入完整工作台',
       })}
       disabled={value === null}
+      title={value === null ? `${label}暂无可用数据` : `查看${label}明细`}
       className="group block w-full rounded-apple text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-80"
     >
       <Card variant="elevated" className="h-full">

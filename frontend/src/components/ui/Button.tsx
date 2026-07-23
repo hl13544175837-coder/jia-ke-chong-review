@@ -9,6 +9,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
   loading?: boolean;
+  disabledReason?: string;
   children: ReactNode;
 }
 
@@ -41,12 +42,16 @@ export function Button({
   className,
   children,
   disabled,
+  disabledReason,
+  title,
   ...props
 }: ButtonProps) {
+  const unavailable = disabled || loading;
   return (
     <button
       className={cn(base, variants[variant], sizes[size], className)}
-      disabled={disabled || loading}
+      disabled={unavailable}
+      title={unavailable ? (disabledReason || (loading ? '操作处理中' : '当前条件下不可操作')) : title}
       {...props}
     >
       {loading && <Spinner size="sm" />}

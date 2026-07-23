@@ -191,6 +191,7 @@ export function UsersManagementContent() {
                       <td className="px-5 py-3 text-right">
                         <button
                           disabled={busyId === u.id}
+                          title={busyId === u.id ? '账号状态更新中' : u.is_active ? '停用账号' : '启用账号'}
                           onClick={() => toggleActive(u.id, !u.is_active)}
                           className="text-xs font-medium text-muted hover:text-ink disabled:opacity-50"
                         >

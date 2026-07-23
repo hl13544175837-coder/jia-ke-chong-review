@@ -252,8 +252,8 @@ export function KpiStandardsPage() {
               {config.block_categories.map((category, index) => (
                 <div key={category.id} className="flex flex-col gap-3 rounded-xl border border-[#ecece8] bg-[#fafbf8] p-3 sm:flex-row sm:items-center">
                   <div className="flex gap-1 sm:flex-col">
-                    <button type="button" onClick={() => moveCategory(category.id, -1)} disabled={index === 0} className="rounded p-1.5 text-[#858a86] hover:bg-white disabled:opacity-30" aria-label="上移"><ArrowUp className="h-3.5 w-3.5" /></button>
-                    <button type="button" onClick={() => moveCategory(category.id, 1)} disabled={index === config.block_categories.length - 1} className="rounded p-1.5 text-[#858a86] hover:bg-white disabled:opacity-30" aria-label="下移"><ArrowDown className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={() => moveCategory(category.id, -1)} disabled={index === 0} title={index === 0 ? '已经是第一项' : '上移一项'} className="rounded p-1.5 text-[#858a86] hover:bg-white disabled:opacity-30" aria-label="上移"><ArrowUp className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={() => moveCategory(category.id, 1)} disabled={index === config.block_categories.length - 1} title={index === config.block_categories.length - 1 ? '已经是最后一项' : '下移一项'} className="rounded p-1.5 text-[#858a86] hover:bg-white disabled:opacity-30" aria-label="下移"><ArrowDown className="h-3.5 w-3.5" /></button>
                   </div>
                   <input
                     value={category.name}
@@ -270,7 +270,7 @@ export function KpiStandardsPage() {
                     className="h-10 flex-[1.5] rounded-lg border border-[#dcded8] bg-white px-3 text-sm outline-none focus:border-[var(--enterprise-brand)]"
                     placeholder="多个关键词用逗号分隔"
                   />
-                  <button type="button" onClick={() => removeCategory(category.id)} disabled={config.block_categories.length <= 1} className="self-end rounded-lg p-2 text-[#929793] hover:bg-red-50 hover:text-red-600 disabled:opacity-30 sm:self-auto" aria-label="删除分类"><Trash2 className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => removeCategory(category.id)} disabled={config.block_categories.length <= 1} title={config.block_categories.length <= 1 ? '至少保留一个阻塞分类' : '删除分类'} className="self-end rounded-lg p-2 text-[#929793] hover:bg-red-50 hover:text-red-600 disabled:opacity-30 sm:self-auto" aria-label="删除分类"><Trash2 className="h-4 w-4" /></button>
                 </div>
               ))}
               <Button variant="ghost" size="sm" onClick={addCategory} disabled={config.block_categories.length >= 20}><Plus className="h-4 w-4" />添加分类</Button>

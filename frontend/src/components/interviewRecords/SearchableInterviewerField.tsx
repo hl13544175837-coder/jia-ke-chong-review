@@ -144,6 +144,7 @@ export function SearchableInterviewerField({
             type="button"
             className="inline-flex shrink-0 items-center gap-1 font-semibold hover:underline disabled:opacity-60"
             disabled={disabled}
+            title={disabled ? '当前正在处理，暂不能清空面试官' : '清空已选面试官'}
             onClick={clearSelection}
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />

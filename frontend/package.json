@@ -11,6 +11,7 @@
     "dev:local-acceptance": "VITE_API_BASE_URL=/api VITE_OAUTH_BASE_URL=http://127.0.0.1:5100/pgs/oauth vite --host 127.0.0.1 --port 5174",
     "dev:oauth-bridge": "node scripts/local-oauth-bridge.mjs",
     "build": "vite build",
+    "audit:interactions": "node scripts/audit-interactive-controls.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",

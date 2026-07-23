@@ -380,6 +380,7 @@ export function DemandTable({
                     type="button"
                     data-ui="demand-request-filter"
                     disabled={!demand.request_no}
+                    title={demand.request_no ? '按需求编号筛选' : '该需求未记录需求编号'}
                     className="mt-1 block rounded text-left text-xs text-muted hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
                     onClick={(event) => {
                       event.stopPropagation();
@@ -406,6 +407,7 @@ export function DemandTable({
                     type="button"
                     data-ui="demand-department-filter"
                     disabled={!demand.job_department}
+                    title={demand.job_department ? '按部门筛选' : '该需求未记录部门'}
                     className="block rounded text-left hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:no-underline"
                     onClick={(event) => {
                       event.stopPropagation();
@@ -418,6 +420,7 @@ export function DemandTable({
                     type="button"
                     data-ui="demand-city-filter"
                     disabled={!demand.job_city}
+                    title={demand.job_city ? '按城市筛选' : '该需求未记录城市'}
                     className="mt-1 block rounded text-left text-xs text-muted hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:no-underline"
                     onClick={(event) => {
                       event.stopPropagation();
@@ -458,6 +461,7 @@ export function DemandTable({
                     type="button"
                     data-ui="demand-target-date-filter"
                     disabled={!demand.target_date}
+                    title={demand.target_date ? '按截止日期筛选' : '该需求未记录截止日期'}
                     className="mt-1 block rounded text-left text-xs text-muted hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:no-underline"
                     onClick={(event) => {
                       event.stopPropagation();

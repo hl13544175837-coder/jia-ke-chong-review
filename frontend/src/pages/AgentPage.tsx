@@ -569,6 +569,7 @@ function ConversationSidebar({
                     type="button"
                     onClick={() => onSwitch(c.id)}
                     disabled={streaming || active || view === 'archived'}
+                    title={streaming ? '生成中暂不可切换' : active ? '当前会话' : view === 'archived' ? '请先恢复归档会话' : '切换会话'}
                     className="flex w-full items-start gap-2 text-left disabled:cursor-default"
                   >
                     <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
@@ -614,6 +615,7 @@ function ConversationSidebar({
                     <button
                       type="button"
                       disabled={streaming}
+                      title={streaming ? '生成中暂不可重命名' : '重命名会话'}
                       onClick={() => startRename(c)}
                       className="flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-body hover:bg-surface-soft"
                     >
@@ -622,6 +624,7 @@ function ConversationSidebar({
                     <button
                       type="button"
                       disabled={streaming}
+                      title={streaming ? '生成中暂不可删除' : '删除并归档会话'}
                       onClick={() => {
                         setMenuId(null);
                         if (confirm(`删除会话「${c.title}」？删除后可在归档列表恢复。`)) {
@@ -679,6 +682,7 @@ function EmptyState({
             key={q}
             type="button"
             disabled={disabled}
+            title={disabled ? '助手正在处理，请稍候' : q}
             onClick={() => onPick(q)}
             className={cn(
               'rounded-md border border-hairline bg-surface-soft px-4 py-3 text-left text-sm text-body transition-colors',

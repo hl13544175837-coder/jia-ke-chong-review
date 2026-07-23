@@ -95,6 +95,7 @@ export function CandidateCard({
           <button
             type="button"
             disabled={busy}
+            title={busy ? '候选人状态更新中' : `推进到${STAGE_BY_KEY[next].label}`}
             onClick={() => move(next)}
             className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${stage.badgeBg} transition-opacity hover:opacity-80 disabled:opacity-50`}
           >
@@ -108,6 +109,7 @@ export function CandidateCard({
           <button
             type="button"
             disabled={busy}
+            title={busy ? '候选人状态更新中' : '填写淘汰原因'}
             onClick={() => setShowDisposition((v) => !v)}
             className="rounded-md px-2 py-1 text-[11px] font-medium text-danger-600 hover:bg-danger-50 disabled:opacity-50"
           >
@@ -119,6 +121,7 @@ export function CandidateCard({
           <button
             type="button"
             disabled={busy}
+            title={busy ? '候选人状态更新中' : '记录 Offer 信息'}
             aria-label="Offer 信息"
             onClick={() => setShowOffer((v) => !v)}
             className="rounded-md px-2 py-1 text-[11px] font-medium text-success-700 hover:bg-success-50 disabled:opacity-50"
@@ -142,6 +145,7 @@ export function CandidateCard({
           <button
             type="button"
             disabled={busy}
+            title={busy ? '候选人状态更新中' : '选择其他流程阶段'}
             onClick={() => setPicking((p) => !p)}
             className="rounded-md px-1.5 py-1 text-[11px] font-medium text-muted hover:bg-surface-soft disabled:opacity-50"
             aria-haspopup="listbox"
@@ -159,6 +163,7 @@ export function CandidateCard({
                   <button
                     type="button"
                     disabled={s.key === candidate.stage}
+                    title={s.key === candidate.stage ? `已处于${s.label}` : `移动到${s.label}`}
                     onClick={() => {
                       setPicking(false);
                       move(s.key);

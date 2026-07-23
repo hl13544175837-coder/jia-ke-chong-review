@@ -73,6 +73,26 @@ const STATUS_META: Record<AssignmentStatusKey, { label: string; tone: 'neutral' 
   cancelled: { label: '已取消', tone: 'neutral' },
 };
 
+const STATUS_FILTER_OPTIONS: Array<{ key: 'all' | AssignmentStatusKey; label: string }> = [
+  { key: 'all', label: '全部状态' },
+  { key: 'scheduled', label: '待面试' },
+  { key: 'pending_feedback', label: '待反馈' },
+  { key: 'done', label: '已反馈' },
+  { key: 'cancelled', label: '已取消' },
+];
+
+function statusFilterFromQuery(value: string | null): 'all' | AssignmentStatusKey {
+  return STATUS_FILTER_OPTIONS.some((item) => item.key === value)
+    ? value as 'all' | AssignmentStatusKey
+    : 'all';
+}
+
+function demandFilterFromQuery(value: string | null): 'all' | number {
+  if (!value) return 'all';
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 'all';
+}
+
 const ROUND_SEQUENCE_BY_ROUND: Partial<Record<InterviewRound, number>> = {
   round_1: 1,
   round_2: 2,
@@ -787,7 +807,7 @@ function uniqueValues(values: Array<string | null | undefined>) {
 function FigmaInterviewManagementPage() {
   const { role, userId } = useAuth();
   const toast = useToast();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canManage = role === 'recruiter' || role === 'manager' || role === 'admin';
 
   const [search, setSearch] = useState('');
@@ -819,6 +839,8 @@ function FigmaInterviewManagementPage() {
   const records = useMemo(() => recordsAsync.data ?? [], [recordsAsync.data]);
   const demands = useMemo(() => demandsAsync.data?.items ?? [], [demandsAsync.data]);
   const interviewers = useMemo(() => interviewersAsync.data ?? [], [interviewersAsync.data]);
+  const statusFilter = statusFilterFromQuery(searchParams.get('status'));
+  const demandFilter = demandFilterFromQuery(searchParams.get('demand'));
   const availableDemands = useMemo(() => {
     const byId = new Map(demands.map((item) => [item.id, item]));
     resolvedDemands.forEach((item) => byId.set(item.id, item));
@@ -843,6 +865,33 @@ function FigmaInterviewManagementPage() {
     setHeaderFilter(null);
   }
 
+  function changeStatusFilter(nextStatus: 'all' | AssignmentStatusKey) {
+    const next = new URLSearchParams(searchParams);
+    if (nextStatus === 'all') next.delete('status');
+    else next.set('status', nextStatus);
+    setSearchParams(next, { replace: true });
+  }
+
+  function changeDemandFilter(nextDemand: 'all' | number) {
+    const next = new URLSearchParams(searchParams);
+    if (nextDemand === 'all') next.delete('demand');
+    else next.set('demand', String(nextDemand));
+    setSearchParams(next, { replace: true });
+  }
+
+  function clearCandidateFilter() {
+    const next = new URLSearchParams(searchParams);
+    next.delete('candidate');
+    setSearchParams(next, { replace: true });
+  }
+
+  function clearAllFilters() {
+    setSearch('');
+    setColumnFilters(EMPTY_COLUMN_FILTERS);
+    setHeaderFilter(null);
+    setSearchParams(new URLSearchParams(), { replace: true });
+  }
+
   const optionMap = useMemo(() => ({
     candidate: uniqueValues(rows.map((item) => item.name_masked)),
     job: uniqueValues(rows.map((item) => item.job_title)),
@@ -855,9 +904,9 @@ function FigmaInterviewManagementPage() {
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const demandQuery = Number(searchParams.get('demand'));
+    const demandQuery = demandFilter === 'all' ? 0 : demandFilter;
     const candidateQuery = Number(searchParams.get('candidate'));
-    const statusQuery = searchParams.get('status');
+    const statusQuery = statusFilter;
     return rows.filter((item) => {
       const state = rowState(item);
       if (demandQuery > 0 && item.demand_id !== demandQuery) return false;
@@ -885,7 +934,13 @@ function FigmaInterviewManagementPage() {
       if (columnFilters.action && actionLabel(item) !== columnFilters.action) return false;
       return true;
     });
-  }, [columnFilters, rows, search, searchParams]);
+  }, [columnFilters, demandFilter, rows, search, searchParams, statusFilter]);
+
+  const hasActiveFilters = search.trim() !== ''
+    || demandFilter !== 'all'
+    || statusFilter !== 'all'
+    || Number(searchParams.get('candidate')) > 0
+    || Object.values(columnFilters).some(Boolean);
 
   const calendarGroups = useMemo(() => {
     const groups = new Map<string, InterviewManagementRow[]>();
@@ -1164,6 +1219,27 @@ function FigmaInterviewManagementPage() {
         </div>
       </div>
 
+      {hasActiveFilters && (
+        <div data-ui="interview-active-filters" className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted">
+          {demandFilter !== 'all' && (
+            <button type="button" onClick={() => changeDemandFilter('all')} className="inline-flex items-center gap-1 rounded-full border border-hairline bg-canvas px-3 py-1.5 hover:border-surface-strong hover:text-ink">
+              需求 #{demandFilter}<X className="h-3 w-3" />
+            </button>
+          )}
+          {statusFilter !== 'all' && (
+            <button type="button" onClick={() => changeStatusFilter('all')} className="inline-flex items-center gap-1 rounded-full border border-hairline bg-canvas px-3 py-1.5 hover:border-surface-strong hover:text-ink">
+              {STATUS_META[statusFilter].label}<X className="h-3 w-3" />
+            </button>
+          )}
+          {Number(searchParams.get('candidate')) > 0 && (
+            <button type="button" onClick={clearCandidateFilter} className="inline-flex items-center gap-1 rounded-full border border-hairline bg-canvas px-3 py-1.5 hover:border-surface-strong hover:text-ink">
+              候选人 #{searchParams.get('candidate')}<X className="h-3 w-3" />
+            </button>
+          )}
+          <Button type="button" variant="ghost" size="sm" onClick={clearAllFilters}>清除全部</Button>
+        </div>
+      )}
+
       <Card className="overflow-visible rounded-[14px] border-[#e8e8e3] shadow-none">
         {loading && (
           <div className="flex items-center justify-center gap-2 py-20 text-sm text-muted"><Spinner />加载面试任务…</div>
@@ -1179,7 +1255,7 @@ function FigmaInterviewManagementPage() {
               icon={Search}
               title="暂无符合条件的面试"
               description="当前搜索或表头筛选条件下没有记录。"
-              action={<Button size="sm" variant="secondary" onClick={() => { setSearch(''); setColumnFilters(EMPTY_COLUMN_FILTERS); }}>清除筛选</Button>}
+              action={<Button size="sm" variant="secondary" onClick={clearAllFilters}>清除筛选</Button>}
             />
           )
         )}
