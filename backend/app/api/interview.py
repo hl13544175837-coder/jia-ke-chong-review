@@ -18,6 +18,13 @@ from ..services.interview_workflow_service import (
     normalize_assignment_datetime,
     resolve_interview_context,
 )
+from ..services.interview_management_service import (
+    interview_management_rows,
+    mark_interview_conducted,
+    remind_interview_feedback,
+    update_interview_assignment,
+)
+from ..services.pipeline_service import normalize_pipeline_stage
 from ..services.demand_context_service import (
     DemandContextError,
     can_manage_demand,
@@ -190,10 +197,21 @@ def _build_interview_guide(candidate, job, round_name, demand_id=None):
 
 
 def _assignment_payload(item):
-    from ..models import Candidate, InterviewFeedback, User
+    from ..models import (
+        Candidate,
+        InterviewFeedback,
+        PipelineStage,
+        RecruitmentDemand,
+        User,
+    )
 
     candidate = db.session.get(Candidate, item.candidate_id)
     job = db.session.get(Job, item.job_id)
+    demand = (
+        db.session.get(RecruitmentDemand, item.demand_id)
+        if item.demand_id is not None
+        else None
+    )
     interviewer = db.session.get(User, item.interviewer_id)
     creator = db.session.get(User, item.created_by) if item.created_by else None
     feedback_query = InterviewFeedback.query.filter_by(
@@ -215,6 +233,17 @@ def _assignment_payload(item):
     feedback_submitted = feedback_query.first() is not None
     scheduled_at = normalize_assignment_datetime(item.scheduled_at)
     assignment_active = not assignment_is_cancelled(item.status)
+    stage = None
+    if item.demand_id is not None:
+        stage = (
+            PipelineStage.query.filter_by(
+                org_id=item.org_id or 1,
+                candidate_id=item.candidate_id,
+                demand_id=item.demand_id,
+            )
+            .order_by(PipelineStage.id.desc())
+            .first()
+        )
     is_overdue = bool(
         assignment_active
         and scheduled_at
@@ -227,7 +256,22 @@ def _assignment_payload(item):
         "name_masked": candidate.name_masked if candidate else None,
         "job_id": item.job_id,
         "demand_id": item.demand_id,
-        "job_title": job.title if job else None,
+        "job_title": (
+            (demand.job_title_snapshot or job.title)
+            if demand and job
+            else (job.title if job else None)
+        ),
+        "job_city": (
+            (demand.city or job.city or "")
+            if demand and job
+            else (job.city if job else "")
+        ),
+        "job_department": (
+            (demand.department or job.department or "")
+            if demand and job
+            else (job.department if job else "")
+        ),
+        "pipeline_stage": normalize_pipeline_stage(stage.stage) if stage else None,
         "round": item.round,
         "round_sequence": item.round_sequence or 1,
         "is_primary": bool(item.is_primary),
@@ -254,6 +298,52 @@ def _assignment_workflow_error_response(exc):
         "code": exc.code,
         **exc.details,
     }), exc.status_code
+
+
+def _load_managed_assignment(assignment_id):
+    """Lock a Demand-owned assignment after checking organization and role scope."""
+
+    reference = db.session.execute(
+        select(
+            InterviewAssignment.demand_id,
+            InterviewAssignment.job_id,
+        ).where(
+            InterviewAssignment.id == assignment_id,
+            InterviewAssignment.org_id == g.org_id,
+        )
+    ).one_or_none()
+    if reference is None or reference.demand_id is None:
+        return None, (
+            jsonify({"error": "面试任务不存在", "code": "assignment_not_found"}),
+            404,
+        )
+    try:
+        demand = resolve_demand_context(
+            org_id=g.org_id,
+            demand_id=reference.demand_id,
+            job_id=reference.job_id,
+            lock=True,
+        )
+    except DemandContextError as exc:
+        db.session.rollback()
+        return None, _context_error_response(exc)
+    if not can_manage_demand(g.user_id, g.role, g.org_id, demand):
+        db.session.rollback()
+        return None, (jsonify({"error": "Forbidden", "code": "forbidden"}), 403)
+    assignment = load_assignment_for_update(
+        org_id=g.org_id,
+        assignment_id=assignment_id,
+    )
+    if assignment is None or assignment.demand_id != reference.demand_id:
+        db.session.rollback()
+        return None, (
+            jsonify({
+                "error": "面试任务已变更，请刷新后重试",
+                "code": "assignment_changed",
+            }),
+            409,
+        )
+    return assignment, None
 
 
 @bp.post("/interview/start")
@@ -735,6 +825,19 @@ def list_interviewers():
     ])
 
 
+@bp.get("/interview/management-rows")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def list_interview_management_rows():
+    return jsonify(
+        interview_management_rows(
+            user_id=g.user_id,
+            role=g.role,
+            org_id=g.org_id,
+        )
+    )
+
+
 @bp.get("/interview/assignments")
 @require_auth
 def list_assignments():
@@ -848,6 +951,105 @@ def create_assignment():
     payload = _assignment_payload(assignment)
     payload["deduplicated"] = deduplicated
     return jsonify(payload), 200 if deduplicated else 201
+
+
+@bp.patch("/interview/assignments/<int:assignment_id>")
+@require_auth
+def update_assignment(assignment_id):
+    if g.role not in {"recruiter", "manager", "admin"}:
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    editable_fields = {"scheduled_at", "interviewer_id", "location", "note"}
+    if not editable_fields.intersection(data):
+        return jsonify({
+            "error": "请至少提供一个可调整字段",
+            "code": "assignment_update_required",
+        }), 400
+    assignment, error = _load_managed_assignment(assignment_id)
+    if error is not None:
+        return error
+
+    interviewer_id = data.get("interviewer_id", assignment.interviewer_id)
+    if (
+        isinstance(interviewer_id, bool)
+        or not isinstance(interviewer_id, int)
+        or interviewer_id < 1
+    ):
+        db.session.rollback()
+        return jsonify({"error": "interviewer_id 必须是正整数"}), 400
+    from ..models import User
+
+    interviewer = db.session.execute(
+        select(User)
+        .where(User.id == interviewer_id, User.org_id == g.org_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if (
+        interviewer is None
+        or interviewer.role not in {"interviewer", "manager", "admin"}
+        or not interviewer.is_active
+    ):
+        db.session.rollback()
+        return jsonify({"error": "面试官不存在、未启用或角色不正确"}), 400
+
+    if "scheduled_at" in data:
+        scheduled_at = _parse_datetime(data.get("scheduled_at"))
+        if data.get("scheduled_at") is not None and scheduled_at is None:
+            db.session.rollback()
+            return jsonify({"error": "scheduled_at 不是有效时间"}), 400
+    else:
+        scheduled_at = assignment.scheduled_at
+    try:
+        assignment, deduplicated = update_interview_assignment(
+            assignment=assignment,
+            interviewer_id=interviewer_id,
+            scheduled_at=scheduled_at,
+            location=data.get("location", assignment.location),
+            note=data.get("note", assignment.note),
+        )
+    except InterviewAssignmentWorkflowError as exc:
+        return _assignment_workflow_error_response(exc)
+    payload = _assignment_payload(assignment)
+    payload["deduplicated"] = deduplicated
+    return jsonify(payload), 200
+
+
+@bp.post("/interview/assignments/<int:assignment_id>/mark-conducted")
+@require_auth
+def mark_assignment_conducted(assignment_id):
+    if g.role not in {"recruiter", "manager", "admin"}:
+        return jsonify({"error": "Forbidden"}), 403
+    assignment, error = _load_managed_assignment(assignment_id)
+    if error is not None:
+        return error
+    try:
+        assignment, deduplicated = mark_interview_conducted(
+            assignment=assignment
+        )
+    except InterviewAssignmentWorkflowError as exc:
+        return _assignment_workflow_error_response(exc)
+    payload = _assignment_payload(assignment)
+    payload["deduplicated"] = deduplicated
+    return jsonify(payload), 200
+
+
+@bp.post("/interview/assignments/<int:assignment_id>/remind-feedback")
+@require_auth
+def remind_assignment_feedback(assignment_id):
+    if g.role not in {"recruiter", "manager", "admin"}:
+        return jsonify({"error": "Forbidden"}), 403
+    assignment, error = _load_managed_assignment(assignment_id)
+    if error is not None:
+        return error
+    try:
+        assignment, deduplicated = remind_interview_feedback(
+            assignment=assignment
+        )
+    except InterviewAssignmentWorkflowError as exc:
+        return _assignment_workflow_error_response(exc)
+    payload = _assignment_payload(assignment)
+    payload["deduplicated"] = deduplicated
+    return jsonify(payload), 200
 
 
 @bp.patch("/interview/assignments/<int:assignment_id>/cancel")

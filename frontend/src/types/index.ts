@@ -1073,6 +1073,55 @@ export interface InterviewAssignmentInput {
   note?: string;
 }
 
+export type InterviewAssignmentStatus =
+  | 'unassigned'
+  | 'scheduled'
+  | 'awaiting_feedback'
+  | 'feedback_submitted'
+  | 'completed'
+  | 'cancelled';
+
+/**
+ * 招聘侧面试管理的一行。它以候选人当前 Demand 为范围，因此即使候选人
+ * 尚未创建面试任务，也会返回一行供招聘专员直接安排。
+ */
+export interface InterviewManagementRow {
+  candidate_id: number;
+  name_masked: string | null;
+  demand_id: number;
+  job_id: number;
+  job_title: string | null;
+  job_city: string;
+  job_department: string;
+  pipeline_stage: PipelineStage | string;
+  round: InterviewRound | null;
+  round_sequence: number | null;
+  assignment_id: number | null;
+  is_primary: boolean | null;
+  interviewer_id: number | null;
+  interviewer_name: string | null;
+  scheduled_at: string | null;
+  location: string;
+  note: string;
+  assignment_status: InterviewAssignmentStatus | string;
+  feedback_id: number | null;
+  feedback_submitted: boolean;
+  feedback_score: number | null;
+  feedback_passed: boolean | null;
+  feedback_result: string | null;
+}
+
+export interface InterviewAssignmentPatch {
+  scheduled_at?: string | null;
+  interviewer_id?: number;
+  location?: string;
+  note?: string;
+}
+
+export type InterviewAssignmentMutationResult = InterviewAssignment & {
+  deduplicated?: boolean;
+};
+
 // ---- Interview list + feedback ----
 export interface InterviewListItem {
   id: number;

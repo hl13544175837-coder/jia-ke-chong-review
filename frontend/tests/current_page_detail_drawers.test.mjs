@@ -5,13 +5,11 @@ const interviews = readFileSync(new URL('../src/pages/ReaddyInterviewsPage.tsx',
 const offers = readFileSync(new URL('../src/pages/OffersPage.tsx', import.meta.url), 'utf8');
 const hired = readFileSync(new URL('../src/pages/HiredPage.tsx', import.meta.url), 'utf8');
 
-// 面试：统计卡筛选真实 assignment，点击整行在当前页查看，行内写操作不得误开详情。
+// 面试：列表/日历留在当前页，点击整行在当前页查看，行内写操作不得误开详情。
 assert.match(interviews, /import \{ DrawerShell \} from '\.\.\/components\/ui\/DrawerShell'/);
 assert.match(interviews, /const \[detailTarget, setDetailTarget\] = useState<InterviewAssignment \| null>\(null\)/);
-assert.match(interviews, /onClick=\{\(\) => changeStatusFilter\('scheduled'\)\}/);
-assert.match(interviews, /onClick=\{\(\) => changeStatusFilter\('pending_feedback'\)\}/);
-assert.match(interviews, /onClick=\{\(\) => changeStatusFilter\('done'\)\}/);
-assert.match(interviews, /onClick=\{\(\) => changeStatusFilter\('cancelled'\)\}/);
+assert.match(interviews, /列表视图/);
+assert.match(interviews, /日历视图/);
 assert.match(interviews, /onClick=\{\(\) => setDetailTarget\(item\)\}/);
 assert.match(interviews, /onClick=\{\(event\) => \{\s*event\.stopPropagation\(\);\s*handleViewFeedback\(item\)/);
 assert.match(interviews, /onClick=\{\(event\) => \{\s*event\.stopPropagation\(\);\s*setCancelTarget\(item\)/);

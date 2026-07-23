@@ -34,6 +34,9 @@ import type {
   LegacyInterviewFeedbackInput,
   InterviewAssignment,
   InterviewAssignmentInput,
+  InterviewAssignmentMutationResult,
+  InterviewAssignmentPatch,
+  InterviewManagementRow,
   InterviewGuide,
   InterviewListItem,
   InterviewerOption,
@@ -526,6 +529,28 @@ export const api = {
     return request(`/interview/assignments/${assignmentId}/cancel`, {
       method: 'PATCH',
       body: { reason },
+    });
+  },
+  getInterviewManagementRows(): Promise<InterviewManagementRow[]> {
+    return request('/interview/management-rows');
+  },
+  updateInterviewAssignment(
+    assignmentId: number,
+    patch: InterviewAssignmentPatch,
+  ): Promise<InterviewAssignmentMutationResult> {
+    return request(`/interview/assignments/${assignmentId}`, {
+      method: 'PATCH',
+      body: patch,
+    });
+  },
+  markInterviewConducted(assignmentId: number): Promise<InterviewAssignmentMutationResult> {
+    return request(`/interview/assignments/${assignmentId}/mark-conducted`, {
+      method: 'POST',
+    });
+  },
+  remindInterviewFeedback(assignmentId: number): Promise<InterviewAssignmentMutationResult> {
+    return request(`/interview/assignments/${assignmentId}/remind-feedback`, {
+      method: 'POST',
     });
   },
   getInterviewGuide(candidateId: number, demandId: number, round: string): Promise<InterviewGuide> {

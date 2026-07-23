@@ -6,10 +6,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
+  Bell,
+  CalendarDays,
   CalendarClock,
   CalendarPlus,
+  Check,
   CheckCircle2,
-  Clock3,
+  ClipboardCheck,
+  Eye,
+  Filter,
+  List,
+  MoreVertical,
   Search,
   ShieldAlert,
   X,
@@ -21,13 +28,13 @@ import { useAsync } from '../lib/useAsync';
 import {
   demandOptionLabel,
   INTERVIEW_ROUNDS,
-  isActiveInterviewAssignment,
   roundLabel,
 } from '../lib/interviewRecords';
 import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
   ErrorState,
   Input,
@@ -41,6 +48,7 @@ import type {
   InterviewAssignment,
   InterviewFeedbackResponse,
   InterviewListItem,
+  InterviewManagementRow,
   InterviewRound,
   RecruitmentDemand,
 } from '../types';
@@ -53,10 +61,8 @@ function assignmentStatus(item: InterviewAssignment): AssignmentStatusKey {
   const status = (item.status || 'scheduled').trim().toLowerCase();
   if (['cancelled', 'canceled'].includes(status)) return 'cancelled';
   if (item.feedback_submitted || ['completed', 'feedback_submitted'].includes(status)) return 'done';
-  if (item.is_overdue) return 'pending_feedback';
-  if (item.scheduled_at && new Date(item.scheduled_at).getTime() < Date.now()) {
-    return 'pending_feedback';
-  }
+  // 面试不得因为时间经过而自动完成；只能由招聘专员明确确认已完成。
+  if (status === 'awaiting_feedback') return 'pending_feedback';
   return 'scheduled';
 }
 
@@ -66,26 +72,6 @@ const STATUS_META: Record<AssignmentStatusKey, { label: string; tone: 'neutral' 
   done: { label: '已反馈', tone: 'success' },
   cancelled: { label: '已取消', tone: 'neutral' },
 };
-
-const STATUS_FILTER_OPTIONS: Array<{ key: 'all' | AssignmentStatusKey; label: string }> = [
-  { key: 'all', label: '全部状态' },
-  { key: 'scheduled', label: '待面试' },
-  { key: 'pending_feedback', label: '待反馈' },
-  { key: 'done', label: '已反馈' },
-  { key: 'cancelled', label: '已取消' },
-];
-
-function statusFilterFromQuery(value: string | null): 'all' | AssignmentStatusKey {
-  return STATUS_FILTER_OPTIONS.some((item) => item.key === value)
-    ? value as 'all' | AssignmentStatusKey
-    : 'all';
-}
-
-function demandFilterFromQuery(value: string | null): 'all' | number {
-  if (!value) return 'all';
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 'all';
-}
 
 const ROUND_SEQUENCE_BY_ROUND: Partial<Record<InterviewRound, number>> = {
   round_1: 1,
@@ -117,8 +103,24 @@ function ModalShell({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  useEffect(() => {
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4" role="dialog" aria-modal="true" aria-label={title}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-xl border border-hairline bg-canvas shadow-card-lg">
         <div className="sticky top-0 z-10 flex items-start justify-between border-b border-hairline bg-canvas px-6 py-5">
           <div>
@@ -138,14 +140,22 @@ function ModalShell({
 
 // ---- 安排面试弹窗 ----
 
+interface ScheduleSeed {
+  demandId: number;
+  candidateId: number;
+  round?: InterviewRound;
+}
+
 function ScheduleModal({
   demands,
   interviewers,
+  seed,
   onClose,
   onCreated,
 }: {
   demands: RecruitmentDemand[];
   interviewers: { id: number; name: string }[];
+  seed?: ScheduleSeed | null;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -153,12 +163,19 @@ function ScheduleModal({
     () => demands.filter((demand) => demand.status === 'pending' || demand.status === 'active'),
     [demands],
   );
-  const [demandId, setDemandId] = useState('');
-  const [candidateId, setCandidateId] = useState('');
-  const [round, setRound] = useState<InterviewRound>('round_1');
-  const [roundSequence, setRoundSequence] = useState('1');
+  const seededDemand = schedulableDemands.find((item) => item.id === seed?.demandId);
+  const seededInterviewerId = seededDemand?.default_interviewer_id ?? null;
+  const [demandId, setDemandId] = useState(seed ? String(seed.demandId) : '');
+  const [candidateId, setCandidateId] = useState(seed ? String(seed.candidateId) : '');
+  const [round, setRound] = useState<InterviewRound>(seed?.round ?? 'round_1');
+  const [roundSequence, setRoundSequence] = useState(String(ROUND_SEQUENCE_BY_ROUND[seed?.round ?? 'round_1'] ?? 1));
   const [isPrimary, setIsPrimary] = useState(true);
-  const [interviewerId, setInterviewerId] = useState('');
+  const [interviewerId, setInterviewerId] = useState(
+    seededInterviewerId !== null
+      && interviewers.some((interviewer) => interviewer.id === seededInterviewerId)
+      ? String(seededInterviewerId)
+      : '',
+  );
   const [scheduledAt, setScheduledAt] = useState('');
   const [location, setLocation] = useState('');
   const [note, setNote] = useState('');
@@ -272,7 +289,7 @@ function ScheduleModal({
             ))}
           </Select>
           {demandId && (
-            <Link to="/kanban" className="mt-1 inline-flex text-xs font-semibold text-ink hover:underline">
+            <Link to={`/kanban?demand=${selectedDemandId}`} className="mt-1 inline-flex text-xs font-semibold text-ink hover:underline">
               去候选人流程查看该需求
             </Link>
           )}
@@ -466,34 +483,329 @@ function CancelModal({
   );
 }
 
-// ---- 页面主体 ----
+function toDateTimeLocal(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
 
-export function ReaddyInterviewsPage() {
+function AdjustModal({
+  assignment,
+  interviewers,
+  onClose,
+  onUpdated,
+}: {
+  assignment: InterviewAssignment;
+  interviewers: { id: number; name: string }[];
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const [interviewerId, setInterviewerId] = useState(String(assignment.interviewer_id));
+  const [scheduledAt, setScheduledAt] = useState(toDateTimeLocal(assignment.scheduled_at));
+  const [location, setLocation] = useState(assignment.location || '');
+  const [note, setNote] = useState(assignment.note || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const nextInterviewerId = Number(interviewerId);
+    if (!nextInterviewerId) {
+      setError('请选择面试官');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await api.updateInterviewAssignment(assignment.id, {
+        interviewer_id: nextInterviewerId,
+        scheduled_at: scheduledAt || null,
+        location: location.trim(),
+        note: note.trim(),
+      });
+      onUpdated();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '调整失败，请重试');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell
+      title="查看 / 调整面试"
+      description={`${assignment.name_masked ?? `候选人 #${assignment.candidate_id}`} · ${assignment.job_title ?? `岗位 #${assignment.job_id}`}`}
+      onClose={onClose}
+      footer={(
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>取消</Button>
+          <Button onClick={save} loading={saving}>保存调整</Button>
+        </>
+      )}
+    >
+      <div className="space-y-5 px-6 py-6">
+        <Select
+          id="readdy-interviews-adjust-interviewer"
+          name="interviewer_id"
+          label="面试官"
+          value={interviewerId}
+          onChange={(event) => setInterviewerId(event.target.value)}
+        >
+          {interviewers.map((interviewer) => (
+            <option key={interviewer.id} value={interviewer.id}>{interviewer.name}</option>
+          ))}
+        </Select>
+        <Input
+          id="readdy-interviews-adjust-time"
+          name="scheduled_at"
+          label="面试时间"
+          type="datetime-local"
+          value={scheduledAt}
+          onChange={(event) => setScheduledAt(event.target.value)}
+        />
+        <Input
+          id="readdy-interviews-adjust-location"
+          name="location"
+          label="线上 / 线下、会议室或会议链接"
+          value={location}
+          onChange={(event) => setLocation(event.target.value)}
+          placeholder="例：线下面试 · 3A 会议室 / 腾讯会议链接"
+        />
+        <label className="block text-sm font-medium text-ink">
+          备注
+          <textarea
+            className="mt-2 min-h-24 w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm text-ink focus:border-ink focus:outline-none"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+          />
+        </label>
+        {error && <p role="alert" className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
+      </div>
+    </ModalShell>
+  );
+}
+
+type HeaderFilterKey = 'candidate' | 'job' | 'city' | 'department' | 'round' | 'arrangement' | 'action';
+type ManagementView = 'list' | 'calendar';
+type ManagementRowState = 'unassigned' | 'scheduled' | 'awaiting_feedback' | 'pending_decision' | 'result' | 'cancelled';
+
+const EMPTY_COLUMN_FILTERS: Record<HeaderFilterKey, string> = {
+  candidate: '',
+  job: '',
+  city: '',
+  department: '',
+  round: '',
+  arrangement: '',
+  action: '',
+};
+
+function rowState(item: InterviewManagementRow): ManagementRowState {
+  const status = String(item.assignment_status || 'unassigned').trim().toLowerCase();
+  if (!item.assignment_id || status === 'unassigned') return 'unassigned';
+  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
+  if (item.feedback_submitted) {
+    // 聚合接口正常只返回主面试任务；这里仍防御旧数据中的辅助任务。
+    if (item.is_primary === false && status === 'feedback_submitted') return 'awaiting_feedback';
+    return item.pipeline_stage !== 'interview' ? 'result' : 'pending_decision';
+  }
+  if (status === 'awaiting_feedback' || status === 'feedback_submitted' || status === 'completed') {
+    return status === 'awaiting_feedback' ? 'awaiting_feedback' : 'pending_decision';
+  }
+  return 'scheduled';
+}
+
+function arrangementLabel(item: InterviewManagementRow) {
+  switch (rowState(item)) {
+    case 'unassigned': return '尚未安排';
+    case 'scheduled': return item.scheduled_at ? '已排期' : '已安排，时间待定';
+    case 'awaiting_feedback': return `等待 ${item.interviewer_name || '面试官'} 反馈`;
+    case 'pending_decision': return '反馈已完成，等待处理';
+    case 'result': return item.feedback_passed === false ? '未通过' : '通过';
+    case 'cancelled': return '已取消';
+  }
+}
+
+function managementRoundLabel(item: InterviewManagementRow) {
+  return item.round ? roundLabel(item.round) : '轮次待定';
+}
+
+function actionLabel(item: InterviewManagementRow) {
+  switch (rowState(item)) {
+    case 'unassigned': return '安排面试';
+    case 'scheduled': return '查看/调整';
+    case 'awaiting_feedback': return '催反馈';
+    case 'pending_decision': return '处理结果';
+    case 'result': return '查看结果';
+    case 'cancelled': return '查看详情';
+  }
+}
+
+function candidateInitial(name?: string | null) {
+  const value = String(name || '候').trim();
+  return value.slice(0, 1) || '候';
+}
+
+function formatManagementDate(value?: string | null) {
+  if (!value) return '时间待定';
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value)).replace(/\//g, '-');
+}
+
+function managementRowToAssignment(item: InterviewManagementRow): InterviewAssignment | null {
+  if (!item.assignment_id || !item.interviewer_id || !item.round || !item.round_sequence) return null;
+  return {
+    id: item.assignment_id,
+    candidate_id: item.candidate_id,
+    name_masked: item.name_masked,
+    demand_id: item.demand_id,
+    job_id: item.job_id,
+    job_title: item.job_title,
+    round: item.round,
+    round_sequence: item.round_sequence,
+    is_primary: Boolean(item.is_primary),
+    interviewer_id: item.interviewer_id,
+    interviewer_name: item.interviewer_name,
+    scheduled_at: item.scheduled_at,
+    location: item.location || '',
+    note: item.note || '',
+    status: item.assignment_status,
+    feedback_submitted: item.feedback_submitted,
+    is_overdue: false,
+    created_by_name: null,
+    created_at: null,
+  };
+}
+
+function HeaderFilterMenu({
+  label,
+  filterKey,
+  open,
+  value,
+  options,
+  toggleHeaderFilter,
+  onSelect,
+}: {
+  label: string;
+  filterKey: HeaderFilterKey;
+  open: boolean;
+  value: string;
+  options: string[];
+  toggleHeaderFilter: (key: HeaderFilterKey) => void;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <div className="relative inline-flex items-center">
+      <button
+        type="button"
+        className="inline-flex items-center gap-1.5 whitespace-nowrap text-left font-medium text-[#767c87] hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={(event) => {
+          event.stopPropagation();
+          toggleHeaderFilter(filterKey);
+        }}
+      >
+        {label}
+        <Filter className={`h-3 w-3 ${value ? 'text-[var(--enterprise-brand)]' : 'text-[#aeb2b8]'}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label={`${label}筛选`}
+          className="absolute left-0 top-8 z-30 min-w-40 rounded-lg border border-hairline bg-canvas p-1.5 shadow-card-lg"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {['', ...options].map((option) => (
+            <button
+              key={option || '__all'}
+              type="button"
+              role="option"
+              aria-selected={value === option}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelect(option);
+              }}
+              className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm font-normal text-body hover:bg-surface-soft"
+            >
+              <span>{option || '全部'}</span>
+              {value === option && <Check className="h-3.5 w-3.5 text-[var(--enterprise-brand)]" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type RowActionTone = 'green' | 'orange' | 'coral' | 'red' | 'light';
+const ROW_ACTION_TONES: Record<RowActionTone, string> = {
+  green: 'bg-[var(--enterprise-brand)] text-white hover:bg-[var(--enterprise-brand-dark)]',
+  orange: 'bg-warning-500 text-white hover:bg-warning-600',
+  coral: 'bg-[#ff8a65] text-white hover:bg-[#f47b56]',
+  red: 'bg-danger-600 text-white hover:bg-danger-700',
+  light: 'border border-[#ecece8] bg-[#f8f8f5] text-[#555b58] hover:bg-[#f0f0eb]',
+};
+
+function RowActionButton({
+  tone,
+  icon,
+  children,
+  onClick,
+}: {
+  tone: RowActionTone;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-8 items-center justify-center gap-1 whitespace-nowrap rounded-lg px-2.5 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${ROW_ACTION_TONES[tone]}`}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function uniqueValues(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+}
+
+/**
+ * Readdy/Figma 最终版招聘侧面试管理。
+ * 公司 AppShell、权限和鉴权保持原样，这里只复原页面内部的信息结构与交互。
+ */
+function FigmaInterviewManagementPage() {
   const { role, userId } = useAuth();
   const toast = useToast();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const statusQuery = searchParams.get('status');
-  const demandQuery = searchParams.get('demand');
+  const [searchParams] = useSearchParams();
   const canManage = role === 'recruiter' || role === 'manager' || role === 'admin';
 
-  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [demandFilter, setDemandFilter] = useState<'all' | number>(() => demandFilterFromQuery(demandQuery));
-  const [statusFilter, setStatusFilter] = useState<'all' | AssignmentStatusKey>(() => statusFilterFromQuery(statusQuery));
-  const [interviewerFilter, setInterviewerFilter] = useState<'all' | number>('all');
-  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [view, setView] = useState<ManagementView>('list');
+  const [headerFilter, setHeaderFilter] = useState<HeaderFilterKey | null>(null);
+  const [columnFilters, setColumnFilters] = useState<Record<HeaderFilterKey, string>>(EMPTY_COLUMN_FILTERS);
+  const [scheduleSeed, setScheduleSeed] = useState<ScheduleSeed | null>(null);
+  const [resolvedDemands, setResolvedDemands] = useState<RecruitmentDemand[]>([]);
+  const [adjustTarget, setAdjustTarget] = useState<InterviewAssignment | null>(null);
+  const [conductTarget, setConductTarget] = useState<InterviewAssignment | null>(null);
   const [cancelTarget, setCancelTarget] = useState<InterviewAssignment | null>(null);
   const [feedbackTarget, setFeedbackTarget] = useState<InterviewAssignment | null>(null);
   const [detailTarget, setDetailTarget] = useState<InterviewAssignment | null>(null);
+  const [moreOpen, setMoreOpen] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState<number | null>(null);
 
-  useEffect(() => {
-    setStatusFilter(statusFilterFromQuery(statusQuery));
-  }, [statusQuery]);
-
-  useEffect(() => {
-    setDemandFilter(demandFilterFromQuery(demandQuery));
-  }, [demandQuery]);
-
+  const managementAsync = useAsync(() => api.getInterviewManagementRows(), []);
+  // 详情抽屉和旧深链继续读取真实 assignment；管理表格使用聚合接口避免 N+1。
   const assignmentsAsync = useAsync(() => api.listInterviewAssignments(), []);
   const recordsAsync = useAsync(() => api.listInterviews(), []);
   const demandsAsync = useAsync(
@@ -502,100 +814,119 @@ export function ReaddyInterviewsPage() {
   );
   const interviewersAsync = useAsync(() => api.listInterviewers(), []);
 
+  const rows = useMemo(() => managementAsync.data ?? [], [managementAsync.data]);
   const assignments = useMemo(() => assignmentsAsync.data ?? [], [assignmentsAsync.data]);
   const records = useMemo(() => recordsAsync.data ?? [], [recordsAsync.data]);
   const demands = useMemo(() => demandsAsync.data?.items ?? [], [demandsAsync.data]);
   const interviewers = useMemo(() => interviewersAsync.data ?? [], [interviewersAsync.data]);
+  const availableDemands = useMemo(() => {
+    const byId = new Map(demands.map((item) => [item.id, item]));
+    resolvedDemands.forEach((item) => byId.set(item.id, item));
+    return [...byId.values()];
+  }, [demands, resolvedDemands]);
+  const assignmentById = useMemo(
+    () => new Map(assignments.map((item) => [item.id, item])),
+    [assignments],
+  );
 
-  const stats = useMemo(() => {
-    const counts: Record<AssignmentStatusKey, number> = {
-      scheduled: 0,
-      pending_feedback: 0,
-      done: 0,
-      cancelled: 0,
-    };
-    assignments.forEach((item) => {
-      counts[assignmentStatus(item)] += 1;
-    });
-    return counts;
-  }, [assignments]);
+  function assignmentForRow(row: InterviewManagementRow) {
+    if (!row.assignment_id) return null;
+    return assignmentById.get(row.assignment_id) ?? managementRowToAssignment(row);
+  }
 
-  const demandOptions = useMemo(() => {
-    const map = new Map<number, string>();
-    demands.forEach((demand) => map.set(demand.id, demandOptionLabel(demand)));
-    assignments.forEach((item) => {
-      if (item.demand_id && !map.has(item.demand_id)) {
-        map.set(item.demand_id, `招聘需求 #${item.demand_id} · ${item.job_title ?? `岗位 #${item.job_id}`}`);
-      }
-    });
-    return [...map.entries()]
-      .map(([id, label]) => ({ id, label }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hans-CN'));
-  }, [demands, assignments]);
+  function toggleHeaderFilter(key: HeaderFilterKey) {
+    setHeaderFilter((current) => current === key ? null : key);
+  }
 
-  const interviewerOptions = useMemo(() => {
-    const map = new Map<number, string>();
-    interviewers.forEach((interviewer) => map.set(interviewer.id, interviewer.name));
-    assignments.forEach((item) => {
-      if (item.interviewer_id && item.interviewer_name && !map.has(item.interviewer_id)) {
-        map.set(item.interviewer_id, item.interviewer_name);
-      }
-    });
-    return [...map.entries()]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
-  }, [interviewers, assignments]);
+  function setColumnFilter(key: HeaderFilterKey, value: string) {
+    setColumnFilters((current) => ({ ...current, [key]: value }));
+    setHeaderFilter(null);
+  }
+
+  const optionMap = useMemo(() => ({
+    candidate: uniqueValues(rows.map((item) => item.name_masked)),
+    job: uniqueValues(rows.map((item) => item.job_title)),
+    city: uniqueValues(rows.map((item) => item.job_city)),
+    department: uniqueValues(rows.map((item) => item.job_department)),
+    round: uniqueValues(rows.map(managementRoundLabel)),
+    arrangement: uniqueValues(rows.map(arrangementLabel)),
+    action: uniqueValues(rows.map(actionLabel)),
+  }), [rows]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return assignments.filter((item) => {
-      if (demandFilter !== 'all' && item.demand_id !== demandFilter) return false;
-      if (statusFilter !== 'all' && assignmentStatus(item) !== statusFilter) return false;
-      if (interviewerFilter !== 'all' && item.interviewer_id !== interviewerFilter) return false;
-      if (q) {
-        const text = [item.name_masked, item.job_title, item.interviewer_name, item.location, item.note]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        if (!text.includes(q)) return false;
+    const query = search.trim().toLowerCase();
+    const demandQuery = Number(searchParams.get('demand'));
+    const candidateQuery = Number(searchParams.get('candidate'));
+    const statusQuery = searchParams.get('status');
+    return rows.filter((item) => {
+      const state = rowState(item);
+      if (demandQuery > 0 && item.demand_id !== demandQuery) return false;
+      if (candidateQuery > 0 && item.candidate_id !== candidateQuery) return false;
+      if (statusQuery === 'scheduled' && state !== 'scheduled' && state !== 'unassigned') return false;
+      if (statusQuery === 'pending_feedback' && state !== 'awaiting_feedback') return false;
+      if (statusQuery === 'done' && state !== 'pending_decision' && state !== 'result') return false;
+      if (statusQuery === 'cancelled' && state !== 'cancelled') return false;
+      if (query) {
+        const haystack = [
+          item.name_masked,
+          item.job_title,
+          item.job_city,
+          item.job_department,
+          item.interviewer_name,
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(query)) return false;
       }
+      if (columnFilters.candidate && item.name_masked !== columnFilters.candidate) return false;
+      if (columnFilters.job && item.job_title !== columnFilters.job) return false;
+      if (columnFilters.city && item.job_city !== columnFilters.city) return false;
+      if (columnFilters.department && item.job_department !== columnFilters.department) return false;
+      if (columnFilters.round && managementRoundLabel(item) !== columnFilters.round) return false;
+      if (columnFilters.arrangement && arrangementLabel(item) !== columnFilters.arrangement) return false;
+      if (columnFilters.action && actionLabel(item) !== columnFilters.action) return false;
       return true;
     });
-  }, [assignments, demandFilter, statusFilter, interviewerFilter, search]);
+  }, [columnFilters, rows, search, searchParams]);
 
-  const hasActiveFilter = search.trim() !== ''
-    || demandFilter !== 'all'
-    || statusFilter !== 'all'
-    || interviewerFilter !== 'all';
-
-  function changeStatusFilter(nextStatus: 'all' | AssignmentStatusKey) {
-    setStatusFilter(nextStatus);
-    const next = new URLSearchParams(searchParams);
-    if (nextStatus === 'all') next.delete('status');
-    else next.set('status', nextStatus);
-    setSearchParams(next, { replace: true });
-  }
-
-  function changeDemandFilter(nextDemand: 'all' | number) {
-    setDemandFilter(nextDemand);
-    const next = new URLSearchParams(searchParams);
-    if (nextDemand === 'all') next.delete('demand');
-    else next.set('demand', String(nextDemand));
-    setSearchParams(next, { replace: true });
-  }
-
-  function clearAllFilters() {
-    setSearchInput('');
-    setSearch('');
-    setDemandFilter('all');
-    setStatusFilter('all');
-    setInterviewerFilter('all');
-    setSearchParams(new URLSearchParams(), { replace: true });
-  }
+  const calendarGroups = useMemo(() => {
+    const groups = new Map<string, InterviewManagementRow[]>();
+    filtered.forEach((item) => {
+      const key = item.scheduled_at ? item.scheduled_at.slice(0, 10) : '待安排';
+      groups.set(key, [...(groups.get(key) ?? []), item]);
+    });
+    return [...groups.entries()].sort(([a], [b]) => {
+      if (a === '待安排') return 1;
+      if (b === '待安排') return -1;
+      return a.localeCompare(b);
+    });
+  }, [filtered]);
 
   function reloadAll() {
+    managementAsync.reload();
     assignmentsAsync.reload();
     recordsAsync.reload();
+  }
+
+  async function openSchedule(row: InterviewManagementRow) {
+    setMoreOpen(null);
+    if (interviewersAsync.loading) {
+      toast.info('面试官列表正在加载，请稍候');
+      return;
+    }
+    if (interviewersAsync.error) {
+      toast.error(`面试官列表加载失败：${interviewersAsync.error.message}`);
+      return;
+    }
+    try {
+      if (!availableDemands.some((item) => item.id === row.demand_id)) {
+        const demand = await api.getDemand(row.demand_id);
+        setResolvedDemands((current) => current.some((item) => item.id === demand.id)
+          ? current
+          : [...current, demand]);
+      }
+      setScheduleSeed({ demandId: row.demand_id, candidateId: row.candidate_id, round: row.round ?? 'round_1' });
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '招聘需求加载失败，请重试');
+    }
   }
 
   function findFeedbackRecord(assignment: InterviewAssignment): InterviewListItem | null {
@@ -610,13 +941,48 @@ export function ReaddyInterviewsPage() {
   }
 
   function handleViewFeedback(assignment: InterviewAssignment) {
-    const record = findFeedbackRecord(assignment);
-    if (record) {
-      setDetailTarget(assignment);
-    } else {
-      toast.error('未找到对应的反馈记录，可能尚未同步');
+    setDetailTarget(assignment);
+  }
+
+  async function confirmConducted() {
+    if (!conductTarget) return;
+    setActionBusy(conductTarget.id);
+    try {
+      await api.markInterviewConducted(conductTarget.id);
+      setConductTarget(null);
+      reloadAll();
+      toast.success('已确认面试完成，任务进入待反馈');
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '确认失败，请重试');
+    } finally {
+      setActionBusy(null);
     }
   }
+
+  async function remindFeedback(item: InterviewAssignment) {
+    setActionBusy(item.id);
+    try {
+      const result = await api.remindInterviewFeedback(item.id);
+      toast.success(result.deduplicated
+        ? '15 分钟内已经提醒过，本次没有重复发送'
+        : `已提醒${item.interviewer_name || '面试官'}提交反馈`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '提醒失败，请重试');
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  useEffect(() => {
+    const candidateId = Number(searchParams.get('candidate'));
+    if (!candidateId || detailTarget || rows.length === 0) return;
+    const requested = rows.find((item) => item.candidate_id === candidateId && item.assignment_id);
+    if (!requested) return;
+    const assignment = requested.assignment_id
+      ? assignmentById.get(requested.assignment_id) ?? managementRowToAssignment(requested)
+      : null;
+    if (assignment) setDetailTarget(assignment);
+  }, [assignmentById, detailTarget, rows, searchParams]);
 
   const detailFeedback = detailTarget ? findFeedbackRecord(detailTarget) : null;
   const detailRecords = detailTarget
@@ -631,15 +997,125 @@ export function ReaddyInterviewsPage() {
     reloadAll();
     toast.success(
       result.next_action === 'awaiting_hr_decision'
-        ? '主面试官反馈已提交，本轮完成，待 HR 确认下一步'
+        ? '反馈已提交，等待招聘专员处理结果'
         : '反馈已提交，等待主面试官完成本轮',
     );
   }
 
-  const loading = assignmentsAsync.loading || recordsAsync.loading;
-  const loadError = assignmentsAsync.error ?? recordsAsync.error;
+  function renderRowActions(row: InterviewManagementRow, item: InterviewAssignment | null) {
+    const state = rowState(row);
+    const rowKey = `${row.candidate_id}-${row.demand_id}-${row.assignment_id ?? 'new'}`;
+    return (
+      <div className="relative flex min-w-max items-center gap-2" onClick={(event) => event.stopPropagation()}>
+        {state === 'unassigned' && (
+          /* 尚未安排 → 安排面试 */
+          <RowActionButton
+            tone="green"
+            icon={<CalendarPlus className="h-3.5 w-3.5" />}
+            onClick={(event) => {
+              event.stopPropagation();
+              void openSchedule(row);
+            }}
+          >安排面试</RowActionButton>
+        )}
+        {state === 'scheduled' && item && (
+          /* 已排期 → 查看/调整、确认已完成、未进行 */
+          <>
+            <RowActionButton tone="green" icon={<Eye className="h-3.5 w-3.5" />} onClick={(event) => {
+              event.stopPropagation();
+              setAdjustTarget(item);
+            }}>查看/调整</RowActionButton>
+            <RowActionButton tone="coral" icon={<CheckCircle2 className="h-3.5 w-3.5" />} onClick={(event) => {
+              event.stopPropagation();
+              setConductTarget(item);
+            }}>确认已完成</RowActionButton>
+            <RowActionButton tone="red" icon={<XCircle className="h-3.5 w-3.5" />} onClick={(event) => {
+              event.stopPropagation();
+              setCancelTarget(item);
+            }}>未进行</RowActionButton>
+          </>
+        )}
+        {state === 'awaiting_feedback' && item && (
+          /* 等待面试官反馈 → 催反馈、查看反馈 */
+          <>
+            <RowActionButton tone="orange" icon={<Bell className="h-3.5 w-3.5" />} onClick={(event) => {
+              event.stopPropagation();
+              void remindFeedback(item);
+            }}>催反馈</RowActionButton>
+            <RowActionButton tone="light" icon={<ClipboardCheck className="h-3.5 w-3.5" />} onClick={(event) => {
+              event.stopPropagation();
+              setDetailTarget(item);
+            }}>查看反馈</RowActionButton>
+          </>
+        )}
+        {state === 'pending_decision' && item && (
+          /* 反馈已完成，等待处理 → 处理结果 */
+          <RowActionButton tone="green" icon={<CheckCircle2 className="h-3.5 w-3.5" />} onClick={(event) => {
+            event.stopPropagation();
+            handleViewFeedback(item);
+          }}>处理结果</RowActionButton>
+        )}
+        {state === 'result' && item && (
+          /* 通过 → 查看结果 */
+          <RowActionButton tone="light" icon={<Eye className="h-3.5 w-3.5" />} onClick={(event) => {
+            event.stopPropagation();
+            handleViewFeedback(item);
+          }}>查看结果</RowActionButton>
+        )}
+        {state === 'cancelled' && item && (
+          <RowActionButton tone="light" icon={<Eye className="h-3.5 w-3.5" />} onClick={(event) => {
+            event.stopPropagation();
+            setDetailTarget(item);
+          }}>查看详情</RowActionButton>
+        )}
+        <button
+          type="button"
+          aria-label="更多操作"
+          aria-haspopup="menu"
+          aria-expanded={moreOpen === rowKey}
+          className="flex h-8 w-7 items-center justify-center rounded-md text-[#8c918d] hover:bg-surface-soft hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          onClick={(event) => {
+            event.stopPropagation();
+            setMoreOpen((current) => current === rowKey ? null : rowKey);
+          }}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </button>
+        {moreOpen === rowKey && (
+          <div role="menu" className="absolute right-0 top-9 z-40 w-40 rounded-lg border border-hairline bg-canvas p-1.5 shadow-card-lg">
+            {item && (
+              <button type="button" role="menuitem" className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-soft" onMouseDown={() => setMoreOpen(null)} onClick={() => setDetailTarget(item)}>
+                查看面试详情
+              </button>
+            )}
+            {item && item.interviewer_id === userId && !item.feedback_submitted && (
+              <button type="button" role="menuitem" className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-soft" onMouseDown={() => setMoreOpen(null)} onClick={() => setFeedbackTarget(item)}>
+                填写反馈
+              </button>
+            )}
+            {!item && (
+              <button type="button" role="menuitem" className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-soft" onClick={() => void openSchedule(row)}>
+                安排本轮面试
+              </button>
+            )}
+          </div>
+        )}
+        {item && actionBusy === item.id && <Spinner size="sm" />}
+      </div>
+    );
+  }
 
-  // 无权限提示：面试官请走专属工作区
+  const loading = managementAsync.loading
+    || assignmentsAsync.loading
+    || recordsAsync.loading
+    || demandsAsync.loading
+    || interviewersAsync.loading;
+  const loadError = managementAsync.error
+    ?? assignmentsAsync.error
+    ?? recordsAsync.error
+    ?? demandsAsync.error
+    ?? interviewersAsync.error;
+
   if (!canManage) {
     return (
       <div data-ui="readdy-interviews" className="mx-auto max-w-[1440px]">
@@ -648,11 +1124,7 @@ export function ReaddyInterviewsPage() {
             icon={ShieldAlert}
             title="当前账号无权限访问面试管理"
             description="面试管理面向招聘专员、招聘经理和管理员；面试官请前往专属工作区处理待反馈任务。"
-            action={(
-              <Link to="/interviewer/interviews">
-                <Button size="sm">去面试官工作区</Button>
-              </Link>
-            )}
+            action={<Link to="/interviewer/interviews"><Button size="sm">去面试官工作区</Button></Link>}
           />
         </Card>
       </div>
@@ -660,285 +1132,119 @@ export function ReaddyInterviewsPage() {
   }
 
   return (
-    <div data-ui="readdy-interviews" className="mx-auto max-w-[1440px] space-y-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">面试管理</h1>
-          <p className="mt-1 text-sm text-muted">安排面试、跟踪待反馈任务并查看历史反馈，所有数据来自真实面试协同记录</p>
-        </div>
-        <Button onClick={() => setScheduleOpen(true)}>
-          <CalendarPlus className="h-4 w-4" />
-          安排面试
-        </Button>
-      </div>
-
-      {/* 统计卡片 */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <button
-          type="button"
-          onClick={() => changeStatusFilter('scheduled')}
-          aria-pressed={statusFilter === 'scheduled'}
-          className={`rounded-xl border bg-canvas p-4 text-left transition-colors hover:border-[#1e6fd9] ${statusFilter === 'scheduled' ? 'border-[#1e6fd9] ring-2 ring-blue-100' : 'border-hairline'}`}
-        >
-          <Clock3 className="h-5 w-5 text-[#1e6fd9]" />
-          <p className="mt-3 text-xs text-muted">待面试</p>
-          <p className="mt-1 text-2xl font-bold text-ink">{stats.scheduled}</p>
-        </button>
-        <button
-          type="button"
-          onClick={() => changeStatusFilter('pending_feedback')}
-          aria-pressed={statusFilter === 'pending_feedback'}
-          className={`rounded-xl border bg-canvas p-4 text-left transition-colors hover:border-[#b56a00] ${statusFilter === 'pending_feedback' ? 'border-[#b56a00] ring-2 ring-amber-100' : 'border-hairline'}`}
-        >
-          <AlertTriangle className="h-5 w-5 text-[#b56a00]" />
-          <p className="mt-3 text-xs text-muted">待反馈</p>
-          <p className="mt-1 text-2xl font-bold text-ink">{stats.pending_feedback}</p>
-        </button>
-        <button
-          type="button"
-          onClick={() => changeStatusFilter('done')}
-          aria-pressed={statusFilter === 'done'}
-          className={`rounded-xl border bg-canvas p-4 text-left transition-colors hover:border-[#52a611] ${statusFilter === 'done' ? 'border-[#52a611] ring-2 ring-green-100' : 'border-hairline'}`}
-        >
-          <CheckCircle2 className="h-5 w-5 text-[#52a611]" />
-          <p className="mt-3 text-xs text-muted">已反馈</p>
-          <p className="mt-1 text-2xl font-bold text-ink">{stats.done}</p>
-        </button>
-        <button
-          type="button"
-          onClick={() => changeStatusFilter('cancelled')}
-          aria-pressed={statusFilter === 'cancelled'}
-          className={`rounded-xl border bg-canvas p-4 text-left transition-colors hover:border-[#777b78] ${statusFilter === 'cancelled' ? 'border-[#777b78] ring-2 ring-gray-100' : 'border-hairline'}`}
-        >
-          <XCircle className="h-5 w-5 text-muted-soft" />
-          <p className="mt-3 text-xs text-muted">已取消</p>
-          <p className="mt-1 text-2xl font-bold text-ink">{stats.cancelled}</p>
-        </button>
-      </div>
-
-      <Card className="overflow-hidden">
-        {/* 筛选栏 */}
-        <form
-          className="flex flex-col gap-3 border-b border-hairline bg-surface-soft p-4 lg:flex-row lg:items-center"
-          onSubmit={(event) => { event.preventDefault(); setSearch(searchInput.trim()); }}
-        >
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-soft" />
-            <input
-              className="h-10 w-full rounded-md border border-hairline bg-canvas pl-9 pr-8 text-sm text-ink outline-none placeholder:text-muted-soft focus:border-ink"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="搜索候选人、岗位、面试官或地点"
-              aria-label="搜索面试任务"
-            />
-            {searchInput && (
-              <button
-                type="button"
-                onClick={() => { setSearchInput(''); setSearch(''); }}
-                className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-muted-soft hover:text-ink"
-                aria-label="清空搜索"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3 lg:max-w-2xl">
-            <select
-              aria-label="按招聘需求筛选"
-              className="h-10 rounded-md border border-hairline bg-canvas px-3 text-sm text-ink focus:border-ink focus:outline-none"
-              value={demandFilter === 'all' ? 'all' : String(demandFilter)}
-              onChange={(event) => changeDemandFilter(event.target.value === 'all' ? 'all' : Number(event.target.value))}
-            >
-              <option value="all">全部需求</option>
-              {demandOptions.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
-            <select
-              aria-label="按状态筛选"
-              className="h-10 rounded-md border border-hairline bg-canvas px-3 text-sm text-ink focus:border-ink focus:outline-none"
-              value={statusFilter}
-              onChange={(event) => changeStatusFilter(event.target.value as 'all' | AssignmentStatusKey)}
-            >
-              {STATUS_FILTER_OPTIONS.map((option) => (
-                <option key={option.key} value={option.key}>{option.label}</option>
-              ))}
-            </select>
-            <select
-              aria-label="按面试官筛选"
-              className="h-10 rounded-md border border-hairline bg-canvas px-3 text-sm text-ink focus:border-ink focus:outline-none"
-              value={interviewerFilter === 'all' ? 'all' : String(interviewerFilter)}
-              onChange={(event) => setInterviewerFilter(event.target.value === 'all' ? 'all' : Number(event.target.value))}
-            >
-              <option value="all">全部面试官</option>
-              {interviewerOptions.map((option) => (
-                <option key={option.id} value={option.id}>{option.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button type="submit" variant="secondary">搜索</Button>
-            <span className="whitespace-nowrap text-xs text-muted">
-              共 <strong className="text-ink">{filtered.length}</strong> 条
-            </span>
-          </div>
-        </form>
-
-        {/* 激活的筛选标签 */}
-        {hasActiveFilter && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-hairline px-4 py-3">
-            {search.trim() && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-soft px-2.5 py-1 text-xs font-medium text-ink">
-                搜索: {search}
-                <button type="button" onClick={() => { setSearchInput(''); setSearch(''); }} aria-label="清除搜索筛选"><X className="h-3 w-3" /></button>
-              </span>
-            )}
-            {demandFilter !== 'all' && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-soft px-2.5 py-1 text-xs font-medium text-ink">
-                需求: {demandOptions.find((option) => option.id === demandFilter)?.label ?? `#${demandFilter}`}
-                <button type="button" onClick={() => changeDemandFilter('all')} aria-label="清除需求筛选"><X className="h-3 w-3" /></button>
-              </span>
-            )}
-            {statusFilter !== 'all' && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-soft px-2.5 py-1 text-xs font-medium text-ink">
-                状态: {STATUS_META[statusFilter].label}
-                <button type="button" onClick={() => changeStatusFilter('all')} aria-label="清除状态筛选"><X className="h-3 w-3" /></button>
-              </span>
-            )}
-            {interviewerFilter !== 'all' && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-soft px-2.5 py-1 text-xs font-medium text-ink">
-                面试官: {interviewerOptions.find((option) => option.id === interviewerFilter)?.name ?? `#${interviewerFilter}`}
-                <button type="button" onClick={() => setInterviewerFilter('all')} aria-label="清除面试官筛选"><X className="h-3 w-3" /></button>
-              </span>
-            )}
-            <button type="button" onClick={clearAllFilters} className="text-xs text-muted hover:text-ink">
-              清除全部
+    <div data-ui="readdy-interviews" className="mx-auto max-w-[1440px] space-y-5" onClick={() => {
+      setHeaderFilter(null);
+      setMoreOpen(null);
+    }}>
+      <div data-ui="interview-management-toolbar" className="flex flex-wrap items-center justify-end gap-4">
+        <div className="relative w-full sm:w-[296px]">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a6aaa7]" />
+          <input
+            className="h-11 w-full rounded-lg border border-[#e8e8e3] bg-canvas pl-10 pr-9 text-sm text-ink outline-none placeholder:text-[#a6aaa7] focus:border-[var(--enterprise-brand)] focus:ring-2 focus:ring-brand-100"
+            value={search}
+            onChange={(event) => { setSearch(event.target.value); setHeaderFilter(null); }}
+            onClick={(event) => event.stopPropagation()}
+            placeholder="搜索候选人、岗位、面试官..."
+            aria-label="搜索候选人、岗位、面试官"
+          />
+          {search && (
+            <button type="button" onClick={(event) => { event.stopPropagation(); setSearch(''); }} className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted hover:text-ink" aria-label="清空搜索">
+              <X className="h-3.5 w-3.5" />
             </button>
-          </div>
-        )}
+          )}
+        </div>
+        <span className="whitespace-nowrap text-sm text-muted">共 <strong className="font-semibold text-ink">{filtered.length}</strong> 条</span>
+        <div className="inline-flex h-11 items-center rounded-xl bg-[#f5f5f2] p-1" role="group" aria-label="面试管理视图">
+          <button type="button" aria-label="列表视图" aria-pressed={view === 'list'} onClick={(event) => { event.stopPropagation(); setView('list'); }} className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition ${view === 'list' ? 'bg-canvas text-ink shadow-apple-sm' : 'text-muted hover:text-ink'}`}>
+            <List className="h-4 w-4" />列表
+          </button>
+          <button type="button" aria-label="日历视图" aria-pressed={view === 'calendar'} onClick={(event) => { event.stopPropagation(); setView('calendar'); }} className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition ${view === 'calendar' ? 'bg-canvas text-ink shadow-apple-sm' : 'text-muted hover:text-ink'}`}>
+            <CalendarDays className="h-4 w-4" />日历
+          </button>
+        </div>
+      </div>
 
-        {/* 列表区：加载 / 错误 / 空态 / 表格 */}
+      <Card className="overflow-visible rounded-[14px] border-[#e8e8e3] shadow-none">
         {loading && (
-          <div className="flex items-center justify-center gap-2 py-20 text-sm text-muted">
-            <Spinner />
-            加载面试任务…
-          </div>
+          <div className="flex items-center justify-center gap-2 py-20 text-sm text-muted"><Spinner />加载面试任务…</div>
         )}
         {!loading && loadError && (
-          <div className="p-6">
-            <ErrorState message={`面试数据加载失败：${loadError.message}`} onRetry={reloadAll} />
-          </div>
+          <div className="p-6"><ErrorState message={`面试数据加载失败：${loadError.message}`} onRetry={reloadAll} /></div>
         )}
         {!loading && !loadError && filtered.length === 0 && (
-          assignments.length === 0 ? (
-            <EmptyState
-              icon={CalendarClock}
-              title="暂无面试任务"
-              description="还没有任何面试安排。点击右上角“安排面试”，为进行中的招聘需求指派面试官。"
-              action={(
-                <Button size="sm" onClick={() => setScheduleOpen(true)}>
-                  <CalendarPlus className="h-4 w-4" />
-                  安排面试
-                </Button>
-              )}
-            />
+          rows.length === 0 ? (
+            <EmptyState icon={CalendarClock} title="暂无面试任务" description="当前没有进入面试阶段的候选人。候选人进入面试阶段后，可直接在这里安排面试。" />
           ) : (
             <EmptyState
               icon={Search}
               title="暂无符合条件的面试"
-              description="当前筛选条件下没有面试任务，可以调整筛选或清除全部条件。"
-              action={<Button size="sm" variant="secondary" onClick={clearAllFilters}>清除全部筛选</Button>}
+              description="当前搜索或表头筛选条件下没有记录。"
+              action={<Button size="sm" variant="secondary" onClick={() => { setSearch(''); setColumnFilters(EMPTY_COLUMN_FILTERS); }}>清除筛选</Button>}
             />
           )
         )}
-        {!loading && !loadError && filtered.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1050px] text-left text-sm">
-              <thead className="bg-surface-soft text-xs text-muted">
-                <tr>
-                  <th className="px-5 py-3 font-medium">候选人 / 岗位</th>
-                  <th className="px-5 py-3 font-medium">轮次</th>
-                  <th className="px-5 py-3 font-medium">面试官</th>
-                  <th className="px-5 py-3 font-medium">时间 / 地点</th>
-                  <th className="px-5 py-3 font-medium">状态</th>
-                  <th className="px-5 py-3 text-right font-medium">操作</th>
+
+        {!loading && !loadError && filtered.length > 0 && view === 'list' && (
+          <div className="overflow-x-auto rounded-[14px]">
+            <table className="w-full min-w-[1380px] table-fixed text-left text-sm">
+              <colgroup>
+                <col className="w-[170px]" /><col className="w-[178px]" /><col className="w-[104px]" />
+                <col className="w-[137px]" /><col className="w-[126px]" /><col className="w-[260px]" /><col className="w-[405px]" />
+              </colgroup>
+              <thead className="border-b border-[#ecece8] bg-[#fbfbf9] text-xs">
+                <tr className="h-[62px]">
+                  <th className="relative px-6 font-medium"><HeaderFilterMenu label="候选人" filterKey="candidate" open={headerFilter === 'candidate'} value={columnFilters.candidate} options={optionMap.candidate} toggleHeaderFilter={toggleHeaderFilter} onSelect={(value) => setColumnFilter('candidate', value)} /></th>
+                  <th className="relative px-6 font-medium"><HeaderFilterMenu label="应聘岗位" filterKey="job" open={headerFilter === 'job'} value={columnFilters.job} options={optionMap.job} toggleHeaderFilter={toggleHeaderFilter} onSelect={(value) => setColumnFilter('job', value)} /></th>
+                  <th className="relative px-6 font-medium"><HeaderFilterMenu label="城市" filterKey="city" open={headerFilter === 'city'} value={columnFilters.city} options={optionMap.city} toggleHeaderFilter={toggleHeaderFilter} onSelect={(value) => setColumnFilter('city', value)} /></th>
+                  <th className="relative px-6 font-medium"><HeaderFilterMenu label="部门" filterKey="department" open={headerFilter === 'department'} value={columnFilters.department} options={optionMap.department} toggleHeaderFilter={toggleHeaderFilter} onSelect={(value) => setColumnFilter('department', value)} /></th>
+                  <th className="relative px-6 font-medium"><HeaderFilterMenu label="面试轮次" filterKey="round" open={headerFilter === 'round'} value={columnFilters.round} options={optionMap.round} toggleHeaderFilter={toggleHeaderFilter} onSelect={(value) => setColumnFilter('round', value)} /></th>
+                  <th className="relative px-6 font-medium"><HeaderFilterMenu label="面试安排" filterKey="arrangement" open={headerFilter === 'arrangement'} value={columnFilters.arrangement} options={optionMap.arrangement} toggleHeaderFilter={toggleHeaderFilter} onSelect={(value) => setColumnFilter('arrangement', value)} /></th>
+                  <th className="relative px-6 font-medium"><HeaderFilterMenu label="操作" filterKey="action" open={headerFilter === 'action'} value={columnFilters.action} options={optionMap.action} toggleHeaderFilter={toggleHeaderFilter} onSelect={(value) => setColumnFilter('action', value)} /></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#efefeb]">
-                {filtered.map((item) => {
-                  const statusKey = assignmentStatus(item);
-                  const statusMeta = STATUS_META[statusKey];
-                  const canFillFeedback = statusKey !== 'cancelled'
-                    && !item.feedback_submitted
-                    && item.interviewer_id === userId;
-                  const canCancel = statusKey !== 'cancelled'
-                    && !item.feedback_submitted
-                    && isActiveInterviewAssignment(item);
+              <tbody className="divide-y divide-[#efefeb] bg-canvas">
+                {filtered.map((row) => {
+                  const item = assignmentForRow(row);
+                  const state = rowState(row);
                   return (
                     <tr
-                      key={item.id}
-                      className="cursor-pointer hover:bg-surface-soft"
+                      key={`${row.candidate_id}-${row.demand_id}-${row.assignment_id ?? 'new'}`}
+                      className="h-[66px] cursor-pointer transition-colors hover:bg-[#fbfbf8]"
                       tabIndex={0}
-                      onClick={() => setDetailTarget(item)}
+                      onClick={() => {
+                        if (item) setDetailTarget(item);
+                        else void openSchedule(row);
+                      }}
                       onKeyDown={(event) => {
                         if (event.target !== event.currentTarget) return;
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          setDetailTarget(item);
-                        }
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        if (item) setDetailTarget(item);
                       }}
                     >
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-ink">{item.name_masked ?? `候选人 #${item.candidate_id}`}</p>
-                        <p className="mt-1 text-xs text-muted">
-                          {item.job_title ?? `岗位 #${item.job_id}`}
-                          {item.demand_id ? ` · 需求 #${item.demand_id}` : ' · 历史未归属需求'}
-                        </p>
-                      </td>
-                      <td className="px-5 py-4">
-                        <Badge tone="warning">{roundLabel(item.round)}</Badge>
-                        <p className="mt-1 text-xs text-muted-soft">
-                          第 {item.round_sequence} 轮 · {item.is_primary ? '主面试官' : '辅助面试官'}
-                        </p>
-                      </td>
-                      <td className="px-5 py-4 text-muted">{item.interviewer_name ?? `面试官 #${item.interviewer_id}`}</td>
-                      <td className="px-5 py-4">
-                        <p className="font-medium text-ink">{formatDateTime(item.scheduled_at)}</p>
-                        <p className="mt-1 max-w-[200px] truncate text-xs text-muted-soft">{item.location || '地点待定'}</p>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
-                          {item.is_overdue && statusKey === 'pending_feedback' && (
-                            <Badge tone="danger">已逾期</Badge>
-                          )}
+                      <td className="px-6 py-3">
+                        <div className="flex items-center gap-3">
+                          <span aria-label="候选人头像" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e5f5ed] text-sm font-semibold text-[var(--enterprise-brand)]">{candidateInitial(row.name_masked)}</span>
+                          <span className="truncate font-semibold text-ink">{row.name_masked || `候选人 #${row.candidate_id}`}</span>
                         </div>
                       </td>
-                      <td className="px-5 py-4">
-                        <div className="flex flex-wrap justify-end gap-2">
-                          {item.feedback_submitted && (
-                            <Button size="sm" variant="secondary" onClick={(event) => {
-                              event.stopPropagation();
-                              handleViewFeedback(item);
-                            }}>查看反馈</Button>
-                          )}
-                          {canFillFeedback && (
-                            <Button size="sm" onClick={(event) => {
-                              event.stopPropagation();
-                              setFeedbackTarget(item);
-                            }}>填写反馈</Button>
-                          )}
-                          {!item.feedback_submitted && !canFillFeedback && statusKey === 'pending_feedback' && (
-                            <span className="self-center text-xs text-muted-soft">待面试官反馈</span>
-                          )}
-                          {canCancel && (
-                            <Button size="sm" variant="danger" onClick={(event) => {
-                              event.stopPropagation();
-                              setCancelTarget(item);
-                            }}>取消面试</Button>
-                          )}
-                        </div>
+                      <td className="truncate px-6 py-3 text-body">{row.job_title || `岗位 #${row.job_id}`}</td>
+                      <td className="truncate px-6 py-3 text-body">{row.job_city || '未记录'}</td>
+                      <td className="truncate px-6 py-3 text-body">{row.job_department || '未记录'}</td>
+                      <td className="px-6 py-3"><Badge className="border-0 bg-[#e8f0e4] px-3 py-1 text-[#5b7454]" tone="neutral">{managementRoundLabel(row)}</Badge></td>
+                      <td className="px-6 py-3">
+                        {state === 'scheduled' ? (
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#def3ea] text-xs font-semibold text-[var(--enterprise-brand)]">{candidateInitial(row.interviewer_name)}</span>
+                            <div className="min-w-0"><p className="truncate font-medium text-ink">{row.interviewer_name || '待定面试官'}</p><p className="mt-0.5 text-xs text-muted">{formatManagementDate(row.scheduled_at)}</p></div>
+                          </div>
+                        ) : state === 'result' ? (
+                          <div><Badge tone={row.feedback_passed === false ? 'danger' : 'success'}>{arrangementLabel(row)}</Badge><p className="mt-1 text-xs text-muted">{formatManagementDate(row.scheduled_at)}</p></div>
+                        ) : (
+                          <span className={state === 'awaiting_feedback' ? 'text-[#696f6b]' : state === 'pending_decision' ? 'font-medium text-[#5e655f]' : 'text-muted'}>{arrangementLabel(row)}</span>
+                        )}
                       </td>
+                      <td className="px-6 py-3">{renderRowActions(row, item)}</td>
                     </tr>
                   );
                 })}
@@ -946,89 +1252,98 @@ export function ReaddyInterviewsPage() {
             </table>
           </div>
         )}
+
+        {!loading && !loadError && filtered.length > 0 && view === 'calendar' && (
+          <div className="space-y-5 p-5" data-ui="interview-calendar-view">
+            {calendarGroups.map(([date, items]) => (
+              <section key={date}>
+                <h2 className="mb-2 text-sm font-semibold text-ink">{date === '待安排' ? '待安排' : new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date(`${date}T00:00:00`))}</h2>
+                <div className="grid gap-3 xl:grid-cols-2">
+                  {items.map((row) => {
+                    const item = assignmentForRow(row);
+                    return (
+                      <article key={`${row.candidate_id}-${row.assignment_id ?? 'new'}`} className="rounded-xl border border-[#e8e8e3] bg-canvas p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <span aria-label="候选人头像" className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e5f5ed] text-sm font-semibold text-[var(--enterprise-brand)]">{candidateInitial(row.name_masked)}</span>
+                            <div><p className="font-semibold text-ink">{row.name_masked || `候选人 #${row.candidate_id}`}</p><p className="mt-1 text-xs text-muted">{row.job_title} · {managementRoundLabel(row)}</p></div>
+                          </div>
+                          <span className="text-xs text-muted">{row.scheduled_at ? formatManagementDate(row.scheduled_at) : '尚未安排'}</span>
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span className="text-sm text-muted">{arrangementLabel(row)}</span>{renderRowActions(row, item)}</div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
       </Card>
 
-      {/* 弹窗 */}
-      {scheduleOpen && (
+      {scheduleSeed && (
         <ScheduleModal
-          demands={demands}
+          demands={availableDemands}
           interviewers={interviewers}
-          onClose={() => setScheduleOpen(false)}
-          onCreated={() => {
-            setScheduleOpen(false);
-            reloadAll();
-            toast.success('面试安排已保存');
-          }}
+          seed={scheduleSeed}
+          onClose={() => setScheduleSeed(null)}
+          onCreated={() => { setScheduleSeed(null); reloadAll(); toast.success('面试安排已保存'); }}
         />
       )}
+      {adjustTarget && (
+        <AdjustModal assignment={adjustTarget} interviewers={interviewers} onClose={() => setAdjustTarget(null)} onUpdated={() => { setAdjustTarget(null); reloadAll(); toast.success('面试安排已更新'); }} />
+      )}
+      <ConfirmDialog
+        open={Boolean(conductTarget)}
+        title="确认面试已完成？"
+        description="确认后任务才会进入待反馈，不会因为时间经过而自动完成。"
+        confirmLabel="确认已完成"
+        loading={Boolean(conductTarget && actionBusy === conductTarget.id)}
+        onConfirm={() => void confirmConducted()}
+        onCancel={() => setConductTarget(null)}
+      />
       {cancelTarget && (
-        <CancelModal
-          assignment={cancelTarget}
-          onClose={() => setCancelTarget(null)}
-          onCancelled={() => {
-            setCancelTarget(null);
-            reloadAll();
-            toast.success('面试已取消，可重新安排该轮主面试官');
-          }}
-        />
+        <CancelModal assignment={cancelTarget} onClose={() => setCancelTarget(null)} onCancelled={() => { setCancelTarget(null); reloadAll(); toast.success('已标记本次面试未进行'); }} />
       )}
       {feedbackTarget && (
         <ModalShell
           title="填写面试反馈"
-          description={`${feedbackTarget.name_masked ?? `候选人 #${feedbackTarget.candidate_id}`} · ${feedbackTarget.job_title ?? `岗位 #${feedbackTarget.job_id}`} · ${roundLabel(feedbackTarget.round)}。反馈只完成本轮面试任务，推进或淘汰由 HR 另行确认。`}
+          description={`${feedbackTarget.name_masked ?? `候选人 #${feedbackTarget.candidate_id}`} · ${feedbackTarget.job_title ?? `岗位 #${feedbackTarget.job_id}`} · ${roundLabel(feedbackTarget.round)}`}
           onClose={() => setFeedbackTarget(null)}
         >
           <div className="px-6 py-6">
             {feedbackTarget.demand_id ? (
-              <FeedbackForm
-                candidateId={feedbackTarget.candidate_id}
-                demandId={feedbackTarget.demand_id}
-                assignmentId={feedbackTarget.id}
-                initialRound={feedbackTarget.round}
-                onSubmitted={handleFeedbackSubmitted}
-              />
+              <FeedbackForm candidateId={feedbackTarget.candidate_id} demandId={feedbackTarget.demand_id} assignmentId={feedbackTarget.id} initialRound={feedbackTarget.round} onSubmitted={handleFeedbackSubmitted} />
             ) : (
-              <>
-                <div className="mb-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
-                  这是兼容期历史任务，尚未回填招聘需求。系统只会在该岗位能唯一解析到需求时接受反馈。
-                </div>
-                <FeedbackForm
-                  candidateId={feedbackTarget.candidate_id}
-                  jobId={feedbackTarget.job_id}
-                  assignmentId={feedbackTarget.id}
-                  initialRound={feedbackTarget.round}
-                  onSubmitted={handleFeedbackSubmitted}
-                />
-              </>
+              <FeedbackForm candidateId={feedbackTarget.candidate_id} jobId={feedbackTarget.job_id} assignmentId={feedbackTarget.id} initialRound={feedbackTarget.round} onSubmitted={handleFeedbackSubmitted} />
             )}
           </div>
         </ModalShell>
       )}
+
       <DrawerShell
         open={Boolean(detailTarget)}
         onClose={() => setDetailTarget(null)}
         title="面试详情"
         eyebrow={detailTarget ? STATUS_META[assignmentStatus(detailTarget)].label : undefined}
-        description={detailTarget
-          ? `${detailTarget.name_masked ?? `候选人 #${detailTarget.candidate_id}`} · ${detailTarget.job_title ?? `岗位 #${detailTarget.job_id}`}`
-          : undefined}
+        description={detailTarget ? `${detailTarget.name_masked ?? `候选人 #${detailTarget.candidate_id}`} · ${detailTarget.job_title ?? `岗位 #${detailTarget.job_id}`}` : undefined}
         size="lg"
         testId="interview-detail-drawer"
+        footer={detailTarget?.demand_id && detailFeedback ? (
+          <Link to={`/kanban?demand=${detailTarget.demand_id}&candidate=${detailTarget.candidate_id}`}><Button size="sm">去候选人流程处理结果</Button></Link>
+        ) : undefined}
       >
         {detailTarget && (
-          <div className="space-y-6 p-6">
+          <div className="space-y-6">
             <section className="rounded-xl border border-hairline p-4">
               <h3 className="text-sm font-semibold text-ink">面试信息</h3>
               <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                 <div><dt className="text-xs text-muted">面试轮次</dt><dd className="mt-1 font-medium text-ink">{roundLabel(detailTarget.round)} · 第 {detailTarget.round_sequence} 轮</dd></div>
-                <div><dt className="text-xs text-muted">面试责任</dt><dd className="mt-1 font-medium text-ink">{detailTarget.is_primary ? '主面试官' : '辅助面试官'}</dd></div>
                 <div><dt className="text-xs text-muted">面试官</dt><dd className="mt-1 font-medium text-ink">{detailTarget.interviewer_name ?? `面试官 #${detailTarget.interviewer_id}`}</dd></div>
-                <div><dt className="text-xs text-muted">时间</dt><dd className="mt-1 font-medium text-ink">{formatDateTime(detailTarget.scheduled_at)}</dd></div>
-                <div className="sm:col-span-2"><dt className="text-xs text-muted">地点 / 会议链接</dt><dd className="mt-1 font-medium text-ink">{detailTarget.location || '地点待定'}</dd></div>
-                <div className="sm:col-span-2"><dt className="text-xs text-muted">安排备注</dt><dd className="mt-1 whitespace-pre-wrap text-ink">{detailTarget.note || '暂无备注'}</dd></div>
+                <div><dt className="text-xs text-muted">时间</dt><dd className="mt-1 font-medium text-ink">{formatManagementDate(detailTarget.scheduled_at)}</dd></div>
+                <div><dt className="text-xs text-muted">地点 / 会议链接</dt><dd className="mt-1 font-medium text-ink">{detailTarget.location || '地点待定'}</dd></div>
               </dl>
             </section>
-
             <section className="rounded-xl border border-hairline p-4">
               <h3 className="text-sm font-semibold text-ink">面试反馈</h3>
               {detailFeedback ? (
@@ -1038,24 +1353,13 @@ export function ReaddyInterviewsPage() {
                   <p><span className="text-muted">优势：</span>{detailFeedback.strengths || '未记录'}</p>
                   <p><span className="text-muted">顾虑：</span>{detailFeedback.concerns || '未记录'}</p>
                 </div>
-              ) : (
-                <p className="mt-3 text-sm text-muted">本轮尚无已提交反馈。</p>
-              )}
+              ) : <p className="mt-3 text-sm text-muted">本轮尚无已提交反馈。</p>}
             </section>
-
             <section className="rounded-xl border border-hairline p-4">
               <h3 className="text-sm font-semibold text-ink">流程记录</h3>
               <div className="mt-3 space-y-3">
-                <div className="rounded-lg bg-surface-soft px-3 py-2 text-sm text-body">
-                  {formatDateTime(detailTarget.created_at)} · {detailTarget.created_by_name || '系统'} 安排面试
-                </div>
-                {detailRecords.length === 0 ? (
-                  <p className="text-sm text-muted">暂无更多面试记录。</p>
-                ) : detailRecords.map((record) => (
-                  <div key={`${record.type}-${record.id}`} className="rounded-lg bg-surface-soft px-3 py-2 text-sm text-body">
-                    {formatDateTime(record.created_at)} · {record.type === 'feedback' ? '提交面试反馈' : '完成 AI 面试'}
-                    {record.interviewer_name ? ` · ${record.interviewer_name}` : ''}
-                  </div>
+                {detailRecords.length === 0 ? <p className="text-sm text-muted">暂无更多面试记录。</p> : detailRecords.map((record) => (
+                  <div key={`${record.type}-${record.id}`} className="rounded-lg bg-surface-soft px-3 py-2 text-sm text-body">{formatDateTime(record.created_at)} · {record.type === 'feedback' ? '提交面试反馈' : '完成 AI 面试'}{record.interviewer_name ? ` · ${record.interviewer_name}` : ''}</div>
                 ))}
               </div>
             </section>
@@ -1064,6 +1368,11 @@ export function ReaddyInterviewsPage() {
       </DrawerShell>
     </div>
   );
+}
+
+
+export function ReaddyInterviewsPage() {
+  return <FigmaInterviewManagementPage />;
 }
 
 export default ReaddyInterviewsPage;
