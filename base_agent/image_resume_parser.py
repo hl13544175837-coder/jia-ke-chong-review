@@ -105,17 +105,39 @@ class ImageResumeVisionParser:
         self.http_client = http_client
 
     def parse(self, file_path: str) -> ImageResumeParseResult:
+        """解析单张图片简历。"""
         config = self.config or DashScopeVisionConfig.from_environment()
         image_data_uri = _prepare_image_data_uri(Path(file_path))
-        response = self._post_completion(config, image_data_uri)
+        response = self._post_completion(config, [image_data_uri], _resume_extraction_prompt())
         payload = _parse_json_object(_extract_message_content(response))
         return _normalize_resume_payload(payload)
+
+    def parse_document(self, data_uris: list[str]) -> ImageResumeParseResult:
+        """解析多页文档（PDF/DOCX 已转图片），逐页送给视觉模型再合并结构。"""
+        config = self.config or DashScopeVisionConfig.from_environment()
+        all_results: list[dict] = []
+        for page_num, uri in enumerate(data_uris, 1):
+            page_prompt = _resume_document_page_prompt(page_num, len(data_uris))
+            response = self._post_completion(config, [uri], page_prompt)
+            payload = _parse_json_object(_extract_message_content(response))
+            # 兼容两种返回：顶层 extracted_info 或平铺字段
+            info = payload.get("extracted_info") if isinstance(payload.get("extracted_info"), dict) else payload
+            if isinstance(info, dict) and _has_any_value(info):
+                all_results.append(info)
+
+        merged = _merge_page_results(all_results) if all_results else {}
+        return ImageResumeParseResult(extracted_info=merged, skills=[])
 
     def _post_completion(
         self,
         config: DashScopeVisionConfig,
-        image_data_uri: str,
+        data_uris: list[str],
+        user_text: str,
     ) -> Mapping[str, object]:
+        content_parts: list[dict] = []
+        for uri in data_uris:
+            content_parts.append({"type": "image_url", "image_url": {"url": uri}})
+        content_parts.append({"type": "text", "text": user_text})
         request_body = {
             "model": config.model,
             "messages": [
@@ -128,16 +150,7 @@ class ImageResumeVisionParser:
                 },
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_data_uri},
-                        },
-                        {
-                            "type": "text",
-                            "text": _resume_extraction_prompt(),
-                        },
-                    ],
+                    "content": content_parts,
                 },
             ],
             "response_format": {"type": "json_object"},
@@ -470,3 +483,54 @@ def _resume_extraction_prompt() -> str:
         "技能只填写简历中有明确证据的内容，score 使用 1 到 5；"
         "没有的信息使用空字符串或空数组。不要输出 OCR 原文、Markdown 或解释。"
     )
+
+
+def _resume_document_page_prompt(page_num: int, total_pages: int) -> str:
+    return (
+        f"这是多页文档简历的第 {page_num}/{total_pages} 页。"
+        "请提取本页中可见的简历信息，输出 JSON："
+        '{"name":"","email":"","phone":"","summary":"",'
+        '"education":[{"school":"","degree":"","major":"","year":""}],'
+        '"experience":[{"company":"","position":"","duration":"","description":""}],'
+        '"projects":[{"name":"","role":"","duration":"","description":""}],'
+        '"certifications":[{"name":"","issuer":"","date":""}],'
+        '"language":[{"language":"","level":""}],"additional_info":""}'
+        "。没有的信息留空字符串或空数组，不输出解释。"
+    )
+
+
+def _has_any_value(info: dict) -> bool:
+    for key, val in info.items():
+        if isinstance(val, str) and val.strip():
+            return True
+        if isinstance(val, list) and len(val) > 0:
+            return True
+    return False
+
+
+def _merge_page_results(pages: list[dict]) -> dict:
+    merged: dict = {
+        "name": "", "email": "", "phone": "", "summary": "",
+        "intent_city": "", "additional_info": "",
+        "education": [],
+        "experience": [],
+        "projects": [],
+        "certifications": [],
+        "languages": [],
+    }
+    for page in pages:
+        for key in ("name", "email", "phone", "summary", "intent_city"):
+            if not merged.get(key) and isinstance(page.get(key), str) and page[key].strip():
+                merged[key] = page[key]
+        if not merged.get("additional_info") or isinstance(page.get("additional_info"), str):
+            add = page.get("additional_info", "")
+            if add and isinstance(add, str):
+                merged["additional_info"] = (merged.get("additional_info", "") or "") + ("\n" + add if merged.get("additional_info") else add)
+        for list_key in ("education", "experience", "projects", "certifications"):
+            items = page.get(list_key)
+            if isinstance(items, list):
+                merged[list_key].extend(items)
+        langs = page.get("languages") or page.get("language")
+        if isinstance(langs, list):
+            merged["languages"].extend(langs)
+    return merged
