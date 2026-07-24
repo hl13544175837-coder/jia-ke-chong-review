@@ -105,6 +105,7 @@ async function profile(request, response) {
       userInfo: {
         empName: user.name,
         ymEmpCode: account,
+        role: user.role,
       },
     },
   });

@@ -82,7 +82,18 @@ function inspectControl(node, sourceFile, filePath, violations) {
   const submitsForm = explicitType === 'submit'
     || explicitType === 'reset'
     || (name === 'button' && explicitType === null && isInsideForm(node, sourceFile));
-  const isDisabled = names.has('disabled');
+  const disabledAttribute = properties.find((property) => attributeName(property) === 'disabled');
+  const isDisabled = Boolean(disabledAttribute);
+  const hasDynamicDisabledState = Boolean(
+    disabledAttribute
+    && ts.isJsxAttribute(disabledAttribute)
+    && disabledAttribute.initializer
+    && ts.isJsxExpression(disabledAttribute.initializer)
+    && disabledAttribute.initializer.expression,
+  );
+  const hasVisibleBusyState = submitsForm
+    && hasDynamicDisabledState
+    && /(?:登录|提交|保存|处理|加载)中/.test(node.parent.getText(sourceFile));
   const hasDisabledReason = names.has('title') || names.has('aria-describedby');
   const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
   const location = `${relative(frontendRoot, filePath)}:${position.line + 1}`;
@@ -90,7 +101,7 @@ function inspectControl(node, sourceFile, filePath, violations) {
   if (!hasAction && !submitsForm && !hasSpread && !navigates) {
     violations.push(`${location} ${name} has no click or submit action`);
   }
-  if (name === 'button' && isDisabled && !hasDisabledReason) {
+  if (name === 'button' && isDisabled && !hasDisabledReason && !hasVisibleBusyState) {
     violations.push(`${location} disabled ${name} has no title or aria-describedby reason`);
   }
 }

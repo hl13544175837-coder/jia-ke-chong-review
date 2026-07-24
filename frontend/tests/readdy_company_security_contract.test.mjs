@@ -44,7 +44,10 @@ const companyAuth = read('readdy-frontend/src/auth/companyAuth.tsx');
 assert.match(companyAuth, /\/pgs\/oauth/, '必须保留公司 OAuth 前缀');
 assert.match(companyAuth, /md5\(password\)/, '密码必须沿用公司既定的前端 MD5 协议');
 assert.match(companyAuth, /\/api\/profile/, '登录后必须读取公司网关 profile');
-assert.match(companyAuth, /\/auth\/me/, '必须由后端 auth\/me 决定真实角色');
+assert.match(companyAuth, /VITE_DEFAULT_ROLE/, '公司 test 基线必须保留可配置的联调角色');
+assert.match(companyAuth, /DEFAULT_ROLE/, '后端角色接口未部署时必须按公司 test 基线完成会话');
+assert.match(companyAuth, /公司登录网关返回异常/, '空响应不能再伪装成账号密码错误');
+assert.match(companyAuth, /公司登录网关连接失败/, '网络或代理失败必须显示真实连接问题');
 assert.match(companyAuth, /hireinsight_token/, '必须沿用公司 Token 存储键');
 assert.match(companyAuth, /hireinsight_emp_code/, '必须沿用公司工号存储键');
 assert.match(companyAuth, /Authorization.*Bearer/s, '业务请求必须保留 Bearer Token');
@@ -75,8 +78,13 @@ assert.match(vite, /['"]\/pgs['"]/, '5190 必须代理 OAuth 路径');
 assert.match(vite, /['"]\/zhipin-server['"]/, '5190 必须代理公司业务 API 路径');
 
 const start = read('scripts/start-isolated-demo.sh');
-assert.match(start, /VITE_OAUTH_BASE_URL=\/pgs\/oauth/, '5190 启动必须使用公司 OAuth 路径');
-assert.match(start, /VITE_API_BASE_URL=\/zhipin-server\/api/, '5190 启动必须使用公司业务 API 路径');
+assert.match(
+  start,
+  /VITE_OAUTH_BASE_URL=https:\/\/pgsgw\.yimidida\.com\/pgs\/oauth/,
+  '5190 必须浏览器直连当前可用的公司 OAuth 网关',
+);
+assert.doesNotMatch(start, /test-pgsgw\.yimidida\.com/, '已失效的测试网关域名不能继续作为 5190 默认值');
+assert.match(start, /VITE_DEFAULT_ROLE=admin/, '公司 test 分支联调默认角色必须保持 admin');
 assert.doesNotMatch(start, /APOLLO_ENABLED=false/, '启动脚本不能强行关闭公司 Apollo');
 assert.doesNotMatch(start, /JWT_SECRET=isolated-demo/, '启动脚本不能覆盖已有 JWT 密钥');
 assert.doesNotMatch(start, /LLM_API_KEY="?\s*"?/, '启动脚本不能清空已有模型密钥');

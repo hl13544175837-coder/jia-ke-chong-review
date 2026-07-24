@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-07-24T11:23:03+08:00",
+  "checked_at": "2026-07-24T12:16:28+08:00",
   "primary_url": "http://127.0.0.1:5190",
   "auth_contract": "company_gateway_oauth",
   "frozen_company_files_equal": 10,
@@ -13,6 +13,10 @@
   "zip_controls_covered": 718,
   "approved_security_replacements": 5,
   "unapproved_missing_controls": 0,
-  "company_gateway_live_verified": false,
-  "company_gateway_live_blocker": "TLS handshake failed from current execution environment"
+  "company_gateway_live_verified": true,
+  "company_gateway_cors_verified": true,
+  "company_gateway_invalid_probe_verified": true,
+  "company_gateway_invalid_probe_message": "用户名错误，请确认",
+  "company_account_credential_verified": false,
+  "company_account_credential_verification": "Pending user retry; password was never collected or stored"
 }

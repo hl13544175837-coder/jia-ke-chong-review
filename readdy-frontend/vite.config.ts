@@ -10,7 +10,7 @@ const isPreview = process.env.IS_PREVIEW ? true : false;
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
-  const gatewayTarget = env.COMPANY_GATEWAY_PROXY_TARGET || 'https://test-pgsgw.yimidida.com';
+  const gatewayTarget = env.COMPANY_GATEWAY_PROXY_TARGET || 'https://pgsgw.yimidida.com';
   const apiTarget = env.COMPANY_API_PROXY_TARGET || gatewayTarget;
 
   return {

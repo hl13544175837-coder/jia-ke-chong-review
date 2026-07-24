@@ -139,14 +139,16 @@ if [[ "${READDY_AUTH_MODE:-company}" == "local" ]]; then
     "VITE_API_BASE_URL=/api"
     "VITE_OAUTH_BASE_URL=/pgs/oauth"
     "VITE_PERMISSION_CLIENT_ID=zhipin"
+    "VITE_DEFAULT_ROLE=admin"
   )
 else
   READDY_AUTH_ENV=(
-    "COMPANY_GATEWAY_PROXY_TARGET=${COMPANY_GATEWAY_PROXY_TARGET:-https://test-pgsgw.yimidida.com}"
-    "COMPANY_API_PROXY_TARGET=${COMPANY_API_PROXY_TARGET:-https://test-pgsgw.yimidida.com}"
-    "VITE_API_BASE_URL=/zhipin-server/api"
-    "VITE_OAUTH_BASE_URL=/pgs/oauth"
+    "COMPANY_GATEWAY_PROXY_TARGET=${COMPANY_GATEWAY_PROXY_TARGET:-https://pgsgw.yimidida.com}"
+    "COMPANY_API_PROXY_TARGET=${COMPANY_API_PROXY_TARGET:-https://pgsgw.yimidida.com}"
+    "VITE_API_BASE_URL=https://pgsgw.yimidida.com/zhipin-server/api"
+    "VITE_OAUTH_BASE_URL=https://pgsgw.yimidida.com/pgs/oauth"
     "VITE_PERMISSION_CLIENT_ID=zhipin"
+    "VITE_DEFAULT_ROLE=admin"
   )
 fi
 (

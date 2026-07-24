@@ -11,7 +11,7 @@ export type CompanyRole = 'admin' | 'manager' | 'recruiter' | 'interviewer';
 
 export interface CompanyLoginResult {
   token: string;
-  user_id: number;
+  user_id: number | null;
   role: CompanyRole;
   name: string;
 }
@@ -29,12 +29,7 @@ interface GatewayUserInfo {
   nickname?: string | null;
   ymEmpCode?: string | null;
   yhUserCode?: string | null;
-}
-
-interface BackendIdentity {
-  id: number;
-  name: string;
-  role: CompanyRole;
+  role?: CompanyRole | null;
 }
 
 interface CompanySession extends CompanyLoginResult {
@@ -59,14 +54,14 @@ const NAME_KEY = 'hireinsight_name';
 const ROLE_KEY = 'hireinsight_role';
 const USER_ID_KEY = 'hireinsight_user_id';
 const VALID_ROLES: CompanyRole[] = ['admin', 'manager', 'recruiter', 'interviewer'];
+const ENV_ROLE = ((import.meta.env.VITE_DEFAULT_ROLE ?? 'admin') as string).trim();
+const DEFAULT_ROLE: CompanyRole = VALID_ROLES.includes(ENV_ROLE as CompanyRole)
+  ? (ENV_ROLE as CompanyRole)
+  : 'admin';
 
 const OAUTH_BASE = ((import.meta.env.VITE_OAUTH_BASE_URL ?? '/pgs/oauth') as string)
   .trim()
   .replace(/\/+$/, '') || '/pgs/oauth';
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL ?? '/zhipin-server/api') as string)
-  .trim()
-  .replace(/\/+$/, '') || '/zhipin-server/api';
-
 export class CompanyAuthError extends Error {
   status: number;
 
@@ -105,14 +100,27 @@ async function gatewayLogin(account: string, password: string): Promise<string> 
   }
 
   const body = await readJson<GatewayEnvelope<{ token?: string }>>(response);
-  const data = ensureGatewaySuccess(body, response.status || 401, '账号或密码错误');
+  const succeeded = body.succ === true || body.code === 1;
+  if (!succeeded && !body.msg) {
+    throw new CompanyAuthError(
+      response.status,
+      response.ok
+        ? '公司登录网关返回异常，请稍后重试或联系 IT 支持'
+        : `公司登录网关连接失败（HTTP ${response.status}），请检查网关地址或公司网络`,
+    );
+  }
+  const data = ensureGatewaySuccess(body, response.status, '公司登录未通过，请联系 IT 支持');
   if (!data.token) {
     throw new CompanyAuthError(401, '登录响应缺少 token，请联系系统管理员');
   }
   return data.token;
 }
 
-async function gatewayProfile(token: string): Promise<{ name: string; empCode: string }> {
+async function gatewayProfile(token: string): Promise<{
+  name: string;
+  empCode: string;
+  role: CompanyRole;
+}> {
   let response: Response;
   try {
     response = await fetch(`${OAUTH_BASE}/api/profile`, {
@@ -127,38 +135,11 @@ async function gatewayProfile(token: string): Promise<{ name: string; empCode: s
   const info = data.userInfo ?? {};
   const empCode = info.ymEmpCode || info.yhUserCode || '';
   const name = info.empName || info.nickname || info.yhUserCode || info.ymEmpCode || '用户';
+  const role = info.role && VALID_ROLES.includes(info.role) ? info.role : DEFAULT_ROLE;
   if (!empCode) {
     throw new CompanyAuthError(502, '公司账号缺少工号，请联系系统管理员');
   }
-  return { name, empCode };
-}
-
-async function backendIdentity(token: string, empCode: string): Promise<BackendIdentity> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}/auth/me`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Emp-Code': empCode,
-      },
-    });
-  } catch (error) {
-    throw new CompanyAuthError(0, `网络错误：${(error as Error).message}`);
-  }
-
-  const body = await readJson<Partial<BackendIdentity> & { error?: string }>(response);
-  if (!response.ok) {
-    throw new CompanyAuthError(response.status, body.error || '获取智聘账号权限失败');
-  }
-  if (
-    typeof body.id !== 'number'
-    || !body.name
-    || !body.role
-    || !VALID_ROLES.includes(body.role)
-  ) {
-    throw new CompanyAuthError(502, '智聘账号信息不完整，请联系管理员');
-  }
-  return body as BackendIdentity;
+  return { name, empCode, role };
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -167,14 +148,14 @@ export async function loginViaCompanyGateway(
   password: string,
 ): Promise<CompanyLoginResult> {
   const token = await gatewayLogin(account, password);
-  const { empCode } = await gatewayProfile(token);
-  const identity = await backendIdentity(token, empCode);
+  const { name, empCode, role } = await gatewayProfile(token);
+  const numericUserId = Number(empCode);
   localStorage.setItem(EMP_CODE_KEY, empCode);
   return {
     token,
-    user_id: identity.id,
-    role: identity.role,
-    name: identity.name,
+    user_id: Number.isSafeInteger(numericUserId) && numericUserId > 0 ? numericUserId : null,
+    role,
+    name,
   };
 }
 
@@ -201,15 +182,15 @@ function loadStoredSession(): CompanySession | null {
   const empCode = localStorage.getItem(EMP_CODE_KEY);
   const name = localStorage.getItem(NAME_KEY);
   const role = localStorage.getItem(ROLE_KEY) as CompanyRole | null;
-  const userId = Number(localStorage.getItem(USER_ID_KEY));
+  const storedUserId = localStorage.getItem(USER_ID_KEY);
+  const userId = storedUserId ? Number(storedUserId) : null;
   if (
     !token
     || !empCode
     || !name
     || !role
     || !VALID_ROLES.includes(role)
-    || !Number.isInteger(userId)
-    || userId <= 0
+    || (userId !== null && (!Number.isInteger(userId) || userId <= 0))
   ) {
     clearStoredSession();
     return null;
@@ -235,7 +216,11 @@ export function CompanyAuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(TOKEN_KEY, result.token);
       localStorage.setItem(NAME_KEY, result.name);
       localStorage.setItem(ROLE_KEY, result.role);
-      localStorage.setItem(USER_ID_KEY, String(result.user_id));
+      if (result.user_id) {
+        localStorage.setItem(USER_ID_KEY, String(result.user_id));
+      } else {
+        localStorage.removeItem(USER_ID_KEY);
+      }
       setSession({ ...result, empCode });
       setSessionExpired(false);
     },
