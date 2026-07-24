@@ -31,6 +31,7 @@ except ImportError:
     logging.error("无法导入 tag_rate 模块，请确保 tag_rate.py 在同一目录")
     raise
 
+from document_to_image import document_to_image_data_uris
 from image_resume_parser import IMAGE_RESUME_EXTENSIONS, ImageResumeVisionParser
 from llm_client import LLMClient, resolve_secret_value
 
@@ -513,13 +514,14 @@ class ResumeParser:
             return "其他"
     
     def parse_resume(self, file_path: str) -> Dict[str, Any]:
-        """解析简历的主方法（支持文档与图片简历）"""
+        """解析简历：图片与文档统一走视觉模型管线。"""
         extension = Path(file_path).suffix.lower().lstrip(".")
         logging.info("开始解析简历，格式: %s", extension or "未知")
 
+        vision = self._image_parser or ImageResumeVisionParser()
+
         if extension in IMAGE_RESUME_EXTENSIONS:
-            parser = self._image_parser or ImageResumeVisionParser()
-            image_result = parser.parse(file_path)
+            image_result = vision.parse(file_path)
             return {
                 "extracted_info": image_result.extracted_info,
                 "skills": image_result.skills,
@@ -527,23 +529,14 @@ class ResumeParser:
                 "parse_method": "vision",
             }
 
-        # 1. 按文件类型提取文本
-        resume_text = self.extract_text(file_path)
-        logging.info(f"提取文本长度: {len(resume_text)} 字符")
-        if not resume_text.strip():
-            raise ValueError("简历内容为空，无法解析（可能是扫描件或加密文件）")
-        
-        # 2. 提取结构化信息
-        extracted_info = self.extract_resume_info(resume_text)
-        logging.info("简历信息提取完成")
-        
-        # 3. 技能评分
-        skills = self.score_resume_skills(resume_text, extracted_info)
-        logging.info(f"技能评分完成，共 {len(skills)} 个技能")
-        
+        # PDF / DOCX → 逐页转图片 → 视觉模型解析
+        data_uris = document_to_image_data_uris(Path(file_path))
+        logging.info("文档共 %d 页，逐页送入视觉模型", len(data_uris))
+        image_result = vision.parse_document(data_uris)
         return {
-            "extracted_info": extracted_info,
-            "skills": skills,
+            "extracted_info": image_result.extracted_info,
+            "skills": image_result.skills,
             "upload_date": datetime.now().isoformat(),
+            "parse_method": "vision",
         }
 
