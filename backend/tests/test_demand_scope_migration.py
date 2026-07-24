@@ -281,7 +281,7 @@ def test_alembic_expand_is_additive_revisioned_and_idempotent(tmp_path):
     )
     with engine.connect() as connection:
         assert connection.execute(text("SELECT COUNT(*) FROM pipeline_stages")).scalar_one() == 1
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260722_07"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260724_08"
     engine.dispose()
 
 
@@ -310,7 +310,7 @@ def test_interview_uniqueness_revision_adds_primary_slot_and_unique_indexes(tmp_
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260722_07"
+        ).scalar_one() == "20260724_08"
     engine.dispose()
 
 
@@ -618,8 +618,8 @@ def test_verify_checks_revision_completeness_and_job_consistency(tmp_path):
     verified = verify.verify_database(url)
     assert verified["ok"] is True
     assert verified["schema_revision"] == {
-        "current": "20260722_07",
-        "expected": "20260722_07",
+        "current": "20260724_08",
+        "expected": "20260724_08",
         "ok": True,
     }
     assert verified["unmapped_total"] == 0
@@ -723,22 +723,16 @@ def test_verify_reports_nullable_and_unnormalized_request_numbers(tmp_path):
     path = tmp_path / "invalid-request-number-contract.db"
     _create_legacy_database(path, scenario="one", all_facts=True)
     _upgrade(path)
-    config = Config(str(ALEMBIC_INI))
-    config.set_main_option("sqlalchemy.url", _database_url(path))
-    command.downgrade(config, "20260711_03")
-    connection = sqlite3.connect(path)
-    connection.execute(
-        "UPDATE alembic_version SET version_num = '20260722_07'"
-    )
-    connection.execute(
-        "CREATE UNIQUE INDEX uq_recruitment_demands_org_request_no "
-        "ON recruitment_demands (org_id, request_no)"
-    )
-    connection.execute(
-        "UPDATE recruitment_demands SET request_no = NULL WHERE id = 10"
-    )
-    connection.commit()
-    connection.close()
+    engine = create_engine(_database_url(path))
+    with engine.begin() as connection:
+        context = MigrationContext.configure(connection)
+        operations = Operations(context)
+        with operations.batch_alter_table("recruitment_demands") as batch_op:
+            batch_op.alter_column("request_no", nullable=True)
+        connection.execute(
+            text("UPDATE recruitment_demands SET request_no = NULL WHERE id = 10")
+        )
+    engine.dispose()
 
     report = _load_script("verify_demand_scope").verify_database(
         _database_url(path)

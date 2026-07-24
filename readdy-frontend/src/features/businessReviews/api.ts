@@ -11,12 +11,28 @@ function statusQuery(status?: BusinessReviewStatus) {
   return status ? `?status=${encodeURIComponent(status)}` : '';
 }
 
+function normalizeListResponse(
+  response: BusinessReviewTask[] | BusinessReviewListResponse,
+): BusinessReviewListResponse {
+  const items = Array.isArray(response) ? response : response.items;
+  return {
+    items: items,
+    total: Array.isArray(response) ? items.length : response.total,
+  };
+}
+
 export const businessReviewsApi = {
-  listMine(status?: BusinessReviewStatus): Promise<BusinessReviewListResponse> {
-    return apiRequest(`/business-reviews/mine${statusQuery(status)}`);
+  async listMine(status?: BusinessReviewStatus): Promise<BusinessReviewListResponse> {
+    const response = await apiRequest<BusinessReviewTask[] | BusinessReviewListResponse>(
+      `/business-reviews/mine${statusQuery(status)}`,
+    );
+    return normalizeListResponse(response);
   },
-  listForHr(status?: BusinessReviewStatus): Promise<BusinessReviewListResponse> {
-    return apiRequest(`/business-reviews${statusQuery(status)}`);
+  async listForHr(status?: BusinessReviewStatus): Promise<BusinessReviewListResponse> {
+    const response = await apiRequest<BusinessReviewTask[] | BusinessReviewListResponse>(
+      `/business-reviews${statusQuery(status)}`,
+    );
+    return normalizeListResponse(response);
   },
   getTask(taskId: number): Promise<BusinessReviewTask> {
     return apiRequest(`/business-reviews/${taskId}`);

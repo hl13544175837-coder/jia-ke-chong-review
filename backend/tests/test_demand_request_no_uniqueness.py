@@ -15,6 +15,7 @@ from app.models import Job, RecruitmentDemand
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = BACKEND_DIR / "alembic.ini"
 REQUEST_NO_UNIQUE_INDEX = "uq_recruitment_demands_org_request_no"
+REQUEST_NO_REVISION = "20260711_04"
 
 
 def _auth(token):
@@ -335,7 +336,7 @@ def test_request_no_migration_backfills_normalizes_and_adds_unique_index(tmp_pat
     config = Config(str(ALEMBIC_INI))
     config.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
 
-    command.upgrade(config, "head")
+    command.upgrade(config, REQUEST_NO_REVISION)
 
     connection = sqlite3.connect(path)
     assert connection.execute(
@@ -348,7 +349,7 @@ def test_request_no_migration_backfills_normalizes_and_adds_unique_index(tmp_pat
     ]
     assert connection.execute(
         "SELECT version_num FROM alembic_version"
-    ).fetchone()[0] == "20260722_07"
+    ).fetchone()[0] == REQUEST_NO_REVISION
     connection.close()
 
     engine = create_engine(f"sqlite:///{path}")
@@ -381,7 +382,7 @@ def test_request_no_migration_fails_closed_on_normalized_same_org_duplicates(
     config.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
 
     with pytest.raises(RuntimeError, match="normalized duplicate request numbers"):
-        command.upgrade(config, "head")
+        command.upgrade(config, REQUEST_NO_REVISION)
 
 
 def test_request_no_migration_fails_closed_on_null_org_id(tmp_path):
@@ -395,7 +396,7 @@ def test_request_no_migration_fails_closed_on_null_org_id(tmp_path):
     config.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
 
     with pytest.raises(RuntimeError, match="NULL org_id"):
-        command.upgrade(config, "head")
+        command.upgrade(config, REQUEST_NO_REVISION)
 
 
 def test_request_no_migration_rejects_wrong_same_name_index(tmp_path):
@@ -416,4 +417,4 @@ def test_request_no_migration_rejects_wrong_same_name_index(tmp_path):
     connection.close()
 
     with pytest.raises(RuntimeError, match="index definition mismatch"):
-        command.upgrade(config, "head")
+        command.upgrade(config, REQUEST_NO_REVISION)

@@ -11,14 +11,11 @@ import OffersPage from '@/pages/offers/page';
 import JobsPage from '@/pages/jobs/page';
 import CandidatesPage from '@/pages/candidates/page';
 import KanbanPage from '@/pages/kanban/page';
-import AIAssistantPage from '@/pages/ai-assistant/page';
 import SettingsPage from '@/pages/settings/page';
 import TalentMapPage from '@/pages/talent-map/page';
-import KpiStandardsPage from '@/pages/kpi-standards/page';
 import AnalyticsPage from '@/pages/analytics/page';
 import InterviewerDashboardPage from '@/pages/interviewer/dashboard/page';
 import InterviewerInterviewsPage from '@/pages/interviewer/interviews/page';
-import InterviewerCandidatesPage from '@/pages/interviewer/candidates/page';
 import InterviewerJobsPage from '@/pages/interviewer/jobs/page';
 import InterviewerScreeningPage from '@/pages/interviewer/screening/page';
 import DirectorCockpitPage from '@/pages/director/cockpit/page';
@@ -29,14 +26,16 @@ import {
   CompanyHomeRedirect,
   RequireCompanyAuth,
   RequireCompanyGuest,
-  RequireCompanyRole,
 } from '@/auth/companyGuards';
-import type { CompanyRole } from '@/auth/companyAuth';
+import { RequireCompanyRole, RoleHomeRedirect } from '@/auth/productRole';
+import type { ProductRole } from '@/auth/productRoleModel';
 
-const allRoles: CompanyRole[] = ['admin', 'manager', 'recruiter', 'interviewer'];
-const recruitingRoles: CompanyRole[] = ['admin', 'manager', 'recruiter'];
-const managementRoles: CompanyRole[] = ['admin', 'manager'];
-const interviewerRoles: CompanyRole[] = ['interviewer'];
+const dashboardRoles: ProductRole[] = ['admin', 'manager', 'recruiter'];
+const hrRoles: ProductRole[] = ['recruiter', 'manager', 'admin'];
+const managerRoles: ProductRole[] = ['manager', 'admin'];
+const adminRoles: ProductRole[] = ['admin'];
+const interviewerRoles: ProductRole[] = ['interviewer'];
+const directorRoles: ProductRole[] = ['hr_director'];
 
 const routes: RouteObject[] = [
   {
@@ -52,63 +51,63 @@ const routes: RouteObject[] = [
     children: [
       {
         path: '/dashboard',
-        element: <RequireCompanyRole allow={allRoles}><DashboardPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={dashboardRoles}><DashboardPage /></RequireCompanyRole>,
       },
       {
         path: '/dashboard/interviews',
-        element: <RequireCompanyRole allow={allRoles}><DashboardInterviewsPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={hrRoles}><DashboardInterviewsPage /></RequireCompanyRole>,
       },
       {
         path: '/dashboard/hired',
-        element: <RequireCompanyRole allow={recruitingRoles}><HiredPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={hrRoles}><HiredPage /></RequireCompanyRole>,
       },
       {
         path: '/dashboard/cycle',
-        element: <RequireCompanyRole allow={managementRoles}><CyclePage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={managerRoles}><CyclePage /></RequireCompanyRole>,
       },
       {
         path: '/dashboard/offers',
-        element: <RequireCompanyRole allow={recruitingRoles}><DashboardOffersPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={hrRoles}><DashboardOffersPage /></RequireCompanyRole>,
       },
       {
         path: '/jobs',
-        element: <RequireCompanyRole allow={recruitingRoles}><JobsPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={hrRoles}><JobsPage /></RequireCompanyRole>,
       },
       {
         path: '/candidates',
-        element: <RequireCompanyRole allow={recruitingRoles}><CandidatesPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={hrRoles}><CandidatesPage /></RequireCompanyRole>,
       },
       {
         path: '/talent-map',
-        element: <RequireCompanyRole allow={recruitingRoles}><TalentMapPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={managerRoles}><TalentMapPage /></RequireCompanyRole>,
       },
       {
         path: '/kanban',
-        element: <RequireCompanyRole allow={recruitingRoles}><KanbanPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={hrRoles}><KanbanPage /></RequireCompanyRole>,
       },
       {
         path: '/interviews',
-        element: <RequireCompanyRole allow={recruitingRoles}><DashboardInterviewsPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={hrRoles}><DashboardInterviewsPage /></RequireCompanyRole>,
       },
       {
         path: '/offers',
-        element: <RequireCompanyRole allow={recruitingRoles}><OffersPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={hrRoles}><OffersPage /></RequireCompanyRole>,
       },
       {
         path: '/kpi-standards',
-        element: <RequireCompanyRole allow={managementRoles}><KpiStandardsPage /></RequireCompanyRole>,
+        element: <RoleHomeRedirect />,
       },
       {
         path: '/analytics',
-        element: <RequireCompanyRole allow={managementRoles}><AnalyticsPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={directorRoles}><AnalyticsPage /></RequireCompanyRole>,
       },
       {
         path: '/ai-assistant',
-        element: <RequireCompanyRole allow={recruitingRoles}><AIAssistantPage /></RequireCompanyRole>,
+        element: <RoleHomeRedirect />,
       },
       {
         path: '/settings',
-        element: <RequireCompanyRole allow={['admin']}><SettingsPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={adminRoles}><SettingsPage /></RequireCompanyRole>,
       },
       {
         path: '/interviewer/dashboard',
@@ -117,10 +116,6 @@ const routes: RouteObject[] = [
       {
         path: '/interviewer/interviews',
         element: <RequireCompanyRole allow={interviewerRoles}><InterviewerInterviewsPage /></RequireCompanyRole>,
-      },
-      {
-        path: '/interviewer/candidates',
-        element: <RequireCompanyRole allow={interviewerRoles}><InterviewerCandidatesPage /></RequireCompanyRole>,
       },
       {
         path: '/interviewer/jobs',
@@ -132,19 +127,23 @@ const routes: RouteObject[] = [
       },
       {
         path: '/director/cockpit',
-        element: <RequireCompanyRole allow={managementRoles}><DirectorCockpitPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={directorRoles}><DirectorCockpitPage /></RequireCompanyRole>,
       },
       {
         path: '/director/progress',
-        element: <RequireCompanyRole allow={managementRoles}><DirectorProgressPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={directorRoles}><DirectorProgressPage /></RequireCompanyRole>,
       },
       {
         path: '/director/insights',
-        element: <RequireCompanyRole allow={managementRoles}><DirectorInsightsPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={directorRoles}><DirectorInsightsPage /></RequireCompanyRole>,
       },
       {
         path: '/director/approvals',
-        element: <RequireCompanyRole allow={managementRoles}><DirectorApprovalsPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={directorRoles}><DirectorApprovalsPage /></RequireCompanyRole>,
+      },
+      {
+        path: '*',
+        element: <RoleHomeRedirect />,
       },
     ],
   },

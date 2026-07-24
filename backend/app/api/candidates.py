@@ -414,7 +414,7 @@ def list_candidates():
 
 @bp.get("/candidates/owner-options")
 @require_auth
-@require_role("manager", "admin")
+@require_role("manager", "admin", "interviewer")
 def candidate_owner_options():
     recruiters = (
         User.query

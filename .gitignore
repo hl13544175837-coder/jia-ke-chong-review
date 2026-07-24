@@ -3,6 +3,9 @@
 *.env
 !*.env.example
 backend/.env
+# Isolated MySQL pilot credentials and generated acceptance manifests.
+runtime/mysql-pilot.env
+runtime/mysql-pilot-acceptance/
 
 # ── Python ───────────────────────────────────────────────
 __pycache__/

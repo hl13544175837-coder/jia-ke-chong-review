@@ -48,6 +48,8 @@ const businessReviewApi = read('readdy-frontend/src/features/businessReviews/api
 for (const method of ['listMine', 'listForHr', 'getTask', 'createTask', 'decideTask', 'loadResume', 'downloadResume']) {
   assert.match(businessReviewApi, new RegExp(method), `业务筛选接口层必须提供 ${method}`);
 }
+assert.match(businessReviewApi, /Array\.isArray/, '业务筛选列表接口必须兼容后端数组响应');
+assert.match(businessReviewApi, /items:\s*items/, '业务筛选列表必须统一转换为 items/total 结构');
 
 const interviewApi = read('readdy-frontend/src/features/interviews/api.ts');
 for (const method of ['listMyAssignments', 'listFeedback', 'saveFeedback', 'updateFeedback']) {
@@ -78,5 +80,7 @@ const interviewTypes = read('readdy-frontend/src/features/interviews/types.ts');
 for (const state of ['satisfied', 'pending', 'unsatisfied']) {
   assert.match(interviewTypes, new RegExp(`['"]${state}['"]`), `满意程度缺少 ${state}`);
 }
+assert.match(interviewTypes, /InterviewFeedbackMutationResult/, '评价保存结果必须与完整详情分开建模');
+assert.match(interviewTypes, /updated_by_name/, '面试评价必须包含最后修改人名称');
 
 console.log('readdy_mysql_pilot_contract: OK');

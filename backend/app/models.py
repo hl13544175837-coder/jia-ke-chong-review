@@ -1,3 +1,5 @@
+from sqlalchemy import event, inspect
+
 from . import db
 from .time_utils import utc_now
 
@@ -143,6 +145,14 @@ class RecruitmentDemand(db.Model):
     priority = db.Column(db.String(1), default="B", nullable=False)
     headcount = db.Column(db.Integer, default=1, nullable=False)
     status = db.Column(db.String(20), default="active", nullable=False)
+    approval_status = db.Column(db.String(20), default="approved", nullable=False)
+    submitted_at = db.Column(db.DateTime)
+    reviewed_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+    )
+    reviewed_at = db.Column(db.DateTime)
+    review_reason = db.Column(db.Text)
     close_reason = db.Column(db.Text)
     closed_at = db.Column(db.DateTime)
     closed_by = db.Column(db.Integer, db.ForeignKey("users.id"))
@@ -155,6 +165,72 @@ class RecruitmentDemand(db.Model):
         "CandidateDemandFlow",
         back_populates="demand",
         foreign_keys="CandidateDemandFlow.demand_id",
+    )
+
+
+class BusinessReviewTask(db.Model):
+    __tablename__ = "business_review_tasks"
+    __table_args__ = (
+        db.Index(
+            "ix_business_reviews_org_reviewer_status",
+            "org_id",
+            "reviewer_id",
+            "status",
+        ),
+        db.Index(
+            "ix_business_reviews_org_demand_candidate",
+            "org_id",
+            "demand_id",
+            "candidate_id",
+        ),
+        db.Index(
+            "uq_business_reviews_pending_slot",
+            "org_id",
+            "demand_id",
+            "candidate_id",
+            "pending_slot",
+            unique=True,
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, default=1, nullable=False)
+    demand_id = db.Column(
+        db.Integer,
+        db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    candidate_id = db.Column(
+        db.Integer,
+        db.ForeignKey("candidates.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    reviewer_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    status = db.Column(db.String(20), default="pending", nullable=False)
+    pending_slot = db.Column(db.Integer, default=1)
+    hr_note = db.Column(db.Text)
+    business_note = db.Column(db.Text)
+    due_at = db.Column(db.DateTime)
+    created_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    decided_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+    )
+    decided_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
     )
 
 
@@ -675,6 +751,61 @@ class InterviewFeedback(db.Model):
     evaluation_json = db.Column(db.JSON)
     note = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utc_now)
+    updated_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+
+
+@event.listens_for(db.metadata, "before_create")
+def _ensure_local_pilot_columns(_metadata, connection, **_kwargs):
+    """Keep explicit local SQLite create_all compatibility additive."""
+    if connection.dialect.name != "sqlite":
+        return
+
+    inspector = inspect(connection)
+    if inspector.has_table("recruitment_demands"):
+        demand_columns = {
+            column["name"]
+            for column in inspector.get_columns("recruitment_demands")
+        }
+        demand_definitions = {
+            "approval_status": "VARCHAR(20) NOT NULL DEFAULT 'approved'",
+            "submitted_at": "DATETIME",
+            "reviewed_by": "INTEGER",
+            "reviewed_at": "DATETIME",
+            "review_reason": "TEXT",
+        }
+        for column_name, definition in demand_definitions.items():
+            if column_name not in demand_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE recruitment_demands "
+                    f"ADD COLUMN {column_name} {definition}"
+                )
+
+    if inspector.has_table("interview_feedback"):
+        feedback_columns = {
+            column["name"]
+            for column in inspector.get_columns("interview_feedback")
+        }
+        if "updated_by" not in feedback_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE interview_feedback ADD COLUMN updated_by INTEGER"
+            )
+        if "updated_at" not in feedback_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE interview_feedback ADD COLUMN updated_at DATETIME"
+            )
+            connection.exec_driver_sql(
+                "UPDATE interview_feedback SET updated_at = CURRENT_TIMESTAMP "
+                "WHERE updated_at IS NULL"
+            )
 
 
 class BossAccount(db.Model):

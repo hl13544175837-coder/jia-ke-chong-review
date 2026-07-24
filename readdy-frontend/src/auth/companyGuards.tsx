@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useCompanyAuth, type CompanyRole } from './companyAuth';
+import { useCompanyAuth } from './companyAuth';
+import { useProductRole } from './productRole';
+import { homePathForRole, type ProductRole } from './productRoleModel';
 
 export function RequireCompanyAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useCompanyAuth();
@@ -13,8 +15,9 @@ export function RequireCompanyAuth({ children }: { children: ReactNode }) {
 
 export function RequireCompanyGuest({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useCompanyAuth();
+  const { role } = useProductRole();
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={homePathForRole(role)} replace />;
   }
   return <>{children}</>;
 }
@@ -23,10 +26,10 @@ export function RequireCompanyRole({
   allow,
   children,
 }: {
-  allow: CompanyRole[];
+  allow: ProductRole[];
   children: ReactNode;
 }) {
-  const { role } = useCompanyAuth();
+  const { role } = useProductRole();
   const location = useLocation();
   if (role && !allow.includes(role)) {
     return (
@@ -54,5 +57,6 @@ export function RequireCompanyRole({
 
 export function CompanyHomeRedirect() {
   const { isAuthenticated } = useCompanyAuth();
-  return <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />;
+  const { role } = useProductRole();
+  return <Navigate to={isAuthenticated ? homePathForRole(role) : '/login'} replace />;
 }

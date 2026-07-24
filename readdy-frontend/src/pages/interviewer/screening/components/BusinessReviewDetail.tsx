@@ -1,0 +1,303 @@
+import { useEffect, useRef, useState } from 'react';
+import {
+  AlertCircle,
+  BriefcaseBusiness,
+  CalendarClock,
+  Download,
+  ExternalLink,
+  FileText,
+  LoaderCircle,
+  MessageSquareText,
+  UserRound,
+} from 'lucide-react';
+import { businessReviewsApi } from '@/features/businessReviews/api';
+import type { BusinessReviewTask } from '@/features/businessReviews/types';
+
+interface BusinessReviewDetailProps {
+  task: BusinessReviewTask;
+  onReview?: () => void;
+}
+
+const resumeLabels: Record<string, string> = {
+  name: '姓名',
+  name_masked: '姓名',
+  phone: '联系电话',
+  email: '邮箱',
+  summary: '个人概述',
+  education: '教育经历',
+  education_experience: '教育经历',
+  work_experience: '工作经历',
+  experience: '工作经历',
+  project_experience: '项目经历',
+  projects: '项目经历',
+  skills: '技能',
+  certificates: '证书',
+};
+
+function formatDate(value: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
+function readableValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '未填写';
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '未填写';
+    return value
+      .map((item) => (typeof item === 'object' && item !== null ? JSON.stringify(item, null, 2) : String(item)))
+      .join('\n');
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function actionError(error: unknown) {
+  return error instanceof Error ? error.message : '原版简历读取失败';
+}
+
+export default function BusinessReviewDetail({ task, onReview }: BusinessReviewDetailProps) {
+  const [resumeAction, setResumeAction] = useState<'preview' | 'download' | null>(null);
+  const [resumeError, setResumeError] = useState('');
+  const objectUrls = useRef(new Set<string>());
+  const revokeTimers = useRef(new Set<number>());
+
+  useEffect(() => () => {
+    revokeTimers.current.forEach((timer) => window.clearTimeout(timer));
+    objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    revokeTimers.current.clear();
+    objectUrls.current.clear();
+  }, []);
+
+  const resumeEntries = Object.entries(task.candidate.resume_json ?? {});
+  const originalResume = task.candidate.original_resume;
+  const focusPoints = task.demand.focus_points ?? [];
+
+  const handleOriginalResume = async (mode: 'preview' | 'download') => {
+    if (!originalResume.available || resumeAction) return;
+    setResumeAction(mode);
+    setResumeError('');
+    let objectUrl: string | null = null;
+
+    try {
+      const blob = mode === 'preview'
+        ? await businessReviewsApi.loadResume(task.candidate_id)
+        : await businessReviewsApi.downloadResume(task.candidate_id);
+      objectUrl = URL.createObjectURL(blob);
+      objectUrls.current.add(objectUrl);
+
+      if (mode === 'preview') {
+        const previewWindow = window.open(objectUrl, '_blank');
+        if (!previewWindow) {
+          URL.revokeObjectURL(objectUrl);
+          objectUrls.current.delete(objectUrl);
+          objectUrl = null;
+          throw new Error('浏览器阻止了新标签页，请允许弹出窗口后重试');
+        }
+        previewWindow.opener = null;
+      } else {
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = originalResume.filename || `candidate-${task.candidate_id}-resume`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+
+      const delay = mode === 'preview' ? 60_000 : 1_000;
+      const urlToRevoke = objectUrl;
+      const timer = window.setTimeout(() => {
+        URL.revokeObjectURL(urlToRevoke);
+        objectUrls.current.delete(urlToRevoke);
+        revokeTimers.current.delete(timer);
+      }, delay);
+      revokeTimers.current.add(timer);
+      objectUrl = null;
+    } catch (error) {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        objectUrls.current.delete(objectUrl);
+      }
+      setResumeError(actionError(error));
+    } finally {
+      setResumeAction(null);
+    }
+  };
+
+  return (
+    <div className="pb-24">
+      <section className="border-b border-background-200 px-5 py-5 sm:px-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-primary-50 text-lg font-bold text-primary-700">
+              {task.candidate.name_masked.charAt(0) || '候'}
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-bold text-foreground-900">{task.candidate.name_masked}</h2>
+              <p className="mt-0.5 text-sm text-foreground-500">
+                {task.demand.job_title} · {task.demand.request_no || `需求 #${task.demand_id}`}
+              </p>
+            </div>
+          </div>
+          {task.status === 'pending' && onReview && (
+            <button
+              type="button"
+              onClick={onReview}
+              className="inline-flex min-h-10 items-center justify-center rounded-lg bg-primary-600 px-4 text-sm font-medium text-white hover:bg-primary-700"
+            >
+              提交筛选结果
+            </button>
+          )}
+        </div>
+
+        <dl className="mt-5 grid gap-3 border-t border-background-100 pt-4 text-xs sm:grid-cols-3">
+          <div>
+            <dt className="flex items-center gap-1.5 text-foreground-400"><UserRound size={13} /> 推送人</dt>
+            <dd className="mt-1 text-foreground-700">{task.created_by_name || '招聘专员'}</dd>
+          </div>
+          <div>
+            <dt className="flex items-center gap-1.5 text-foreground-400"><CalendarClock size={13} /> 推送时间</dt>
+            <dd className="mt-1 text-foreground-700">{formatDate(task.created_at)}</dd>
+          </div>
+          <div>
+            <dt className="flex items-center gap-1.5 text-foreground-400"><CalendarClock size={13} /> 处理截止</dt>
+            <dd className="mt-1 text-foreground-700">{formatDate(task.due_at)}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="border-b border-background-200 px-5 py-5 sm:px-6">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
+          <MessageSquareText size={16} aria-hidden="true" /> HR 备注
+        </h3>
+        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground-700">
+          {task.hr_note || 'HR 未填写筛选备注'}
+        </p>
+        {task.status !== 'pending' && (
+          <div className="mt-4 border-t border-background-100 pt-4">
+            <p className="text-xs font-medium text-foreground-500">业务筛选备注 · {formatDate(task.decided_at)}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground-700">
+              {task.business_note || '未填写'}
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="border-b border-background-200 px-5 py-5 sm:px-6">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
+          <BriefcaseBusiness size={16} aria-hidden="true" /> 岗位需求与完整 JD
+        </h3>
+        <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+          <div>
+            <dt className="text-xs text-foreground-400">部门</dt>
+            <dd className="mt-1 text-foreground-700">{task.demand.department || '未填写'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-foreground-400">城市</dt>
+            <dd className="mt-1 text-foreground-700">{task.demand.city || '未填写'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-foreground-400">岗位</dt>
+            <dd className="mt-1 text-foreground-700">{task.demand.job_title}</dd>
+          </div>
+        </dl>
+
+        <div className="mt-5">
+          <p className="text-xs font-medium text-foreground-500">考察重点</p>
+          {focusPoints.length > 0 ? (
+            <ul className="mt-2 space-y-2">
+              {focusPoints.map((point, index) => (
+                <li key={`${point}-${index}`} className="flex gap-2 text-sm leading-6 text-foreground-700">
+                  <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary-500" />
+                  <span>{point}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-foreground-500">未配置考察重点</p>
+          )}
+        </div>
+
+        <div className="mt-5">
+          <p className="text-xs font-medium text-foreground-500">完整 JD</p>
+          <div className="mt-2 whitespace-pre-wrap border-l-2 border-primary-200 pl-4 text-sm leading-7 text-foreground-700">
+            {task.demand.jd_text || '未填写岗位 JD'}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 py-5 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
+              <FileText size={16} aria-hidden="true" /> 候选人结构化简历
+            </h3>
+            <p className="mt-1 text-xs text-foreground-500">解析状态：{task.candidate.parse_status || '未知'}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              title="在当前浏览器的新标签页预览原版简历"
+              disabled={!originalResume.available || resumeAction !== null}
+              onClick={() => void handleOriginalResume('preview')}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-background-300 bg-white px-3 text-xs font-medium text-foreground-700 hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {resumeAction === 'preview' ? <LoaderCircle className="animate-spin" size={14} /> : <ExternalLink size={14} />}
+              预览原版
+            </button>
+            <button
+              type="button"
+              title="下载原版简历"
+              disabled={!originalResume.available || resumeAction !== null}
+              onClick={() => void handleOriginalResume('download')}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-background-300 bg-white px-3 text-xs font-medium text-foreground-700 hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {resumeAction === 'download' ? <LoaderCircle className="animate-spin" size={14} /> : <Download size={14} />}
+              下载原版
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-3 text-xs text-foreground-500">
+          {originalResume.available
+            ? `原版文件：${originalResume.filename || '未命名文件'}`
+            : '当前候选人没有可用的原版简历文件'}
+        </div>
+        {resumeError && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+            <AlertCircle size={14} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <span>{resumeError}</span>
+          </div>
+        )}
+
+        {resumeEntries.length > 0 ? (
+          <dl className="mt-4 divide-y divide-background-100 border-y border-background-200">
+            {resumeEntries.map(([key, value]) => (
+              <div key={key} className="grid gap-1 py-3 text-sm sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-4">
+                <dt className="text-xs font-medium text-foreground-500">{resumeLabels[key] || key}</dt>
+                <dd className="whitespace-pre-wrap break-words leading-6 text-foreground-700">{readableValue(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <div className="mt-4 border-y border-background-200 py-6 text-center text-sm text-foreground-500">
+            暂无结构化简历信息，可使用原版简历核对。
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}

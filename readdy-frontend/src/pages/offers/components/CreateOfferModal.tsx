@@ -1,195 +1,213 @@
-import { useState, useMemo } from 'react';
-import { candidateList } from '@/mocks/candidates';
+import { useEffect, useMemo, useState } from 'react';
+import { candidatesApi } from '@/features/candidates/api';
+import type { CandidateListItem } from '@/features/candidates/types';
+import type { RecruitmentDemand } from '@/features/demands/types';
+import { offersApi } from '@/features/offers/api';
+import type { OfferRecord } from '@/features/offers/types';
 
 interface Props {
-  show: boolean;
-  preFill: { candidateName: string; candidateAvatar: string; position: string; department: string; reqId: string; reqName: string } | null;
+  offer: OfferRecord | null;
+  demands: RecruitmentDemand[];
   onClose: () => void;
-  onCreate: (data: { salary: string; startDate: string; notes: string; candidateName: string; candidateAvatar: string; position: string; department: string; reqId: string; reqName: string }) => void;
+  onSaved: (offer: OfferRecord) => void;
 }
 
-const eligibleStages = ['终面', '谈薪中', '沟通中', 'Offer发放中', '正式到岗中'];
+export default function CreateOfferModal({ offer, demands, onClose, onSaved }: Props) {
+  const [demandId, setDemandId] = useState(offer ? String(offer.demand_id) : '');
+  const [candidateId, setCandidateId] = useState(offer ? String(offer.candidate_id) : '');
+  const [salaryRange, setSalaryRange] = useState(offer?.salary_range ?? '');
+  const [onboardDate, setOnboardDate] = useState(offer?.onboard_date ?? '');
+  const [note, setNote] = useState(offer?.note ?? '');
+  const [candidates, setCandidates] = useState<CandidateListItem[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidatesError, setCandidatesError] = useState('');
+  const [candidateReloadKey, setCandidateReloadKey] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
 
-export default function CreateOfferModal({ show, preFill, onClose, onCreate }: Props) {
-  const [selectedCandidateId, setSelectedCandidateId] = useState<number | null>(null);
-  const [salary, setSalary] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [notes, setNotes] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const approvedDemands = useMemo(
+    () => demands.filter((demand) => demand.approval_status === 'approved' && demand.status === 'active'),
+    [demands],
+  );
 
-  const eligibleCandidates = useMemo(() => {
-    return candidateList.filter(c => eligibleStages.some(s => c.stage.includes(s)));
-  }, []);
+  useEffect(() => {
+    if (offer || !demandId) {
+      setCandidates([]);
+      setCandidatesError('');
+      return;
+    }
 
-  const filteredCandidates = useMemo(() => {
-    if (!searchTerm) return eligibleCandidates;
-    return eligibleCandidates.filter(c =>
-      c.name.includes(searchTerm) || c.position.includes(searchTerm)
-    );
-  }, [eligibleCandidates, searchTerm]);
+    let cancelled = false;
+    setCandidatesLoading(true);
+    setCandidatesError('');
+    void candidatesApi.listCandidates({
+      demand_id: Number(demandId),
+      stage: 'offer',
+      page: 1,
+      per_page: 100,
+    }).then((response) => {
+      if (cancelled) return;
+      setCandidates(response.candidates.filter((candidate) => candidate.current_stage === 'offer'));
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setCandidates([]);
+      setCandidatesError(error instanceof Error ? error.message : '加载候选人失败');
+    }).finally(() => {
+      if (!cancelled) setCandidatesLoading(false);
+    });
 
-  const selectedCandidate = useMemo(() => {
-    return candidateList.find(c => c.id === selectedCandidateId) || null;
-  }, [selectedCandidateId]);
+    return () => { cancelled = true; };
+  }, [candidateReloadKey, demandId, offer]);
 
-  const handleCreate = () => {
-    if (preFill) {
-      onCreate({
-        salary, startDate, notes,
-        candidateName: preFill.candidateName,
-        candidateAvatar: preFill.candidateAvatar,
-        position: preFill.position,
-        department: preFill.department,
-        reqId: preFill.reqId,
-        reqName: preFill.reqName,
+  const saveDraft = async () => {
+    const selectedDemandId = Number(demandId);
+    const selectedCandidateId = Number(candidateId);
+    if (!selectedDemandId || !selectedCandidateId || !salaryRange.trim()) {
+      setFormError('请选择招聘需求、候选人并填写薪酬方案');
+      return;
+    }
+
+    setSaving(true);
+    setFormError('');
+    try {
+      const saved = await offersApi.saveDraft(selectedDemandId, selectedCandidateId, {
+        salary_range: salaryRange.trim(),
+        onboard_date: onboardDate || null,
+        note: note.trim(),
       });
-    } else if (selectedCandidate) {
-      onCreate({
-        salary, startDate, notes,
-        candidateName: selectedCandidate.name,
-        candidateAvatar: selectedCandidate.name.charAt(0),
-        position: selectedCandidate.position,
-        department: selectedCandidate.department,
-        reqId: `REQ-${Date.now().toString(36).toUpperCase()}`,
-        reqName: selectedCandidate.position,
-      });
+      onSaved(saved);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : '保存 Offer 草稿失败');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const canSubmit = (preFill ? true : !!selectedCandidateId) && salary && startDate;
-
-  if (!show) return null;
+  const selectedDemand = demands.find((demand) => demand.id === Number(demandId));
 
   return (
-    <div className="fixed inset-0 bg-foreground-900/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-background-200 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-foreground-900">发起 Offer</h3>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-foreground-400 hover:text-foreground-600 hover:bg-background-100 transition-colors cursor-pointer">
-            <i className="ri-close-line text-lg"></i>
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          {preFill ? (
-            <div className="flex items-center gap-3 bg-primary-50 border border-primary-200 rounded-lg p-3">
-              <i className="ri-information-line text-primary-500 text-lg flex-shrink-0"></i>
-              <div>
-                <p className="text-sm font-medium text-primary-700">从面试结果推进</p>
-                <p className="text-xs text-primary-600 mt-0.5">已自动填充候选人信息，请填写薪酬后发起</p>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <label className="text-xs font-medium text-foreground-600 mb-1.5 block">选择候选人</label>
-              <p className="text-[11px] text-foreground-400 mb-2">仅显示已通过终面或进入Offer阶段的候选人</p>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="搜索候选人姓名或岗位..."
-                className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300 mb-2"
-              />
-              <div className="max-h-48 overflow-y-auto border border-background-200 rounded-lg">
-                {filteredCandidates.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedCandidateId(c.id)}
-                    className={`w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-background-50 transition-colors cursor-pointer border-b border-background-100 last:border-0 ${
-                      selectedCandidateId === c.id ? 'bg-primary-50 border-l-2 border-l-primary-500' : ''
-                    }`}
-                  >
-                    <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-semibold text-primary-600">{c.name.charAt(0)}</span>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground-900">{c.name}</p>
-                      <p className="text-xs text-foreground-400">{c.position} · {c.department} · {c.stage}</p>
-                    </div>
-                  </button>
-                ))}
-                {filteredCandidates.length === 0 && (
-                  <p className="text-sm text-foreground-400 text-center py-4">暂无符合条件的候选人</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {(preFill || selectedCandidate) && (
-            <>
-              <div className="flex items-center gap-3 bg-background-50 rounded-lg p-3">
-                <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm font-semibold text-primary-600">
-                    {preFill ? preFill.candidateAvatar : selectedCandidate?.name.charAt(0)}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground-900">
-                    {preFill ? preFill.candidateName : selectedCandidate?.name}
-                  </p>
-                  <p className="text-xs text-foreground-400">
-                    {preFill ? preFill.position : selectedCandidate?.position} · {preFill ? preFill.department : selectedCandidate?.department}
-                  </p>
-                  {preFill?.reqName && (
-                    <p className="text-xs text-foreground-400">需求：{preFill.reqName}</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-foreground-600 mb-1 block">税前月薪（元）</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-foreground-400">¥</span>
-                  <input
-                    type="number"
-                    value={salary}
-                    onChange={(e) => setSalary(e.target.value)}
-                    placeholder="请输入税前月薪"
-                    className="w-full pl-7 pr-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-foreground-600 mb-1 block">预计入职日期</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-foreground-600 mb-1 block">审批备注</label>
-                <textarea
-                  rows={3}
-                  maxLength={500}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-50 resize-none"
-                  placeholder="请输入薪酬建议、定薪理由等..."
-                />
-              </div>
-            </>
-          )}
-
-          <div className="flex gap-3 pt-2">
-            <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-background-200 text-foreground-700 rounded-lg text-sm font-medium hover:bg-background-50 transition-colors cursor-pointer whitespace-nowrap">
-              取消
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={!canSubmit}
-              className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                canSubmit ? 'bg-primary-500 text-white hover:bg-primary-600' : 'bg-background-200 text-foreground-400 cursor-not-allowed'
-              }`}
-            >
-              <i className="ri-send-plane-line mr-1.5"></i>发起 Offer
-            </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground-900/40 p-4" role="presentation" onMouseDown={saving ? undefined : onClose}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="offer-form-title"
+        className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-start justify-between border-b border-background-200 px-5 py-4">
+          <div>
+            <h2 id="offer-form-title" className="text-base font-semibold text-foreground-900">{offer ? '编辑 Offer 草稿' : '新建 Offer 草稿'}</h2>
+            <p className="mt-1 text-xs text-foreground-500">保存后仍需提交审批，不会直接发放。</p>
           </div>
+          <button type="button" onClick={onClose} disabled={saving} aria-label="关闭" className="h-8 w-8 rounded-lg text-foreground-500 hover:bg-background-100 disabled:opacity-50">
+            <i className="ri-close-line text-lg" aria-hidden="true"></i>
+          </button>
+        </header>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+          <label className="block text-sm font-medium text-foreground-700">
+            招聘需求
+            <select
+              value={demandId}
+              disabled={Boolean(offer)}
+              onChange={(event) => { setDemandId(event.target.value); setCandidateId(''); setFormError(''); }}
+              className="mt-1.5 h-10 w-full rounded-lg border border-background-300 bg-white px-3 text-sm outline-none focus:border-primary-400 disabled:bg-background-100"
+            >
+              <option value="">请选择已审核通过的需求</option>
+              {offer && selectedDemand && !approvedDemands.some((demand) => demand.id === selectedDemand.id) && (
+                <option value={selectedDemand.id}>{selectedDemand.job_title} · {selectedDemand.request_no}</option>
+              )}
+              {approvedDemands.map((demand) => (
+                <option key={demand.id} value={demand.id}>
+                  {demand.job_title} · {demand.request_no} · {demand.requester_department || '未填部门'}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block text-sm font-medium text-foreground-700">
+            候选人
+            <select
+              value={candidateId}
+              disabled={Boolean(offer) || !demandId || candidatesLoading || Boolean(candidatesError)}
+              onChange={(event) => { setCandidateId(event.target.value); setFormError(''); }}
+              className="mt-1.5 h-10 w-full rounded-lg border border-background-300 bg-white px-3 text-sm outline-none focus:border-primary-400 disabled:bg-background-100"
+            >
+              <option value="">{candidatesLoading ? '正在加载候选人...' : '请选择 Offer 阶段候选人'}</option>
+              {offer && <option value={offer.candidate_id}>{offer.candidate_name}</option>}
+              {!offer && candidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>{candidate.name_masked}</option>
+              ))}
+            </select>
+          </label>
+
+          {candidatesError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <p>{candidatesError}</p>
+              <button type="button" onClick={() => setCandidateReloadKey((value) => value + 1)} className="mt-1 font-medium underline">重新加载候选人</button>
+            </div>
+          )}
+          {!offer && demandId && !candidatesLoading && !candidatesError && candidates.length === 0 && (
+            <p className="rounded-lg bg-background-50 px-3 py-2 text-xs text-foreground-500">该需求当前没有进入 Offer 阶段的候选人。</p>
+          )}
+
+          {(offer || candidateId) && (
+            <div className="rounded-lg border border-background-200 bg-background-50 px-3 py-3">
+              <p className="text-sm font-medium text-foreground-800">{offer?.candidate_name || candidates.find((candidate) => candidate.id === Number(candidateId))?.name_masked}</p>
+              <p className="mt-1 text-xs text-foreground-500">{selectedDemand?.job_title || offer?.position} · {selectedDemand?.request_no || offer?.request_no}</p>
+            </div>
+          )}
+
+          <label className="block text-sm font-medium text-foreground-700">
+            薪酬方案
+            <input
+              value={salaryRange}
+              onChange={(event) => { setSalaryRange(event.target.value); setFormError(''); }}
+              maxLength={120}
+              placeholder="例如：30-35K × 14薪"
+              className="mt-1.5 h-10 w-full rounded-lg border border-background-300 px-3 text-sm outline-none focus:border-primary-400"
+            />
+          </label>
+
+          <label className="block text-sm font-medium text-foreground-700">
+            预计入职日期
+            <input
+              type="date"
+              value={onboardDate}
+              onChange={(event) => setOnboardDate(event.target.value)}
+              className="mt-1.5 h-10 w-full rounded-lg border border-background-300 px-3 text-sm outline-none focus:border-primary-400"
+            />
+          </label>
+
+          <label className="block text-sm font-medium text-foreground-700">
+            备注
+            <textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              maxLength={2000}
+              rows={4}
+              placeholder="填写定薪依据、沟通情况等"
+              className="mt-1.5 w-full resize-none rounded-lg border border-background-300 px-3 py-2 text-sm outline-none focus:border-primary-400"
+            />
+            <span className="mt-1 block text-right text-xs text-foreground-400">{note.length}/2000</span>
+          </label>
+
+          {formError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>}
         </div>
-      </div>
+
+        <footer className="flex justify-end gap-2 border-t border-background-200 px-5 py-4">
+          <button type="button" onClick={onClose} disabled={saving} className="h-9 rounded-lg border border-background-300 px-4 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-50">取消</button>
+          <button
+            type="button"
+            onClick={() => void saveDraft()}
+            disabled={saving || candidatesLoading || Boolean(candidatesError) || !demandId || !candidateId || !salaryRange.trim()}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-500 px-4 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving && <i className="ri-loader-4-line animate-spin" aria-hidden="true"></i>}
+            保存草稿
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }

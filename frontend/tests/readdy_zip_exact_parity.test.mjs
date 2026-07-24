@@ -80,14 +80,53 @@ const approvedCompanySecurityReplacements = [
   'pages/login/page.tsx\tinput\tname@company.com',
   'pages/login/page.tsx\tbutton\t{( <> <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> 登录中... </> )} / {( <> 登 录 <i className="ri-arrow-right-line"></i> </> )}',
 ];
-const approvedMissing = missing.filter((line) =>
-  approvedCompanySecurityReplacements.some((key) => line.startsWith(`${key} (`))
+// 第一阶段真实 Demand 接线要求替换 4 个演示控件标签：
+// 创建表单新增真实负责人/用人负责人字段，负责人选项来自后端，
+// 创建与状态按钮增加提交中状态和必填操作原因。控件仍保留，只替换演示语义。
+const approvedDemandBackendReplacements = [
+  'pages/jobs/components/RequisitionForm.tsx\tform\t基本信息 职位名称 * 所属部门 * 请选择部门 技术研发部 产品部 设计部 数据部 市场部 人力资源部 招聘城市 * 选择省份 {provinceCityData.map((p) => ( <option key={p.name} value={p.name}>{p.name}</option> ))} 选择城市 {cities.map((c) => ( <option key={c} value={c}>{c}</option> ))} HC 人数 * 招聘负责人 请选择',
+  'pages/jobs/components/RequisitionForm.tsx\tselect\t请选择 招聘专员01 招聘专员02 系统管理员',
+  'pages/jobs/components/RequisitionForm.tsx\tbutton\t创建需求',
+  'pages/jobs/components/RequisitionTable.tsx\tbutton\t确认',
+];
+// 试点范围明确隐藏 AI 助手入口。页面源码和路由保留给研发后续接真实接口，
+// 但主壳不再渲染右下角浮动 Link，因此批准少 1 个 MainLayout Link 控件。
+const approvedPilotHiddenControls = [
+  'components/feature/MainLayout.tsx\tLink\tcomponents/feature/MainLayout.tsx\tLink controls',
+];
+// 这些页面已经从演示版替换为真实试点流程，由各自的 mysql_pilot_* 契约测试覆盖。
+// 未改造页面仍继续执行逐控件 ZIP 对比，所有页面仍执行下方死按钮和占位检查。
+const approvedPilotRewriteFiles = [
+  'pages/candidates/components/PushToReviewerModal.tsx',
+  'pages/candidates/page.tsx',
+  'pages/interviewer/dashboard/components/ReviewActionModal.tsx',
+  'pages/interviewer/interviews/page.tsx',
+  'pages/interviewer/jobs/page.tsx',
+  'pages/interviewer/screening/page.tsx',
+  'pages/jobs/page.tsx',
+  'pages/kanban/page.tsx',
+  'pages/offers/components/CreateOfferModal.tsx',
+  'pages/offers/components/OfferDetailDrawer.tsx',
+  'pages/offers/components/OfferTable.tsx',
+  'pages/offers/page.tsx',
+];
+const approvedReplacements = [
+  ...approvedCompanySecurityReplacements,
+  ...approvedDemandBackendReplacements,
+  ...approvedPilotHiddenControls,
+];
+const rewrittenMissing = missing.filter((line) =>
+  approvedPilotRewriteFiles.some((file) => line.startsWith(`${file}\t`))
 );
-const unapprovedMissing = missing.filter((line) => !approvedMissing.includes(line));
+const parityMissing = missing.filter((line) => !rewrittenMissing.includes(line));
+const approvedMissing = parityMissing.filter((line) =>
+  approvedReplacements.some((key) => line.startsWith(`${key} (`))
+);
+const unapprovedMissing = parityMissing.filter((line) => !approvedMissing.includes(line));
 assert.equal(
   approvedMissing.length,
-  approvedCompanySecurityReplacements.length,
-  '公司鉴权替换清单与 Readdy 原始控件不一致',
+  approvedReplacements.length,
+  '已批准的公司鉴权或真实 Demand 替换清单与 Readdy 原始控件不一致',
 );
 assert.deepEqual(
   unapprovedMissing,
@@ -122,7 +161,7 @@ for (const expectedRoute of [
   '/dashboard', '/dashboard/interviews', '/dashboard/hired', '/dashboard/cycle',
   '/dashboard/offers', '/jobs', '/candidates', '/talent-map', '/kanban', '/interviews',
   '/offers', '/kpi-standards', '/analytics', '/ai-assistant', '/settings',
-  '/interviewer/dashboard', '/interviewer/interviews', '/interviewer/candidates',
+  '/interviewer/dashboard', '/interviewer/interviews',
   '/interviewer/jobs', '/interviewer/screening', '/director/cockpit', '/director/progress',
   '/director/insights', '/director/approvals',
 ]) {
@@ -135,5 +174,6 @@ for (const format of ['image/jpeg', 'image/png', 'image/webp', 'image/gif', '.zi
 
 console.log(
   `readdy ZIP parity passed: ${reference.controls.length} controls covered; `
-  + `${approvedMissing.length} insecure demo labels replaced by company auth`,
+  + `${approvedMissing.length} demo labels replaced and ${rewrittenMissing.length} legacy controls `
+  + 'covered by real pilot page contracts',
 );

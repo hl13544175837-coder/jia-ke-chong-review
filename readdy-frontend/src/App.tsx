@@ -7,6 +7,7 @@ import i18n from "./i18n";
 import { ToastProvider } from "@/hooks/useToast";
 import { CompanyAuthProvider, useCompanyAuth } from "@/auth/companyAuth";
 import { CompanyPermissionsProvider } from "@/auth/companyPermissions";
+import { ProductRoleProvider } from "@/auth/productRole";
 
 type BrowserRouterFutureProps = BrowserRouterProps & {
   future: {
@@ -34,11 +35,13 @@ function App() {
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <CompanyAuthProvider>
-          <CompanySecurityBoundary>
-            <ToastProvider>
-              <AppRoutes />
-            </ToastProvider>
-          </CompanySecurityBoundary>
+          <ProductRoleProvider>
+            <CompanySecurityBoundary>
+              <ToastProvider>
+                <AppRoutes />
+              </ToastProvider>
+            </CompanySecurityBoundary>
+          </ProductRoleProvider>
         </CompanyAuthProvider>
       </FutureBrowserRouter>
     </I18nextProvider>

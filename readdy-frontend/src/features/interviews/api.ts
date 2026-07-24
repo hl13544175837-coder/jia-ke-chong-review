@@ -3,6 +3,7 @@ import type {
   InterviewAssignment,
   InterviewFeedback,
   InterviewFeedbackInput,
+  InterviewFeedbackMutationResult,
   InterviewFeedbackUpdateInput,
 } from './types';
 
@@ -20,7 +21,7 @@ export const interviewsApi = {
   saveFeedback(
     payload: InterviewFeedbackInput,
     idempotencyKey = crypto.randomUUID(),
-  ): Promise<InterviewFeedback> {
+  ): Promise<InterviewFeedbackMutationResult> {
     return apiRequest('/interview/feedback', {
       method: 'POST',
       body: payload,
@@ -31,7 +32,7 @@ export const interviewsApi = {
     feedbackId: number,
     payload: InterviewFeedbackUpdateInput,
     idempotencyKey = crypto.randomUUID(),
-  ): Promise<InterviewFeedback> {
+  ): Promise<InterviewFeedbackMutationResult> {
     return apiRequest(`/interview/feedback/${feedbackId}`, {
       method: 'PATCH',
       body: payload,

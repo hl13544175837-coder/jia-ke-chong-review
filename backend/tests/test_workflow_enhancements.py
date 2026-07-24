@@ -159,8 +159,13 @@ def test_candidate_owner_options_and_reassignment_reason(client, make_user, app)
     assert {"id": recruiter_id, "name": "招聘专员A", "email": "owner-recruiter@x.com"} in options
     assert all(option["id"] != inactive_id for option in options)
 
-    forbidden_response = client.get("/api/candidates/owner-options", headers=_auth(interviewer_token))
-    assert forbidden_response.status_code == 403
+    business_response = client.get(
+        "/api/candidates/owner-options", headers=_auth(interviewer_token)
+    )
+    assert business_response.status_code == 200
+    assert business_response.get_json() == [
+        {"id": recruiter_id, "name": "招聘专员A", "email": "owner-recruiter@x.com"}
+    ]
 
     reassign_response = client.patch(
         f"/api/candidates/{candidate_id}/owner",

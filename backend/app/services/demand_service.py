@@ -13,6 +13,7 @@ from sqlalchemy.orm import aliased
 
 from .. import db
 from ..models import Candidate, Job, PipelineStage, RecruitmentDemand, User
+from ..time_utils import utc_now
 from .demand_context_service import validate_recruiter_owner
 
 
@@ -109,6 +110,7 @@ def resolve_default_interviewer(value, *, org_id):
 
 def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
     fields = {}
+    is_business_submission = actor_role == "interviewer"
     city = clean_text(data.get("city") or data.get("job_city"), 80)
     department = clean_text(
         data.get("requester_department") or data.get("department") or data.get("job_department"),
@@ -120,6 +122,8 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
     headcount = _positive_int(data.get("headcount"))
     owner = validate_recruiter_owner(data.get("owner_hr_id"), org_id)
     raw_default_interviewer_id = data.get("default_interviewer_id")
+    if is_business_submission and raw_default_interviewer_id in (None, ""):
+        raw_default_interviewer_id = actor_id
     default_interviewer = resolve_default_interviewer(
         raw_default_interviewer_id,
         org_id=org_id,
@@ -153,7 +157,9 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
 
     title = clean_text(data.get("job_title") or data.get("title"), 200)
     jd_text = str(data.get("jd_text") or data.get("job_description") or "").strip()
-    if job is None:
+    if job is None and is_business_submission:
+        fields["job_id"] = "请选择当前组织内启用的职位模板"
+    elif job is None:
         if not title:
             fields["job_title"] = "请填写职位名称"
         if not jd_text:
@@ -164,11 +170,14 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
         if not title or not jd_text:
             fields["job_id"] = "关联职位模板缺少职位名称或 JD"
 
-    raw_status = clean_text(data.get("status") or "active", 20)
-    if raw_status not in OPEN_STATUSES:
-        fields["status"] = "新建需求状态只能是待确认、招聘中或暂停"
-    if raw_status == "paused" and not clean_text(data.get("close_reason"), 1000):
-        fields["close_reason"] = "暂停原因必填"
+    raw_status = "pending" if is_business_submission else clean_text(
+        data.get("status") or "active", 20
+    )
+    if not is_business_submission:
+        if raw_status not in OPEN_STATUSES:
+            fields["status"] = "新建需求状态只能是待确认、招聘中或暂停"
+        if raw_status == "paused" and not clean_text(data.get("close_reason"), 1000):
+            fields["close_reason"] = "暂停原因必填"
 
     request_no = normalize_request_no(data.get("request_no")) or generate_request_no()
     duplicate = RecruitmentDemand.query.filter_by(
@@ -195,6 +204,8 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
         "job_title_snapshot": title,
         "jd_text_snapshot": jd_text,
         "status": raw_status,
+        "approval_status": "pending" if is_business_submission else "approved",
+        "submitted_at": utc_now() if is_business_submission else None,
         "request_no": request_no,
     }
 
@@ -250,6 +261,8 @@ def create_demand_from_input(data, *, org_id, actor_id, actor_role, job=None):
         priority=(clean_text(data.get("priority") or "B", 1).upper()),
         headcount=values["headcount"],
         status=values["status"],
+        approval_status=values["approval_status"],
+        submitted_at=values["submitted_at"],
         close_reason=clean_text(data.get("close_reason"), 1000),
         note=clean_text(data.get("note"), 2000),
     )
@@ -258,6 +271,93 @@ def create_demand_from_input(data, *, org_id, actor_id, actor_role, job=None):
     db.session.add(demand)
     db.session.flush()
     return demand, created_job
+
+
+def apply_editable_fields(demand, data, *, org_id):
+    """Apply the shared demand edit contract without committing the transaction."""
+
+    fields = {}
+    if "request_no" in data:
+        request_no = normalize_request_no(data.get("request_no"))
+        if not request_no:
+            fields["request_no"] = "需求编号不能为空"
+        else:
+            duplicate = RecruitmentDemand.query.filter(
+                RecruitmentDemand.org_id == org_id,
+                RecruitmentDemand.request_no == request_no,
+                RecruitmentDemand.id != demand.id,
+            ).first()
+            if duplicate:
+                raise DemandRequestNoConflict()
+            demand.request_no = request_no
+    if "default_interviewer_id" in data:
+        raw_interviewer_id = data.get("default_interviewer_id")
+        if raw_interviewer_id in (None, ""):
+            demand.default_interviewer_id = None
+        else:
+            default_interviewer = resolve_default_interviewer(
+                raw_interviewer_id,
+                org_id=org_id,
+            )
+            if default_interviewer is None:
+                fields["default_interviewer_id"] = (
+                    "请选择当前组织内已启用的面试官、经理或管理员"
+                )
+            else:
+                demand.default_interviewer_id = default_interviewer.id
+    if "requester_name" in data:
+        demand.requester_name = clean_text(data.get("requester_name"), 120)
+    if "requester_department" in data or "department" in data:
+        department = clean_text(
+            data.get("requester_department") or data.get("department"), 120
+        )
+        if not department:
+            fields["requester_department"] = "用人部门必填"
+        else:
+            demand.requester_department = department
+            demand.department = department
+    if "city" in data or "job_city" in data:
+        city = clean_text(data.get("city") or data.get("job_city"), 80)
+        if not city:
+            fields["city"] = "招聘城市必填"
+        else:
+            demand.city = city
+    if "hiring_manager_name" in data:
+        manager = clean_text(data.get("hiring_manager_name"), 120)
+        if not manager:
+            fields["hiring_manager_name"] = "用人负责人必填"
+        else:
+            demand.hiring_manager_name = manager
+    if "requested_at" in data:
+        value = parse_date(data.get("requested_at"))
+        if value is None:
+            fields["requested_at"] = "提需求日期无效"
+        else:
+            demand.requested_at = value
+    if "accepted_at" in data:
+        demand.accepted_at = parse_date(data.get("accepted_at"))
+    if "target_date" in data:
+        value = parse_date(data.get("target_date"))
+        if value is None:
+            fields["target_date"] = "期望完成日期无效"
+        else:
+            demand.target_date = value
+    if (
+        ("requested_at" in data or "target_date" in data)
+        and demand.requested_at
+        and demand.target_date
+        and demand.target_date < demand.requested_at
+    ):
+        fields["target_date"] = "期望完成日期不能早于提需求日期"
+    if "headcount" in data:
+        value = _positive_int(data.get("headcount"))
+        if value is None:
+            fields["headcount"] = "HC 必须是大于 0 的整数"
+        else:
+            demand.headcount = value
+    if "note" in data:
+        demand.note = clean_text(data.get("note"), 2000)
+    return fields
 
 
 def _include_legacy_job_rows(demand):
@@ -416,6 +516,14 @@ def demand_payload(demand, *, include_jd=False, config=None):
         "priority": demand.priority or "B",
         "headcount": demand.headcount or 1,
         "status": demand.status or "active",
+        "approval_status": demand.approval_status or "approved",
+        "submitted_at": (
+            demand.submitted_at.isoformat() if demand.submitted_at else None
+        ),
+        "reviewed_by": demand.reviewed_by,
+        "reviewed_at": demand.reviewed_at.isoformat() if demand.reviewed_at else None,
+        "review_reason": demand.review_reason or "",
+        "created_by": demand.created_by,
         "close_reason": demand.close_reason or "",
         "downgrade_reason": demand.downgrade_reason or "",
         "note": demand.note or "",

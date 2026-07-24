@@ -6,6 +6,7 @@ import {
   loginViaCompanyGateway,
   useCompanyAuth,
 } from '@/auth/companyAuth';
+import { homePathForRole } from '@/auth/productRoleModel';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -31,7 +32,7 @@ export default function LoginPage() {
       const result = await loginViaCompanyGateway(account.trim(), password);
       login(result);
       const requestedPath = (location.state as { from?: string } | null)?.from;
-      navigate(requestedPath || '/dashboard', { replace: true });
+      navigate(requestedPath || homePathForRole(result.role), { replace: true });
     } catch (loginError) {
       setError(
         loginError instanceof CompanyAuthError

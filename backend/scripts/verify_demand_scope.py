@@ -22,9 +22,10 @@ except ImportError:  # Direct execution: python backend/scripts/verify_demand_sc
     from audit_demand_scope import FACT_SPECS, fact_context
 
 
-EXPECTED_REVISION = "20260722_07"
+EXPECTED_REVISION = "20260724_08"
 EXPECTED_COLUMNS = {
     "recruitment_demands": {
+        "approval_status",
         "city",
         "department",
         "job_title_snapshot",
@@ -34,6 +35,10 @@ EXPECTED_COLUMNS = {
         "closed_by",
         "default_interviewer_id",
         "request_no",
+        "review_reason",
+        "reviewed_at",
+        "reviewed_by",
+        "submitted_at",
     },
     "candidates": {"current_demand_id"},
     "pipeline_stages": {"demand_id"},
@@ -44,7 +49,29 @@ EXPECTED_COLUMNS = {
         "is_primary",
         "primary_slot",
     },
-    "interview_feedback": {"demand_id", "assignment_id"},
+    "interview_feedback": {
+        "demand_id",
+        "assignment_id",
+        "updated_at",
+        "updated_by",
+    },
+    "business_review_tasks": {
+        "id",
+        "org_id",
+        "demand_id",
+        "candidate_id",
+        "reviewer_id",
+        "status",
+        "pending_slot",
+        "hr_note",
+        "business_note",
+        "due_at",
+        "created_by",
+        "decided_by",
+        "decided_at",
+        "created_at",
+        "updated_at",
+    },
     "offer_records": {
         "demand_id",
         "approver_id",
@@ -134,6 +161,14 @@ EXPECTED_UNIQUE_INDEXES = {
             "candidate_id",
         ),
     },
+    "business_review_tasks": {
+        "uq_business_reviews_pending_slot": (
+            "org_id",
+            "demand_id",
+            "candidate_id",
+            "pending_slot",
+        ),
+    },
 }
 EXPECTED_INDEXES = {
     "recruitment_demands": {
@@ -176,9 +211,33 @@ EXPECTED_INDEXES = {
             "created_at",
         ),
     },
+    "business_review_tasks": {
+        "ix_business_reviews_org_reviewer_status": (
+            "org_id",
+            "reviewer_id",
+            "status",
+        ),
+        "ix_business_reviews_org_demand_candidate": (
+            "org_id",
+            "demand_id",
+            "candidate_id",
+        ),
+    },
 }
 EXPECTED_NOT_NULL_COLUMNS = {
-    "recruitment_demands": {"request_no"},
+    "recruitment_demands": {"approval_status", "request_no"},
+    "interview_feedback": {"updated_at"},
+    "business_review_tasks": {
+        "id",
+        "org_id",
+        "demand_id",
+        "candidate_id",
+        "reviewer_id",
+        "status",
+        "created_by",
+        "created_at",
+        "updated_at",
+    },
 }
 EXPECTED_FOREIGN_KEYS = {
     "recruitment_demands": {
@@ -191,6 +250,8 @@ EXPECTED_FOREIGN_KEYS = {
     },
 }
 DEFAULT_INTERVIEWER_ROLES = {"interviewer", "manager", "admin"}
+
+
 def _safe(value):
     if isinstance(value, (date, datetime)):
         return value.isoformat()

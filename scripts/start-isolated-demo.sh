@@ -31,6 +31,24 @@ fi
 
 mkdir -p "$UPLOAD_ROOT" "$LOG_ROOT" "$PID_ROOT"
 
+DATABASE_URL_VALUE="${PILOT_DATABASE_URL:-sqlite:///$DATABASE_PATH}"
+LOCAL_SCHEMA_COMPAT_VALUE=true
+UPLOAD_FOLDER_VALUE="$UPLOAD_ROOT"
+MYSQL_PILOT_MODE=false
+if [[ "$DATABASE_URL_VALUE" == mysql* ]]; then
+  MYSQL_PILOT_MODE=true
+  LOCAL_SCHEMA_COMPAT_VALUE=false
+  UPLOAD_FOLDER_VALUE="${UPLOAD_FOLDER:-}"
+  if [[ "${PILOT_SCHEMA_VERIFIED:-false}" != "true" ]]; then
+    echo "MySQL pilot schema was not verified in this process; startup refused." >&2
+    exit 1
+  fi
+  if [[ -z "$UPLOAD_FOLDER_VALUE" ]]; then
+    echo "MySQL pilot UPLOAD_FOLDER is required; startup refused." >&2
+    exit 1
+  fi
+fi
+
 if read_owned_pid "$BACKEND_PID_FILE" >/dev/null \
   && read_owned_pid "$OAUTH_PID_FILE" >/dev/null \
   && read_owned_pid "$FRONTEND_PID_FILE" >/dev/null \
@@ -55,9 +73,9 @@ BACKEND_ENV=(
   "CONSUL_ENABLED=false"
   "EUREKA_ENABLED=false"
   "FLASK_DEBUG=true"
-  "LOCAL_SCHEMA_COMPAT=true"
-  "DATABASE_URL=sqlite:///$DATABASE_PATH"
-  "UPLOAD_FOLDER=$UPLOAD_ROOT"
+  "LOCAL_SCHEMA_COMPAT=$LOCAL_SCHEMA_COMPAT_VALUE"
+  "DATABASE_URL=$DATABASE_URL_VALUE"
+  "UPLOAD_FOLDER=$UPLOAD_FOLDER_VALUE"
   "RATE_LIMIT_ENABLED=false"
   "ALLOW_PUBLIC_REGISTRATION=false"
   "AUTH_DISABLED=false"
@@ -67,7 +85,7 @@ BACKEND_ENV=(
 # Apollo、JWT、MCP SSO 和模型密钥只允许来自现有环境、backend/.env 或 CI 注入。
 # 本隔离脚本不覆盖也不清空这些公司配置。
 
-if [[ ! -f "$DATABASE_PATH" ]]; then
+if [[ "$MYSQL_PILOT_MODE" == "false" && ! -f "$DATABASE_PATH" ]]; then
   echo "首次运行：正在创建独立演示数据库……"
   (
     cd "$APP_ROOT/backend"
@@ -150,6 +168,13 @@ else
     "VITE_PERMISSION_CLIENT_ID=zhipin"
     "VITE_DEFAULT_ROLE=admin"
   )
+fi
+if [[ "$MYSQL_PILOT_MODE" == "true" ]]; then
+  READDY_AUTH_ENV+=("VITE_ENABLE_ROLE_PREVIEW=false")
+elif [[ "${READDY_AUTH_MODE:-company}" == "local" ]]; then
+  READDY_AUTH_ENV+=("VITE_ENABLE_ROLE_PREVIEW=true")
+else
+  READDY_AUTH_ENV+=("VITE_ENABLE_ROLE_PREVIEW=false")
 fi
 (
   cd "$APP_ROOT/readdy-frontend"

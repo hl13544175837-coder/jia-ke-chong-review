@@ -1,29 +1,19 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { statusBadgeStyles } from '@/mocks/jobs';
+import type { RequisitionRow } from '@/features/demands/types';
+
+const statusBadgeStyles: Record<string, string> = {
+  active: 'bg-primary-100 text-primary-700 border border-primary-200',
+  pending: 'bg-accent-100 text-accent-700 border border-accent-200',
+  paused: 'bg-secondary-100 text-secondary-700 border border-secondary-200',
+  filled: 'bg-primary-50 text-primary-600 border border-primary-100',
+  cancelled: 'bg-background-200 text-foreground-500 border border-background-300',
+  closed: 'bg-background-200 text-foreground-500 border border-background-300',
+};
 
 interface RequisitionTableProps {
-  data: Array<{
-    id: string;
-    name: string;
-    title: string;
-    department: string;
-    city: string;
-    owner: string;
-    headcount: number;
-    filled: number;
-    deadline: string | null;
-    status: string;
-    statusCode: string;
-    stageAll: number;
-    stageFeedback: number;
-    stageInterview: number;
-    stageOffer: number;
-    statusNote: string;
-    priority: string;
-    createdAt: string;
-  }>;
+  data: RequisitionRow[];
   onRowClick: (req: RequisitionTableProps['data'][0]) => void;
-  onStatusChange: (id: string, newStatusCode: string) => void;
+  onStatusChange: (id: string, newStatusCode: string, reason: string) => Promise<void>;
   statusTransitions: Record<string, { advance: { to: string; label: string } | null; rollback: { to: string; label: string } | null }>;
   statusExtraActions: Record<string, { to: string; label: string; icon: string }[]>;
   onSelectCandidates: (req: RequisitionTableProps['data'][0]) => void;
@@ -41,7 +31,9 @@ interface RequisitionTableProps {
 const statusLabelMap: Record<string, string> = {
   active: '招聘中',
   pending: '需求待确认',
-  completed: '已完成',
+  paused: '已暂停',
+  filled: '已完成',
+  cancelled: '已取消',
   closed: '已关闭',
 };
 
@@ -76,6 +68,9 @@ export default function RequisitionTable({
 }: RequisitionTableProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ id: string; to: string; label: string } | null>(null);
+  const [confirmReason, setConfirmReason] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState('');
   const [headerFilterOpen, setHeaderFilterOpen] = useState<'department' | 'owner' | 'status' | 'stage' | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const deptFilterRef = useRef<HTMLDivElement | null>(null);
@@ -112,7 +107,9 @@ export default function RequisitionTable({
     { value: '', label: '全部状态' },
     { value: 'active', label: '招聘中' },
     { value: 'pending', label: '需求待确认' },
-    { value: 'completed', label: '已完成' },
+    { value: 'paused', label: '已暂停' },
+    { value: 'filled', label: '已完成' },
+    { value: 'cancelled', label: '已取消' },
     { value: 'closed', label: '已关闭' },
   ], []);
 
@@ -420,8 +417,8 @@ export default function RequisitionTable({
                   const transitions = statusTransitions[req.statusCode];
                   const extras = statusExtraActions[req.statusCode] || [];
                   const canSelectCandidates = req.statusCode === 'pending' || req.statusCode === 'active';
-                  const isClosedOrCompleted = req.statusCode === 'completed' || req.statusCode === 'closed';
-                  const hasActions = !isClosedOrCompleted && transitions && (transitions.advance || transitions.rollback || extras.length > 0);
+                  const isClosedOrCompleted = ['filled', 'cancelled', 'closed'].includes(req.statusCode);
+                  const hasActions = transitions && (transitions.advance || transitions.rollback || extras.length > 0);
                   const prio = priorityConfig[req.priority] || priorityConfig['普通'];
 
                   return (
@@ -544,6 +541,8 @@ export default function RequisitionTable({
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setOpenMenuId(null);
+                                        setConfirmReason('');
+                                        setActionError('');
                                         setConfirmAction({ id: req.id, to: transitions.advance!.to, label: transitions.advance!.label });
                                       }}
                                       className="w-full text-left px-3 py-2 text-sm text-foreground-700 hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2"
@@ -558,6 +557,8 @@ export default function RequisitionTable({
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setOpenMenuId(null);
+                                        setConfirmReason('');
+                                        setActionError('');
                                         setConfirmAction({ id: req.id, to: action.to, label: action.label });
                                       }}
                                       className="w-full text-left px-3 py-2 text-sm text-foreground-700 hover:bg-secondary-50 hover:text-secondary-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2"
@@ -571,6 +572,8 @@ export default function RequisitionTable({
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setOpenMenuId(null);
+                                        setConfirmReason('');
+                                        setActionError('');
                                         setConfirmAction({ id: req.id, to: transitions.rollback!.to, label: transitions.rollback!.label });
                                       }}
                                       className="w-full text-left px-3 py-2 text-sm text-foreground-700 hover:bg-accent-50 hover:text-accent-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2"
@@ -601,7 +604,7 @@ export default function RequisitionTable({
         <>
           <div
             className="fixed inset-0 bg-foreground-900/30 z-40"
-            onClick={() => setConfirmAction(null)}
+            onClick={() => { if (!actionBusy) setConfirmAction(null); }}
           ></div>
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm pointer-events-auto overflow-hidden">
@@ -612,22 +615,47 @@ export default function RequisitionTable({
                 <p className="text-sm text-foreground-600">
                   确定将该需求的状态从 <span className="font-semibold text-foreground-800">{statusLabelMap[data.find(r => r.id === confirmAction.id)?.statusCode || '']}</span> 变更为 <span className="font-semibold text-foreground-800">{statusLabelMap[confirmAction.to]}</span>？
                 </p>
+                <label className="block text-sm font-medium text-foreground-700">
+                  {confirmAction.to === 'active' ? '恢复原因' : '关闭原因'}
+                  <textarea
+                    value={confirmReason}
+                    onChange={(event) => { setConfirmReason(event.target.value); setActionError(''); }}
+                    rows={3}
+                    placeholder="请填写本次操作原因"
+                    className="mt-2 w-full resize-none rounded-lg border border-background-200 px-3 py-2 text-sm focus:border-primary-400 focus:outline-none"
+                  />
+                </label>
+                {actionError && <p className="text-sm text-red-500" role="alert">{actionError}</p>}
               </div>
               <div className="px-5 py-4 border-t border-background-200 flex items-center justify-end gap-3">
                 <button
+                  disabled={actionBusy}
                   onClick={() => setConfirmAction(null)}
                   className="px-4 py-2 text-sm font-medium text-foreground-600 hover:bg-background-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
                 >
                   取消
                 </button>
                 <button
-                  onClick={() => {
-                    onStatusChange(confirmAction.id, confirmAction.to);
-                    setConfirmAction(null);
+                  disabled={actionBusy}
+                  onClick={async () => {
+                    const reason = confirmReason.trim();
+                    if (!reason) {
+                      setActionError('请填写操作原因');
+                      return;
+                    }
+                    setActionBusy(true);
+                    try {
+                      await onStatusChange(confirmAction.id, confirmAction.to, reason);
+                      setConfirmAction(null);
+                    } catch (error) {
+                      setActionError(error instanceof Error ? error.message : '状态更新失败');
+                    } finally {
+                      setActionBusy(false);
+                    }
                   }}
                   className="px-4 py-2 text-sm font-medium bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors cursor-pointer whitespace-nowrap"
                 >
-                  确认
+                  {actionBusy ? '正在提交...' : '确认'}
                 </button>
               </div>
             </div>

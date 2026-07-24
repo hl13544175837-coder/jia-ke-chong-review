@@ -1,9 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { provinceCityData } from '@/mocks/options';
+import type { ProductRole } from '@/auth/productRoleModel';
+import type { DemandOwnerOption, RecruitmentDemandInput } from '@/features/demands/types';
 
 interface RequisitionFormProps {
   expanded: boolean;
-  onSuccess: () => void;
+  owners: DemandOwnerOption[];
+  role: ProductRole | null;
+  currentUserId: number | null;
+  currentUserName: string | null;
+  submitting: boolean;
+  serverErrors?: Record<string, string>;
+  onSubmit: (payload: RecruitmentDemandInput) => void;
 }
 
 const priorityOptions = [
@@ -49,20 +57,45 @@ const jdTemplates: Record<string, string> = {
 4. 优秀的审美能力和用户体验思维。`,
 };
 
-export default function RequisitionForm({ expanded, onSuccess }: RequisitionFormProps) {
+function localDateInputValue() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export default function RequisitionForm({
+  expanded,
+  owners,
+  role,
+  currentUserId,
+  currentUserName,
+  submitting,
+  serverErrors = {},
+  onSubmit,
+}: RequisitionFormProps) {
   const [formData, setFormData] = useState({
     position: '',
     department: '',
     province: '',
     city: '',
     headcount: 1,
-    startDate: '',
+    startDate: localDateInputValue(),
     deadline: '',
     priority: 'normal',
     owner: '',
+    hiringManagerName: '',
     description: '',
     jdTemplate: '',
   });
+  const [localError, setLocalError] = useState('');
+
+  useEffect(() => {
+    if (role === 'recruiter' && currentUserId) {
+      setFormData((current) => ({ ...current, owner: String(currentUserId) }));
+    }
+  }, [currentUserId, role]);
 
   const cities = useMemo(() => {
     if (!formData.province) return [];
@@ -82,16 +115,33 @@ export default function RequisitionForm({ expanded, onSuccess }: RequisitionForm
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Submit logic will be added later when Supabase is connected
-    alert('招聘需求创建成功！');
-    setFormData({
-      position: '', department: '', province: '', city: '', headcount: 1, startDate: '', deadline: '',
-      priority: 'normal', owner: '', description: '', jdTemplate: '',
+    if (!formData.owner) {
+      setLocalError('请选择招聘负责人');
+      return;
+    }
+    if (!formData.hiringManagerName.trim()) {
+      setLocalError('请填写用人负责人');
+      return;
+    }
+    setLocalError('');
+    const priorityMap = { urgent: 'A', high: 'A', normal: 'B', low: 'C' } as const;
+    onSubmit({
+      job_title: formData.position.trim(),
+      jd_text: formData.description.trim(),
+      owner_hr_id: Number(formData.owner),
+      city: formData.city.trim(),
+      requester_department: formData.department.trim(),
+      hiring_manager_name: formData.hiringManagerName.trim(),
+      requested_at: formData.startDate,
+      target_date: formData.deadline,
+      priority: priorityMap[formData.priority as keyof typeof priorityMap],
+      headcount: formData.headcount,
+      status: 'active',
     });
-    onSuccess();
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateInputValue();
+  const fieldError = (field: string) => serverErrors[field];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -179,18 +229,37 @@ export default function RequisitionForm({ expanded, onSuccess }: RequisitionForm
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground-700 mb-1">
-              招聘负责人
+              招聘负责人 <span className="text-red-400">*</span>
             </label>
             <select
+              required
               value={formData.owner}
-              onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+              onChange={(e) => { setFormData({ ...formData, owner: e.target.value }); setLocalError(''); }}
+              disabled={role === 'recruiter'}
               className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm focus:outline-none focus:border-primary-300 cursor-pointer"
             >
               <option value="">请选择</option>
-              <option value="招聘专员01">招聘专员01</option>
-              <option value="招聘专员02">招聘专员02</option>
-              <option value="系统管理员">系统管理员</option>
+              {role === 'recruiter' && currentUserId ? (
+                <option value={currentUserId}>{currentUserName || '当前招聘专员'}</option>
+              ) : owners.map((owner) => (
+                <option key={owner.id} value={owner.id}>{owner.name}</option>
+              ))}
             </select>
+            {fieldError('owner_hr_id') && <p className="mt-1 text-xs text-red-500">{fieldError('owner_hr_id')}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground-700 mb-1">
+              用人负责人 <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.hiringManagerName}
+              onChange={(e) => { setFormData({ ...formData, hiringManagerName: e.target.value }); setLocalError(''); }}
+              placeholder="如：技术部负责人"
+              className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm focus:outline-none focus:border-primary-300"
+            />
+            {fieldError('hiring_manager_name') && <p className="mt-1 text-xs text-red-500">{fieldError('hiring_manager_name')}</p>}
           </div>
         </div>
       </div>
@@ -324,12 +393,16 @@ export default function RequisitionForm({ expanded, onSuccess }: RequisitionForm
       </div>
 
       {/* Actions */}
+      {localError && <p className="text-sm text-red-500" role="alert">{localError}</p>}
+      {Object.keys(serverErrors).length > 0 && (
+        <p className="text-sm text-red-500" role="alert">请检查标红或提示的需求信息后重试。</p>
+      )}
       <div className="flex items-center justify-end gap-3 pt-2 border-t border-background-100">
         <button
           type="button"
           onClick={() => setFormData({
-            position: '', department: '', province: '', city: '', headcount: 1, startDate: '', deadline: '',
-            priority: 'normal', owner: '', description: '', jdTemplate: '',
+            position: '', department: '', province: '', city: '', headcount: 1, startDate: localDateInputValue(), deadline: '',
+            priority: 'normal', owner: role === 'recruiter' && currentUserId ? String(currentUserId) : '', hiringManagerName: '', description: '', jdTemplate: '',
           })}
           className="px-4 py-2 text-sm text-foreground-500 hover:text-foreground-700 transition-colors cursor-pointer whitespace-nowrap"
         >
@@ -337,9 +410,10 @@ export default function RequisitionForm({ expanded, onSuccess }: RequisitionForm
         </button>
         <button
           type="submit"
-          className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+          disabled={submitting}
+          className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
         >
-          创建需求
+          {submitting ? '正在创建...' : '创建需求'}
         </button>
       </div>
     </form>

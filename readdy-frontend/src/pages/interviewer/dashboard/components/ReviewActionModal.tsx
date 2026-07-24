@@ -1,204 +1,275 @@
-import { useState } from 'react';
-import type { ResumePushRecord } from '@/mocks/resumePush';
+import { useEffect, useState, type ComponentType } from 'react';
+import {
+  AlertCircle,
+  Check,
+  CircleHelp,
+  LoaderCircle,
+  X,
+} from 'lucide-react';
+import type {
+  BusinessReviewDecisionInput,
+  BusinessReviewTask,
+} from '@/features/businessReviews/types';
 
-interface ReviewActionModalProps {
-  record: ResumePushRecord;
-  onClose: () => void;
-  onSubmit: (action: 'approved' | 'rejected' | 'needMoreInfo', comment: string) => void;
+type BusinessDecision = BusinessReviewDecisionInput['decision'];
+
+interface LegacyReviewRecord {
+  candidateName: string;
+  position: string;
+  source: string;
+  pusher: string;
+  pushTime: string;
+  deadline: string;
+  keyRequirements: string;
 }
 
-export default function ReviewActionModal({ record, onClose, onSubmit }: ReviewActionModalProps) {
-  const [action, setAction] = useState<'approved' | 'rejected' | 'needMoreInfo'>('approved');
+interface BusinessReviewModalProps {
+  task: BusinessReviewTask;
+  record?: never;
+  onClose: () => void;
+  onSubmit: (action: BusinessDecision, comment: string) => void | Promise<void>;
+  isSubmitting?: boolean;
+  error?: string;
+}
+
+interface LegacyReviewModalProps<TAction extends string> {
+  record: LegacyReviewRecord;
+  task?: never;
+  onClose: () => void;
+  onSubmit: (action: TAction, comment: string) => void | Promise<void>;
+  isSubmitting?: boolean;
+  error?: string;
+}
+
+type ReviewActionModalProps<TAction extends string> = BusinessReviewModalProps | LegacyReviewModalProps<TAction>;
+
+interface DecisionConfig {
+  label: string;
+  description: string;
+  icon: ComponentType<{ size?: number; className?: string }>;
+  activeClass: string;
+  buttonClass: string;
+}
+
+const actionConfig: Record<BusinessDecision, DecisionConfig> = {
+  approved: {
+    label: '通过，进入一面',
+    description: '保存通过结论，等待 HR 安排一面',
+    icon: Check,
+    activeClass: 'border-emerald-300 bg-emerald-50 text-emerald-800',
+    buttonClass: 'bg-emerald-600 hover:bg-emerald-700',
+  },
+  rejected: {
+    label: '不合适',
+    description: '返回 HR 确认，不会在这里直接淘汰',
+    icon: X,
+    activeClass: 'border-red-300 bg-red-50 text-red-800',
+    buttonClass: 'bg-red-600 hover:bg-red-700',
+  },
+  needs_info: {
+    label: '需要 HR 补充信息',
+    description: '说明缺少的资料，等待 HR 补充后再处理',
+    icon: CircleHelp,
+    activeClass: 'border-amber-300 bg-amber-50 text-amber-800',
+    buttonClass: 'bg-amber-600 hover:bg-amber-700',
+  },
+};
+
+function formatDate(value: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
+export default function ReviewActionModal<TAction extends string = BusinessDecision>(
+  props: ReviewActionModalProps<TAction>,
+) {
+  const [action, setAction] = useState<BusinessDecision>('approved');
   const [comment, setComment] = useState('');
+  const [showValidation, setShowValidation] = useState(false);
+  const businessTask = 'task' in props && props.task ? props.task : null;
+  const legacyRecord = 'record' in props && props.record ? props.record : null;
+  const isSubmitting = props.isSubmitting ?? false;
+  const onClose = props.onClose;
+  const commentRequired = action !== 'approved';
+  const commentMissing = commentRequired && !comment.trim();
+
+  const candidateName = businessTask?.candidate.name_masked ?? legacyRecord?.candidateName ?? '候选人';
+  const position = businessTask?.demand.job_title ?? legacyRecord?.position ?? '岗位未填写';
+  const pusher = businessTask?.created_by_name ?? legacyRecord?.pusher ?? '招聘专员';
+  const pushedAt = businessTask?.created_at ?? legacyRecord?.pushTime ?? null;
+  const dueAt = businessTask?.due_at ?? legacyRecord?.deadline ?? null;
+  const reviewContext = businessTask
+    ? businessTask.hr_note || (businessTask.demand.focus_points ?? []).join('、') || 'HR 未填写筛选备注'
+    : legacyRecord?.keyRequirements || '未填写重点评审要求';
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSubmitting) onClose();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isSubmitting, onClose]);
 
   const handleSubmit = () => {
-    if (!comment.trim() && action !== 'approved') return;
-    onSubmit(action, comment.trim());
+    const trimmedComment = comment.trim();
+    if (action !== 'approved' && !trimmedComment) {
+      setShowValidation(true);
+      return;
+    }
+
+    const submit = props.onSubmit as (decision: BusinessDecision, note: string) => void | Promise<void>;
+    void submit(action, trimmedComment);
   };
 
-  const actionConfig = {
-    approved: {
-      label: '同意面试',
-      color: 'bg-emerald-500 hover:bg-emerald-600',
-      icon: 'ri-check-line',
-      desc: '简历符合岗位要求，建议安排面试',
-    },
-    rejected: {
-      label: '不合适',
-      color: 'bg-accent-500 hover:bg-accent-600',
-      icon: 'ri-close-line',
-      desc: '简历与岗位要求不匹配，暂不安排面试',
-    },
-    needMoreInfo: {
-      label: '需要补充信息',
-      color: 'bg-amber-500 hover:bg-amber-600',
-      icon: 'ri-information-line',
-      desc: '简历信息不足，需要候选人补充材料后再评估',
-    },
-  };
+  const activeConfig = actionConfig[action];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+      onMouseDown={() => {
+        if (!isSubmitting) props.onClose();
+      }}
+    >
       <div
-        className="bg-white rounded-2xl shadow-lg w-full max-w-[520px] mx-4 max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="business-review-dialog-title"
+        className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
       >
-        {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b border-background-200 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-heading font-bold text-foreground-900">简历评审</h3>
-            <p className="text-sm text-foreground-500 mt-0.5">
-              {record.candidateName} · {record.position}
-            </p>
+        <header className="flex items-start justify-between border-b border-background-200 px-5 py-4 sm:px-6">
+          <div className="min-w-0 pr-4">
+            <h2 id="business-review-dialog-title" className="text-lg font-bold text-foreground-900">提交业务筛选结果</h2>
+            <p className="mt-1 truncate text-sm text-foreground-500">{candidateName} · {position}</p>
           </div>
           <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-background-100 flex items-center justify-center text-foreground-400 hover:text-foreground-600 transition-colors cursor-pointer"
+            type="button"
+            title="关闭弹窗"
+            aria-label="关闭弹窗"
+            disabled={isSubmitting}
+            onClick={props.onClose}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-foreground-500 hover:bg-background-100 hover:text-foreground-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <i className="ri-close-line text-lg"></i>
+            <X size={18} aria-hidden="true" />
           </button>
-        </div>
+        </header>
 
-        {/* Body */}
-        <div className="px-6 py-4 space-y-5">
-          {/* Candidate & push info */}
-          <div className="bg-background-50 rounded-xl p-4 border border-background-200">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm font-semibold text-primary-600">{record.candidateName.charAt(0)}</span>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground-900">{record.candidateName}</p>
-                <p className="text-xs text-foreground-500">{record.position} · {record.source}</p>
-              </div>
+        <div className="space-y-5 px-5 py-5 sm:px-6">
+          <section className="rounded-lg border border-background-200 bg-background-50 px-4 py-3">
+            <div className="grid gap-2 text-xs sm:grid-cols-2">
+              <p><span className="text-foreground-400">推送人：</span><span className="text-foreground-700">{pusher}</span></p>
+              <p><span className="text-foreground-400">推送时间：</span><span className="text-foreground-700">{formatDate(pushedAt)}</span></p>
+              <p className="sm:col-span-2"><span className="text-foreground-400">处理截止：</span><span className="text-foreground-700">{formatDate(dueAt)}</span></p>
             </div>
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="text-foreground-400 w-16 flex-shrink-0">推送人</span>
-                <span className="text-foreground-700">{record.pusher}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-foreground-400 w-16 flex-shrink-0">推送时间</span>
-                <span className="text-foreground-700">{record.pushTime.slice(0, 10)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-foreground-400 w-16 flex-shrink-0">截止时间</span>
-                <span className="text-foreground-700 font-medium">{record.deadline}</span>
-              </div>
+            <div className="mt-3 border-t border-background-200 pt-3">
+              <p className="text-xs font-medium text-foreground-500">HR 备注 / 考察重点</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-foreground-700">{reviewContext}</p>
             </div>
-          </div>
+          </section>
 
-          {/* Key requirements */}
-          <div>
-            <p className="text-xs font-medium text-foreground-500 mb-2">重点评审要求</p>
-            <div className="bg-accent-50 border border-accent-200 rounded-lg p-3 text-sm text-foreground-700 leading-relaxed">
-              {record.keyRequirements}
-            </div>
-          </div>
-
-          {/* Action selection */}
-          <div>
-            <p className="text-xs font-medium text-foreground-500 mb-2">评审决定</p>
-            <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(actionConfig) as Array<keyof typeof actionConfig>).map((key) => {
-                const cfg = actionConfig[key];
-                const isActive = action === key;
+          <fieldset>
+            <legend className="text-sm font-semibold text-foreground-800">筛选结论</legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              {(Object.keys(actionConfig) as BusinessDecision[]).map((key) => {
+                const config = actionConfig[key];
+                const Icon = config.icon;
+                const selected = action === key;
                 return (
                   <button
                     key={key}
-                    onClick={() => setAction(key)}
-                    className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 transition-all cursor-pointer ${
-                      isActive
-                        ? key === 'approved'
-                          ? 'border-emerald-300 bg-emerald-50'
-                          : key === 'rejected'
-                          ? 'border-accent-300 bg-accent-50'
-                          : 'border-amber-300 bg-amber-50'
-                        : 'border-background-200 bg-white hover:border-background-300'
+                    type="button"
+                    aria-pressed={selected}
+                    disabled={isSubmitting}
+                    onClick={() => {
+                      setAction(key);
+                      setShowValidation(false);
+                    }}
+                    className={`min-h-28 rounded-lg border-2 px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                      selected
+                        ? config.activeClass
+                        : 'border-background-200 bg-white text-foreground-600 hover:border-background-300'
                     }`}
                   >
-                    <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center ${
-                        isActive
-                          ? key === 'approved'
-                            ? 'bg-emerald-100 text-emerald-600'
-                            : key === 'rejected'
-                            ? 'bg-accent-100 text-accent-600'
-                            : 'bg-amber-100 text-amber-600'
-                          : 'bg-background-100 text-foreground-400'
-                      }`}
-                    >
-                      <i className={`${cfg.icon} text-base`}></i>
-                    </div>
-                    <span
-                      className={`text-xs font-medium whitespace-nowrap ${
-                        isActive ? 'text-foreground-800' : 'text-foreground-500'
-                      }`}
-                    >
-                      {cfg.label}
-                    </span>
+                    <Icon size={18} aria-hidden="true" />
+                    <span className="mt-2 block text-sm font-semibold leading-5">{config.label}</span>
+                    <span className="mt-1 block text-xs leading-5 text-foreground-500">{config.description}</span>
                   </button>
                 );
               })}
             </div>
+          </fieldset>
+
+          <div>
+            <label htmlFor="business-review-note" className="text-sm font-semibold text-foreground-800">
+              {action === 'approved' ? '筛选备注（选填）' : action === 'rejected' ? '不合适原因' : '需要补充的信息'}
+              {commentRequired && <span className="ml-1 text-red-600">*</span>}
+            </label>
+            <textarea
+              id="business-review-note"
+              value={comment}
+              disabled={isSubmitting}
+              aria-invalid={showValidation && commentMissing}
+              aria-describedby={showValidation && commentMissing ? 'business-review-note-error' : undefined}
+              onChange={(event) => {
+                setComment(event.target.value);
+                if (event.target.value.trim()) setShowValidation(false);
+              }}
+              rows={4}
+              maxLength={500}
+              placeholder={
+                action === 'approved'
+                  ? '可填写给 HR 的面试建议'
+                  : action === 'rejected'
+                    ? '请说明候选人与岗位不匹配的具体原因'
+                    : '请具体说明需要 HR 补充哪些资料'
+              }
+              className={`mt-2 w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-sm leading-6 text-foreground-900 outline-none placeholder:text-foreground-400 focus:border-primary-400 disabled:bg-background-50 ${
+                showValidation && commentMissing ? 'border-red-400' : 'border-background-300'
+              }`}
+            />
+            <div className="mt-1 flex min-h-5 items-start justify-between gap-3 text-xs">
+              <span id="business-review-note-error" className="text-red-600">
+                {showValidation && commentMissing ? '该筛选结论必须填写备注，且不能只输入空格。' : ''}
+              </span>
+              <span className="flex-shrink-0 text-foreground-400">{comment.length}/500</span>
+            </div>
           </div>
 
-          {/* Comment */}
-          {action !== 'approved' && (
-            <div>
-              <p className="text-xs font-medium text-foreground-500 mb-2">
-                {action === 'rejected' ? '不合适原因' : '需要补充的信息'} <span className="text-accent-500">*</span>
-              </p>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder={action === 'rejected' ? '请说明候选人不合适的具体原因...' : '请说明需要候选人补充哪些信息...'}
-                rows={3}
-                maxLength={500}
-                className="w-full px-3 py-2.5 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-300 resize-none"
-              />
-              <p className="text-[11px] text-foreground-400 mt-1 text-right">{comment.length}/500</p>
-            </div>
-          )}
-
-          {/* Comment for approved (optional) */}
-          {action === 'approved' && (
-            <div>
-              <p className="text-xs font-medium text-foreground-500 mb-2">评审意见（选填）</p>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="可填写对候选人的简要评价或面试建议..."
-                rows={3}
-                maxLength={500}
-                className="w-full px-3 py-2.5 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-300 resize-none"
-              />
-              <p className="text-[11px] text-foreground-400 mt-1 text-right">{comment.length}/500</p>
+          {props.error && (
+            <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+              <span>{props.error}</span>
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 pb-6 pt-2 flex items-center gap-3">
+        <footer className="flex flex-col-reverse gap-2 border-t border-background-200 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 text-sm font-medium text-foreground-600 bg-white border border-background-300 rounded-lg cursor-pointer whitespace-nowrap transition-colors hover:bg-background-50"
+            type="button"
+            disabled={isSubmitting}
+            onClick={props.onClose}
+            className="min-h-10 rounded-lg border border-background-300 bg-white px-4 text-sm font-medium text-foreground-700 hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             取消
           </button>
           <button
+            type="button"
+            disabled={isSubmitting || commentMissing}
             onClick={handleSubmit}
-            disabled={action !== 'approved' && !comment.trim()}
-            className={`flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-lg cursor-pointer whitespace-nowrap transition-colors ${
-              action !== 'approved' && !comment.trim()
-                ? 'bg-background-200 text-foreground-400 cursor-not-allowed'
-                : actionConfig[action].color
-            }`}
+            className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-background-300 disabled:text-foreground-500 ${activeConfig.buttonClass}`}
           >
-            <i className={`${actionConfig[action].icon} mr-1.5`}></i>
-            {actionConfig[action].label}
+            {isSubmitting && <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />}
+            {isSubmitting ? '正在提交...' : `确认：${activeConfig.label}`}
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );

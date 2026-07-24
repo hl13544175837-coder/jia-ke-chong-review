@@ -1,503 +1,402 @@
-import { useState, useMemo } from 'react';
-import { candidateList, type Candidate } from '@/mocks/candidates';
-import ResumePanel from '@/pages/jobs/components/ResumePanel';
-import AdvanceStageModal from '@/components/feature/AdvanceStageModal';
-import RecruiterPanel from '@/pages/kanban/components/RecruiterPanel';
-import BlockagePanel from '@/pages/kanban/components/BlockagePanel';
-import { useToast } from '@/hooks/useToast';
+import {
+  AlertCircle,
+  ArrowRight,
+  BriefcaseBusiness,
+  Clock3,
+  History,
+  RefreshCw,
+  UserRound,
+  X,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ApiError } from '@/lib/api';
+import { demandsApi } from '@/features/demands/api';
+import type { RecruitmentDemand } from '@/features/demands/types';
+import { pipelineApi } from '@/features/pipeline/api';
+import type {
+  PipelineBoard,
+  PipelineBoardCandidate,
+  PipelineHistory,
+  PipelineStage,
+} from '@/features/pipeline/types';
 
-const funnelStages = [
-  { key: '待筛选', label: '简历收录', color: 'bg-primary-400', barColor: 'from-primary-400 to-primary-500' },
-  { key: '初筛通过', label: '初筛通过', color: 'bg-primary-500', barColor: 'from-primary-500 to-primary-600' },
-  { key: '一面', label: '一面', color: 'bg-accent-400', barColor: 'from-accent-400 to-accent-500' },
-  { key: '二面', label: '二面', color: 'bg-accent-500', barColor: 'from-accent-500 to-accent-600' },
-  { key: '终面', label: '终面', color: 'bg-secondary-400', barColor: 'from-secondary-400 to-secondary-500' },
-  { key: '已发Offer', label: '已发Offer', color: 'bg-secondary-500', barColor: 'from-secondary-500 to-secondary-600' },
-  { key: '已入职', label: '已入职', color: 'bg-primary-600', barColor: 'from-primary-600 to-primary-700' },
+const stages: Array<{ key: PipelineStage; label: string; tone: string }> = [
+  { key: 'pending', label: '简历收录', tone: 'border-sky-200 bg-sky-50 text-sky-700' },
+  { key: 'ai_screen', label: 'HR 筛选', tone: 'border-cyan-200 bg-cyan-50 text-cyan-700' },
+  { key: 'business_review', label: '业务筛选', tone: 'border-amber-200 bg-amber-50 text-amber-700' },
+  { key: 'interview', label: '面试中', tone: 'border-violet-200 bg-violet-50 text-violet-700' },
+  { key: 'offer', label: 'Offer', tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  { key: 'rejected', label: '已淘汰', tone: 'border-red-200 bg-red-50 text-red-700' },
 ];
 
-const sourceLabels: Record<string, string> = {
-  'PDF导入': 'PDF导入',
-  '内推': '内部推荐',
-  '猎头推荐': '外部收录',
-  '内部推荐': '内部推荐',
-  '手动录入': '手动录入',
-};
+const stageLabels = Object.fromEntries(stages.map((item) => [item.key, item.label])) as Record<string, string>;
 
-const reportingMonths = ['2026年6月', '2026年7月', '2026年8月'];
+function moveTargets(stage: PipelineStage): PipelineStage[] {
+  if (stage === 'pending') return ['ai_screen', 'business_review', 'rejected'];
+  if (stage === 'ai_screen') return ['business_review', 'rejected'];
+  if (stage === 'business_review') return ['interview', 'rejected'];
+  if (stage === 'interview') return ['offer', 'rejected'];
+  if (stage === 'rejected') return ['pending'];
+  return [];
+}
 
-export default function KanbanPage() {
-  const { showToast } = useToast();
-  const [candidates] = useState<Candidate[]>([...candidateList]);
-  const [activeStage, setActiveStage] = useState<string | null>(null);
-  const [resumeCandidate, setResumeCandidate] = useState<Candidate | null>(null);
-  const [advanceCandidate, setAdvanceCandidate] = useState<Candidate | null>(null);
-  const [advanceOpen, setAdvanceOpen] = useState(false);
-  const [viewTab, setViewTab] = useState<'overview' | 'recruiter' | 'blockage'>('blockage');
-  const [reportingMonthIndex, setReportingMonthIndex] = useState(1);
+function formatTime(value: string | null | undefined) {
+  if (!value) return '暂无时间';
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
 
-  const totalCandidates = candidates.length;
-  const hiredCount = candidates.filter((c) => c.stage === '已入职').length;
-  const rejectedCount = candidates.filter((c) => c.stage === '已淘汰').length;
-  const screeningPassCount = candidates.filter((c) =>
-    ['初筛通过', '一面', '二面', '终面', '已发Offer', '已入职'].includes(c.stage)
-  ).length;
-  const offerCount = candidates.filter((c) =>
-    ['已发Offer', '已入职'].includes(c.stage)
-  ).length;
+interface MoveDialogProps {
+  candidate: PipelineBoardCandidate;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onSubmit: (stage: PipelineStage, reason: string) => void;
+}
 
-  const isBlocked = (c: Candidate) =>
-    c.blockReason && c.blockReason !== '暂无' && c.blockReason !== '暂无明显阻塞';
-
-  const blockedCandidates = useMemo(() => candidates.filter(isBlocked), [candidates]);
-  const blockedCount = blockedCandidates.length;
-
-  const funnelData = useMemo(() => {
-    const data = funnelStages.map((s) => {
-      const count = candidates.filter((c) => c.stage === s.key).length;
-      const cumulativeCount = candidates.filter((c) => {
-        const idx = funnelStages.findIndex((fs) => fs.key === c.stage);
-        const stageIdx = funnelStages.findIndex((fs) => fs.key === s.key);
-        return idx >= 0 && idx <= stageIdx;
-      }).length;
-      return { ...s, count, cumulativeCount };
-    });
-    const maxCumulative = Math.max(...data.map((d) => d.cumulativeCount), 1);
-    return data.map((d) => ({ ...d, widthPct: (d.cumulativeCount / maxCumulative) * 100 }));
-  }, [candidates]);
-
-  const sourceData = useMemo(() => {
-    const map: Record<string, number> = {};
-    candidates.forEach((c) => {
-      const label = sourceLabels[c.source] || c.source;
-      map[label] = (map[label] || 0) + 1;
-    });
-    const max = Math.max(...Object.values(map), 1);
-    return Object.entries(map).map(([name, count]) => ({ name, count, widthPct: (count / max) * 100 }));
-  }, [candidates]);
-
-  const passCount = totalCandidates - rejectedCount;
-  const passPct = totalCandidates > 0 ? (passCount / totalCandidates) * 100 : 0;
-  const rejectPct = totalCandidates > 0 ? (rejectedCount / totalCandidates) * 100 : 0;
-
-  const stageCandidateList = useMemo(() => {
-    if (!activeStage) return [];
-    return candidates.filter((c) => c.stage === activeStage);
-  }, [activeStage, candidates]);
-
-  const uniqueRecruiters = useMemo(() => [...new Set(candidates.map((c) => c.recruiter || '未分配'))], [candidates]);
-  const uniquePositions = useMemo(() => [...new Set(candidates.map((c) => c.position))], [candidates]);
-
-  const handleAdvance = (candidate: Candidate) => {
-    setAdvanceCandidate(candidate);
-    setAdvanceOpen(true);
-  };
-
-  const handleConfirmAdvance = () => {
-    setAdvanceOpen(false);
-    setAdvanceCandidate(null);
-  };
-
-  const handleMonthChange = () => {
-    const next = (reportingMonthIndex + 1) % reportingMonths.length;
-    setReportingMonthIndex(next);
-    showToast(`报表月份已切换为 ${reportingMonths[next]}`);
-  };
-
-  const tabs = [
-    { key: 'blockage' as const, label: '阻塞分析', icon: 'ri-alert-line' },
-    { key: 'recruiter' as const, label: '招聘专员', icon: 'ri-user-settings-line' },
-    { key: 'overview' as const, label: '总览看板', icon: 'ri-dashboard-3-line' },
-  ];
+function MoveDialog({ candidate, busy, error, onClose, onSubmit }: MoveDialogProps) {
+  const targets = moveTargets(candidate.stage);
+  const [target, setTarget] = useState<PipelineStage | ''>(targets[0] || '');
+  const [reason, setReason] = useState('');
+  const reasonRequired = target === 'rejected' || candidate.stage === 'rejected';
 
   return (
-    <div className="min-h-screen bg-background-50">
-      {/* Header */}
-      <div className="px-6 pt-6 pb-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground-900/45 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="推进候选人"
+      onClick={busy ? undefined : onClose}
+    >
+      <div className="w-full max-w-[480px] rounded-lg bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div>
-            <h1 className="text-2xl font-bold text-foreground-900">招聘进度看板</h1>
-            <p className="text-sm text-foreground-500 mt-1">
-              招聘进度追踪 · {uniqueRecruiters.length} 位招聘专员 · {uniquePositions.length} 个在招岗位
-              {blockedCount > 0 && (
-                <span className="ml-2 inline-flex items-center gap-1 text-accent-600 font-medium">
-                  <i className="ri-error-warning-line"></i>
-                  {blockedCount} 人阻塞中
-                </span>
-              )}
+            <h2 className="text-lg font-bold text-foreground-900">更新候选人阶段</h2>
+            <p className="mt-1 text-sm text-foreground-500">
+              {candidate.name_masked} · 当前 {stageLabels[candidate.stage] || candidate.stage}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleMonthChange}
-              aria-label="2026年7月"
-              title="点击切换报表月份"
-              className="px-3 py-1.5 bg-white border border-background-200 rounded-lg text-sm text-foreground-600 hover:bg-background-50 transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <i className="ri-calendar-line mr-1"></i>
-              {reportingMonths[reportingMonthIndex]}
-            </button>
-            <button
-              onClick={() => showToast('报表已导出，请查看下载列表')}
-              className="px-3 py-1.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <i className="ri-download-line mr-1"></i>
-              导出报表
-            </button>
-          </div>
+          <button type="button" onClick={onClose} disabled={busy} aria-label="关闭" className="rounded-md p-2 text-foreground-400 hover:bg-background-100">
+            <X size={18} />
+          </button>
         </div>
-
-        {/* Tab Switcher */}
-        <div className="flex items-center gap-1 bg-background-100 rounded-full p-1 w-fit mb-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setViewTab(tab.key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${
-                viewTab === tab.key
-                  ? 'bg-white text-foreground-900 shadow-sm'
-                  : 'text-foreground-500 hover:text-foreground-700'
-              }`}
+        <div className="space-y-4 px-6 py-5">
+          <label className="block text-sm font-medium text-foreground-700">
+            目标阶段
+            <select
+              value={target}
+              onChange={(event) => setTarget(event.target.value as PipelineStage)}
+              className="mt-2 h-10 w-full rounded-md border border-background-200 bg-white px-3 text-sm outline-none focus:border-primary-400"
             >
-              <i className={`${tab.icon} text-sm`}></i>
-              {tab.label}
-              {tab.key === 'blockage' && blockedCount > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-accent-500 text-white text-[10px] font-bold px-1">
-                  {blockedCount}
-                </span>
-              )}
-            </button>
-          ))}
+              {targets.map((item) => <option key={item} value={item}>{stageLabels[item] || item}</option>)}
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-foreground-700">
+            操作原因{reasonRequired ? '（必填）' : '（选填）'}
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value.slice(0, 500))}
+              rows={4}
+              maxLength={500}
+              placeholder={target === 'rejected' ? '请填写不合适的具体原因' : '记录本次推进依据'}
+              className="mt-2 w-full resize-none rounded-md border border-background-200 px-3 py-2 text-sm outline-none focus:border-primary-400"
+            />
+          </label>
+          {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-3 border-t border-background-200 px-6 py-4">
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-md border border-background-200 px-4 py-2 text-sm text-foreground-600">取消</button>
+          <button
+            type="button"
+            onClick={() => target && onSubmit(target, reason.trim())}
+            disabled={!target || busy || (reasonRequired && !reason.trim())}
+            className="inline-flex min-w-28 items-center justify-center gap-2 rounded-md bg-foreground-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-background-300"
+          >
+            <ArrowRight size={15} /> {busy ? '保存中...' : '确认更新'}
+          </button>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* KPI Cards */}
-      <div className="px-6 mb-6">
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-white rounded-xl border border-background-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-foreground-500">简历总数</p>
-              <div className="w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center">
-                <i className="ri-inbox-archive-line text-sm text-primary-600"></i>
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-foreground-900">{totalCandidates}</p>
-            <p className="text-xs text-foreground-400 mt-1">{uniquePositions.length} 个岗位</p>
-          </div>
+export default function KanbanPage() {
+  const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
+  const [demandId, setDemandId] = useState<number | null>(null);
+  const [board, setBoard] = useState<PipelineBoard | null>(null);
+  const [loadingDemands, setLoadingDemands] = useState(true);
+  const [loadingBoard, setLoadingBoard] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [selectedCandidate, setSelectedCandidate] = useState<PipelineBoardCandidate | null>(null);
+  const [history, setHistory] = useState<PipelineHistory | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [moveCandidate, setMoveCandidate] = useState<PipelineBoardCandidate | null>(null);
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [moveError, setMoveError] = useState('');
 
-          <div className="bg-white rounded-xl border border-background-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-foreground-500">初筛通过率</p>
-              <div className="w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center">
-                <i className="ri-search-line text-sm text-primary-600"></i>
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-foreground-900">{totalCandidates > 0 ? Math.round((screeningPassCount / totalCandidates) * 100) : 0}%</p>
-            <p className="text-xs text-foreground-400 mt-1">{screeningPassCount} 人通过初筛</p>
-          </div>
+  const activeDemands = useMemo(
+    () => demands.filter((item) => item.status === 'active' && item.approval_status === 'approved'),
+    [demands],
+  );
 
-          <div className="bg-white rounded-xl border border-background-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-foreground-500">Offer 转化率</p>
-              <div className="w-8 h-8 rounded-lg bg-accent-50 flex items-center justify-center">
-                <i className="ri-user-voice-line text-sm text-accent-600"></i>
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-foreground-900">{screeningPassCount > 0 ? Math.round((offerCount / screeningPassCount) * 100) : 0}%</p>
-            <p className="text-xs text-foreground-400 mt-1">{offerCount} 人拿到 Offer</p>
-          </div>
+  const loadDemands = useCallback(async () => {
+    setLoadingDemands(true);
+    setLoadError('');
+    try {
+      const response = await demandsApi.listDemands();
+      setDemands(response.items);
+      const firstActive = response.items.find(
+        (item) => item.status === 'active' && item.approval_status === 'approved',
+      );
+      setDemandId((current) => current && response.items.some(
+        (item) => item.id === current && item.status === 'active' && item.approval_status === 'approved',
+      )
+        ? current
+        : firstActive?.id ?? null);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : '加载招聘需求失败');
+    } finally {
+      setLoadingDemands(false);
+    }
+  }, []);
 
-          <div className="bg-white rounded-xl border border-background-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-foreground-500">最终入职率</p>
-              <div className="w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center">
-                <i className="ri-check-double-line text-sm text-primary-600"></i>
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-foreground-900">{totalCandidates > 0 ? Math.round((hiredCount / totalCandidates) * 100) : 0}%</p>
-            <p className="text-xs text-foreground-400 mt-1">{hiredCount} 人入职 · {rejectedCount} 人淘汰</p>
-          </div>
+  const loadBoard = useCallback(async (nextDemandId: number) => {
+    setLoadingBoard(true);
+    setLoadError('');
+    try {
+      setBoard(await pipelineApi.getBoard(nextDemandId));
+    } catch (error) {
+      setBoard(null);
+      setLoadError(error instanceof Error ? error.message : '加载招聘进度失败');
+    } finally {
+      setLoadingBoard(false);
+    }
+  }, []);
 
-          <div className={`rounded-xl border p-5 ${blockedCount > 0 ? 'bg-accent-50/30 border-accent-200' : 'bg-white border-background-200'}`}>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-foreground-500">当前阻塞</p>
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${blockedCount > 0 ? 'bg-accent-100' : 'bg-background-100'}`}>
-                <i className={`text-sm ${blockedCount > 0 ? 'ri-error-warning-line text-accent-600' : 'ri-check-line text-foreground-400'}`}></i>
-              </div>
-            </div>
-            <p className={`text-2xl font-bold ${blockedCount > 0 ? 'text-accent-600' : 'text-foreground-900'}`}>{blockedCount}</p>
-            <p className="text-xs text-foreground-400 mt-1">
-              {blockedCount > 0
-                ? `${uniqueRecruiters.filter((r) => candidates.filter((c) => c.recruiter === r && isBlocked(c)).length > 0).length} 位专员有卡点`
-                : '全员推进顺利'}
-            </p>
-          </div>
+  useEffect(() => {
+    void loadDemands();
+  }, [loadDemands]);
+
+  useEffect(() => {
+    if (demandId) void loadBoard(demandId);
+    else setBoard(null);
+  }, [demandId, loadBoard]);
+
+  const openHistory = async (candidate: PipelineBoardCandidate) => {
+    if (!demandId) return;
+    setSelectedCandidate(candidate);
+    setHistory(null);
+    setHistoryError('');
+    setHistoryLoading(true);
+    try {
+      setHistory(await pipelineApi.getHistory(demandId, candidate.candidate_id));
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : '加载流程历史失败');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const submitMove = async (target: PipelineStage, reason: string) => {
+    if (!demandId || !moveCandidate) return;
+    setMoveBusy(true);
+    setMoveError('');
+    try {
+      await pipelineApi.moveCandidate(demandId, {
+        candidate_id: moveCandidate.candidate_id,
+        stage: target,
+        note: reason,
+        disposition: target === 'rejected'
+          ? { reason, enter_talent_pool: true, note: reason }
+          : undefined,
+      });
+      setMoveCandidate(null);
+      await loadBoard(demandId);
+      if (selectedCandidate?.candidate_id === moveCandidate.candidate_id) {
+        setSelectedCandidate(null);
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setMoveError('候选人状态已变化，请刷新最新状态后重试');
+      } else {
+        setMoveError(error instanceof Error ? error.message : '更新候选人阶段失败');
+      }
+    } finally {
+      setMoveBusy(false);
+    }
+  };
+
+  const grouped = useMemo(() => {
+    const map = new Map<PipelineStage, PipelineBoardCandidate[]>();
+    stages.forEach((stage) => map.set(stage.key, []));
+    (board?.candidates || []).forEach((candidate) => {
+      const rows = map.get(candidate.stage) || [];
+      rows.push(candidate);
+      map.set(candidate.stage, rows);
+    });
+    return map;
+  }, [board]);
+
+  const currentDemand = activeDemands.find((item) => item.id === demandId) || null;
+
+  return (
+    <div className="space-y-5 p-6" data-ui="real-pipeline-board">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-foreground-900">招聘进度</h1>
+          <p className="mt-1 text-sm text-foreground-500">按招聘需求查看候选人当前阶段并由 HR 确认推进</p>
         </div>
+        <button
+          type="button"
+          onClick={() => demandId ? void loadBoard(demandId) : void loadDemands()}
+          disabled={loadingDemands || loadingBoard}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-background-200 bg-white px-3 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-60"
+        >
+          <RefreshCw size={15} className={loadingDemands || loadingBoard ? 'animate-spin' : ''} /> 刷新
+        </button>
       </div>
 
-      {/* Tab Content */}
-      <div className="px-6 pb-6">
-        {viewTab === 'blockage' && (
-          <BlockagePanel candidates={candidates} />
-        )}
-
-        {viewTab === 'recruiter' && (
-          <RecruiterPanel candidates={candidates} />
-        )}
-
-        {viewTab === 'overview' && (
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-            {/* Funnel */}
-            <div className="xl:col-span-7">
-              <div className="bg-white rounded-xl border border-background-200 p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="font-bold text-foreground-900 text-base">招聘转化漏斗</h3>
-                    <p className="text-xs text-foreground-500 mt-0.5">点击阶段查看候选人明细</p>
-                  </div>
-                  <span className="text-xs text-foreground-400">
-                    总转化 {totalCandidates > 0 ? Math.round((hiredCount / totalCandidates) * 100) : 0}%
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  {funnelData.map((item, index) => {
-                    const prevItem = index > 0 ? funnelData[index - 1] : null;
-                    const conversionRate = prevItem && prevItem.cumulativeCount > 0
-                      ? Math.round((item.cumulativeCount / prevItem.cumulativeCount) * 100)
-                      : 100;
-                    const dropOff = prevItem ? prevItem.cumulativeCount - item.cumulativeCount : 0;
-                    const isActive = activeStage === item.key;
-                    return (
-                      <div
-                        key={item.key}
-                        onClick={() => setActiveStage(isActive ? null : item.key)}
-                        className={`group cursor-pointer rounded-xl border transition-all ${
-                          isActive
-                            ? 'border-primary-300 bg-primary-50/30 ring-1 ring-primary-200'
-                            : 'border-transparent hover:bg-background-50'
-                        }`}
-                      >
-                        <div className="px-4 py-3">
-                          <div className="flex items-center gap-4">
-                            <span className="text-xs font-medium text-foreground-500 w-16 text-right flex-shrink-0">
-                              {item.label}
-                            </span>
-                            <div className="flex-1">
-                              <div className="h-10 bg-background-100 rounded-lg overflow-hidden relative">
-                                <div
-                                  className={`h-full rounded-lg bg-gradient-to-r ${item.barColor} transition-all duration-700 flex items-center`}
-                                  style={{ width: `${item.widthPct}%` }}
-                                >
-                                  <span className="text-sm font-bold text-white ml-3 drop-shadow-sm">
-                                    {item.cumulativeCount}
-                                  </span>
-                                </div>
-                                {dropOff > 0 && (
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-accent-600 font-medium">
-                                    -{dropOff} 流失
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex-shrink-0 w-20 text-right">
-                              {index > 0 && (
-                                <span className="text-xs font-semibold text-primary-600">{conversionRate}% 转化</span>
-                              )}
-                              {index === 0 && (
-                                <span className="text-xs text-foreground-400">起点</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Right Side Panels */}
-            <div className="xl:col-span-5 space-y-6">
-              {/* Source Distribution */}
-              <div className="bg-white rounded-xl border border-background-200 p-5">
-                <h3 className="font-bold text-foreground-900 text-sm mb-4">简历来源分布</h3>
-                <div className="space-y-3">
-                  {sourceData.map((s) => (
-                    <div key={s.name}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-foreground-700">{s.name}</span>
-                        <span className="text-xs font-semibold text-foreground-900">{s.count} 人 · {Math.round((s.count / totalCandidates) * 100)}%</span>
-                      </div>
-                      <div className="h-5 bg-background-100 rounded-md overflow-hidden">
-                        <div
-                          className="h-full bg-primary-400 rounded-md transition-all duration-700"
-                          style={{ width: `${s.widthPct}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Pass vs Rejected */}
-              <div className="bg-white rounded-xl border border-background-200 p-5">
-                <h3 className="font-bold text-foreground-900 text-sm mb-4">通过 vs 淘汰</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-primary-500"></div>
-                      <span className="text-sm text-foreground-700">在流程中 / 已通过</span>
-                    </div>
-                    <span className="text-sm font-bold text-foreground-900">{passCount}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-accent-500"></div>
-                      <span className="text-sm text-foreground-700">已淘汰</span>
-                    </div>
-                    <span className="text-sm font-bold text-foreground-900">{rejectedCount}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-primary-600"></div>
-                      <span className="text-sm text-foreground-700">已入职</span>
-                    </div>
-                    <span className="text-sm font-bold text-foreground-900">{hiredCount}</span>
-                  </div>
-                </div>
-                <div className="mt-4 h-2.5 bg-background-100 rounded-full overflow-hidden flex">
-                  <div
-                    className="h-full bg-primary-500 transition-all duration-700"
-                    style={{ width: `${passPct}%` }}
-                  ></div>
-                  <div
-                    className="h-full bg-accent-500 transition-all duration-700"
-                    style={{ width: `${rejectPct}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Stage Quick Look */}
-              <div className="bg-white rounded-xl border border-background-200 p-5">
-                <h3 className="font-bold text-foreground-900 text-sm mb-4">各阶段人数</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {funnelStages.map((s) => {
-                    const count = candidates.filter((c) => c.stage === s.key).length;
-                    return (
-                      <button
-                        key={s.key}
-                        onClick={() => setActiveStage(activeStage === s.key ? null : s.key)}
-                        className={`text-left rounded-lg border p-2.5 transition-all cursor-pointer ${
-                          activeStage === s.key
-                            ? 'border-primary-300 bg-primary-50/30'
-                            : 'border-background-200 hover:border-background-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-foreground-600">{s.label}</span>
-                          <span className="text-base font-bold text-foreground-900">{count}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+      <div className="flex flex-wrap items-end gap-4 rounded-lg border border-background-200 bg-white p-4">
+        <label className="min-w-[280px] flex-1 text-sm font-medium text-foreground-700">
+          招聘需求
+          <select
+            value={demandId ?? ''}
+            onChange={(event) => setDemandId(event.target.value ? Number(event.target.value) : null)}
+            disabled={loadingDemands}
+            className="mt-2 h-10 w-full rounded-md border border-background-200 bg-white px-3 text-sm outline-none focus:border-primary-400"
+          >
+            <option value="">请选择已通过的招聘需求</option>
+            {activeDemands.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.request_no} · {item.job_title} · {item.requester_department}
+              </option>
+            ))}
+          </select>
+        </label>
+        {currentDemand && (
+          <div className="flex min-w-[250px] items-center gap-3 rounded-md bg-background-50 px-4 py-3">
+            <BriefcaseBusiness size={18} className="text-primary-600" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground-800">{currentDemand.job_title}</p>
+              <p className="truncate text-xs text-foreground-500">HC {currentDemand.metrics.onboarded_count}/{currentDemand.headcount} · {currentDemand.owner_hr_name}</p>
             </div>
           </div>
         )}
+      </div>
 
-        {/* Active Stage Detail List */}
-        {activeStage && viewTab === 'overview' && (
-          <div className="mt-6 bg-white rounded-xl border border-background-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-background-200 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <h3 className="font-bold text-foreground-900 text-sm">
-                  {funnelStages.find((s) => s.key === activeStage)?.label} 候选人明细
-                </h3>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-background-200 text-foreground-600">{stageCandidateList.length} 人</span>
-              </div>
-              <button
-                onClick={() => setActiveStage(null)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-background-100 text-foreground-400 transition-colors cursor-pointer"
-              >
-                <i className="ri-close-line"></i>
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-background-200">
-                    <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500">候选人</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500">应聘职位</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500">招聘专员</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500">来源</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500">阻塞状态</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-background-100">
-                  {stageCandidateList.map((c) => (
-                    <tr key={c.id} className="hover:bg-background-50/50 transition-colors">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary-50 flex items-center justify-center flex-shrink-0">
-                            <span className="text-xs font-bold text-primary-600">{c.name.charAt(0)}</span>
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground-900">{c.name}</p>
-                            <p className="text-xs text-foreground-400">{c.education}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 text-sm text-foreground-700">{c.position}</td>
-                      <td className="px-5 py-3 text-sm text-foreground-600">{c.recruiter || '-'}</td>
-                      <td className="px-5 py-3 text-sm text-foreground-600">{c.source}</td>
-                      <td className="px-5 py-3">
-                        {isBlocked(c) ? (
-                          <div className="flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-accent-500 flex-shrink-0"></span>
-                            <span className="text-xs text-accent-600 max-w-[200px] truncate" title={c.blockReason}>
-                              {c.blockReason?.length && c.blockReason.length > 25
-                                ? c.blockReason.substring(0, 25) + '...'
-                                : c.blockReason}
+      {loadError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-7 text-center">
+          <AlertCircle size={20} className="mx-auto mb-2 text-red-500" />
+          <p className="text-sm text-red-700">{loadError}</p>
+          <button type="button" onClick={() => demandId ? void loadBoard(demandId) : void loadDemands()} className="mt-3 rounded-md border border-red-200 bg-white px-4 py-2 text-sm text-red-700">重新加载</button>
+        </div>
+      ) : loadingDemands || loadingBoard ? (
+        <div className="rounded-lg border border-background-200 bg-white py-20 text-center text-sm text-foreground-500">
+          <RefreshCw size={19} className="mx-auto mb-2 animate-spin" /> 正在加载招聘进度...
+        </div>
+      ) : !demandId ? (
+        <div className="rounded-lg border border-background-200 bg-white py-20 text-center">
+          <BriefcaseBusiness size={30} className="mx-auto mb-3 text-foreground-300" />
+          <p className="text-sm font-medium text-foreground-600">暂无已通过且正在招聘的需求</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto pb-2">
+          <div className="grid min-w-[1200px] grid-cols-6 gap-3">
+            {stages.map((stage) => {
+              const candidates = grouped.get(stage.key) || [];
+              return (
+                <section key={stage.key} className="min-h-[470px] rounded-lg border border-background-200 bg-background-50">
+                  <header className="flex items-center justify-between border-b border-background-200 px-3 py-3">
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${stage.tone}`}>{stage.label}</span>
+                    <span className="text-xs font-medium text-foreground-400">{candidates.length}</span>
+                  </header>
+                  <div className="space-y-2 p-2">
+                    {candidates.map((candidate) => (
+                      <article key={candidate.candidate_id} className="rounded-md border border-background-200 bg-white p-3 shadow-sm">
+                        <button type="button" onClick={() => void openHistory(candidate)} className="w-full text-left">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-primary-50 text-xs font-bold text-primary-700">
+                              {candidate.name_masked.slice(0, 1)}
                             </span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground-800">{candidate.name_masked}</span>
                           </div>
-                        ) : (
-                          <span className="text-xs text-foreground-400">正常</span>
+                          <p className="mt-2 flex items-center gap-1.5 text-xs text-foreground-400">
+                            <Clock3 size={12} /> {formatTime(candidate.updated_at)}
+                          </p>
+                        </button>
+                        {moveTargets(candidate.stage).length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => { setMoveError(''); setMoveCandidate(candidate); }}
+                            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-foreground-900 px-2 py-1.5 text-xs font-medium text-white hover:bg-foreground-800"
+                          >
+                            <ArrowRight size={13} /> 更新阶段
+                          </button>
                         )}
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => setResumeCandidate(c)}
-                            className="px-2.5 py-1 text-xs bg-background-100 hover:bg-background-200 rounded-md text-foreground-600 transition-colors cursor-pointer whitespace-nowrap"
-                          >
-                            查看简历
-                          </button>
-                          <button
-                            onClick={() => handleAdvance(c)}
-                            className="px-2.5 py-1 text-xs bg-primary-50 hover:bg-primary-100 rounded-md text-primary-600 transition-colors cursor-pointer whitespace-nowrap"
-                          >
-                            推进流程
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </article>
+                    ))}
+                    {candidates.length === 0 && <p className="py-8 text-center text-xs text-foreground-400">暂无候选人</p>}
+                  </div>
+                </section>
+              );
+            })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      <ResumePanel candidate={resumeCandidate} onClose={() => setResumeCandidate(null)} />
-      <AdvanceStageModal
-        candidate={advanceCandidate ? { id: advanceCandidate.id, name: advanceCandidate.name, stage: advanceCandidate.stage } : null}
-        isOpen={advanceOpen}
-        onClose={() => setAdvanceOpen(false)}
-        onConfirm={handleConfirmAdvance}
-      />
+      {selectedCandidate && (
+        <>
+          <button type="button" aria-label="关闭历史" onClick={() => setSelectedCandidate(null)} className="fixed inset-0 z-40 bg-foreground-900/40" />
+          <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[480px] flex-col bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
+              <div>
+                <h2 className="text-lg font-bold text-foreground-900">{selectedCandidate.name_masked}</h2>
+                <p className="mt-1 text-sm text-foreground-500">当前阶段：{stageLabels[selectedCandidate.stage] || selectedCandidate.stage}</p>
+              </div>
+              <button type="button" onClick={() => setSelectedCandidate(null)} aria-label="关闭" className="rounded-md p-2 text-foreground-400 hover:bg-background-100"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900"><History size={16} /> 流程历史</h3>
+              {historyLoading ? (
+                <RefreshCw size={18} className="mx-auto mt-16 animate-spin text-foreground-400" />
+              ) : historyError ? (
+                <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{historyError}</p>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {(history?.timeline || []).map((item, index) => (
+                    <div key={`${item.stage}-${item.ts}-${index}`} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-50 text-primary-700"><UserRound size={14} /></span>
+                      <div className="rounded-md border border-background-200 px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-semibold text-foreground-800">{stageLabels[item.stage] || item.stage}</span>
+                          <span className="text-xs text-foreground-400">{formatTime(item.ts)}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-foreground-500">{item.updated_by_name || '系统'}{item.note ? ` · ${item.note}` : ''}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {(history?.timeline || []).length === 0 && <p className="py-12 text-center text-sm text-foreground-500">暂无流程历史</p>}
+                </div>
+              )}
+            </div>
+          </aside>
+        </>
+      )}
+
+      {moveCandidate && (
+        <MoveDialog
+          candidate={moveCandidate}
+          busy={moveBusy}
+          error={moveError}
+          onClose={() => !moveBusy && setMoveCandidate(null)}
+          onSubmit={(stage, reason) => void submitMove(stage, reason)}
+        />
+      )}
     </div>
   );
 }

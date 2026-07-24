@@ -6,7 +6,7 @@ template and must never grant implicit access to every linked demand.
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from .. import db
 from ..models import RecruitmentDemand, User
@@ -35,6 +35,13 @@ def visible_demand_query(user_id, role, org_id):
     query = RecruitmentDemand.query.filter(RecruitmentDemand.org_id == org_id)
     if role == "recruiter":
         return query.filter(RecruitmentDemand.owner_hr_id == user_id)
+    if role == "interviewer":
+        return query.filter(
+            or_(
+                RecruitmentDemand.created_by == user_id,
+                RecruitmentDemand.default_interviewer_id == user_id,
+            )
+        )
     if role in {"manager", "admin"}:
         return query
     return query.filter(RecruitmentDemand.id < 0)
@@ -52,6 +59,12 @@ def can_read_demand(user_id, role, org_id, demand):
 
 
 def can_manage_demand(user_id, role, org_id, demand):
+    if role == "interviewer":
+        return (
+            can_read_demand(user_id, role, org_id, demand)
+            and demand.created_by == user_id
+            and demand.approval_status in {"pending", "rejected"}
+        )
     return can_read_demand(user_id, role, org_id, demand)
 
 

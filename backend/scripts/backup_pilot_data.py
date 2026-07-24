@@ -193,8 +193,12 @@ def _backup_database(database_url, target_dir, dry_run=False):
         dump_path = target_dir / "database.sql"
         parsed, env = _mysql_env(database_url)
         database = unquote(parsed.path.lstrip("/"))
+        mysqldump = shutil.which("mysqldump")
+        if not mysqldump:
+            raise SystemExit("mysqldump client was not found; backup aborted.")
         command = [
-            "mysqldump",
+            mysqldump,
+            "--protocol=TCP",
             "-h",
             parsed.hostname or "",
             "-P",
@@ -208,8 +212,8 @@ def _backup_database(database_url, target_dir, dry_run=False):
         ]
         if dry_run:
             print(
-                "mysqldump --single-transaction --routines --triggers "
-                f"--result-file {dump_path} (MYSQL_HOST={parsed.hostname or ''} MYSQL_DATABASE={database})"
+                "mysqldump --protocol=TCP --single-transaction --routines "
+                f"--triggers --result-file {dump_path} (MYSQL_DATABASE={database})"
             )
             return dump_path
         try:
@@ -220,7 +224,8 @@ def _backup_database(database_url, target_dir, dry_run=False):
             dump_path.unlink(missing_ok=True)
             exit_code = getattr(exc, "returncode", "unavailable")
             raise SystemExit(
-                f"mysqldump failed for {_safe_database_label(database_url)} (exit={exit_code})"
+                "mysqldump failed for "
+                f"{_safe_database_label(database_url)}; backup aborted (exit={exit_code})"
             ) from None
         return dump_path
 

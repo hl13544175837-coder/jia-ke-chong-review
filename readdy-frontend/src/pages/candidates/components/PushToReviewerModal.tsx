@@ -1,271 +1,370 @@
-import { useState, useMemo } from 'react';
-import { interviewerPool } from '@/mocks/interviews';
-import { candidateList } from '@/mocks/candidates';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  BriefcaseBusiness,
+  CalendarDays,
+  CheckCircle2,
+  LoaderCircle,
+  RefreshCw,
+  Send,
+  UserRound,
+  X,
+} from 'lucide-react';
 
-interface PushTarget {
+export interface PushTarget {
   candidateId: number;
   candidateName: string;
-  position: string;
-  source: string;
+  currentDemandId?: number | null;
+  currentStage?: string | null;
+}
+
+export interface PushDemandOption {
+  id: number;
+  jobTitle: string;
+  requestNo: string;
+  department: string;
+}
+
+export interface BusinessReviewerOption {
+  id: number;
+  name: string;
+  email: string;
+  role: 'interviewer' | 'manager';
+}
+
+export interface PushFormValue {
+  demandId: number;
+  reviewerId: number;
+  hrNote: string;
+  dueAt: string | null;
+}
+
+export interface PushResultItem {
+  candidateId: number;
+  candidateName: string;
+  status: 'created' | 'deduplicated' | 'failed';
+  taskId?: number;
+  message: string;
 }
 
 interface PushToReviewerModalProps {
   targets: PushTarget[];
+  demands: PushDemandOption[];
+  reviewers: BusinessReviewerOption[];
+  initialDemandId?: number | null;
+  demandsLoading: boolean;
+  demandError: string | null;
+  reviewersLoading: boolean;
+  reviewerError: string | null;
+  isSubmitting: boolean;
+  results: PushResultItem[];
+  onRetryDemands: () => void;
+  onRetryReviewers: () => void;
   onClose: () => void;
-  onPush: (data: {
-    reviewerId: string;
-    reviewerName: string;
-    reviewerTitle: string;
-    deadline: string;
-    keyRequirements: string;
-  }) => void;
+  onPush: (value: PushFormValue) => void;
 }
 
-export default function PushToReviewerModal({ targets, onClose, onPush }: PushToReviewerModalProps) {
-  const [reviewerId, setReviewerId] = useState('');
-  const [deadline, setDeadline] = useState('');
-  const [keyRequirements, setKeyRequirements] = useState('');
-  const [step, setStep] = useState<'selectReviewer' | 'confirm'>('selectReviewer');
+function tomorrowDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
-  const selectedReviewer = useMemo(
-    () => interviewerPool.find((iv) => iv.id === reviewerId) || null,
-    [reviewerId]
-  );
+export default function PushToReviewerModal({
+  targets,
+  demands,
+  reviewers,
+  initialDemandId,
+  demandsLoading,
+  demandError,
+  reviewersLoading,
+  reviewerError,
+  isSubmitting,
+  results,
+  onRetryDemands,
+  onRetryReviewers,
+  onClose,
+  onPush,
+}: PushToReviewerModalProps) {
+  const fallbackDemandId = useMemo(() => {
+    if (initialDemandId && demands.some((demand) => demand.id === initialDemandId)) {
+      return initialDemandId;
+    }
+    const targetDemandIds = new Set(
+      targets
+        .map((target) => target.currentDemandId)
+        .filter((value): value is number => typeof value === 'number'),
+    );
+    if (targetDemandIds.size !== 1) return 0;
+    const [candidateDemandId] = targetDemandIds;
+    return demands.some((demand) => demand.id === candidateDemandId) ? candidateDemandId : 0;
+  }, [demands, initialDemandId, targets]);
 
-  const targetCandidateData = useMemo(
-    () => targets.map((t) => {
-      const c = candidateList.find((cl) => cl.id === t.candidateId);
-      return { ...t, stage: c?.stage || '待筛选', tags: c?.tags || [] };
-    }),
-    [targets]
-  );
+  const [demandId, setDemandId] = useState(fallbackDemandId);
+  const [reviewerId, setReviewerId] = useState(0);
+  const [hrNote, setHrNote] = useState('');
+  const [dueDate, setDueDate] = useState('');
 
-  const canProceed = reviewerId && deadline && keyRequirements.trim();
+  useEffect(() => {
+    if (demandId === 0 && fallbackDemandId > 0) setDemandId(fallbackDemandId);
+  }, [demandId, fallbackDemandId]);
 
-  const handlePush = () => {
-    if (!canProceed || !selectedReviewer) return;
+  const selectedDemand = demands.find((demand) => demand.id === demandId) ?? null;
+  const selectedReviewer = reviewers.find((reviewer) => reviewer.id === reviewerId) ?? null;
+  const canSubmit = Boolean(selectedDemand && selectedReviewer && targets.length > 0);
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
     onPush({
+      demandId,
       reviewerId,
-      reviewerName: selectedReviewer.name,
-      reviewerTitle: selectedReviewer.role,
-      deadline,
-      keyRequirements: keyRequirements.trim(),
+      hrNote: hrNote.trim(),
+      dueAt: dueDate ? `${dueDate}T23:59:59` : null,
     });
   };
 
-  // Get tomorrow's date as min
-  const today = new Date();
-  const minDate = new Date(today);
-  minDate.setDate(today.getDate() + 1);
-  const minDateStr = minDate.toISOString().split('T')[0];
-
-  // Default deadline: 7 days from now
-  const defaultDeadline = new Date(today);
-  defaultDeadline.setDate(today.getDate() + 7);
-  const defaultDeadlineStr = defaultDeadline.toISOString().split('T')[0];
+  const handleClose = () => {
+    if (!isSubmitting) onClose();
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
+      role="presentation"
+      onMouseDown={handleClose}
+    >
       <div
-        className="bg-white rounded-2xl shadow-lg w-full max-w-[560px] mx-4 max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-full w-full max-w-[620px] flex-col overflow-hidden rounded-lg bg-white shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="push-review-title"
+        onMouseDown={(event) => event.stopPropagation()}
       >
-        {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b border-background-200 flex items-center justify-between">
+        <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div>
-            <h3 className="text-lg font-heading font-bold text-foreground-900">推送面试官评审</h3>
-            <p className="text-sm text-foreground-500 mt-0.5">
-              已选择 <strong className="text-foreground-800">{targets.length}</strong> 位候选人
-            </p>
+            <h2 id="push-review-title" className="text-lg font-bold text-foreground-900">推送业务筛选</h2>
+            <p className="mt-1 text-sm text-foreground-500">已选 {targets.length} 位候选人，后端会为每人返回独立任务</p>
           </div>
           <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-background-100 flex items-center justify-center text-foreground-400 hover:text-foreground-600 transition-colors cursor-pointer"
+            type="button"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-400 transition-colors hover:bg-background-100 hover:text-foreground-700 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="关闭推送弹窗"
+            title="关闭"
           >
-            <i className="ri-close-line text-lg"></i>
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-6 py-4 space-y-5">
-          {/* Selected candidates preview */}
-          <div>
-            <p className="text-xs font-medium text-foreground-500 mb-2">推送候选人</p>
-            <div className="space-y-2">
-              {targetCandidateData.map((t) => (
-                <div
-                  key={t.candidateId}
-                  className="flex items-center gap-3 px-3 py-2.5 bg-background-50 rounded-lg border border-background-200"
-                >
-                  <div className="w-8 h-8 rounded-full bg-primary-50 flex items-center justify-center flex-shrink-0">
-                    <span className="text-xs font-semibold text-primary-600">{t.candidateName.charAt(0)}</span>
+        <div className="overflow-y-auto px-6 py-5">
+          <div className="space-y-5">
+            <section>
+              <div className="mb-2 flex items-center gap-2 text-xs font-medium text-foreground-600">
+                <UserRound size={14} aria-hidden="true" />
+                推送候选人
+              </div>
+              <div className="max-h-36 space-y-2 overflow-y-auto">
+                {targets.map((target) => (
+                  <div
+                    key={target.candidateId}
+                    className="flex items-center justify-between rounded-lg border border-background-200 bg-background-50 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground-900">{target.candidateName}</p>
+                      <p className="mt-0.5 text-xs text-foreground-500">候选人 ID {target.candidateId}</p>
+                    </div>
+                    <span className="ml-3 text-xs text-foreground-400">{target.currentStage || '待业务筛选'}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground-900">{t.candidateName}</p>
-                    <p className="text-xs text-foreground-500">{t.position} · {t.source}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+                ))}
+              </div>
+            </section>
 
-          {/* Step indicator */}
-          {step === 'selectReviewer' ? (
-            <>
-              {/* Select interviewer */}
-              <div>
-                <p className="text-xs font-medium text-foreground-500 mb-2">
-                  选择面试官 <span className="text-accent-500">*</span>
-                </p>
-                <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
-                  {interviewerPool.map((iv) => (
-                    <button
-                      key={iv.id}
-                      onClick={() => setReviewerId(iv.id)}
-                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-left transition-colors cursor-pointer ${
-                        reviewerId === iv.id
-                          ? 'border-primary-300 bg-primary-50'
-                          : 'border-background-200 hover:border-background-300 bg-white'
-                      }`}
-                    >
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          reviewerId === iv.id ? 'bg-primary-100' : 'bg-background-100'
+            <section>
+              <label htmlFor="push-demand" className="mb-2 flex items-center gap-2 text-xs font-medium text-foreground-600">
+                <BriefcaseBusiness size={14} aria-hidden="true" />
+                已审批在招需求 <span className="text-red-500">*</span>
+              </label>
+              {demandsLoading ? (
+                <div className="flex items-center gap-2 rounded-lg border border-background-200 px-3 py-3 text-sm text-foreground-500">
+                  <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />
+                  加载需求中
+                </div>
+              ) : demandError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+                  <p>{demandError}</p>
+                  <button type="button" onClick={onRetryDemands} className="mt-2 inline-flex items-center gap-1 font-medium hover:text-red-800">
+                    <RefreshCw size={14} aria-hidden="true" />
+                    重试
+                  </button>
+                </div>
+              ) : demands.length === 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                  暂无可推送的已审批在招需求
+                </div>
+              ) : (
+                <select
+                  id="push-demand"
+                  value={demandId || ''}
+                  onChange={(event) => setDemandId(Number(event.target.value))}
+                  disabled={isSubmitting}
+                  className="w-full rounded-lg border border-background-300 bg-white px-3 py-2.5 text-sm text-foreground-900 outline-none transition-colors focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+                >
+                  <option value="">请选择候选人所在需求</option>
+                  {demands.map((demand) => (
+                    <option key={demand.id} value={demand.id}>
+                      {demand.requestNo} · {demand.jobTitle} · {demand.department}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </section>
+
+            <section>
+              <p className="mb-2 flex items-center gap-2 text-xs font-medium text-foreground-600">
+                <UserRound size={14} aria-hidden="true" />
+                业务评审人 <span className="text-red-500">*</span>
+              </p>
+              {reviewersLoading ? (
+                <div className="flex items-center gap-2 rounded-lg border border-background-200 px-3 py-3 text-sm text-foreground-500">
+                  <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />
+                  加载业务评审人中
+                </div>
+              ) : reviewerError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+                  <p>{reviewerError}</p>
+                  <button type="button" onClick={onRetryReviewers} className="mt-2 inline-flex items-center gap-1 font-medium hover:text-red-800">
+                    <RefreshCw size={14} aria-hidden="true" />
+                    重试
+                  </button>
+                </div>
+              ) : reviewers.length === 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                  暂无启用的业务评审人
+                </div>
+              ) : (
+                <div className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                  {reviewers.map((reviewer) => {
+                    const selected = reviewer.id === reviewerId;
+                    return (
+                      <button
+                        type="button"
+                        key={reviewer.id}
+                        onClick={() => setReviewerId(reviewer.id)}
+                        disabled={isSubmitting}
+                        className={`flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                          selected
+                            ? 'border-primary-400 bg-primary-50'
+                            : 'border-background-200 bg-white hover:border-background-400'
                         }`}
                       >
-                        <span
-                          className={`text-xs font-semibold ${
-                            reviewerId === iv.id ? 'text-primary-600' : 'text-foreground-500'
-                          }`}
-                        >
-                          {iv.avatar}
+                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${selected ? 'bg-primary-100 text-primary-700' : 'bg-background-100 text-foreground-600'}`}>
+                          {reviewer.name.slice(0, 1)}
                         </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p
-                          className={`text-sm font-medium truncate ${
-                            reviewerId === iv.id ? 'text-primary-700' : 'text-foreground-800'
-                          }`}
-                        >
-                          {iv.name}
-                        </p>
-                        <p className="text-[11px] text-foreground-400 truncate">
-                          {iv.role} · {iv.department}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-foreground-900">{reviewer.name}</span>
+                          <span className="block truncate text-xs text-foreground-400">{reviewer.email}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
+              )}
+            </section>
 
-              {/* Deadline */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <p className="text-xs font-medium text-foreground-500 mb-2">
-                  评审截止时间 <span className="text-accent-500">*</span>
-                </p>
+                <label htmlFor="push-due-date" className="mb-2 flex items-center gap-2 text-xs font-medium text-foreground-600">
+                  <CalendarDays size={14} aria-hidden="true" />
+                  期望完成日期（选填）
+                </label>
                 <input
+                  id="push-due-date"
                   type="date"
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  min={minDateStr}
-                  placeholder={defaultDeadlineStr}
-                  className="w-full px-3 py-2.5 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300"
+                  min={tomorrowDate()}
+                  value={dueDate}
+                  onChange={(event) => setDueDate(event.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full rounded-lg border border-background-300 bg-white px-3 py-2.5 text-sm text-foreground-900 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
                 />
-                {!deadline && (
-                  <p className="text-[11px] text-foreground-400 mt-1">
-                    默认截止时间为推送后7天（{defaultDeadlineStr}），可手动调整
-                  </p>
-                )}
               </div>
-
-              {/* Key requirements */}
               <div>
-                <p className="text-xs font-medium text-foreground-500 mb-2">
-                  重点评审要求 <span className="text-accent-500">*</span>
-                </p>
+                <label htmlFor="push-note" className="mb-2 block text-xs font-medium text-foreground-600">
+                  HR 备注（选填）
+                </label>
                 <textarea
-                  value={keyRequirements}
-                  onChange={(e) => setKeyRequirements(e.target.value)}
-                  placeholder="请说明需要面试官重点关注的方面，如：技术方向、项目经验、软技能等..."
+                  id="push-note"
+                  value={hrNote}
+                  onChange={(event) => setHrNote(event.target.value)}
+                  disabled={isSubmitting}
+                  maxLength={1000}
                   rows={3}
-                  maxLength={500}
-                  className="w-full px-3 py-2.5 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-300 resize-none"
+                  placeholder="填写需要业务重点关注的经历或疑问"
+                  className="w-full resize-none rounded-lg border border-background-300 bg-white px-3 py-2.5 text-sm text-foreground-900 outline-none placeholder:text-foreground-400 focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
                 />
-                <p className="text-[11px] text-foreground-400 mt-1 text-right">
-                  {keyRequirements.length}/500
-                </p>
-              </div>
-
-              {/* Push info summary */}
-              <div className="bg-background-50 rounded-lg p-3 border border-background-200">
-                <p className="text-xs font-medium text-foreground-600 mb-2">推送信息摘要</p>
-                <div className="space-y-1 text-xs text-foreground-500">
-                  <div className="flex items-center gap-2">
-                    <i className="ri-user-line text-foreground-400"></i>
-                    <span>推送人：{localStorage.getItem('zhipin-current-role') === 'recruiter' ? '李华' : '张敏'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <i className="ri-calendar-line text-foreground-400"></i>
-                    <span>推送时间：{new Date().toISOString().split('T')[0]}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <i className="ri-group-line text-foreground-400"></i>
-                    <span>候选人来源：{targets.map((t) => t.source).filter((v, i, a) => a.indexOf(v) === i).join('、')}</span>
-                  </div>
-                </div>
-              </div>
-            </>
-          ) : (
-            /* Confirm step */
-            <div className="space-y-4">
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
-                    <i className="ri-check-line text-emerald-600 text-lg"></i>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-emerald-700">确认推送信息</p>
-                    <p className="text-xs text-emerald-600">推送后候选人状态将更新为「面试官评审中」</p>
-                  </div>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-foreground-500">面试官</span>
-                    <span className="font-medium text-foreground-800">{selectedReviewer?.name} · {selectedReviewer?.role}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-foreground-500">评审截止</span>
-                    <span className="font-medium text-foreground-800">{deadline}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-foreground-500">候选人数量</span>
-                    <span className="font-medium text-foreground-800">{targets.length} 人</span>
-                  </div>
-                </div>
               </div>
             </div>
-          )}
+
+            {results.length > 0 && (
+              <section aria-live="polite">
+                <p className="mb-2 text-xs font-medium text-foreground-600">后端推送结果</p>
+                <div className="space-y-2">
+                  {results.map((result) => {
+                    const failed = result.status === 'failed';
+                    return (
+                      <div
+                        key={result.candidateId}
+                        className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 ${
+                          failed ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50'
+                        }`}
+                      >
+                        {failed ? (
+                          <AlertCircle className="mt-0.5 shrink-0 text-red-600" size={16} aria-hidden="true" />
+                        ) : (
+                          <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} aria-hidden="true" />
+                        )}
+                        <div className="min-w-0 text-sm">
+                          <p className={`font-medium ${failed ? 'text-red-800' : 'text-emerald-800'}`}>
+                            {result.candidateName}
+                            {result.taskId ? <span className="ml-2 font-normal">任务 #{result.taskId}</span> : null}
+                          </p>
+                          <p className={`mt-0.5 text-xs ${failed ? 'text-red-700' : 'text-emerald-700'}`}>
+                            {result.message}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+          </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 pb-6 pt-2 flex items-center gap-3">
+        <div className="flex items-center justify-end gap-3 border-t border-background-200 bg-background-50 px-6 py-4">
           <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 text-sm font-medium text-foreground-600 bg-white border border-background-300 rounded-lg cursor-pointer whitespace-nowrap transition-colors hover:bg-background-50"
+            type="button"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="rounded-lg border border-background-300 bg-white px-4 py-2 text-sm font-medium text-foreground-700 transition-colors hover:bg-background-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            取消
+            {results.length > 0 ? '完成' : '取消'}
           </button>
           <button
-            onClick={handlePush}
-            disabled={!canProceed}
-            className={`flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-lg cursor-pointer whitespace-nowrap transition-colors ${
-              canProceed
-                ? 'bg-primary-500 hover:bg-primary-600'
-                : 'bg-background-200 text-foreground-400 cursor-not-allowed'
-            }`}
+            type="button"
+            onClick={handleSubmit}
+            disabled={!canSubmit || isSubmitting}
+            className="inline-flex min-w-32 items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-background-300 disabled:text-foreground-500"
           >
-            <i className="ri-send-plane-line mr-1.5"></i>
-            确认推送
+            {isSubmitting ? (
+              <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />
+            ) : (
+              <Send size={16} aria-hidden="true" />
+            )}
+            {isSubmitting ? '正在推送' : results.some((result) => result.status === 'failed') ? '重试推送' : '确认推送'}
           </button>
         </div>
       </div>

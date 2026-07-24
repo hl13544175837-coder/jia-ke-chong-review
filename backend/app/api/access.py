@@ -1,4 +1,5 @@
 from .. import db
+from .. import models as models_module
 from ..models import Candidate, InterviewAssignment, Job, User
 from ..services.interview_workflow_service import active_assignment_filter
 
@@ -28,18 +29,6 @@ def assigned_candidate_ids_for_interviewer(user_id):
     return [row[0] for row in rows]
 
 
-def assigned_job_ids_for_interviewer(user_id):
-    org_id = actor_org_id(user_id)
-    rows = (
-        db.session.query(InterviewAssignment.job_id)
-        .filter_by(interviewer_id=user_id, org_id=org_id)
-        .filter(active_assignment_filter())
-        .distinct()
-        .all()
-    )
-    return [row[0] for row in rows]
-
-
 def interviewer_has_assignment(user_id, candidate_id, job_id=None, round_name=None):
     org_id = actor_org_id(user_id)
     q = InterviewAssignment.query.filter_by(
@@ -52,6 +41,18 @@ def interviewer_has_assignment(user_id, candidate_id, job_id=None, round_name=No
     if round_name:
         q = q.filter_by(round=round_name)
     return q.first() is not None
+
+
+def interviewer_has_business_review(user_id, candidate_id):
+    task_model = getattr(models_module, "BusinessReviewTask", None)
+    if task_model is None:
+        return False
+    org_id = actor_org_id(user_id)
+    return task_model.query.filter_by(
+        org_id=org_id,
+        reviewer_id=user_id,
+        candidate_id=candidate_id,
+    ).first() is not None
 
 
 def visible_candidate_query(user_id, role):
@@ -73,8 +74,7 @@ def visible_job_query(user_id, role):
     if role == "recruiter":
         return query.filter(db.or_(Job.owner_hr_id == user_id, Job.owner_hr_id.is_(None)))
     if role == "interviewer":
-        assigned_ids = assigned_job_ids_for_interviewer(user_id)
-        return query.filter(Job.id.in_(assigned_ids or [-1]))
+        return query.filter(Job.status == "active")
     if role in ("manager", "admin"):
         return query
     return query.filter(Job.id < 0)
@@ -105,7 +105,10 @@ def can_access_candidate(user_id, role, candidate_id, job_id=None, round_name=No
     if role == "recruiter":
         return candidate.owner_hr_id in (user_id, None)
     if role == "interviewer":
-        return interviewer_has_assignment(user_id, candidate_id, job_id, round_name)
+        return (
+            interviewer_has_assignment(user_id, candidate_id, job_id, round_name)
+            or interviewer_has_business_review(user_id, candidate_id)
+        )
     return False
 
 

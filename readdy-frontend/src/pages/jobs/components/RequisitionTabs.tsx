@@ -1,4 +1,11 @@
-import { statusTabs } from '@/mocks/jobs';
+const statusTabs = [
+  { key: 'all', label: '全部需求' },
+  { key: 'active', label: '招聘中' },
+  { key: 'pending', label: '待确认' },
+  { key: 'paused', label: '已暂停' },
+  { key: 'filled', label: '已完成' },
+  { key: 'closed', label: '已关闭' },
+];
 
 interface RequisitionTabsProps {
   activeTab: string;

@@ -6,7 +6,9 @@ from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from ..services.interview_service import PreScreenService
 from ..services.interview_workflow_service import (
+    FeedbackValidationError,
     InterviewAssignmentWorkflowError,
+    InterviewFeedbackEditError,
     active_assignment_filter,
     assignment_is_cancelled,
     cancel_interview_assignment,
@@ -14,9 +16,12 @@ from ..services.interview_workflow_service import (
     can_read_interview_context,
     create_interview_assignment,
     feedback_assignment,
+    feedback_satisfaction,
     load_assignment_for_update,
     normalize_assignment_datetime,
+    normalize_simple_feedback,
     resolve_interview_context,
+    update_interview_feedback,
 )
 from ..services.interview_management_service import (
     interview_management_rows,
@@ -32,7 +37,7 @@ from ..services.demand_context_service import (
     visible_demand_query,
 )
 from .. import db
-from ..models import Candidate, Interview, InterviewAssignment, Job, Notification
+from ..models import Candidate, Interview, InterviewAssignment, Job, Notification, User
 from ..time_utils import utc_now
 from .access import (
     same_org,
@@ -126,6 +131,34 @@ def _sanitize_reason_tags(value):
         if len(tags) >= 8:
             break
     return tags
+
+
+def _simple_feedback_fields(feedback):
+    updated_at = getattr(feedback, "updated_at", None)
+    updated_by = getattr(feedback, "updated_by", None)
+    updated_user = db.session.get(User, updated_by) if updated_by else None
+    return {
+        "satisfaction": feedback_satisfaction(feedback),
+        "note": feedback.note or "",
+        "updated_by": updated_by,
+        "updated_by_name": updated_user.name if updated_user else None,
+        "updated_at": updated_at.isoformat() if updated_at else None,
+    }
+
+
+def _feedback_write_payload(feedback, *, deduplicated, round_completed):
+    return {
+        "id": feedback.id,
+        "status": "ok",
+        "deduplicated": deduplicated,
+        "round_completed": round_completed,
+        "next_action": (
+            "awaiting_hr_decision"
+            if round_completed
+            else "awaiting_primary_feedback"
+        ),
+        **_simple_feedback_fields(feedback),
+    }
 
 
 def _resume_info(candidate):
@@ -230,7 +263,8 @@ def _assignment_payload(item):
                 ),
             )
         )
-    feedback_submitted = feedback_query.first() is not None
+    feedback = feedback_query.order_by(InterviewFeedback.id.desc()).first()
+    feedback_submitted = feedback is not None
     scheduled_at = normalize_assignment_datetime(item.scheduled_at)
     assignment_active = not assignment_is_cancelled(item.status)
     stage = None
@@ -282,6 +316,19 @@ def _assignment_payload(item):
         "note": item.note or "",
         "status": item.status or "scheduled",
         "feedback_submitted": feedback_submitted,
+        "feedback_id": feedback.id if feedback else None,
+        "feedback_satisfaction": (
+            feedback_satisfaction(feedback) if feedback else None
+        ),
+        "feedback_note": feedback.note or "" if feedback else "",
+        "feedback_updated_by": (
+            getattr(feedback, "updated_by", None) if feedback else None
+        ),
+        "feedback_updated_at": (
+            getattr(feedback, "updated_at", None).isoformat()
+            if feedback and getattr(feedback, "updated_at", None)
+            else None
+        ),
         "is_overdue": is_overdue,
         "created_by_name": creator.name if creator else None,
         "created_at": item.created_at.isoformat() if item.created_at else None,
@@ -551,22 +598,64 @@ def interview_guide():
 @bp.post("/interview/feedback")
 @require_auth
 def submit_feedback():
-    from ..models import Candidate, InterviewFeedback
+    from ..models import InterviewFeedback
+
     data = request.get_json() or {}
-    if not data.get("candidate_id") or not data.get("round") or not (
-        data.get("demand_id") or data.get("job_id")
-    ):
-        return jsonify({"error": "candidate_id, demand_id, round required",
-                        "code": "demand_id_required"}), 400
-    try:
-        context = resolve_interview_context(
+    simple_feedback = None
+    if "satisfaction" in data:
+        try:
+            simple_feedback = normalize_simple_feedback(data)
+        except FeedbackValidationError as exc:
+            return jsonify(exc.as_payload()), 400
+
+    has_legacy_context = bool(
+        data.get("candidate_id")
+        and data.get("round")
+        and (data.get("demand_id") or data.get("job_id"))
+    )
+    if not has_legacy_context and not data.get("assignment_id"):
+        return jsonify({
+            "error": "candidate_id, demand_id, round required",
+            "code": "demand_id_required",
+        }), 400
+
+    assignment = None
+    if has_legacy_context:
+        candidate_id = data["candidate_id"]
+        round_name = data["round"]
+        try:
+            context = resolve_interview_context(
+                org_id=g.org_id,
+                candidate_id=candidate_id,
+                demand_id=data.get("demand_id"),
+                job_id=data.get("job_id"),
+            )
+        except DemandContextError as exc:
+            return _context_error_response(exc)
+    else:
+        assignment = feedback_assignment(
             org_id=g.org_id,
-            candidate_id=data["candidate_id"],
+            interviewer_id=g.user_id,
+            assignment_id=data.get("assignment_id"),
+            candidate_id=data.get("candidate_id"),
             demand_id=data.get("demand_id"),
             job_id=data.get("job_id"),
+            round_name=data.get("round"),
+            lock=True,
         )
-    except DemandContextError as exc:
-        return _context_error_response(exc)
+        if assignment is not None:
+            candidate_id = assignment.candidate_id
+            round_name = assignment.round
+            try:
+                context = resolve_interview_context(
+                    org_id=g.org_id,
+                    candidate_id=candidate_id,
+                    demand_id=assignment.demand_id,
+                    job_id=assignment.job_id,
+                )
+            except DemandContextError as exc:
+                return _context_error_response(exc)
+
     score = data.get("score")
     if score is not None:
         try:
@@ -575,43 +664,56 @@ def submit_feedback():
             return jsonify({"error": "score must be an integer between 1 and 5"}), 400
         if score < 1 or score > 5:
             return jsonify({"error": "score must be between 1 and 5"}), 400
-    assignment = feedback_assignment(
-        org_id=g.org_id,
-        interviewer_id=g.user_id,
-        assignment_id=data.get("assignment_id"),
-        candidate_id=data["candidate_id"],
-        demand_id=context.demand_id,
-        job_id=context.job.id,
-        round_name=data["round"],
-        lock=True,
-    )
+
+    if has_legacy_context:
+        assignment = feedback_assignment(
+            org_id=g.org_id,
+            interviewer_id=g.user_id,
+            assignment_id=data.get("assignment_id"),
+            candidate_id=candidate_id,
+            demand_id=context.demand_id,
+            job_id=context.job.id,
+            round_name=round_name,
+            lock=True,
+        )
     if assignment is None:
-        return jsonify({"error": "面试任务不存在或不属于当前面试官",
-                        "code": "assignment_not_found"}), 404
+        return jsonify({
+            "error": "面试任务不存在或不属于当前面试官",
+            "code": "assignment_not_found",
+        }), 404
     if not can_read_interview_context(
-        g.user_id, g.role, g.org_id, context, data["round"]
+        g.user_id, g.role, g.org_id, context, round_name
     ):
         return jsonify({"error": "Forbidden"}), 403
+
     existing = InterviewFeedback.query.filter_by(
         org_id=g.org_id,
         assignment_id=assignment.id,
     ).first()
     if existing is not None:
         completed = bool(assignment.is_primary)
-        return jsonify({"id": existing.id, "status": "ok", "deduplicated": True,
-                        "round_completed": completed,
-                        "next_action": "awaiting_hr_decision" if completed else "awaiting_primary_feedback"}), 200
+        return jsonify(_feedback_write_payload(
+            existing,
+            deduplicated=True,
+            round_completed=completed,
+        )), 200
+
+    evaluation = _sanitize_evaluation(data.get("evaluation"))
+    note = data.get("note")
+    if simple_feedback is not None:
+        satisfaction, note = simple_feedback
+        evaluation["satisfaction"] = satisfaction
     fb = InterviewFeedback(
-        candidate_id=data["candidate_id"], job_id=context.job.id,
+        candidate_id=candidate_id, job_id=context.job.id,
         demand_id=context.demand_id,
         assignment_id=assignment.id,
         org_id=g.org_id,
-        round=data["round"], interviewer_id=g.user_id,
+        round=round_name, interviewer_id=g.user_id,
         score=score, passed=data.get("passed"),
         strengths=data.get("strengths"), concerns=data.get("concerns"),
         reason_tags=_sanitize_reason_tags(data.get("reason_tags")),
-        evaluation_json=_sanitize_evaluation(data.get("evaluation")),
-        note=data.get("note"))
+        evaluation_json=evaluation,
+        note=note)
     db.session.add(fb)
     round_completed = bool(assignment.is_primary)
     assignment.status = "completed" if round_completed else "feedback_submitted"
@@ -637,16 +739,19 @@ def submit_feedback():
     try:
         record_event(
             "interview.feedback",
-            entity_id=data["candidate_id"],
+            entity_id=candidate_id,
             entity_type="candidate",
             demand_id=context.demand_id,
             payload={
                 "job_id": context.job.id,
                 "demand_id": context.demand_id,
                 "assignment_id": assignment.id,
-                "round": data["round"],
+                "round": round_name,
                 "score": data.get("score"),
                 "passed": data.get("passed"),
+                "satisfaction": (
+                    simple_feedback[0] if simple_feedback is not None else None
+                ),
             },
             commit=False,
         )
@@ -659,17 +764,11 @@ def submit_feedback():
                 assignment_id=assignment_id,
             ).first()
             if existing is not None:
-                return jsonify({
-                    "id": existing.id,
-                    "status": "ok",
-                    "deduplicated": True,
-                    "round_completed": round_completed,
-                    "next_action": (
-                        "awaiting_hr_decision"
-                        if round_completed
-                        else "awaiting_primary_feedback"
-                    ),
-                }), 200
+                return jsonify(_feedback_write_payload(
+                    existing,
+                    deduplicated=True,
+                    round_completed=round_completed,
+                )), 200
         return jsonify({
             "error": "反馈写入冲突，请刷新后重试",
             "code": "feedback_conflict",
@@ -677,9 +776,30 @@ def submit_feedback():
     except Exception:
         db.session.rollback()
         raise
-    return jsonify({"id": fb.id, "status": "ok", "deduplicated": False,
-                    "round_completed": round_completed,
-                    "next_action": "awaiting_hr_decision" if round_completed else "awaiting_primary_feedback"}), 201
+    return jsonify(_feedback_write_payload(
+        fb,
+        deduplicated=False,
+        round_completed=round_completed,
+    )), 201
+
+
+@bp.patch("/interview/feedback/<int:feedback_id>")
+@require_auth
+def edit_feedback(feedback_id):
+    data = request.get_json() or {}
+    try:
+        feedback = update_interview_feedback(
+            org_id=g.org_id,
+            feedback_id=feedback_id,
+            actor_id=g.user_id,
+            actor_role=g.role,
+            data=data,
+        )
+    except FeedbackValidationError as exc:
+        return jsonify(exc.as_payload()), 400
+    except InterviewFeedbackEditError as exc:
+        return jsonify(exc.as_payload()), exc.status_code
+    return jsonify({"id": feedback.id, **_simple_feedback_fields(feedback)}), 200
 
 
 @bp.get("/interview/feedback")
@@ -716,6 +836,8 @@ def list_feedback():
     out = []
     for f in rows:
         u = db.session.get(User, f.interviewer_id)
+        updated_by = getattr(f, "updated_by", None)
+        updated_user = db.session.get(User, updated_by) if updated_by else None
         out.append({
             "id": f.id, "candidate_id": f.candidate_id, "job_id": f.job_id,
             "demand_id": f.demand_id, "assignment_id": f.assignment_id,
@@ -725,6 +847,14 @@ def list_feedback():
             "reason_tags": f.reason_tags if isinstance(f.reason_tags, list) else [],
             "evaluation": f.evaluation_json or {},
             "strengths": f.strengths, "concerns": f.concerns, "note": f.note,
+            "satisfaction": feedback_satisfaction(f),
+            "updated_by": updated_by,
+            "updated_by_name": updated_user.name if updated_user else None,
+            "updated_at": (
+                getattr(f, "updated_at", None).isoformat()
+                if getattr(f, "updated_at", None)
+                else None
+            ),
             "created_at": f.created_at.isoformat() if f.created_at else None,
         })
     return jsonify(out)
@@ -802,8 +932,15 @@ def list_interviews():
                       "interviewer_id": f.interviewer_id,
                       "interviewer_name": uname(f.interviewer_id),
                       "evaluation": f.evaluation_json or {},
+                      "satisfaction": feedback_satisfaction(f),
                       "reason_tags": f.reason_tags if isinstance(f.reason_tags, list) else [],
                       "strengths": f.strengths, "concerns": f.concerns, "note": f.note,
+                      "updated_by": getattr(f, "updated_by", None),
+                      "updated_at": (
+                          getattr(f, "updated_at", None).isoformat()
+                          if getattr(f, "updated_at", None)
+                          else None
+                      ),
                       "created_at": f.created_at.isoformat() if f.created_at else None})
     items.sort(key=lambda it: it["created_at"] or "", reverse=True)
     return jsonify(items)

@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -203,6 +204,12 @@ const CompanyAuthContext = createContext<CompanyAuthValue | undefined>(undefined
 export function CompanyAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<CompanySession | null>(() => loadStoredSession());
   const [sessionExpired, setSessionExpired] = useState(false);
+
+  useEffect(() => {
+    const handleUnauthorized = () => setSessionExpired(true);
+    window.addEventListener('hireinsight:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('hireinsight:unauthorized', handleUnauthorized);
+  }, []);
 
   const value = useMemo<CompanyAuthValue>(() => ({
     token: session?.token ?? null,

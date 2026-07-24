@@ -17,6 +17,7 @@ from ..models import (
     Notification,
     RecruitmentDemand,
 )
+from ..time_utils import utc_now
 from .demand_context_service import (
     DemandContextError,
     can_manage_demand,
@@ -26,6 +27,31 @@ from .demand_context_service import (
 
 
 CANCELLED_ASSIGNMENT_STATUSES = {"cancelled", "canceled"}
+SATISFACTION_VALUES = {"satisfied", "pending", "unsatisfied"}
+
+
+class FeedbackValidationError(Exception):
+    def __init__(self, fields):
+        super().__init__("请检查面试评价")
+        self.fields = fields
+
+    def as_payload(self):
+        return {
+            "error": "请检查面试评价",
+            "code": "validation_error",
+            "fields": self.fields,
+        }
+
+
+class InterviewFeedbackEditError(Exception):
+    def __init__(self, message, *, code, status_code):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+        self.status_code = status_code
+
+    def as_payload(self):
+        return {"error": self.message, "code": self.code}
 
 
 class InterviewAssignmentWorkflowError(Exception):
@@ -35,6 +61,93 @@ class InterviewAssignmentWorkflowError(Exception):
         self.code = code
         self.status_code = status_code
         self.details = details or {}
+
+
+def normalize_simple_feedback(data):
+    satisfaction = str(data.get("satisfaction") or "").strip()
+    note = str(data.get("note") or "").strip()
+    if satisfaction not in SATISFACTION_VALUES:
+        raise FeedbackValidationError(
+            {"satisfaction": "请选择满意、待定或不满意"}
+        )
+    if len(note) > 1000:
+        raise FeedbackValidationError({"note": "面试备注不能超过 1000 字"})
+    return satisfaction, note
+
+
+def feedback_satisfaction(feedback):
+    evaluation = feedback.evaluation_json
+    if not isinstance(evaluation, dict):
+        return None
+    satisfaction = evaluation.get("satisfaction")
+    return satisfaction if satisfaction in SATISFACTION_VALUES else None
+
+
+def update_interview_feedback(*, org_id, feedback_id, actor_id, actor_role, data):
+    """Lock and update only the editable simple-feedback fields."""
+
+    satisfaction, note = normalize_simple_feedback(data)
+    feedback = db.session.execute(
+        select(InterviewFeedback)
+        .where(
+            InterviewFeedback.id == feedback_id,
+            InterviewFeedback.org_id == org_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if feedback is None:
+        db.session.rollback()
+        raise InterviewFeedbackEditError(
+            "面试反馈不存在",
+            code="feedback_not_found",
+            status_code=404,
+        )
+    can_edit = actor_role in {"manager", "admin"} or (
+        actor_role == "interviewer" and feedback.interviewer_id == actor_id
+    )
+    if not can_edit:
+        db.session.rollback()
+        raise InterviewFeedbackEditError(
+            "Forbidden",
+            code="forbidden",
+            status_code=403,
+        )
+
+    before = {
+        "satisfaction": feedback_satisfaction(feedback),
+        "note": feedback.note or "",
+    }
+    evaluation = (
+        dict(feedback.evaluation_json)
+        if isinstance(feedback.evaluation_json, dict)
+        else {}
+    )
+    evaluation["satisfaction"] = satisfaction
+    feedback.evaluation_json = evaluation
+    feedback.note = note
+    feedback.updated_by = actor_id
+    feedback.updated_at = utc_now()
+    after = {"satisfaction": satisfaction, "note": note}
+
+    try:
+        record_event(
+            "interview.feedback_updated",
+            entity_id=feedback.id,
+            entity_type="interview_feedback",
+            demand_id=feedback.demand_id,
+            payload={
+                "assignment_id": feedback.assignment_id,
+                "candidate_id": feedback.candidate_id,
+                "before": before,
+                "after": after,
+            },
+            commit=False,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return feedback
 
 
 def normalize_assignment_status(status):

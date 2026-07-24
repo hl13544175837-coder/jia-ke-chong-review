@@ -58,3 +58,16 @@ export interface InterviewFeedbackUpdateInput {
   satisfaction: Satisfaction;
   note: string;
 }
+
+export interface InterviewFeedbackMutationResult {
+  id: number;
+  satisfaction: Satisfaction | null;
+  note: string;
+  updated_by: number | null;
+  updated_by_name: string | null;
+  updated_at: string | null;
+  status?: string;
+  deduplicated?: boolean;
+  round_completed?: boolean;
+  next_action?: string;
+}

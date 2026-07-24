@@ -11,18 +11,22 @@ from ..services.demand_context_service import (
     validate_recruiter_owner,
     visible_demand_query,
 )
+from ..services.demand_approval_service import (
+    DemandApprovalError,
+    approve_demand as approve_demand_service,
+    reject_demand as reject_demand_service,
+    resubmit_demand as resubmit_demand_service,
+)
 from ..services.demand_service import (
     ALL_STATUSES,
     DemandRequestNoConflict,
     DemandValidationError,
+    apply_editable_fields,
     apply_list_filters,
     clean_text,
     create_demand_from_input,
     demand_payload,
-    normalize_request_no,
     paginate_demands,
-    parse_date,
-    resolve_default_interviewer,
 )
 from ..time_utils import utc_now
 from .access import job_is_active, same_org
@@ -54,6 +58,10 @@ def _validation_response(fields, message="请检查招聘需求信息"):
 
 def _request_no_conflict_response():
     return jsonify(DemandRequestNoConflict().as_payload()), 409
+
+
+def _approval_error_response(error):
+    return jsonify(error.as_payload()), error.status_code
 
 
 def _is_request_no_unique_violation(error):
@@ -111,7 +119,7 @@ def _job_for_create(data):
 
 @bp.get("/demands")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "interviewer")
 def list_demands():
     query = visible_demand_query(g.user_id, g.role, g.org_id)
     query = apply_list_filters(query, request.args)
@@ -120,7 +128,7 @@ def list_demands():
 
 @bp.post("/demands")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "interviewer")
 def create_demand():
     data = request.get_json(silent=True) or {}
     job, error = _job_for_create(data)
@@ -178,7 +186,7 @@ def create_demand():
 
 @bp.get("/demands/<int:demand_id>")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "interviewer")
 def get_demand(demand_id):
     demand, error = _authorized_demand(demand_id)
     if error is not None:
@@ -186,93 +194,9 @@ def get_demand(demand_id):
     return jsonify(demand_payload(demand, include_jd=True))
 
 
-def _apply_editable_fields(demand, data):
-    fields = {}
-    if "request_no" in data:
-        request_no = normalize_request_no(data.get("request_no"))
-        if not request_no:
-            fields["request_no"] = "需求编号不能为空"
-        else:
-            duplicate = RecruitmentDemand.query.filter(
-                RecruitmentDemand.org_id == g.org_id,
-                RecruitmentDemand.request_no == request_no,
-                RecruitmentDemand.id != demand.id,
-            ).first()
-            if duplicate:
-                raise DemandRequestNoConflict()
-            else:
-                demand.request_no = request_no
-    if "default_interviewer_id" in data:
-        raw_interviewer_id = data.get("default_interviewer_id")
-        if raw_interviewer_id in (None, ""):
-            demand.default_interviewer_id = None
-        else:
-            default_interviewer = resolve_default_interviewer(
-                raw_interviewer_id,
-                org_id=g.org_id,
-            )
-            if default_interviewer is None:
-                fields["default_interviewer_id"] = (
-                    "请选择当前组织内已启用的面试官、经理或管理员"
-                )
-            else:
-                demand.default_interviewer_id = default_interviewer.id
-    if "requester_name" in data:
-        demand.requester_name = clean_text(data.get("requester_name"), 120)
-    if "requester_department" in data or "department" in data:
-        department = clean_text(
-            data.get("requester_department") or data.get("department"), 120
-        )
-        if not department:
-            fields["requester_department"] = "用人部门必填"
-        else:
-            demand.requester_department = department
-            demand.department = department
-    if "city" in data or "job_city" in data:
-        city = clean_text(data.get("city") or data.get("job_city"), 80)
-        if not city:
-            fields["city"] = "招聘城市必填"
-        else:
-            demand.city = city
-    if "hiring_manager_name" in data:
-        manager = clean_text(data.get("hiring_manager_name"), 120)
-        if not manager:
-            fields["hiring_manager_name"] = "用人负责人必填"
-        else:
-            demand.hiring_manager_name = manager
-    if "requested_at" in data:
-        value = parse_date(data.get("requested_at"))
-        if value is None:
-            fields["requested_at"] = "提需求日期无效"
-        else:
-            demand.requested_at = value
-    if "accepted_at" in data:
-        demand.accepted_at = parse_date(data.get("accepted_at"))
-    if "target_date" in data:
-        value = parse_date(data.get("target_date"))
-        if value is None:
-            fields["target_date"] = "期望完成日期无效"
-        elif demand.requested_at and value < demand.requested_at:
-            fields["target_date"] = "期望完成日期不能早于提需求日期"
-        else:
-            demand.target_date = value
-    if "headcount" in data:
-        try:
-            value = int(data.get("headcount"))
-        except (TypeError, ValueError):
-            value = 0
-        if value <= 0:
-            fields["headcount"] = "HC 必须是大于 0 的整数"
-        else:
-            demand.headcount = value
-    if "note" in data:
-        demand.note = clean_text(data.get("note"), 2000)
-    return fields
-
-
 @bp.patch("/demands/<int:demand_id>")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "interviewer")
 def update_demand(demand_id):
     demand, error = _authorized_demand(demand_id, manage=True)
     if error is not None:
@@ -285,7 +209,7 @@ def update_demand(demand_id):
             "状态、负责人、优先级及动作原因不能通过通用编辑修改",
         )
     try:
-        fields = _apply_editable_fields(demand, data)
+        fields = apply_editable_fields(demand, data, org_id=g.org_id)
     except DemandRequestNoConflict as exc:
         db.session.rollback()
         return jsonify(exc.as_payload()), 409
@@ -308,6 +232,61 @@ def update_demand(demand_id):
         raise
     except Exception:
         db.session.rollback()
+        raise
+    return jsonify(demand_payload(demand, include_jd=True))
+
+
+@bp.post("/demands/<int:demand_id>/approve")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def approve_demand(demand_id):
+    try:
+        demand = approve_demand_service(demand_id, g.user_id, g.org_id)
+    except DemandApprovalError as exc:
+        return _approval_error_response(exc)
+    return jsonify(demand_payload(demand, include_jd=True))
+
+
+@bp.post("/demands/<int:demand_id>/reject")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def reject_demand(demand_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        demand = reject_demand_service(
+            demand_id,
+            g.user_id,
+            g.org_id,
+            data.get("reason"),
+        )
+    except DemandApprovalError as exc:
+        return _approval_error_response(exc)
+    return jsonify(demand_payload(demand, include_jd=True))
+
+
+@bp.post("/demands/<int:demand_id>/resubmit")
+@require_auth
+@require_role("interviewer")
+def resubmit_demand(demand_id):
+    data = request.get_json(silent=True)
+    if data is None:
+        data = {}
+    try:
+        demand = resubmit_demand_service(
+            demand_id,
+            g.user_id,
+            g.org_id,
+            data,
+        )
+    except DemandApprovalError as exc:
+        return _approval_error_response(exc)
+    except DemandRequestNoConflict as exc:
+        return jsonify(exc.as_payload()), 409
+    except DemandValidationError as exc:
+        return jsonify(exc.as_payload()), 400
+    except IntegrityError as exc:
+        if _is_request_no_unique_violation(exc):
+            return _request_no_conflict_response()
         raise
     return jsonify(demand_payload(demand, include_jd=True))
 

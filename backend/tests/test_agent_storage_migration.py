@@ -127,7 +127,7 @@ def test_agent_storage_migration_backfills_legacy_conversations_and_adds_constra
     _create_revision_06_database(path)
     config = _config(path)
 
-    command.upgrade(config, "head")
+    command.upgrade(config, AGENT_STORAGE_REVISION)
 
     engine = create_engine(f"sqlite:///{path}")
     inspector = inspect(engine)
@@ -199,7 +199,7 @@ def test_agent_storage_migration_reconciles_wrong_existing_legacy_org_ids(tmp_pa
     path = tmp_path / "legacy-wrong-org.db"
     _create_revision_06_database(path, include_legacy_org_columns=True)
 
-    command.upgrade(_config(path), "head")
+    command.upgrade(_config(path), AGENT_STORAGE_REVISION)
 
     engine = create_engine(f"sqlite:///{path}")
     try:
@@ -220,7 +220,7 @@ def test_agent_storage_migration_idempotent_rerun_preserves_revision_07_org_ids(
     path = tmp_path / "agent-storage-idempotent.db"
     _create_revision_06_database(path)
     config = _config(path)
-    command.upgrade(config, "head")
+    command.upgrade(config, AGENT_STORAGE_REVISION)
 
     connection = sqlite3.connect(path)
     connection.execute("UPDATE conversations SET org_id = 9 WHERE id = 1")
@@ -232,7 +232,7 @@ def test_agent_storage_migration_idempotent_rerun_preserves_revision_07_org_ids(
     connection.commit()
     connection.close()
 
-    command.upgrade(config, "head")
+    command.upgrade(config, AGENT_STORAGE_REVISION)
 
     connection = sqlite3.connect(path)
     try:
@@ -253,7 +253,7 @@ def test_agent_storage_migration_fails_closed_when_both_legacy_tables_missing(
     _create_revision_06_database(path, include_conversation_tables=False)
 
     with pytest.raises(RuntimeError, match="partial AI conversation schema"):
-        command.upgrade(_config(path), "head")
+        command.upgrade(_config(path), AGENT_STORAGE_REVISION)
 
     connection = sqlite3.connect(path)
     try:
@@ -285,7 +285,7 @@ def test_agent_storage_migration_fails_closed_for_partial_legacy_schema(tmp_path
     connection.close()
 
     with pytest.raises(RuntimeError, match="partial AI conversation schema"):
-        command.upgrade(_config(path), "head")
+        command.upgrade(_config(path), AGENT_STORAGE_REVISION)
 
     connection = sqlite3.connect(path)
     try:
@@ -328,7 +328,7 @@ def test_agent_storage_migration_rejects_orphaned_legacy_ai_rows_before_ddl(
     connection.close()
 
     with pytest.raises(RuntimeError, match=error_pattern):
-        command.upgrade(_config(path), "head")
+        command.upgrade(_config(path), AGENT_STORAGE_REVISION)
 
     connection = sqlite3.connect(path)
     try:
@@ -358,7 +358,7 @@ def test_agent_storage_upgrade_and_downgrade_do_not_leave_org_server_defaults(
     _create_revision_06_database(path, include_legacy_org_columns=True)
     config = _config(path)
 
-    command.upgrade(config, "head")
+    command.upgrade(config, AGENT_STORAGE_REVISION)
     engine = create_engine(f"sqlite:///{path}")
     try:
         inspector = inspect(engine)
@@ -405,7 +405,7 @@ def test_agent_storage_migration_fails_closed_when_offer_duplicates_exist(tmp_pa
     config = _config(path)
 
     with pytest.raises(RuntimeError, match="duplicate offer records"):
-        command.upgrade(config, "head")
+        command.upgrade(config, AGENT_STORAGE_REVISION)
 
     connection = sqlite3.connect(path)
     assert connection.execute(
@@ -428,7 +428,7 @@ def test_agent_storage_migration_allows_multiple_legacy_offers_without_demand(tm
     _create_revision_06_database(path, duplicate_unmapped_offers=True)
     config = _config(path)
 
-    command.upgrade(config, "head")
+    command.upgrade(config, AGENT_STORAGE_REVISION)
 
     connection = sqlite3.connect(path)
     assert connection.execute(
