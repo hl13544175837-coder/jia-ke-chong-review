@@ -70,7 +70,30 @@ for (const [key, expectedCount] of referenceFileTags) {
   if (actualCount < expectedCount) missing.push(`${key} controls (${actualCount}/${expectedCount})`);
 }
 
-assert.deepEqual(missing, [], `整合版缺少 ZIP 原版控件：\n${missing.join('\n')}`);
+// 公司安全底座要求替换 Readdy 的假邮箱登录、定时器登录和假角色切换。
+// 这里只允许这 5 个原始标签被真实公司账号、OAuth 会话和账号菜单替换；
+// 同文件同标签的控件总数仍由 referenceFileTags 门禁保证，其他业务控件不得缺失。
+const approvedCompanySecurityReplacements = [
+  'components/feature/MainLayout.tsx\tbutton\t{roleInfo.avatar} {roleInfo.label} {roleInfo.department} {roleInfo.description}',
+  'components/feature/MainLayout.tsx\tbutton\t{r.avatar} {r.label} {r.description} {currentRole === r.key && ( <i className="ri-check-line text-sm text-primary-600 ml-auto"></i> )}',
+  'pages/login/page.tsx\tform\t{error && ( <div className="bg-accent-100/60 border border-accent-300 text-accent-800 rounded-lg px-4 py-3 text-sm flex i} 企业邮箱 密码 忘记密码？ {( <> <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>',
+  'pages/login/page.tsx\tinput\tname@company.com',
+  'pages/login/page.tsx\tbutton\t{( <> <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> 登录中... </> )} / {( <> 登 录 <i className="ri-arrow-right-line"></i> </> )}',
+];
+const approvedMissing = missing.filter((line) =>
+  approvedCompanySecurityReplacements.some((key) => line.startsWith(`${key} (`))
+);
+const unapprovedMissing = missing.filter((line) => !approvedMissing.includes(line));
+assert.equal(
+  approvedMissing.length,
+  approvedCompanySecurityReplacements.length,
+  '公司鉴权替换清单与 Readdy 原始控件不一致',
+);
+assert.deepEqual(
+  unapprovedMissing,
+  [],
+  `整合版缺少未经批准的 ZIP 原版控件：\n${unapprovedMissing.join('\n')}`,
+);
 
 const deadButtons = product.controls.filter((control) => (
   (control.tag === 'button' || control.tag === 'Button')
@@ -110,4 +133,7 @@ for (const format of ['image/jpeg', 'image/png', 'image/webp', 'image/gif', '.zi
   assert.ok(productSource.includes(format), `完整前端缺少上传格式 ${format}`);
 }
 
-console.log(`readdy ZIP parity passed: ${reference.controls.length} controls preserved`);
+console.log(
+  `readdy ZIP parity passed: ${reference.controls.length} controls covered; `
+  + `${approvedMissing.length} insecure demo labels replaced by company auth`,
+);

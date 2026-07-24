@@ -25,114 +25,126 @@ import DirectorCockpitPage from '@/pages/director/cockpit/page';
 import DirectorProgressPage from '@/pages/director/progress/page';
 import DirectorInsightsPage from '@/pages/director/insights/page';
 import DirectorApprovalsPage from '@/pages/director/approvals/page';
+import {
+  CompanyHomeRedirect,
+  RequireCompanyAuth,
+  RequireCompanyGuest,
+  RequireCompanyRole,
+} from '@/auth/companyGuards';
+import type { CompanyRole } from '@/auth/companyAuth';
+
+const allRoles: CompanyRole[] = ['admin', 'manager', 'recruiter', 'interviewer'];
+const recruitingRoles: CompanyRole[] = ['admin', 'manager', 'recruiter'];
+const managementRoles: CompanyRole[] = ['admin', 'manager'];
+const interviewerRoles: CompanyRole[] = ['interviewer'];
 
 const routes: RouteObject[] = [
   {
     path: '/',
-    element: <LoginPage />,
+    element: <CompanyHomeRedirect />,
   },
   {
     path: '/login',
-    element: <LoginPage />,
+    element: <RequireCompanyGuest><LoginPage /></RequireCompanyGuest>,
   },
   {
-    element: <MainLayout />,
+    element: <RequireCompanyAuth><MainLayout /></RequireCompanyAuth>,
     children: [
       {
         path: '/dashboard',
-        element: <DashboardPage />,
+        element: <RequireCompanyRole allow={allRoles}><DashboardPage /></RequireCompanyRole>,
       },
       {
         path: '/dashboard/interviews',
-        element: <DashboardInterviewsPage />,
+        element: <RequireCompanyRole allow={allRoles}><DashboardInterviewsPage /></RequireCompanyRole>,
       },
       {
         path: '/dashboard/hired',
-        element: <HiredPage />,
+        element: <RequireCompanyRole allow={recruitingRoles}><HiredPage /></RequireCompanyRole>,
       },
       {
         path: '/dashboard/cycle',
-        element: <CyclePage />,
+        element: <RequireCompanyRole allow={managementRoles}><CyclePage /></RequireCompanyRole>,
       },
       {
         path: '/dashboard/offers',
-        element: <DashboardOffersPage />,
+        element: <RequireCompanyRole allow={recruitingRoles}><DashboardOffersPage /></RequireCompanyRole>,
       },
       {
         path: '/jobs',
-        element: <JobsPage />,
+        element: <RequireCompanyRole allow={recruitingRoles}><JobsPage /></RequireCompanyRole>,
       },
       {
         path: '/candidates',
-        element: <CandidatesPage />,
+        element: <RequireCompanyRole allow={recruitingRoles}><CandidatesPage /></RequireCompanyRole>,
       },
       {
         path: '/talent-map',
-        element: <TalentMapPage />,
+        element: <RequireCompanyRole allow={recruitingRoles}><TalentMapPage /></RequireCompanyRole>,
       },
       {
         path: '/kanban',
-        element: <KanbanPage />,
+        element: <RequireCompanyRole allow={recruitingRoles}><KanbanPage /></RequireCompanyRole>,
       },
       {
         path: '/interviews',
-        element: <DashboardInterviewsPage />,
+        element: <RequireCompanyRole allow={recruitingRoles}><DashboardInterviewsPage /></RequireCompanyRole>,
       },
       {
         path: '/offers',
-        element: <OffersPage />,
+        element: <RequireCompanyRole allow={recruitingRoles}><OffersPage /></RequireCompanyRole>,
       },
       {
         path: '/kpi-standards',
-        element: <KpiStandardsPage />,
+        element: <RequireCompanyRole allow={managementRoles}><KpiStandardsPage /></RequireCompanyRole>,
       },
       {
         path: '/analytics',
-        element: <AnalyticsPage />,
+        element: <RequireCompanyRole allow={managementRoles}><AnalyticsPage /></RequireCompanyRole>,
       },
       {
         path: '/ai-assistant',
-        element: <AIAssistantPage />,
+        element: <RequireCompanyRole allow={recruitingRoles}><AIAssistantPage /></RequireCompanyRole>,
       },
       {
         path: '/settings',
-        element: <SettingsPage />,
+        element: <RequireCompanyRole allow={['admin']}><SettingsPage /></RequireCompanyRole>,
       },
       {
         path: '/interviewer/dashboard',
-        element: <InterviewerDashboardPage />,
+        element: <RequireCompanyRole allow={interviewerRoles}><InterviewerDashboardPage /></RequireCompanyRole>,
       },
       {
         path: '/interviewer/interviews',
-        element: <InterviewerInterviewsPage />,
+        element: <RequireCompanyRole allow={interviewerRoles}><InterviewerInterviewsPage /></RequireCompanyRole>,
       },
       {
         path: '/interviewer/candidates',
-        element: <InterviewerCandidatesPage />,
+        element: <RequireCompanyRole allow={interviewerRoles}><InterviewerCandidatesPage /></RequireCompanyRole>,
       },
       {
         path: '/interviewer/jobs',
-        element: <InterviewerJobsPage />,
+        element: <RequireCompanyRole allow={interviewerRoles}><InterviewerJobsPage /></RequireCompanyRole>,
       },
       {
         path: '/interviewer/screening',
-        element: <InterviewerScreeningPage />,
+        element: <RequireCompanyRole allow={interviewerRoles}><InterviewerScreeningPage /></RequireCompanyRole>,
       },
       {
         path: '/director/cockpit',
-        element: <DirectorCockpitPage />,
+        element: <RequireCompanyRole allow={managementRoles}><DirectorCockpitPage /></RequireCompanyRole>,
       },
       {
         path: '/director/progress',
-        element: <DirectorProgressPage />,
+        element: <RequireCompanyRole allow={managementRoles}><DirectorProgressPage /></RequireCompanyRole>,
       },
       {
         path: '/director/insights',
-        element: <DirectorInsightsPage />,
+        element: <RequireCompanyRole allow={managementRoles}><DirectorInsightsPage /></RequireCompanyRole>,
       },
       {
         path: '/director/approvals',
-        element: <DirectorApprovalsPage />,
+        element: <RequireCompanyRole allow={managementRoles}><DirectorApprovalsPage /></RequireCompanyRole>,
       },
     ],
   },

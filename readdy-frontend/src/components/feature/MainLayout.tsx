@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
+import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { notificationList, typeIconMap, typeColorMap } from '@/mocks/notifications';
+import { useCompanyAuth, type CompanyRole } from '@/auth/companyAuth';
+import { useCompanyPermissions } from '@/auth/companyPermissions';
 
-type UserRole = 'manager' | 'recruiter' | 'admin' | 'hr_director' | 'interviewer';
+type UserRole = CompanyRole;
 
 interface RoleInfo {
   key: UserRole;
@@ -17,7 +19,6 @@ const roles: RoleInfo[] = [
   { key: 'manager', label: '招聘主管', description: '全面管理权限', avatar: '张', department: '人力资源部', status: '在线' },
   { key: 'recruiter', label: '招聘专员', description: '日常执行权限', avatar: '李', department: '人力资源部', status: '在线' },
   { key: 'admin', label: '招聘系统管理员', description: '系统配置维护', avatar: '陈', department: 'IT 运维部', status: '在线' },
-  { key: 'hr_director', label: '人力资源总监', description: '全局分析决策', avatar: '赵', department: '人力资源部', status: '在线' },
   { key: 'interviewer', label: '面试官', description: '面试执行与评分', avatar: '周', department: '技术研发部', status: '在线' },
 ];
 
@@ -26,62 +27,55 @@ interface NavItem {
   icon: string;
   label: string;
   roles: UserRole[];
+  menuCode?: string;
 }
 
 const allNavItems: NavItem[] = [
-  { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['manager', 'recruiter', 'admin'] },
-  { path: '/analytics', icon: 'ri-bar-chart-2-line', label: '分析看板', roles: [] },
-  { path: '/jobs', icon: 'ri-briefcase-line', label: '招聘管理', roles: ['manager', 'recruiter'] },
-  { path: '/candidates', icon: 'ri-file-list-3-line', label: '简历库', roles: ['manager', 'recruiter'] },
-  { path: '/talent-map', icon: 'ri-organization-chart', label: '人才地图', roles: ['manager', 'recruiter'] },
-  { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['manager', 'recruiter'] },
-  { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer 管理', roles: ['manager', 'recruiter'] },
-  { path: '/kanban', icon: 'ri-layout-masonry-line', label: '进度看板', roles: ['manager'] },
-  { path: '/ai-assistant', icon: 'ri-robot-2-line', label: 'AI 助手', roles: ['manager', 'recruiter', 'admin'] },
+  { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['manager', 'recruiter', 'admin'], menuCode: 'index' },
+  { path: '/analytics', icon: 'ri-bar-chart-2-line', label: '分析看板', roles: ['manager', 'admin'], menuCode: 'bi' },
+  { path: '/jobs', icon: 'ri-briefcase-line', label: '招聘管理', roles: ['manager', 'recruiter', 'admin'], menuCode: 'demands' },
+  { path: '/candidates', icon: 'ri-file-list-3-line', label: '简历库', roles: ['manager', 'recruiter', 'admin'], menuCode: 'candidates' },
+  { path: '/talent-map', icon: 'ri-organization-chart', label: '人才地图', roles: ['manager', 'recruiter', 'admin'] },
+  { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['manager', 'recruiter', 'admin'], menuCode: 'interviews' },
+  { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer 管理', roles: ['manager', 'recruiter', 'admin'], menuCode: 'pipeline' },
+  { path: '/kanban', icon: 'ri-layout-masonry-line', label: '进度看板', roles: ['manager', 'recruiter', 'admin'], menuCode: 'pipeline' },
+  { path: '/ai-assistant', icon: 'ri-robot-2-line', label: 'AI 助手', roles: ['manager', 'recruiter', 'admin'], menuCode: 'agent' },
 ];
 
 const directorNavItems: NavItem[] = [
-  { path: '/director/cockpit', icon: 'ri-dashboard-3-line', label: '管理驾驶舱', roles: ['hr_director'] },
-  { path: '/director/progress', icon: 'ri-bar-chart-grouped-line', label: '招聘进展', roles: ['hr_director'] },
-  { path: '/director/insights', icon: 'ri-organization-chart', label: '人才储备', roles: ['hr_director'] },
-  { path: '/director/approvals', icon: 'ri-shield-check-line', label: '审批与风险', roles: ['hr_director'] },
+  { path: '/director/cockpit', icon: 'ri-dashboard-3-line', label: '管理驾驶舱', roles: ['manager', 'admin'], menuCode: 'bi' },
+  { path: '/director/progress', icon: 'ri-bar-chart-grouped-line', label: '招聘进展', roles: ['manager', 'admin'], menuCode: 'bi' },
+  { path: '/director/insights', icon: 'ri-organization-chart', label: '人才储备', roles: ['manager', 'admin'], menuCode: 'bi' },
+  { path: '/director/approvals', icon: 'ri-shield-check-line', label: '审批与风险', roles: ['manager', 'admin'], menuCode: 'pipeline' },
 ];
 
 const interviewerNavItems: NavItem[] = [
-  { path: '/interviewer/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['interviewer'] },
-  { path: '/interviewer/screening', icon: 'ri-file-search-line', label: '待筛选', roles: ['interviewer'] },
-  { path: '/interviewer/interviews', icon: 'ri-calendar-event-line', label: '我的面试', roles: ['interviewer'] },
-  { path: '/interviewer/candidates', icon: 'ri-user-star-line', label: '候选人进展', roles: ['interviewer'] },
-  { path: '/interviewer/jobs', icon: 'ri-briefcase-line', label: '参与岗位', roles: ['interviewer'] },
+  { path: '/interviewer/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['interviewer'], menuCode: 'index' },
+  { path: '/interviewer/screening', icon: 'ri-file-search-line', label: '待筛选', roles: ['interviewer'], menuCode: 'interviews' },
+  { path: '/interviewer/interviews', icon: 'ri-calendar-event-line', label: '我的面试', roles: ['interviewer'], menuCode: 'interviews' },
+  { path: '/interviewer/candidates', icon: 'ri-user-star-line', label: '候选人进展', roles: ['interviewer'], menuCode: 'candidates' },
+  { path: '/interviewer/jobs', icon: 'ri-briefcase-line', label: '参与岗位', roles: ['interviewer'], menuCode: 'demands' },
 ];
 
 const bottomNavItems: NavItem[] = [
-  { path: '/settings', icon: 'ri-settings-3-line', label: '系统设置', roles: ['manager', 'admin'] },
+  { path: '/settings', icon: 'ri-settings-3-line', label: '系统设置', roles: ['admin'], menuCode: 'settings' },
 ];
-
-const ROLE_KEY = 'zhipin-current-role';
-
-function getStoredRole(): UserRole {
-  const stored = localStorage.getItem(ROLE_KEY);
-  if (stored === 'manager' || stored === 'recruiter' || stored === 'admin' || stored === 'hr_director' || stored === 'interviewer') return stored;
-  return 'manager';
-}
 
 export default function MainLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { role, name, logout } = useCompanyAuth();
+  const { hasMenu, reload: reloadPermissions } = useCompanyPermissions();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState(notificationList);
-  const [currentRole, setCurrentRole] = useState<UserRole>(getStoredRole);
+  const currentRole: UserRole = role ?? 'recruiter';
   const roleInfo = roles.find((r) => r.key === currentRole) || roles[0];
+  const avatar = name?.trim().charAt(0) || roleInfo.avatar;
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
-
-  useEffect(() => {
-    localStorage.setItem(ROLE_KEY, currentRole);
-  }, [currentRole]);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -100,15 +94,20 @@ export default function MainLayout() {
     };
   }, [roleMenuOpen, notifOpen]);
 
-  const navItems = currentRole === 'interviewer'
-    ? interviewerNavItems.filter((item) => item.roles.includes(currentRole))
-    : currentRole === 'hr_director'
-    ? directorNavItems.filter((item) => item.roles.includes(currentRole))
-    : allNavItems.filter((item) => item.roles.includes(currentRole));
-  const visibleBottomNavItems = bottomNavItems.filter((item) => item.roles.includes(currentRole));
+  const roleNavItems = currentRole === 'interviewer'
+    ? interviewerNavItems
+    : currentRole === 'manager' || currentRole === 'admin'
+    ? [...allNavItems, ...directorNavItems]
+    : allNavItems;
+  const navItems = roleNavItems.filter(
+    (item) => item.roles.includes(currentRole) && hasMenu(item.menuCode),
+  );
+  const visibleBottomNavItems = bottomNavItems.filter(
+    (item) => item.roles.includes(currentRole) && hasMenu(item.menuCode),
+  );
 
   const isActive = (path: string) => {
-    if (currentRole === 'interviewer' || currentRole === 'hr_director') {
+    if (currentRole === 'interviewer' || path.startsWith('/director/')) {
       return location.pathname.startsWith(path);
     }
     if (path === '/interviews') {
@@ -309,7 +308,7 @@ export default function MainLayout() {
               )}
             </div>
 
-            {/* Role Switcher */}
+            {/* Company account */}
             <div className="relative" data-role-menu>
               <button
                 onClick={() => setRoleMenuOpen(!roleMenuOpen)}
@@ -317,13 +316,13 @@ export default function MainLayout() {
               >
                 <div className="relative">
                   <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm font-semibold text-primary-600">{roleInfo.avatar}</span>
+                    <span className="text-sm font-semibold text-primary-600">{avatar}</span>
                   </div>
                   <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full ring-2 ring-white"></span>
                 </div>
                 <div className="hidden sm:block text-right">
                   <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium text-foreground-900 leading-tight">{roleInfo.label}</p>
+                    <p className="text-sm font-medium text-foreground-900 leading-tight">{name}</p>
                     <span className="text-[10px] px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded-full font-medium">
                       {roleInfo.department}
                     </span>
@@ -335,7 +334,7 @@ export default function MainLayout() {
                 </div>
               </button>
 
-              {/* Role Dropdown */}
+              {/* Company account dropdown */}
               {roleMenuOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl border border-background-200 shadow-xl z-50 overflow-hidden">
                   {/* Current user summary */}
@@ -343,59 +342,41 @@ export default function MainLayout() {
                     <div className="flex items-center gap-3">
                       <div className="relative">
                         <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
-                          <span className="text-base font-semibold text-primary-600">{roleInfo.avatar}</span>
+                          <span className="text-base font-semibold text-primary-600">{avatar}</span>
                         </div>
                         <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full ring-2 ring-white"></span>
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-foreground-900">{roleInfo.label}</p>
-                        <p className="text-xs text-foreground-500">{roleInfo.department} · {roleInfo.status}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 mt-3">
-                      <div className="flex-1 text-center">
-                        <p className="text-lg font-bold text-foreground-900">12</p>
-                        <p className="text-[11px] text-foreground-400">在招岗位</p>
-                      </div>
-                      <div className="w-px h-8 bg-background-200"></div>
-                      <div className="flex-1 text-center">
-                        <p className="text-lg font-bold text-foreground-900">47</p>
-                        <p className="text-[11px] text-foreground-400">在途候选人</p>
+                        <p className="text-sm font-semibold text-foreground-900">{name}</p>
+                        <p className="text-xs text-foreground-500">{roleInfo.label} · {roleInfo.status}</p>
                       </div>
                     </div>
                   </div>
-                  <div className="px-4 py-2 border-b border-background-100">
-                    <p className="text-xs font-medium text-foreground-500">切换角色</p>
-                  </div>
-                  {roles.map((r) => (
+                  <div className="p-2">
                     <button
-                      key={r.key}
+                      type="button"
                       onClick={() => {
-                        setCurrentRole(r.key);
+                        reloadPermissions();
                         setRoleMenuOpen(false);
                       }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
-                        currentRole === r.key
-                          ? 'bg-primary-50 text-primary-700'
-                          : 'text-foreground-700 hover:bg-background-50'
-                      }`}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-foreground-600 hover:bg-background-50"
                     >
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        currentRole === r.key ? 'bg-primary-100' : 'bg-background-100'
-                      }`}>
-                        <span className={`text-sm font-semibold ${currentRole === r.key ? 'text-primary-600' : 'text-foreground-500'}`}>
-                          {r.avatar}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{r.label}</p>
-                        <p className="text-[11px] text-foreground-400">{r.description}</p>
-                      </div>
-                      {currentRole === r.key && (
-                        <i className="ri-check-line text-sm text-primary-600 ml-auto"></i>
-                      )}
+                      <i className="ri-refresh-line text-base" />
+                      重新加载公司权限
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        logout();
+                        setRoleMenuOpen(false);
+                        navigate('/login', { replace: true });
+                      }}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-accent-700 hover:bg-accent-50"
+                    >
+                      <i className="ri-logout-box-r-line text-base" />
+                      退出登录
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -409,7 +390,7 @@ export default function MainLayout() {
       </div>
 
       {/* AI Assistant floating button - hidden for interviewer role */}
-      {currentRole !== 'interviewer' && currentRole !== 'hr_director' && (
+      {currentRole !== 'interviewer' && (
         <Link
           to="/ai-assistant"
           className="fixed bottom-6 right-6 z-30 w-12 h-12 rounded-full bg-accent-500 hover:bg-accent-600 text-white flex items-center justify-center shadow-lg transition-all hover:scale-105"

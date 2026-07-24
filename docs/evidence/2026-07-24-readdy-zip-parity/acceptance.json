@@ -9,9 +9,10 @@
     "routes": 24
   },
   "product": {
-    "interactive_controls": 754,
-    "native_buttons": 499,
-    "missing_reference_controls": 0,
+    "interactive_controls": 758,
+    "native_buttons": 502,
+    "approved_company_security_replacements": 5,
+    "unapproved_missing_reference_controls": 0,
     "dead_buttons": 0,
     "placeholder_actions": 0,
     "routes": 24
@@ -22,11 +23,13 @@
     { "width": 1920, "height": 1080, "routes_checked": 24, "failures": 0, "clipped_buttons": 0 }
   ],
   "runtime": {
+    "viewport_evidence_phase": "before_company_auth_replacement",
     "route_checks": 72,
     "route_failures": 0,
     "page_horizontal_overflow_failures": 0,
     "fresh_tab_console_errors": 0,
-    "fresh_tab_console_warnings": 0
+    "fresh_tab_console_warnings": 0,
+    "company_auth_evidence": "../2026-07-24-company-auth/acceptance.json"
   },
   "ports": {
     "backend": 5010,

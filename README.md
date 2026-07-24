@@ -24,7 +24,7 @@ cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 ./scripts/serve-isolated-demo.sh
 ```
 
-- 主产品：`http://127.0.0.1:5190`，账号 `test@example.com`，密码 `demo`
+- 主产品：`http://127.0.0.1:5190`，使用公司账号和密码，通过公司网关 OAuth 登录
 - 接口版：`http://127.0.0.1:5192`，账号 `admin01`，密码 `Zhipin2026`
 - 同一内网：启动时自动打印当前内网地址
 - 停止：另开终端执行 `./scripts/stop-isolated-demo.sh`

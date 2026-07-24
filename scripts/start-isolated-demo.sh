@@ -52,20 +52,20 @@ assert_port_free "$FRONTEND_PORT" "完整 ZIP 前端"
 assert_port_free "$OPERATIONS_PORT" "接口与图片简历版前端"
 
 BACKEND_ENV=(
-  "APOLLO_ENABLED=false"
   "CONSUL_ENABLED=false"
   "EUREKA_ENABLED=false"
   "FLASK_DEBUG=true"
   "LOCAL_SCHEMA_COMPAT=true"
   "DATABASE_URL=sqlite:///$DATABASE_PATH"
   "UPLOAD_FOLDER=$UPLOAD_ROOT"
-  "JWT_SECRET=isolated-demo-only-20260724-do-not-use-in-production"
   "RATE_LIMIT_ENABLED=false"
   "ALLOW_PUBLIC_REGISTRATION=false"
   "AUTH_DISABLED=false"
-  "LLM_API_KEY="
   "PORT=$BACKEND_PORT"
 )
+
+# Apollo、JWT、MCP SSO 和模型密钥只允许来自现有环境、backend/.env 或 CI 注入。
+# 本隔离脚本不覆盖也不清空这些公司配置。
 
 if [[ ! -f "$DATABASE_PATH" ]]; then
   echo "首次运行：正在创建独立演示数据库……"
@@ -124,6 +124,7 @@ echo "正在启动接口与图片简历版前端……"
     "VITE_OAUTH_BASE_URL=/pgs/oauth" \
     "VITE_ALLOW_LAN=true" \
     "$NODE_BIN" "$OPERATIONS_VITE_BIN" \
+    --config "$APP_ROOT/frontend/vite.isolated.config.ts" \
     --host 0.0.0.0 --port "$OPERATIONS_PORT" --strictPort \
     >"$LOG_ROOT/operations-frontend.log" 2>&1 &
   printf '%s\n' "$!" >"$OPERATIONS_FRONTEND_PID_FILE"
@@ -131,9 +132,26 @@ echo "正在启动接口与图片简历版前端……"
 wait_for_url "http://127.0.0.1:$OPERATIONS_PORT" "接口与图片简历版前端"
 
 echo "正在启动完整 ZIP 前端……"
+if [[ "${READDY_AUTH_MODE:-company}" == "local" ]]; then
+  READDY_AUTH_ENV=(
+    "COMPANY_GATEWAY_PROXY_TARGET=http://127.0.0.1:$OAUTH_PORT"
+    "COMPANY_API_PROXY_TARGET=http://127.0.0.1:$BACKEND_PORT"
+    "VITE_API_BASE_URL=/api"
+    "VITE_OAUTH_BASE_URL=/pgs/oauth"
+    "VITE_PERMISSION_CLIENT_ID=zhipin"
+  )
+else
+  READDY_AUTH_ENV=(
+    "COMPANY_GATEWAY_PROXY_TARGET=${COMPANY_GATEWAY_PROXY_TARGET:-https://test-pgsgw.yimidida.com}"
+    "COMPANY_API_PROXY_TARGET=${COMPANY_API_PROXY_TARGET:-https://test-pgsgw.yimidida.com}"
+    "VITE_API_BASE_URL=/zhipin-server/api"
+    "VITE_OAUTH_BASE_URL=/pgs/oauth"
+    "VITE_PERMISSION_CLIENT_ID=zhipin"
+  )
+fi
 (
   cd "$APP_ROOT/readdy-frontend"
-  nohup "$NODE_BIN" "$READDY_VITE_BIN" \
+  nohup env "${READDY_AUTH_ENV[@]}" "$NODE_BIN" "$READDY_VITE_BIN" \
     --host 0.0.0.0 --port "$FRONTEND_PORT" --strictPort \
     >"$LOG_ROOT/frontend.log" 2>&1 &
   printf '%s\n' "$!" >"$FRONTEND_PID_FILE"
@@ -145,6 +163,6 @@ trap - EXIT
 echo
 echo "独立演示环境已启动。"
 print_access_urls
-echo "完整 ZIP 前端账号：test@example.com / demo"
+echo "完整 ZIP 前端：使用公司账号和密码，通过公司 OAuth 登录"
 echo "接口版账号：admin01 / Zhipin2026（也可用 manager01、hr01、interviewer01）"
 echo "运行数据：$RUNTIME_ROOT"

@@ -1,30 +1,46 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, type FormEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/useToast';
+import {
+  CompanyAuthError,
+  loginViaCompanyGateway,
+  useCompanyAuth,
+} from '@/auth/companyAuth';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { showToast } = useToast();
-  const [email, setEmail] = useState('');
+  const { login } = useCompanyAuth();
+  const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!email || !password) {
-      setError('请输入邮箱和密码');
+    if (!account.trim() || !password) {
+      setError('请输入公司账号和密码');
       return;
     }
 
     setLoading(true);
-    // Simulate login - will be replaced with Supabase auth later
-    setTimeout(() => {
+    try {
+      const result = await loginViaCompanyGateway(account.trim(), password);
+      login(result);
+      const requestedPath = (location.state as { from?: string } | null)?.from;
+      navigate(requestedPath || '/dashboard', { replace: true });
+    } catch (loginError) {
+      setError(
+        loginError instanceof CompanyAuthError
+          ? loginError.message
+          : '登录失败，请检查公司网络后重试',
+      );
+    } finally {
       setLoading(false);
-      navigate('/dashboard');
-    }, 800);
+    }
   };
 
   return (
@@ -86,31 +102,34 @@ export default function LoginPage() {
 
           <div className="mb-8">
             <h2 className="text-2xl font-semibold text-foreground-900 mb-1">欢迎回来</h2>
-            <p className="text-foreground-500">登录您的招聘管理系统</p>
+            <p className="text-foreground-500">使用公司账号登录智聘招聘管理系统</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="bg-accent-100/60 border border-accent-300 text-accent-800 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
+              <div role="alert" className="bg-accent-100/60 border border-accent-300 text-accent-800 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
                 <i className="ri-error-warning-line"></i>
                 {error}
               </div>
             )}
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-foreground-700 mb-1.5">
-                企业邮箱
+              <label htmlFor="account" className="block text-sm font-medium text-foreground-700 mb-1.5">
+                公司账号
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <i className="ri-mail-line text-foreground-400 text-lg"></i>
+                  <i className="ri-user-line text-foreground-400 text-lg"></i>
                 </div>
                 <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.com"
+                  id="account"
+                  name="account"
+                  type="text"
+                  value={account}
+                  onChange={(e) => setAccount(e.target.value)}
+                  placeholder="工号 / 账号"
+                  autoComplete="username"
+                  required
                   className="w-full pl-10 pr-4 py-3 bg-background-100 border border-background-300 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 transition-all"
                 />
               </div>
@@ -136,9 +155,12 @@ export default function LoginPage() {
                 <input
                   id="password"
                   type="password"
+                  name="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="输入密码"
+                  autoComplete="current-password"
+                  required
                   className="w-full pl-10 pr-4 py-3 bg-background-100 border border-background-300 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 transition-all"
                 />
               </div>
@@ -147,6 +169,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
+              title={loading ? '正在验证公司账号，请稍候' : '登录'}
               className="w-full py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-primary-400 text-white font-medium rounded-lg text-sm transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
             >
               {loading ? (

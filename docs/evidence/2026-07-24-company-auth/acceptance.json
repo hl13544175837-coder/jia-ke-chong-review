@@ -1,0 +1,18 @@
+{
+  "checked_at": "2026-07-24T11:23:03+08:00",
+  "primary_url": "http://127.0.0.1:5190",
+  "auth_contract": "company_gateway_oauth",
+  "frozen_company_files_equal": 10,
+  "frozen_company_files_different": 0,
+  "token_in_url": false,
+  "fake_role_storage_present": false,
+  "logout_clears_session": true,
+  "roles_checked": ["admin", "manager", "recruiter", "interviewer"],
+  "role_guard_failures": 0,
+  "console_errors": 0,
+  "zip_controls_covered": 718,
+  "approved_security_replacements": 5,
+  "unapproved_missing_controls": 0,
+  "company_gateway_live_verified": false,
+  "company_gateway_live_blocker": "TLS handshake failed from current execution environment"
+}

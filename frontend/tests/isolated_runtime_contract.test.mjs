@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 const appRoot = resolve(import.meta.dirname, '../..');
 const read = (path) => readFileSync(resolve(appRoot, path), 'utf8');
 
-const viteConfig = read('frontend/vite.config.ts');
+const viteConfig = read('frontend/vite.isolated.config.ts');
 assert.match(viteConfig, /loadEnv/);
 assert.match(viteConfig, /LOCAL_BACKEND_PROXY_TARGET/);
 assert.match(viteConfig, /LOCAL_OAUTH_PROXY_TARGET/);

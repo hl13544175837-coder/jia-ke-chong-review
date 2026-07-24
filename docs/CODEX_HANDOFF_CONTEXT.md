@@ -1,8 +1,10 @@
 # 智聘独立整合版 Codex 完整接手上下文
 
-更新时间：`2026-07-24 10:14 +0800`
+更新时间：`2026-07-24 11:23 +0800`
 
 这份文档是新 Codex 窗口的第一入口。它记录本次任务的用户决定、代码来源、当前运行状态、验收结果、安全边界和后续接手顺序。若旧文档与这里冲突，本次独立整合版以本文和当前代码为准。
+
+> **重要鉴权修正**：`5190` 已删除 Readdy 定时器假登录和假角色切换，接回公司 MD5 密码、网关 OAuth、Bearer Token、profile 工号、`/auth/me`、`X-Emp-Code`、`clientId=zhipin` 权限和真实角色守卫。公司原登录、Token、Apollo 和三方 Token 文件已做哈希冻结。完整证据见 `docs/evidence/2026-07-24-company-auth/README.md`。
 
 ## 1. 用户要的最终产品
 
@@ -12,6 +14,7 @@
 - 吸收公司现有招聘系统的业务结构、角色权限、后端和接口版能力。
 - 吸收 GitHub 最新图片简历版本，支持图片和 ZIP 简历。
 - 正式业务接口暂不开发，只保留清晰接口位置和数据格式，后续由研发接入。
+- 登录鉴权是例外：必须沿用公司现有真实协议，不能使用演示账号、假 Token 或页面角色切换。
 - 当前允许使用演示数据和浏览器内状态，但点击后必须有真实可见的打开、筛选、切换、提交、下载或状态更新。
 - 所有可见按钮必须可交互；当前状态不能执行的按钮必须明确禁用，不能出现点击无反应。
 - 只做电脑端，不做手机端专项适配。重点尺寸是 `1366x768`、`1440x900`、`1920x1080`。
@@ -114,10 +117,10 @@ Git 远端：
 
 | 服务 | 端口 | 定位 | 数据状态 |
 | --- | ---: | --- | --- |
-| `readdy-frontend` | `5190` | 最终验收主产品，页面和按钮以 ZIP 为准 | 浏览器内演示状态，刷新后恢复 |
+| `readdy-frontend` | `5190` | 最终验收主产品，页面和按钮以 ZIP 为准 | 公司真实鉴权；业务数据为浏览器演示状态 |
 | `frontend` | `5192` | 公司业务接口与图片简历实现参考 | 连接本隔离 Flask 和 SQLite |
 | `backend` | `5010` | 独立 Flask API | `runtime/zhipin-demo.db` |
-| OAuth 登录桥 | `5110` | 只服务于 `5192` 本地登录 | 本地映射 |
+| OAuth 登录桥 | `5110` | 服务于 `5192` 和自动化鉴权实验 | 仅本地验收映射，正式 `5190` 不使用 |
 
 后续接真实接口时，以 `5190` 的页面和交互作为不能退化的产品外壳，以 `5192 + backend + base_agent` 作为业务逻辑和接口参考，逐模块接入。不要为了接接口把 `5190` 的完整按钮和交互删掉。
 
@@ -130,7 +133,7 @@ Content-Type: multipart/form-data
 格式：PDF、DOC、DOCX、JPG、JPEG、PNG、WebP、GIF、ZIP
 ```
 
-正式 OAuth、业务 API、公司数据库、LLM 和视觉模型密钥均未接入。真实密钥禁止写进仓库。
+公司 OAuth 协议已接入 `5190`；其他正式业务 API、公司数据库、LLM 和视觉模型仍未接入。Apollo Secret、MCP SSO Token 和真实密钥只允许由环境、Apollo 或 CI 注入，禁止写进仓库。
 
 ## 6. 当前运行方式
 
@@ -174,7 +177,7 @@ cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 
 | 产品 | 账号 | 密码 |
 | --- | --- | --- |
-| `5190` 主产品 | `test@example.com` | `demo` |
+| `5190` 主产品 | 公司工号/账号 | 公司密码 |
 | `5192` 接口版管理员 | `admin01` | `Zhipin2026` |
 | `5192` 其他演示角色 | `manager01`、`hr01`、`interviewer01` | `Zhipin2026` |
 
@@ -198,6 +201,7 @@ cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 - 看板月份切换及可见结果提示。
 - 原 ZIP 的空按钮和“功能开发中”占位操作全部清零。
 - 修复嵌套按钮、React 渲染期状态更新和路由兼容告警。
+- 接回公司登录鉴权，移除 Readdy 假登录和假角色切换；支持 Token、工号、权限菜单、四角色守卫、会话失效和退出清理。
 
 所有真实后端尚不能完成的主产品操作使用明确演示状态和提示，不伪装成生产数据写入。
 
@@ -206,8 +210,8 @@ cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 ZIP 控件核对：
 
 - 原 ZIP：718 个交互控件，479 个原生按钮。
-- 整合主产品：754 个交互控件，499 个原生按钮。
-- 原 ZIP 控件保留：718/718，缺失 0。
+- 整合主产品：758 个交互控件，502 个原生按钮。
+- 原 ZIP 控件覆盖：718/718；5 个不安全的假鉴权标签由公司真实鉴权控件替换，其他缺失 0。
 - 没有处理逻辑的按钮：0。
 - “功能开发中”占位操作：0。
 
@@ -217,10 +221,11 @@ ZIP 控件核对：
 - 页面失败 0，整页横向溢出 0，按钮文字裁切 0。
 - 全新标签页控制台错误 0、警告 0。
 - 已实际点击月份、负责人、标签、候选人编辑、PNG/ZIP 导入、岗位编辑、岗位图片简历、用户停用和流程排序，均产生可见状态变化。
+- 公司鉴权本地全链路通过，四角色守卫失败 0，Token 不进入 URL，退出后会话字段全部清除；公司网关现场仍需在可访问内网的环境验证。
 
 代码验收：
 
-- `node frontend/tests/readdy_zip_exact_parity.test.mjs`：通过，718 个原控件全部保留。
+- `node frontend/tests/readdy_zip_exact_parity.test.mjs`：通过，718 个原控件全部覆盖，仅 5 个假鉴权标签按安全清单替换。
 - `cd readdy-frontend && npm run type-check`：通过。
 - `cd readdy-frontend && npm run lint`：通过。
 - `cd readdy-frontend && npm run build`：通过。
@@ -234,13 +239,17 @@ ZIP 控件核对：
 - `docs/evidence/2026-07-24-readdy-zip-parity/README.md`
 - `docs/evidence/2026-07-24-readdy-zip-parity/acceptance.json`
 - `docs/evidence/2026-07-24-readdy-zip-parity/screenshots/`
+- `docs/evidence/2026-07-24-company-auth/README.md`
+- `docs/evidence/2026-07-24-company-auth/acceptance.json`
 
 ## 9. 已知边界与下一阶段
 
 尚未做：
 
 - `5190` 主产品尚未逐模块连接公司真实 API。
-- 没有正式 OAuth、Apollo、生产数据库、SIT 或生产发布。
+- 公司 OAuth 协议已接回，但当前执行环境无法完成公司网关 TLS 握手，尚无 SIT 现场登录证据。
+- Apollo、MCP SSO 和三方 Token 源码及注入口完整保留，但没有把真实密钥复制到隔离仓库。
+- 没有生产数据库、SIT 或生产发布。
 - 没有配置真实 LLM 或视觉模型密钥。
 - 没有手机端专项开发。
 - 没有把当前隔离分支推送或合并到公司 `test`。
@@ -248,10 +257,11 @@ ZIP 控件核对：
 最合理的下一阶段顺序：
 
 1. 先让用户确认 `5190` 的页面和交互是否还要调整。
-2. 用户明确要求接接口后，按模块建立 `5190 -> 类型化服务层 -> backend`，不要一次性重写全部页面。
-3. 优先接登录、简历上传/解析、候选人列表和岗位流程，再接面试、Offer、看板与设置。
-4. 每接一个模块都复跑 ZIP 控件审计和三档电脑尺寸验收，确保原按钮不丢失。
-5. 只有用户明确授权后，才制定向公司 GitLab `test` 迁移或发布的方案。
+2. 在公司网络用真实公司账号完成 `5190` 登录、权限菜单和退出现场验收，不记录密码和 Token。
+3. 用户明确要求接接口后，按模块建立 `5190 -> 类型化服务层 -> backend`，不要一次性重写全部页面。
+4. 优先接简历上传/解析、候选人列表和岗位流程，再接面试、Offer、看板与设置。
+5. 每接一个模块都复跑公司安全哈希、ZIP 控件审计和三档电脑尺寸验收。
+6. 只有用户明确授权后，才制定向公司 GitLab `test` 迁移或发布的方案。
 
 ## 10. 接手安全规则
 
@@ -263,6 +273,7 @@ ZIP 控件核对：
 - 不 push、不 merge、不部署，除非用户在新窗口明确要求。
 - 不把演示账号、演示 JWT 或演示状态描述成生产可用方案。
 - 不接收或写入真实候选人数据和真实 API Key。
+- 不静默修改 `frontend/tests/readdy_company_security_contract.test.mjs` 锁定的公司登录、Token、Apollo 和三方 Token 文件；确需变更必须先解释原因并获得用户确认。
 - 所有新增可见按钮继续遵守：可操作、明确禁用或有清晰提示，绝不允许无响应。
 
 ## 11. 删除边界
@@ -280,7 +291,7 @@ ZIP 控件核对：
 
 ## 12. 新 Codex 第一轮动作
 
-1. 打开应用目录并阅读本文、`docs/PRODUCT_INTERACTION_GUIDE.md`、`docs/ISOLATED_CLEANUP.md`。
+1. 打开应用目录并阅读本文、`docs/evidence/2026-07-24-company-auth/README.md`、`docs/PRODUCT_INTERACTION_GUIDE.md`、`docs/ISOLATED_CLEANUP.md`。
 2. 运行 `git status --short --branch`，确认所在分支和是否出现新改动。
 3. 运行 `./scripts/check-isolated-demo.sh`；服务健康就不要重启。
 4. 用 Tabbit 打开 `http://127.0.0.1:5190`，确认主产品可访问。

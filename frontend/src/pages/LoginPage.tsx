@@ -143,7 +143,6 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              title={loading ? '正在验证账号，请稍候' : '登录'}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--enterprise-brand)] py-3 text-sm font-medium text-white transition hover:bg-[var(--enterprise-brand-dark)] focus:outline-none focus:ring-2 focus:ring-[var(--enterprise-brand-soft)] focus:ring-offset-2 disabled:cursor-wait disabled:opacity-65"
             >
               {loading ? (
