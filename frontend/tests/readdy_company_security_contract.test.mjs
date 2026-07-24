@@ -89,6 +89,16 @@ assert.doesNotMatch(start, /APOLLO_ENABLED=false/, '启动脚本不能强行关�
 assert.doesNotMatch(start, /JWT_SECRET=isolated-demo/, '启动脚本不能覆盖已有 JWT 密钥');
 assert.doesNotMatch(start, /LLM_API_KEY="?\s*"?/, '启动脚本不能清空已有模型密钥');
 
+const frontendDockerfile = read('frontend/Dockerfile');
+assert.match(frontendDockerfile, /COPY readdy-frontend\/package\*\.json/, '公司前端镜像必须安装 Readdy 主产品依赖');
+assert.match(frontendDockerfile, /COPY readdy-frontend\//, '公司前端镜像必须复制 Readdy 主产品源码');
+assert.match(frontendDockerfile, /\/app\/out/, '公司前端镜像必须发布 Readdy 的 out 构建产物');
+assert.doesNotMatch(frontendDockerfile, /COPY frontend\/package\*\.json/, '公司构建不能继续打包旧 frontend 页面');
+
+const dockerIgnore = read('.dockerignore');
+assert.match(dockerIgnore, /readdy-frontend\/node_modules/, 'Docker 上下文必须排除 Readdy 本地依赖');
+assert.match(dockerIgnore, /readdy-frontend\/out/, 'Docker 上下文必须排除 Readdy 本地构建产物');
+
 const apollo = read('backend/apollo_config.py');
 assert.match(apollo, /APOLLO_SECRET/, 'Apollo Secret 注入口必须保留');
 assert.match(apollo, /appId.*zhipin|APP_ID\s*=\s*["']zhipin["']/s, 'Apollo appId 必须固定为 zhipin');

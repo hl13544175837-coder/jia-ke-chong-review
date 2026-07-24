@@ -17,16 +17,18 @@ ARG VITE_OAUTH_BASE_URL=https://test-pgsgw.yimidida.com/pgs/oauth
 
 # 临时默认角色（网关 profile 无应用角色，联调兜底）。接后端 /auth/me 后移除。
 ARG VITE_DEFAULT_ROLE=admin
+ARG VITE_PERMISSION_CLIENT_ID=zhipin
 
-# Copy package dependency configuration relative to root build context
-COPY frontend/package*.json ./
+# 公司发布镜像以完整 Readdy 工作台为产品入口；旧 frontend 仅保留为接口参考。
+COPY readdy-frontend/package*.json ./
 RUN npm ci
 
-# Copy frontend source code and build
-COPY frontend/ ./
+# Copy Readdy product source code and build
+COPY readdy-frontend/ ./
 RUN VITE_API_BASE_URL="$VITE_API_BASE_URL" \
     VITE_OAUTH_BASE_URL="$VITE_OAUTH_BASE_URL" \
     VITE_DEFAULT_ROLE="$VITE_DEFAULT_ROLE" \
+    VITE_PERMISSION_CLIENT_ID="$VITE_PERMISSION_CLIENT_ID" \
     npm run build
 
 # Production stage
@@ -35,7 +37,7 @@ RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx
 RUN sed -i 's/^user/#user/' /etc/nginx/nginx.conf && \
     sed -i 's!/var/run/nginx.pid!/tmp/nginx.pid!' /etc/nginx/nginx.conf && \
     sed -i 's/^worker_processes.*/worker_processes 2;/' /etc/nginx/nginx.conf
-COPY --chown=nginx:nginx --from=build-stage /app/dist /usr/share/nginx/html
+COPY --chown=nginx:nginx --from=build-stage /app/out /usr/share/nginx/html
 COPY --chown=nginx:nginx frontend/nginx.conf /etc/nginx/conf.d/default.conf
 USER nginx
 EXPOSE 8080

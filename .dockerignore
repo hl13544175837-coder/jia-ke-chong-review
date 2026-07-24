@@ -43,6 +43,8 @@ minutes
 # Local dependency and build artifacts
 frontend/node_modules
 frontend/dist
+readdy-frontend/node_modules
+readdy-frontend/out
 **/.venv
 **/venv
 **/*.egg-info
