@@ -10,6 +10,7 @@ RUNTIME_ROOT="$ISOLATION_ROOT/runtime"
 BACKEND_PORT=5010
 OAUTH_PORT=5110
 FRONTEND_PORT=5190
+OPERATIONS_PORT=5192
 
 DATABASE_PATH="$RUNTIME_ROOT/zhipin-demo.db"
 UPLOAD_ROOT="$RUNTIME_ROOT/uploads"
@@ -19,6 +20,7 @@ PID_ROOT="$RUNTIME_ROOT/pids"
 BACKEND_PID_FILE="$PID_ROOT/backend.pid"
 OAUTH_PID_FILE="$PID_ROOT/oauth.pid"
 FRONTEND_PID_FILE="$PID_ROOT/frontend.pid"
+OPERATIONS_FRONTEND_PID_FILE="$PID_ROOT/operations-frontend.pid"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -127,10 +129,12 @@ lan_ip() {
 
 print_access_urls() {
   local address
-  echo "本机地址：http://127.0.0.1:$FRONTEND_PORT"
+  echo "完整 ZIP 前端：http://127.0.0.1:$FRONTEND_PORT"
+  echo "接口与图片简历版：http://127.0.0.1:$OPERATIONS_PORT"
   address="$(lan_ip || true)"
   if [[ -n "$address" ]]; then
-    echo "同一内网：http://$address:$FRONTEND_PORT"
+    echo "同一内网完整前端：http://$address:$FRONTEND_PORT"
+    echo "同一内网接口版：http://$address:$OPERATIONS_PORT"
   else
     echo "同一内网：暂未检测到有效 Wi-Fi/网线地址。"
   fi

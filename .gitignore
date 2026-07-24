@@ -25,6 +25,7 @@ backend/instance/
 # ── Node / frontend ──────────────────────────────────────
 node_modules/
 dist/
+out/
 .vite/
 # 前端构建产物不纳入版本库；部署前运行 `cd frontend && npm run build` 生成。
 

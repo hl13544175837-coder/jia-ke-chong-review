@@ -1,0 +1,37 @@
+{
+  "date": "2026-07-24",
+  "reference": {
+    "zip_sha256": "627a59d6d023479d50d11a1b17ba978f350ca7fa3170e4a9895b7801e181096e",
+    "interactive_controls": 718,
+    "native_buttons": 479,
+    "dead_buttons": 3,
+    "placeholder_actions": 11,
+    "routes": 24
+  },
+  "product": {
+    "interactive_controls": 754,
+    "native_buttons": 499,
+    "missing_reference_controls": 0,
+    "dead_buttons": 0,
+    "placeholder_actions": 0,
+    "routes": 24
+  },
+  "desktop_viewports": [
+    { "width": 1366, "height": 768, "routes_checked": 24, "failures": 0, "clipped_buttons": 0 },
+    { "width": 1440, "height": 900, "routes_checked": 24, "failures": 0, "clipped_buttons": 0 },
+    { "width": 1920, "height": 1080, "routes_checked": 24, "failures": 0, "clipped_buttons": 0 }
+  ],
+  "runtime": {
+    "route_checks": 72,
+    "route_failures": 0,
+    "page_horizontal_overflow_failures": 0,
+    "fresh_tab_console_errors": 0,
+    "fresh_tab_console_warnings": 0
+  },
+  "ports": {
+    "backend": 5010,
+    "oauth_bridge": 5110,
+    "primary_readdy_product": 5190,
+    "backend_integrated_product": 5192
+  }
+}

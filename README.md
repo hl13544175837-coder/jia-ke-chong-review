@@ -17,20 +17,19 @@
 
 ## 2026-07-24 独立整合版
 
-今晚的 Readdy 前端交互、公司招聘业务底座和 GitHub 图片简历能力已合并在一个完全独立的目录中。详细产品交互见 [docs/PRODUCT_INTERACTION_GUIDE.md](docs/PRODUCT_INTERACTION_GUIDE.md)，彻底删除边界见 [docs/ISOLATED_CLEANUP.md](docs/ISOLATED_CLEANUP.md)。
+Readdy ZIP 完整前端、公司招聘业务底座和 GitHub 图片简历能力都保存在这个完全独立的目录中。`5190` 是完整 ZIP 主产品，`5192` 保留业务接口与图片解析实现。详细产品交互见 [docs/PRODUCT_INTERACTION_GUIDE.md](docs/PRODUCT_INTERACTION_GUIDE.md)，彻底删除边界见 [docs/ISOLATED_CLEANUP.md](docs/ISOLATED_CLEANUP.md)。
 
 ```bash
 cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 ./scripts/serve-isolated-demo.sh
 ```
 
-- 本机：`http://127.0.0.1:5190`
+- 主产品：`http://127.0.0.1:5190`，账号 `test@example.com`，密码 `demo`
+- 接口版：`http://127.0.0.1:5192`，账号 `admin01`，密码 `Zhipin2026`
 - 同一内网：启动时自动打印当前内网地址
-- 管理员：`admin01`
-- 密码：`Zhipin2026`
 - 停止：另开终端执行 `./scripts/stop-isolated-demo.sh`
 
-本地演示使用独立数据库，不读取其他产品数据。正式 OAuth、业务 API、LLM 和图片识别密钥仍由研发后续接入；仓库不保存真实密钥。
+主产品使用浏览器内演示数据，接口版使用独立数据库；两者都不读取其他产品数据。正式 OAuth、业务 API、LLM 和图片识别密钥仍由研发后续接入，仓库不保存真实密钥。
 
 ## 接手先读
 

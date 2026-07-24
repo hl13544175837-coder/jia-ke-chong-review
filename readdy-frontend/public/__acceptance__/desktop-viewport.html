@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Desktop viewport acceptance</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-width: max-content;
+        min-height: max-content;
+        background: #dfe3e8;
+      }
+
+      iframe {
+        display: block;
+        border: 0;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe id="acceptance-frame" title="Desktop acceptance viewport"></iframe>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const allowedSizes = new Set(['1366x768', '1440x900', '1920x1080']);
+      const requestedSize = `${params.get('width')}x${params.get('height')}`;
+      const [width, height] = allowedSizes.has(requestedSize)
+        ? requestedSize.split('x').map(Number)
+        : [1366, 768];
+      const route = params.get('route') || '/dashboard';
+      const frame = document.getElementById('acceptance-frame');
+
+      frame.width = String(width);
+      frame.height = String(height);
+      frame.src = route.startsWith('/') ? route : '/dashboard';
+      frame.addEventListener('load', () => {
+        document.body.dataset.ready = 'true';
+        document.title = `viewport-ready-${width}x${height}`;
+      });
+    </script>
+  </body>
+</html>

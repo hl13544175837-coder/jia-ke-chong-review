@@ -11,12 +11,12 @@
 - 产品代码：`.../app`
 - 独立运行数据：`.../runtime`
 - Readdy、GitHub 和公司未提交快照：`.../references`
-- 专用端口：`5010`、`5110`、`5190`
+- 专用端口：`5010`、`5110`、`5190`、`5192`
 
 ## 收到明确“删除”指令后执行
 
 1. 先从 `app` 目录运行 `./scripts/stop-isolated-demo.sh`。
-2. 确认三个端口均无监听，并确认记录的进程都属于本隔离目录。
+2. 确认四个端口均无监听，并确认记录的进程都属于本隔离目录。
 3. 只删除下面这个完整、精确的根目录，不使用通配符：
 
 ```bash
@@ -30,9 +30,10 @@ test ! -e '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724'
 lsof -nP -iTCP:5010 -sTCP:LISTEN
 lsof -nP -iTCP:5110 -sTCP:LISTEN
 lsof -nP -iTCP:5190 -sTCP:LISTEN
+lsof -nP -iTCP:5192 -sTCP:LISTEN
 ```
 
-`test` 应成功，三个 `lsof` 均应无输出。
+`test` 应成功，四个 `lsof` 均应无输出。
 
 ## 绝对不能触碰
 
