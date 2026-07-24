@@ -24,12 +24,12 @@ cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 ./scripts/serve-isolated-demo.sh
 ```
 
-- 主产品：`http://127.0.0.1:5190`，使用公司账号和密码，通过公司网关 OAuth 登录
+- 主产品：`http://127.0.0.1:5190`，长期本地运行默认账号 `admin01`、密码 `Zhipin2026`
 - 接口版：`http://127.0.0.1:5192`，账号 `admin01`，密码 `Zhipin2026`
 - 同一内网：启动时自动打印当前内网地址
 - 停止：另开终端执行 `./scripts/stop-isolated-demo.sh`
 
-主产品使用浏览器内演示数据，接口版使用独立数据库；两者都不读取其他产品数据。公司 OAuth 已接入主产品；正式业务 API、LLM 和图片识别密钥仍由研发后续接入，仓库不保存真实密钥。
+主产品使用浏览器内演示数据，接口版使用独立数据库；两者都不读取其他产品数据。本地启动默认使用隔离 OAuth 验收桥，方便长期打开；公司 OAuth 代码和配置完整保留，公司环境可显式使用 `READDY_AUTH_MODE=company ./scripts/serve-isolated-demo.sh`。正式业务 API、LLM 和图片识别密钥仍由研发后续接入，仓库不保存真实密钥。
 
 ## 接手先读
 

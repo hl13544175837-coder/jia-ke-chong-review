@@ -165,6 +165,10 @@ trap - EXIT
 echo
 echo "独立演示环境已启动。"
 print_access_urls
-echo "完整 ZIP 前端：使用公司账号和密码，通过公司 OAuth 登录"
+if [[ "${READDY_AUTH_MODE:-company}" == "local" ]]; then
+  echo "完整 ZIP 前端本地账号：admin01 / Zhipin2026"
+else
+  echo "完整 ZIP 前端：使用公司账号和密码，通过公司 OAuth 登录"
+fi
 echo "接口版账号：admin01 / Zhipin2026（也可用 manager01、hr01、interviewer01）"
 echo "运行数据：$RUNTIME_ROOT"

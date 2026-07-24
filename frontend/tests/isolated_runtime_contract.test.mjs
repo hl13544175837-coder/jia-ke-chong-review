@@ -40,6 +40,11 @@ assert.doesNotMatch(stopScript, /rm\s+-rf/);
 const serveScript = read('scripts/serve-isolated-demo.sh');
 assert.match(serveScript, /start-isolated-demo\.sh/);
 assert.match(serveScript, /stop-isolated-demo\.sh/);
+assert.match(
+  serveScript,
+  /READDY_AUTH_MODE="\$\{READDY_AUTH_MODE:-local\}"/,
+  '长期本地运行必须默认使用隔离登录桥，公司模式仍可显式覆盖',
+);
 assert.doesNotMatch(serveScript, /pkill|rm\s+-rf/);
 
 const checkScript = read('scripts/check-isolated-demo.sh');

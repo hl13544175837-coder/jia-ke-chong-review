@@ -13,7 +13,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-"$SCRIPT_DIR/start-isolated-demo.sh"
+READDY_AUTH_MODE="${READDY_AUTH_MODE:-local}" "$SCRIPT_DIR/start-isolated-demo.sh"
 echo "服务会在当前终端持续运行；按 Ctrl+C 可只停止本独立项目。"
 
 while true; do

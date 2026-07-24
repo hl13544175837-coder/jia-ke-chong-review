@@ -28,10 +28,12 @@ cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 
 | 用途 | 地址 | 账号 | 密码 |
 | --- | --- | --- | --- |
-| 主产品 | `http://127.0.0.1:5190` | 公司工号/账号 | 公司密码 |
+| 主产品（长期本地） | `http://127.0.0.1:5190` | `admin01` | `Zhipin2026` |
 | 接口版 | `http://127.0.0.1:5192` | `admin01` | `Zhipin2026` |
 
 同一内网地址会由启动脚本实时打印；Wi-Fi 或网线切换后 IP 可能变化，以脚本输出为准。
+
+本地长期运行默认使用隔离 OAuth 验收桥。需要现场验证公司网关时，显式运行 `READDY_AUTH_MODE=company ./scripts/serve-isolated-demo.sh`；两种模式共用同一套登录页面、MD5、Bearer Token、工号和权限请求协议，公司 Apollo 与密钥注入口均不改动。
 
 检查和停止：
 
