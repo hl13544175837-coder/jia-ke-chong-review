@@ -49,6 +49,7 @@ def staff_detail(hr_id):
 
 @bp.get("/bi/job/<int:job_id>")
 @require_auth
+@require_role("recruiter", "manager", "admin")
 def job_funnel(job_id):
     """Proxy legacy Job BI only when the Job resolves to exactly one Demand."""
     job = db.session.get(Job, job_id)
@@ -78,6 +79,7 @@ def job_funnel(job_id):
 
 @bp.get("/bi/demand/<int:demand_id>")
 @require_auth
+@require_role("recruiter", "manager", "admin")
 def demand_operational_metrics(demand_id):
     demand = RecruitmentDemand.query.filter_by(
         id=demand_id,
