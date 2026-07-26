@@ -181,6 +181,7 @@ export default function CreateOfferModal({ offer, demands, initialDemandId, init
             <input
               type="date"
               value={onboardDate}
+              onInput={(event) => setOnboardDate(event.currentTarget.value)}
               onChange={(event) => setOnboardDate(event.target.value)}
               className="mt-1.5 h-10 w-full rounded-lg border border-background-300 px-3 text-sm outline-none focus:border-primary-400"
             />

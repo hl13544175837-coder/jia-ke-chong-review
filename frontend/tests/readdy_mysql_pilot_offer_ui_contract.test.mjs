@@ -24,6 +24,7 @@ assert.match(createModal, /current_stage\s*===\s*['"]offer['"]|stage:\s*['"]offe
 assert.match(createModal, /approval_status\s*===\s*['"]approved['"]/, '只能选择已审核通过的招聘需求');
 assert.match(createModal, /initialDemandId/, 'Offer 草稿弹窗必须支持预填需求');
 assert.match(createModal, /initialCandidateId/, 'Offer 草稿弹窗必须支持预填候选人');
+assert.match(createModal, /type="date"[\s\S]*?onInput=/, '预计入职日期必须响应浏览器的实时输入事件并保存');
 assert.doesNotMatch(createModal, /@\/mocks\/candidates|candidateList/, '新建 Offer 不得使用假候选人');
 
 const drawer = read('readdy-frontend/src/pages/offers/components/OfferDetailDrawer.tsx');
