@@ -241,6 +241,68 @@ def test_candidates_support_source_parse_and_pipeline_filters(client, make_user,
     assert pipeline_response.get_json()["candidates"][0]["name_masked"] == "候选人已入流程"
 
 
+def test_candidates_support_education_skill_and_score_filters(client, make_user, app):
+    admin_id, admin_token = make_user(
+        "candidate-profile-filter-admin@example.com", role="admin"
+    )
+
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, CandidateTag
+
+        matched = Candidate(
+            owner_hr_id=admin_id,
+            name_masked="候选人本科Python",
+            resume_json={
+                "extracted_info": {
+                    "education": [
+                        {"school": "复旦大学", "degree": "本科", "major": "计算机"}
+                    ]
+                }
+            },
+        )
+        low_score = Candidate(
+            owner_hr_id=admin_id,
+            name_masked="候选人本科低分",
+            resume_json={
+                "extracted_info": {
+                    "education": [
+                        {"school": "同济大学", "degree": "本科", "major": "软件工程"}
+                    ]
+                }
+            },
+        )
+        other_degree = Candidate(
+            owner_hr_id=admin_id,
+            name_masked="候选人硕士Java",
+            resume_json={
+                "extracted_info": {
+                    "education": [
+                        {"school": "浙江大学", "degree": "硕士", "major": "计算机"}
+                    ]
+                }
+            },
+        )
+        db.session.add_all([matched, low_score, other_degree])
+        db.session.flush()
+        db.session.add_all([
+            CandidateTag(candidate_id=matched.id, tag="Python", score=5),
+            CandidateTag(candidate_id=low_score.id, tag="Python", score=2),
+            CandidateTag(candidate_id=other_degree.id, tag="Java", score=5),
+        ])
+        db.session.commit()
+
+    response = client.get(
+        "/api/candidates?education=本科&skill=Python&min_score=4&page=1&per_page=20",
+        headers=_auth(admin_token),
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["total"] == 1
+    assert body["candidates"][0]["name_masked"] == "候选人本科Python"
+
+
 def test_candidates_keep_legacy_array_shape_without_query_params(client, make_user, app):
     user_id, token = make_user("candidate-legacy@example.com", role="recruiter")
 

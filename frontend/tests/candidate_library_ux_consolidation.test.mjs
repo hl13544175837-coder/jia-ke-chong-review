@@ -29,6 +29,6 @@ assert.doesNotMatch(page, /简历库列表/, 'Candidate table title should not r
 
 assert.match(
   page,
-  /调整搜索词、城市、来源、解析状态、入流程状态或技能条件后再查看/,
+  /调整搜索词、学历、城市、技能、来源、解析状态、招聘阶段或分数条件后再查看/,
   'Empty state should mention the renamed filter',
 );

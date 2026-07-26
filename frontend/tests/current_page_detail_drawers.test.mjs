@@ -28,9 +28,9 @@ assert.match(offers, />操作历史</);
 assert.match(offers, /<tr[\s\S]*onClick=\{\(\) => void openDetail\(offer\)\}/);
 assert.match(offers, /onClick=\{\(event\) => \{\s*event\.stopPropagation\(\);\s*void openDetail\(offer\)/);
 assert.match(offers, /onClick=\{\(event\) => event\.stopPropagation\(\)\}[\s\S]*<OfferActions/);
-assert.match(offers, /onClick=\{\(\) => setActiveTab\('pending'\)\}/);
-assert.match(offers, /onClick=\{\(\) => setActiveTab\('reply'\)\}/);
-assert.match(offers, /onClick=\{\(\) => setActiveTab\('onboard'\)\}/);
+assert.match(offers, /onClick=\{\(\) => selectTab\('pending'\)\}/);
+assert.match(offers, /onClick=\{\(\) => selectTab\('reply'\)\}/);
+assert.match(offers, /onClick=\{\(\) => selectTab\('onboard'\)\}/);
 
 // 已入职：不离开列表即可看入职详情，完整候选人档案只是抽屉内次级入口。
 assert.match(hired, /import \{ DrawerShell \} from '\.\.\/components\/ui\/DrawerShell'/);

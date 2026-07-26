@@ -13,6 +13,7 @@ from ..middleware.events import record_event
 from .. import db
 from ..models import (
     Candidate,
+    CandidateTag,
     CandidateDemandFlow,
     CandidateDisposition,
     Event,
@@ -180,6 +181,11 @@ def _education_summary(info):
     return " · ".join([p for p in parts if p])[:240]
 
 
+def _candidate_education_text(candidate):
+    education = _resume_info(candidate).get("education") or []
+    return json.dumps(education, ensure_ascii=False).casefold()
+
+
 def _candidate_library_item(candidate):
     info = _resume_info(candidate)
     tags = sorted(
@@ -300,6 +306,9 @@ def list_candidates():
             "source_channel",
             "parse_status",
             "pipeline_status",
+            "education",
+            "skill",
+            "min_score",
             "sort_by",
             "sort_order",
             "page",
@@ -320,6 +329,9 @@ def list_candidates():
     source_channel = request.args.get("source_channel", "").strip()
     parse_status = request.args.get("parse_status", "").strip()
     pipeline_status = request.args.get("pipeline_status", "").strip()
+    education = request.args.get("education", "").strip()
+    skill = request.args.get("skill", "").strip()
+    min_score = request.args.get("min_score", type=int)
     sort_by = request.args.get("sort_by", "created_at")
     sort_order = request.args.get("sort_order", "desc")
     page = max(1, request.args.get("page", 1, type=int) or 1)
@@ -391,6 +403,31 @@ def list_candidates():
         else:
             query = query.filter(Candidate.id.notin_(pipeline_subquery))
 
+    if education:
+        education_term = education.casefold()
+        candidate_ids = [
+            candidate.id
+            for candidate in query.all()
+            if education_term in _candidate_education_text(candidate)
+        ]
+        query = query.filter(Candidate.id.in_(candidate_ids or [-1]))
+
+    if skill:
+        skill_term = skill.casefold()
+        tagged_candidates = select(CandidateTag.candidate_id).where(
+            func.lower(func.coalesce(CandidateTag.tag, "")).contains(
+                skill_term,
+                autoescape=True,
+            )
+        )
+        query = query.filter(Candidate.id.in_(tagged_candidates))
+
+    if min_score is not None and min_score > 0:
+        scored_candidates = select(CandidateTag.candidate_id).where(
+            CandidateTag.score >= min_score
+        )
+        query = query.filter(Candidate.id.in_(scored_candidates))
+
     if city:
         candidate_ids = [c.id for c in query.all() if _candidate_intent_city(c) == city]
         query = query.filter(Candidate.id.in_(candidate_ids or [-1]))
@@ -398,7 +435,10 @@ def list_candidates():
     sort_column = Candidate.created_at
     if sort_by == "name_masked":
         sort_column = Candidate.name_masked
-    query = query.order_by(sort_column.asc() if sort_order == "asc" else sort_column.desc())
+    if sort_order == "asc":
+        query = query.order_by(sort_column.asc(), Candidate.id.asc())
+    else:
+        query = query.order_by(sort_column.desc(), Candidate.id.desc())
 
     total = query.count()
     candidates = query.offset((page - 1) * per_page).limit(per_page).all()
@@ -414,14 +454,15 @@ def list_candidates():
 
 @bp.get("/candidates/owner-options")
 @require_auth
-@require_role("manager", "admin", "interviewer")
+@require_role("recruiter", "manager", "admin", "interviewer")
 def candidate_owner_options():
-    recruiters = (
+    query = (
         User.query
         .filter(User.org_id == g.org_id, User.role == "recruiter", User.is_active.is_(True))
-        .order_by(User.name.asc(), User.id.asc())
-        .all()
     )
+    if g.role == "recruiter":
+        query = query.filter(User.id == g.user_id)
+    recruiters = query.order_by(User.name.asc(), User.id.asc()).all()
     return jsonify([
         {
             "id": user.id,

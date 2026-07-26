@@ -225,6 +225,26 @@ def test_interviewer_can_list_own_demands_and_recruiter_options(
     assert any(item["id"] == hr_id for item in owners.get_json())
 
 
+def test_recruiter_owner_options_only_return_current_recruiter(client, make_user):
+    recruiter_id, recruiter_token = make_user(
+        "self-owner-options@example.com", role="recruiter", name="当前招聘专员"
+    )
+    make_user("other-owner-options@example.com", role="recruiter", name="其他招聘专员")
+
+    response = client.get(
+        "/api/candidates/owner-options", headers=_auth(recruiter_token)
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == [
+        {
+            "id": recruiter_id,
+            "name": "当前招聘专员",
+            "email": "self-owner-options@example.com",
+        }
+    ]
+
+
 def test_interviewer_cannot_create_a_job_template_through_demand_submission(
     client, make_user
 ):

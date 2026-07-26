@@ -1,8 +1,8 @@
 // 简历库页面 — 展示上传后由 AI 解析出的候选人简历摘要、技能标签与筛选结果。
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, RotateCcw, Target, Upload, UserPlus, Users } from 'lucide-react';
+import { ChevronDown, Eye, RotateCcw, Target, Upload, UserPlus, Users } from 'lucide-react';
 import { candidatesApi as api } from '../api';
 import { formatDate } from '../../../lib/formatDate';
 import { stageLabel } from '../../../lib/pipelineStages';
@@ -29,7 +29,7 @@ import {
   EnterpriseTableCard,
 } from '../../../components/enterprise';
 import { Reveal, AnimatedNumber } from '../../../components/motion';
-import type { CandidatePipelineItem } from '../../../types';
+import type { CandidatePipelineItem, PipelineStage } from '../../../types';
 import type {
   CandidateListItem,
   CandidateTag,
@@ -68,6 +68,83 @@ const PARSE_STATUS_LABELS: Record<ParseStatus, string> = {
   ok: '解析成功',
   failed: '解析失败',
 };
+const EDUCATION_OPTIONS = ['博士', '硕士', '本科', '大专', '高中', '中专'] as const;
+const STAGE_FILTER_OPTIONS: PipelineStage[] = [
+  'pending',
+  'ai_screen',
+  'business_review',
+  'interview',
+  'offer',
+  'onboarded',
+  'rejected',
+  'transferred',
+];
+
+function isPipelineStageFilter(value: string): value is PipelineStage {
+  return STAGE_FILTER_OPTIONS.some((stage) => stage === value);
+}
+
+function isParseStatusFilter(value: string): value is ParseStatus {
+  return value === 'pending' || value === 'processing' || value === 'ok' || value === 'failed';
+}
+
+function isPipelineStatusFilter(
+  value: string,
+): value is 'in_pipeline' | 'not_in_pipeline' {
+  return value === 'in_pipeline' || value === 'not_in_pipeline';
+}
+
+type CandidateColumnFilter = 'identity' | 'profile' | 'skills' | 'source' | 'score' | 'created';
+
+function CandidateColumnFilterHeader({
+  'data-ui': dataUi,
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  'data-ui': string;
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <th
+      className="relative min-w-44 px-5 py-3 align-top font-medium"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.stopPropagation();
+          onToggle();
+        }
+      }}
+    >
+      <button
+        type="button"
+        data-ui={dataUi}
+        aria-expanded={open}
+        aria-controls={`${dataUi}-panel`}
+        onClick={onToggle}
+        className="inline-flex items-center gap-1 rounded text-left text-xs text-muted hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          id={`${dataUi}-panel`}
+          role="group"
+          aria-label={`${label}筛选条件`}
+          className="absolute left-5 top-full z-30 mt-1 w-60 space-y-2 rounded-md border border-hairline bg-canvas p-3 shadow-lg"
+        >
+          {children}
+        </div>
+      )}
+    </th>
+  );
+}
+
+const COLUMN_FILTER_FIELD_CLASS = 'h-8 w-full rounded-md border border-hairline bg-canvas px-2 text-xs text-ink focus:border-ink focus:outline-none';
 
 function candidateTags(candidate: CandidateListItem): CandidateTag[] {
   return Array.isArray(candidate.top_tags) ? candidate.top_tags : [];
@@ -574,11 +651,16 @@ export function CandidatesPage() {
   const [libraryTotal, setLibraryTotal] = useState<number | null>(null);
   const composingRef = useRef(false);
   const [cityFilter, setCityFilter] = useState('all');
-  const [tagFilter, setTagFilter] = useState('all');
+  const [educationFilter, setEducationFilter] = useState('all');
+  const [skillFilter, setSkillFilter] = useState('');
   const [sourceChannelFilter, setSourceChannelFilter] = useState('all');
   const [parseStatusFilter, setParseStatusFilter] = useState<'all' | ParseStatus>('all');
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState<'all' | 'in_pipeline' | 'not_in_pipeline'>('all');
+  const [stageFilter, setStageFilter] = useState<'all' | PipelineStage>('all');
   const [scoreFilter, setScoreFilter] = useState('0');
+  const [sortBy, setSortBy] = useState<'created_at' | 'name_masked'>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [openColumnFilter, setOpenColumnFilter] = useState<CandidateColumnFilter | null>(null);
   const [targetDemandId, setTargetDemandId] = useState('');
   const [addingCandidateId, setAddingCandidateId] = useState<number | null>(null);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<number[]>([]);
@@ -588,6 +670,7 @@ export function CandidatesPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const debouncedQuery = useDebounce(searchQuery, 300);
+  const debouncedSkill = useDebounce(skillFilter, 300);
   const demandsAsync = useAsync(
     () => api.listDemands({ status: 'all', page: 1, page_size: 100 }),
     [],
@@ -609,29 +692,64 @@ export function CandidatesPage() {
     () => api.searchCandidates({
       search: debouncedQuery || undefined,
       city: cityFilter === 'all' ? undefined : cityFilter,
+      education: educationFilter === 'all' ? undefined : educationFilter,
+      skill: debouncedSkill.trim() || undefined,
+      min_score: Number(scoreFilter) || undefined,
       source_channel: sourceChannelFilter === 'all' ? undefined : sourceChannelFilter,
       parse_status: parseStatusFilter === 'all' ? undefined : parseStatusFilter,
       pipeline_status: pipelineStatusFilter === 'all' ? undefined : pipelineStatusFilter,
+      stage: stageFilter === 'all' ? undefined : stageFilter,
       page,
       per_page: 20,
-      sort_by: 'created_at',
-      sort_order: 'desc',
+      sort_by: sortBy,
+      sort_order: sortOrder,
     }),
-    [debouncedQuery, cityFilter, sourceChannelFilter, parseStatusFilter, pipelineStatusFilter, page],
+    [
+      debouncedQuery,
+      cityFilter,
+      educationFilter,
+      debouncedSkill,
+      scoreFilter,
+      sourceChannelFilter,
+      parseStatusFilter,
+      pipelineStatusFilter,
+      stageFilter,
+      sortBy,
+      sortOrder,
+      page,
+    ],
   );
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQuery, cityFilter, sourceChannelFilter, parseStatusFilter, pipelineStatusFilter]);
+  }, [
+    debouncedQuery,
+    cityFilter,
+    educationFilter,
+    debouncedSkill,
+    scoreFilter,
+    sourceChannelFilter,
+    parseStatusFilter,
+    pipelineStatusFilter,
+    stageFilter,
+    sortBy,
+    sortOrder,
+  ]);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
   const resultTotal = data?.total ?? candidates.length;
   const hasServerFilters =
     debouncedQuery.trim() !== '' ||
     cityFilter !== 'all' ||
+    educationFilter !== 'all' ||
+    debouncedSkill.trim() !== '' ||
+    scoreFilter !== '0' ||
     sourceChannelFilter !== 'all' ||
     parseStatusFilter !== 'all' ||
-    pipelineStatusFilter !== 'all';
+    pipelineStatusFilter !== 'all' ||
+    stageFilter !== 'all' ||
+    sortBy !== 'created_at' ||
+    sortOrder !== 'desc';
 
   useEffect(() => {
     if (data && !hasServerFilters) {
@@ -703,25 +821,13 @@ export function CandidatesPage() {
   }, [candidates, sourceChannelFilter]);
 
   const filteredCandidates = useMemo(() => {
-    const minScore = Number(scoreFilter);
-    return candidates
-      .filter((candidate) => {
-        const matchesCity = cityFilter === 'all' || candidate.intent_city === cityFilter;
-        const matchesTag =
-          tagFilter === 'all' || candidateTags(candidate).some((skill) => skill.tag === tagFilter);
-        const matchesScore = (candidate.max_score ?? 0) >= minScore;
-        return matchesCity && matchesTag && matchesScore;
-      })
-      .sort((a, b) => {
-        if (selectedJobId) {
-          const fitDiff = (matchByCandidateId.get(b.id)?.score ?? 0) - (matchByCandidateId.get(a.id)?.score ?? 0);
-          if (fitDiff !== 0) return fitDiff;
-        }
-        const scoreDiff = (b.max_score ?? 0) - (a.max_score ?? 0);
-        if (scoreDiff !== 0) return scoreDiff;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
-  }, [candidates, cityFilter, matchByCandidateId, scoreFilter, selectedJobId, tagFilter]);
+    if (!selectedJobId) return candidates;
+    return [...candidates].sort((a, b) => {
+      const fitDiff = (matchByCandidateId.get(b.id)?.score ?? 0) - (matchByCandidateId.get(a.id)?.score ?? 0);
+      if (fitDiff !== 0) return fitDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [candidates, matchByCandidateId, selectedJobId]);
   const selectedCandidateSet = useMemo(
     () => new Set(selectedCandidateIds),
     [selectedCandidateIds],
@@ -741,25 +847,38 @@ export function CandidatesPage() {
   const hasActiveFilters =
     searchQuery.trim() !== '' ||
     cityFilter !== 'all' ||
-    tagFilter !== 'all' ||
+    educationFilter !== 'all' ||
+    skillFilter.trim() !== '' ||
     sourceChannelFilter !== 'all' ||
     parseStatusFilter !== 'all' ||
     pipelineStatusFilter !== 'all' ||
-    scoreFilter !== '0';
+    stageFilter !== 'all' ||
+    scoreFilter !== '0' ||
+    sortBy !== 'created_at' ||
+    sortOrder !== 'desc';
 
   function resetFilters() {
     composingRef.current = false;
     setQuery('');
     setSearchQuery('');
     setCityFilter('all');
-    setTagFilter('all');
+    setEducationFilter('all');
+    setSkillFilter('');
     setSourceChannelFilter('all');
     setParseStatusFilter('all');
     setPipelineStatusFilter('all');
+    setStageFilter('all');
     setScoreFilter('0');
+    setSortBy('created_at');
+    setSortOrder('desc');
+    setOpenColumnFilter(null);
     setActionError(null);
     setActionMessage(null);
     setPage(1);
+  }
+
+  function toggleColumnFilter(column: CandidateColumnFilter) {
+    setOpenColumnFilter((current) => current === column ? null : column);
   }
 
   async function handleAddToDemand(candidateId: number) {
@@ -998,17 +1117,21 @@ export function CandidatesPage() {
                   ))}
                 </Select>
                 <Select
-                  label="技能标签"
-                  value={tagFilter}
-                  onChange={(event) => setTagFilter(event.target.value)}
+                  label="学历"
+                  value={educationFilter}
+                  onChange={(event) => setEducationFilter(event.target.value)}
                 >
-                  <option value="all">全部技能</option>
-                  {tagOptions.map(([tag, count]) => (
-                    <option key={tag} value={tag}>
-                      {tag}（{count}）
-                    </option>
+                  <option value="all">全部学历</option>
+                  {EDUCATION_OPTIONS.map((education) => (
+                    <option key={education} value={education}>{education}</option>
                   ))}
                 </Select>
+                <Input
+                  label="技能关键词"
+                  value={skillFilter}
+                  onChange={(event) => setSkillFilter(event.target.value)}
+                  placeholder="如 Java、Python、产品设计"
+                />
                 <Select
                   label="来源渠道"
                   value={sourceChannelFilter}
@@ -1024,7 +1147,12 @@ export function CandidatesPage() {
                 <Select
                   label="解析状态"
                   value={parseStatusFilter}
-                  onChange={(event) => setParseStatusFilter(event.target.value as 'all' | ParseStatus)}
+                  onChange={(event) => {
+                    const nextStatus = event.target.value;
+                    if (nextStatus === 'all' || isParseStatusFilter(nextStatus)) {
+                      setParseStatusFilter(nextStatus);
+                    }
+                  }}
                 >
                   <option value="all">全部状态</option>
                   <option value="ok">解析成功</option>
@@ -1035,13 +1163,31 @@ export function CandidatesPage() {
                 <Select
                   label="入流程状态"
                   value={pipelineStatusFilter}
-                  onChange={(event) =>
-                    setPipelineStatusFilter(event.target.value as 'all' | 'in_pipeline' | 'not_in_pipeline')
-                  }
+                  onChange={(event) => {
+                    const nextStatus = event.target.value;
+                    if (nextStatus === 'all' || isPipelineStatusFilter(nextStatus)) {
+                      setPipelineStatusFilter(nextStatus);
+                    }
+                  }}
                 >
                   <option value="all">全部状态</option>
                   <option value="not_in_pipeline">未进入流程</option>
                   <option value="in_pipeline">已进入流程</option>
+                </Select>
+                <Select
+                  label="招聘阶段（任一需求）"
+                  value={stageFilter}
+                  onChange={(event) => {
+                    const nextStage = event.target.value;
+                    if (nextStage === 'all' || isPipelineStageFilter(nextStage)) {
+                      setStageFilter(nextStage);
+                    }
+                  }}
+                >
+                  <option value="all">全部阶段</option>
+                  {STAGE_FILTER_OPTIONS.map((stage) => (
+                    <option key={stage} value={stage}>{stageLabel(stage)}</option>
+                  ))}
                 </Select>
                 <Select
                   label="最低技能分"
@@ -1052,6 +1198,25 @@ export function CandidatesPage() {
                   <option value="3">3 分及以上</option>
                   <option value="4">4 分及以上</option>
                   <option value="5">5 分</option>
+                </Select>
+                <Select
+                  label="排序方式"
+                  value={`${sortBy}:${sortOrder}`}
+                  onChange={(event) => {
+                    const [nextSortBy, nextSortOrder] = event.target.value.split(':');
+                    if (
+                      (nextSortBy === 'created_at' || nextSortBy === 'name_masked')
+                      && (nextSortOrder === 'asc' || nextSortOrder === 'desc')
+                    ) {
+                      setSortBy(nextSortBy);
+                      setSortOrder(nextSortOrder);
+                    }
+                  }}
+                >
+                  <option value="created_at:desc">最近入库</option>
+                  <option value="created_at:asc">最早入库</option>
+                  <option value="name_masked:asc">候选人名称升序</option>
+                  <option value="name_masked:desc">候选人名称降序</option>
                 </Select>
                 <div className="flex items-end">
                   <Button variant="secondary" onClick={resetFilters}>
@@ -1147,7 +1312,7 @@ export function CandidatesPage() {
                 <EnterpriseEmptyState
                   icon={Users}
                   title="没有符合条件的简历"
-                  description="调整搜索词、城市、来源、解析状态、入流程状态或技能条件后再查看"
+                  description="调整搜索词、学历、城市、技能、来源、解析状态、招聘阶段或分数条件后再查看"
                 />
             ) : (
                 <table className="enterprise-table">
@@ -1168,12 +1333,211 @@ export function CandidatesPage() {
                               className="h-4 w-4 rounded border-[#d9d5d0] text-[var(--enterprise-brand)] focus:ring-[var(--enterprise-brand)]"
                             />
                           </th>
-	                      <th className="px-5 py-3">候选人</th>
-	                      <th className="px-5 py-3">简历摘要</th>
-	                      <th className="px-5 py-3">{targetDemandId ? '职位匹配摘要' : '核心技能'}</th>
-	                      <th className="px-5 py-3">来源信息</th>
-	                      <th className="px-5 py-3">最高分</th>
-	                      <th className="px-5 py-3">入库时间</th>
+	                      <CandidateColumnFilterHeader
+                            data-ui="candidate-column-filter-identity"
+                            label="候选人"
+                            open={openColumnFilter === 'identity'}
+                            onToggle={() => toggleColumnFilter('identity')}
+                          >
+                            <input
+                              aria-label="按候选人信息筛选"
+                              value={query}
+                              placeholder="姓名、邮箱、公司或岗位"
+                              onChange={(event) => {
+                                const nextQuery = event.target.value;
+                                setQuery(nextQuery);
+                                if (!composingRef.current) setSearchQuery(nextQuery);
+                              }}
+                              onCompositionStart={() => { composingRef.current = true; }}
+                              onCompositionEnd={(event) => {
+                                composingRef.current = false;
+                                setQuery(event.currentTarget.value);
+                                setSearchQuery(event.currentTarget.value);
+                              }}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            />
+                            <select
+                              aria-label="按候选人名称排序"
+                              value={sortBy === 'name_masked' ? sortOrder : ''}
+                              onChange={(event) => {
+                                const nextOrder = event.target.value;
+                                if (nextOrder === 'asc' || nextOrder === 'desc') {
+                                  setSortBy('name_masked');
+                                  setSortOrder(nextOrder);
+                                }
+                              }}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            >
+                              <option value="">默认排序</option>
+                              <option value="asc">名称升序</option>
+                              <option value="desc">名称降序</option>
+                            </select>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => {
+                              setQuery('');
+                              setSearchQuery('');
+                              setSortBy('created_at');
+                              setSortOrder('desc');
+                            }}>清除</Button>
+                          </CandidateColumnFilterHeader>
+	                      <CandidateColumnFilterHeader
+                            data-ui="candidate-column-filter-profile"
+                            label="简历摘要"
+                            open={openColumnFilter === 'profile'}
+                            onToggle={() => toggleColumnFilter('profile')}
+                          >
+                            <select
+                              aria-label="按学历筛选"
+                              value={educationFilter}
+                              onChange={(event) => setEducationFilter(event.target.value)}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            >
+                              <option value="all">全部学历</option>
+                              {EDUCATION_OPTIONS.map((education) => (
+                                <option key={education} value={education}>{education}</option>
+                              ))}
+                            </select>
+                            <select
+                              aria-label="按意向城市筛选"
+                              value={cityFilter}
+                              onChange={(event) => setCityFilter(event.target.value)}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            >
+                              <option value="all">全部城市</option>
+                              {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
+                            </select>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => {
+                              setEducationFilter('all');
+                              setCityFilter('all');
+                            }}>清除</Button>
+                          </CandidateColumnFilterHeader>
+	                      <CandidateColumnFilterHeader
+                            data-ui="candidate-column-filter-skills"
+                            label={targetDemandId ? '职位匹配摘要' : '核心技能'}
+                            open={openColumnFilter === 'skills'}
+                            onToggle={() => toggleColumnFilter('skills')}
+                          >
+                            <input
+                              aria-label="按技能关键词筛选"
+                              value={skillFilter}
+                              placeholder="如 Java、Python"
+                              onChange={(event) => setSkillFilter(event.target.value)}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            />
+                            <select
+                              aria-label="按任一招聘需求的当前阶段筛选"
+                              value={stageFilter}
+                              onChange={(event) => {
+                                const nextStage = event.target.value;
+                                if (nextStage === 'all' || isPipelineStageFilter(nextStage)) {
+                                  setStageFilter(nextStage);
+                                }
+                              }}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            >
+                              <option value="all">全部阶段</option>
+                              {STAGE_FILTER_OPTIONS.map((stage) => (
+                                <option key={stage} value={stage}>{stageLabel(stage)}</option>
+                              ))}
+                            </select>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => {
+                              setSkillFilter('');
+                              setStageFilter('all');
+                            }}>清除</Button>
+                          </CandidateColumnFilterHeader>
+	                      <CandidateColumnFilterHeader
+                            data-ui="candidate-column-filter-source"
+                            label="来源信息"
+                            open={openColumnFilter === 'source'}
+                            onToggle={() => toggleColumnFilter('source')}
+                          >
+                            <select
+                              aria-label="按来源渠道筛选"
+                              value={sourceChannelFilter}
+                              onChange={(event) => setSourceChannelFilter(event.target.value)}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            >
+                              <option value="all">全部来源</option>
+                              {sourceOptions.map((channel) => <option key={channel} value={channel}>{channel}</option>)}
+                            </select>
+                            <select
+                              aria-label="按解析状态筛选"
+                              value={parseStatusFilter}
+                              onChange={(event) => {
+                                const nextStatus = event.target.value;
+                                if (nextStatus === 'all' || isParseStatusFilter(nextStatus)) {
+                                  setParseStatusFilter(nextStatus);
+                                }
+                              }}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            >
+                              <option value="all">全部解析状态</option>
+                              {Object.entries(PARSE_STATUS_LABELS).map(([value, label]) => (
+                                <option key={value} value={value}>{label}</option>
+                              ))}
+                            </select>
+                            <select
+                              aria-label="按入流程状态筛选"
+                              value={pipelineStatusFilter}
+                              onChange={(event) => {
+                                const nextStatus = event.target.value;
+                                if (nextStatus === 'all' || isPipelineStatusFilter(nextStatus)) {
+                                  setPipelineStatusFilter(nextStatus);
+                                }
+                              }}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            >
+                              <option value="all">全部流程状态</option>
+                              <option value="not_in_pipeline">未进入流程</option>
+                              <option value="in_pipeline">已进入流程</option>
+                            </select>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => {
+                              setSourceChannelFilter('all');
+                              setParseStatusFilter('all');
+                              setPipelineStatusFilter('all');
+                            }}>清除</Button>
+                          </CandidateColumnFilterHeader>
+	                      <CandidateColumnFilterHeader
+                            data-ui="candidate-column-filter-score"
+                            label="最高分"
+                            open={openColumnFilter === 'score'}
+                            onToggle={() => toggleColumnFilter('score')}
+                          >
+                            <select
+                              aria-label="按最低技能分筛选"
+                              value={scoreFilter}
+                              onChange={(event) => setScoreFilter(event.target.value)}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            >
+                              <option value="0">全部分数</option>
+                              <option value="3">3 分及以上</option>
+                              <option value="4">4 分及以上</option>
+                              <option value="5">5 分</option>
+                            </select>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => setScoreFilter('0')}>清除</Button>
+                          </CandidateColumnFilterHeader>
+	                      <CandidateColumnFilterHeader
+                            data-ui="candidate-column-filter-created"
+                            label="入库时间"
+                            open={openColumnFilter === 'created'}
+                            onToggle={() => toggleColumnFilter('created')}
+                          >
+                            <select
+                              aria-label="按入库时间排序"
+                              value={sortBy === 'created_at' ? sortOrder : ''}
+                              onChange={(event) => {
+                                const nextOrder = event.target.value;
+                                if (nextOrder === 'asc' || nextOrder === 'desc') {
+                                  setSortBy('created_at');
+                                  setSortOrder(nextOrder);
+                                }
+                              }}
+                              className={COLUMN_FILTER_FIELD_CLASS}
+                            >
+                              <option value="">默认排序</option>
+                              <option value="desc">最近入库</option>
+                              <option value="asc">最早入库</option>
+                            </select>
+                          </CandidateColumnFilterHeader>
 	                      <th className="px-5 py-3 text-right">操作</th>
 	                    </tr>
                   </thead>

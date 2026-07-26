@@ -159,6 +159,9 @@ export interface CandidateListQuery {
   source_channel?: string;
   parse_status?: ParseStatus;
   pipeline_status?: 'in_pipeline' | 'not_in_pipeline';
+  education?: string;
+  skill?: string;
+  min_score?: number;
   sort_by?: 'created_at' | 'name_masked';
   sort_order?: 'asc' | 'desc';
   page?: number;

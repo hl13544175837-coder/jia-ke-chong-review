@@ -28,6 +28,6 @@ assert.match(
 );
 assert.match(
   demandForm,
-  /const ownerOptions = useMemo/,
-  'Demand form should memoize its role-derived owner options',
+  /const ownerOptions = owners;/,
+  'Demand form should consume the stable server-authorized owner options directly',
 );
