@@ -17,6 +17,12 @@ assert.match(page, /api\.movePipeline/);
 assert.match(page, /api\.transferPipeline/);
 assert.match(page, /api\.listOffers/);
 assert.match(page, /api\.getDemandPipelineHistory/);
+assert.match(page, /to="\/offers"/, 'Offer 阶段必须引导到 Offer 管理完成确认入职');
+assert.match(page, /offerActionGuidance/, 'Offer 阶段必须按真实 Offer 状态给出下一步引导');
+assert.match(page, /stage\.key !== 'onboarded'/, '阶段修正不能将候选人直接写入已入职');
+
+const sharedStages = readFileSync(new URL('../src/lib/pipelineInsights.ts', import.meta.url), 'utf8');
+assert.doesNotMatch(sharedStages, /offer:\s*'onboarded'/, '普通阶段推进不能绕过 Offer 确认入职');
 
 // 角色守卫：面试官仅查看，不显示推进/淘汰/修正按钮。
 assert.match(page, /role !== 'interviewer'/);

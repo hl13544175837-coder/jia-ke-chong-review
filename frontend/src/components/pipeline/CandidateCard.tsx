@@ -118,16 +118,24 @@ export function CandidateCard({
         )}
 
         {candidate.stage === 'offer' && (
-          <button
-            type="button"
-            disabled={busy}
-            title={busy ? '候选人状态更新中' : '记录 Offer 信息'}
-            aria-label="Offer 信息"
-            onClick={() => setShowOffer((v) => !v)}
-            className="rounded-md px-2 py-1 text-[11px] font-medium text-success-700 hover:bg-success-50 disabled:opacity-50"
-          >
-            记录 Offer
-          </button>
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              title={busy ? '候选人状态更新中' : '记录 Offer 信息'}
+              aria-label="Offer 信息"
+              onClick={() => setShowOffer((v) => !v)}
+              className="rounded-md px-2 py-1 text-[11px] font-medium text-success-700 hover:bg-success-50 disabled:opacity-50"
+            >
+              记录 Offer
+            </button>
+            <Link
+              to="/offers"
+              className="rounded-md px-2 py-1 text-[11px] font-medium text-ink hover:bg-surface-soft"
+            >
+              Offer 管理
+            </Link>
+          </>
         )}
 
         {/* 录入评分：仅在面试阶段展示 */}
@@ -158,7 +166,7 @@ export function CandidateCard({
               role="listbox"
               className="absolute right-0 z-10 mt-1 w-28 overflow-hidden rounded-md border border-hairline bg-canvas py-1 shadow-lg"
             >
-              {STAGES.map((s) => (
+              {STAGES.filter((s) => s.key !== 'onboarded').map((s) => (
                 <li key={s.key}>
                   <button
                     type="button"

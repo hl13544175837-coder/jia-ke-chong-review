@@ -20,7 +20,6 @@ const hrNavItems: NavItem[] = [
   { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['recruiter', 'manager', 'admin'], menuCode: 'index' },
   { path: '/jobs', icon: 'ri-briefcase-line', label: '需求审核', roles: ['recruiter', 'manager', 'admin'], menuCode: 'demands' },
   { path: '/candidates', icon: 'ri-file-list-3-line', label: '候选人', roles: ['recruiter', 'manager', 'admin'], menuCode: 'candidates' },
-  { path: '/kanban', icon: 'ri-layout-masonry-line', label: '进度', roles: ['recruiter', 'manager', 'admin'], menuCode: 'pipeline' },
   { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['recruiter', 'manager', 'admin'], menuCode: 'interviews' },
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['recruiter', 'manager', 'admin'], menuCode: 'pipeline' },
 ];

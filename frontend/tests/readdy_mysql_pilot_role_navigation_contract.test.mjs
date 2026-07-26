@@ -37,12 +37,12 @@ const hrNavigation = arrayBlock(layout, 'hrNavItems');
 for (const [routePath, label] of [
   ['/jobs', '需求审核'],
   ['/candidates', '候选人'],
-  ['/kanban', '进度'],
   ['/interviews', '面试管理'],
   ['/offers', 'Offer'],
 ]) {
   assert.match(hrNavigation, new RegExp(`path: '${routePath.replace('/', '\\/')}'.*label: '${label}'`), `HR 导航缺少${label}`);
 }
+assert.doesNotMatch(hrNavigation, /path: '\/kanban'.*label: '进度'/, 'HR 导航不应重复显示招聘进度');
 assert.doesNotMatch(hrNavigation, /talent-map/, 'HR 试点导航不应显示人才地图');
 
 assert.match(routes, /const hrRoles: ProductRole\[\] = \['recruiter', 'manager', 'admin'\]/, 'HR、主管和管理员必须共享试点管理路由');

@@ -15,6 +15,8 @@ assert.match(page, /重试加载需求/, 'Demand 次级接口失败时应提供�
 assert.match(page, /重新加载候选人/, '候选人次级接口失败时应提供重试');
 assert.match(page, /boardAsync\.loading \|\| !!boardAsync\.error \|\| !candidateId/, '候选人未就绪时不得保存空 Offer 草稿');
 assert.match(page, /role === 'manager' \|\| role === 'admin'/);
+assert.match(page, /action === 'onboard' && !onboardDate/, '确认入职必须要求实际入职日期');
+assert.match(page, /status === 'accepted'/, '只有已接受 Offer 显示确认入职动作');
 assert.doesNotMatch(page, /mocks\/offers|sessionStorage|zhipin-current-role|initialOffers/);
 
 assert.match(api, /listOffers\(/);

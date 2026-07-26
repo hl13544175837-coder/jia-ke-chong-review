@@ -200,6 +200,62 @@ def test_offer_lifecycle_is_persisted_audited_and_updates_pipeline(
         ]
 
 
+def test_direct_pipeline_onboarding_is_rejected_without_side_effects(client, make_user, app):
+    recruiter_id, recruiter_token = make_user(
+        "offer-direct-onboard@example.com",
+        role="recruiter",
+    )
+    demand_id, job_id, candidate_id = _seed_offer_candidate(app, recruiter_id)
+
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, CandidateDemandFlow, Event, PipelineStage
+        from app.services.pipeline_service import PipelineServiceError, move_candidate
+
+        with pytest.raises(PipelineServiceError) as captured:
+            move_candidate(
+                candidate_id=candidate_id,
+                demand_id=demand_id,
+                org_id=1,
+                actor_id=recruiter_id,
+                stage="onboarded",
+            )
+        assert captured.value.status_code == 409
+        assert captured.value.code == "offer_onboard_action_required"
+        assert PipelineStage.query.filter_by(candidate_id=candidate_id).count() == 1
+        assert CandidateDemandFlow.query.filter_by(candidate_id=candidate_id).one().status == "active"
+        assert db.session.get(Candidate, candidate_id).current_demand_id == demand_id
+        assert Event.query.filter_by(entity_id=candidate_id).count() == 0
+
+    legacy = client.post(
+        "/api/pipeline/move",
+        headers=_auth(recruiter_token),
+        json={
+            "candidate_id": candidate_id,
+            "demand_id": demand_id,
+            "job_id": job_id,
+            "stage": "onboarded",
+        },
+    )
+    demand_scoped = client.post(
+        f"/api/pipeline/demands/{demand_id}/move",
+        headers=_auth(recruiter_token),
+        json={"candidate_id": candidate_id, "stage": "onboarded"},
+    )
+    for response in (legacy, demand_scoped):
+        assert response.status_code == 409
+        assert response.get_json()["code"] == "offer_onboard_action_required"
+
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, CandidateDemandFlow, Event, PipelineStage
+
+        assert PipelineStage.query.filter_by(candidate_id=candidate_id).count() == 1
+        assert CandidateDemandFlow.query.filter_by(candidate_id=candidate_id).one().status == "active"
+        assert db.session.get(Candidate, candidate_id).current_demand_id == demand_id
+        assert Event.query.filter_by(entity_id=candidate_id).count() == 0
+
+
 def test_offer_state_machine_and_org_role_boundaries(client, make_user, app):
     recruiter_id, recruiter_token = make_user(
         "offer-boundary@example.com",

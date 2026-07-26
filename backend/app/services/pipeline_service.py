@@ -256,6 +256,134 @@ def _create_disposition(*, candidate, demand, actor_id, data):
     return disposition
 
 
+def _move_candidate_in_demand(
+    *,
+    candidate_id,
+    demand_id,
+    org_id,
+    actor_id,
+    to_stage,
+    note=None,
+    disposition_data=None,
+):
+    """在业务命令完成授权后写入规范化阶段，供受控流程复用。"""
+
+    demand = _require_demand(demand_id, org_id)
+    _require_writable_demand(demand)
+    candidate = _require_candidate(candidate_id, org_id)
+    previous = _latest_stage(candidate.id, demand.id)
+    from_stage = normalize_pipeline_stage(previous.stage) if previous else None
+
+    if candidate.current_demand_id not in (None, demand.id):
+        raise PipelineServiceError(
+            "候选人已有其他进行中需求，请使用转需求操作",
+            409,
+            "candidate_active_demand_conflict",
+        )
+    if _other_active_flow(candidate.id, demand.id, org_id) is not None:
+        raise PipelineServiceError(
+            "候选人已有其他进行中需求，请使用转需求操作",
+            409,
+            "candidate_active_demand_conflict",
+        )
+
+    normalized_note = str(note or "")
+    if (
+        previous is not None
+        and from_stage == to_stage
+        and previous.updated_by == actor_id
+        and (previous.note or "") == normalized_note
+    ):
+        return {
+            "status": "ok",
+            "stage": to_stage,
+            "from": from_stage,
+            "candidate_id": candidate.id,
+            "name_masked": candidate.name_masked,
+            "demand_id": demand.id,
+            "job_id": demand.job_id,
+            "deduplicated": True,
+            **_completion_state(demand),
+        }
+
+    flow = _upsert_active_flow(candidate, demand)
+    db.session.add(
+        PipelineStage(
+            org_id=org_id,
+            candidate_id=candidate.id,
+            demand_id=demand.id,
+            job_id=demand.job_id,
+            stage=to_stage,
+            updated_by=actor_id,
+            note=note,
+        )
+    )
+
+    if to_stage == "onboarded":
+        flow.status = "completed"
+        flow.ended_at = utc_now()
+        candidate.current_demand_id = None
+    elif to_stage == "rejected":
+        flow.status = "rejected"
+        flow.ended_at = utc_now()
+        candidate.current_demand_id = None
+        if isinstance(disposition_data, dict):
+            _create_disposition(
+                candidate=candidate,
+                demand=demand,
+                actor_id=actor_id,
+                data=disposition_data,
+            )
+
+    record_event(
+        "pipeline.moved",
+        entity_id=candidate.id,
+        entity_type="candidate",
+        demand_id=demand.id,
+        payload={
+            "demand_id": demand.id,
+            "job_id": demand.job_id,
+            "from": from_stage,
+            "to": to_stage,
+            "note": note,
+        },
+        commit=False,
+    )
+    if to_stage == "onboarded":
+        record_event(
+            "candidate.onboarded",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            demand_id=demand.id,
+            payload={"demand_id": demand.id, "job_id": demand.job_id},
+            commit=False,
+        )
+    if to_stage == "rejected" and isinstance(disposition_data, dict):
+        record_event(
+            "candidate.disposition",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            demand_id=demand.id,
+            payload={
+                "demand_id": demand.id,
+                "job_id": demand.job_id,
+                "reason": str(disposition_data.get("reason") or "")[:240],
+            },
+            commit=False,
+        )
+    return {
+        "status": "ok",
+        "stage": to_stage,
+        "from": from_stage,
+        "candidate_id": candidate.id,
+        "name_masked": candidate.name_masked,
+        "demand_id": demand.id,
+        "job_id": demand.job_id,
+        "deduplicated": False,
+        **_completion_state(demand),
+    }
+
+
 def move_candidate(
     *,
     candidate_id,
@@ -286,126 +414,28 @@ def move_candidate(
             400,
             "transfer_action_required",
         )
+    if to_stage == "onboarded":
+        raise PipelineServiceError(
+            "确认入职必须通过已接受 Offer 的确认入职操作完成，请前往 Offer 管理处理",
+            409,
+            "offer_onboard_action_required",
+        )
 
     try:
-        demand = _require_demand(demand_id, org_id)
-        _require_writable_demand(demand)
-        candidate = _require_candidate(candidate_id, org_id)
-        previous = _latest_stage(candidate.id, demand.id)
-        from_stage = normalize_pipeline_stage(previous.stage) if previous else None
-
-        if candidate.current_demand_id not in (None, demand.id):
-            raise PipelineServiceError(
-                "候选人已有其他进行中需求，请使用转需求操作",
-                409,
-                "candidate_active_demand_conflict",
-            )
-        if _other_active_flow(candidate.id, demand.id, org_id) is not None:
-            raise PipelineServiceError(
-                "候选人已有其他进行中需求，请使用转需求操作",
-                409,
-                "candidate_active_demand_conflict",
-            )
-
-        normalized_note = str(note or "")
-        if (
-            previous is not None
-            and from_stage == to_stage
-            and previous.updated_by == actor_id
-            and (previous.note or "") == normalized_note
-        ):
-            return {
-                "status": "ok",
-                "stage": to_stage,
-                "from": from_stage,
-                "candidate_id": candidate.id,
-                "name_masked": candidate.name_masked,
-                "demand_id": demand.id,
-                "job_id": demand.job_id,
-                "deduplicated": True,
-                **_completion_state(demand),
-            }
-
-        flow = _upsert_active_flow(candidate, demand)
-        db.session.add(
-            PipelineStage(
-                org_id=org_id,
-                candidate_id=candidate.id,
-                demand_id=demand.id,
-                job_id=demand.job_id,
-                stage=to_stage,
-                updated_by=actor_id,
-                note=note,
-            )
+        result = _move_candidate_in_demand(
+            candidate_id=candidate_id,
+            demand_id=demand_id,
+            org_id=org_id,
+            actor_id=actor_id,
+            to_stage=to_stage,
+            note=note,
+            disposition_data=disposition_data,
         )
-
-        if to_stage == "onboarded":
-            flow.status = "completed"
-            flow.ended_at = utc_now()
-            candidate.current_demand_id = None
-        elif to_stage == "rejected":
-            flow.status = "rejected"
-            flow.ended_at = utc_now()
-            candidate.current_demand_id = None
-            if isinstance(disposition_data, dict):
-                _create_disposition(
-                    candidate=candidate,
-                    demand=demand,
-                    actor_id=actor_id,
-                    data=disposition_data,
-                )
-
-        record_event(
-            "pipeline.moved",
-            entity_id=candidate.id,
-            entity_type="candidate",
-            demand_id=demand.id,
-            payload={
-                "demand_id": demand.id,
-                "job_id": demand.job_id,
-                "from": from_stage,
-                "to": to_stage,
-                "note": note,
-            },
-            commit=False,
-        )
-        if to_stage == "onboarded":
-            record_event(
-                "candidate.onboarded",
-                entity_id=candidate.id,
-                entity_type="candidate",
-                demand_id=demand.id,
-                payload={"demand_id": demand.id, "job_id": demand.job_id},
-                commit=False,
-            )
-        if to_stage == "rejected" and isinstance(disposition_data, dict):
-            record_event(
-                "candidate.disposition",
-                entity_id=candidate.id,
-                entity_type="candidate",
-                demand_id=demand.id,
-                payload={
-                    "demand_id": demand.id,
-                    "job_id": demand.job_id,
-                    "reason": str(disposition_data.get("reason") or "")[:240],
-                },
-                commit=False,
-            )
         if commit:
             db.session.commit()
         else:
             db.session.flush()
-        return {
-            "status": "ok",
-            "stage": to_stage,
-            "from": from_stage,
-            "candidate_id": candidate.id,
-            "name_masked": candidate.name_masked,
-            "demand_id": demand.id,
-            "job_id": demand.job_id,
-            "deduplicated": False,
-            **_completion_state(demand),
-        }
+        return result
     except Exception:
         if commit:
             db.session.rollback()
@@ -933,14 +963,13 @@ def transition_offer(*, offer_id, org_id, actor_id, action, data, commit=True):
                 raise PipelineServiceError("请填写实际入职日期", 400, "onboard_date_required")
             offer.onboard_date = onboard_date
             offer.onboarded_at = now
-            move_candidate(
+            _move_candidate_in_demand(
                 candidate_id=offer.candidate_id,
                 demand_id=demand.id,
                 org_id=org_id,
                 actor_id=actor_id,
-                stage="onboarded",
+                to_stage="onboarded",
                 note=comment or f"Offer 入职：{onboard_date.isoformat()}",
-                commit=False,
             )
             detail["onboard_date"] = onboard_date.isoformat()
 

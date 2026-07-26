@@ -30,12 +30,10 @@ check_url() {
 
 check_process "后端" "$BACKEND_PID_FILE"
 check_process "登录桥" "$OAUTH_PID_FILE"
-check_process "完整 ZIP 前端" "$FRONTEND_PID_FILE"
-check_process "接口与图片简历版前端" "$OPERATIONS_FRONTEND_PID_FILE"
+check_process "完整 Readdy 前端" "$FRONTEND_PID_FILE"
 check_url "后端健康检查" "http://127.0.0.1:$BACKEND_PORT/api/health"
 check_url "登录桥健康检查" "http://127.0.0.1:$OAUTH_PORT/health"
-check_url "完整 ZIP 前端页面（5190）" "http://127.0.0.1:$FRONTEND_PORT"
-check_url "接口与图片简历版页面（5192）" "http://127.0.0.1:$OPERATIONS_PORT"
+check_url "完整 Readdy 前端页面（5190）" "http://127.0.0.1:$FRONTEND_PORT"
 print_access_urls
 
 exit "$status"

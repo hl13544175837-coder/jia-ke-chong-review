@@ -142,6 +142,11 @@ def move_stage(demand_id=None):
     to_stage = data.get("stage")
     if not candidate_id or not to_stage:
         return jsonify({"error": "candidate_id, stage required"}), 400
+    if normalize_pipeline_stage(to_stage) == "onboarded":
+        return jsonify({
+            "error": "确认入职必须通过已接受 Offer 的确认入职操作完成，请前往 Offer 管理处理",
+            "code": "offer_onboard_action_required",
+        }), 409
 
     body_demand_id = data.get("demand_id")
     if _path_id_mismatch(demand_id, body_demand_id):
