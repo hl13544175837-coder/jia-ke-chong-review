@@ -27,6 +27,11 @@ function replaceOffer(items: OfferRecord[], next: OfferRecord) {
   return items.map((item) => item.id === next.id ? next : item);
 }
 
+function offerUpdatedAt(offer: OfferRecord) {
+  const parsed = Date.parse(offer.updated_at || offer.created_at || '');
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 export default function OffersPage() {
   const { role } = useProductRole();
   const { showToast } = useToast();
@@ -37,6 +42,12 @@ export default function OffersPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [identityFilter, setIdentityFilter] = useState('');
+  const [demandFilter, setDemandFilter] = useState('');
+  const [compensationFilter, setCompensationFilter] = useState('');
+  const [onboardDateFilter, setOnboardDateFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'' | OfferStatus>('');
+  const [updatedOrder, setUpdatedOrder] = useState<'asc' | 'desc'>('desc');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [demandsLoading, setDemandsLoading] = useState(true);
@@ -83,16 +94,75 @@ export default function OffersPage() {
   );
 
   const currentTab = TABS.find((tab) => tab.key === activeTab) ?? TABS[0];
-  const visibleOffers = currentTab.statuses.length === 0
-    ? offers
-    : offers.filter((offer) => currentTab.statuses.includes(offer.status));
+  const visibleOffers = useMemo(() => {
+    const identityTerm = identityFilter.trim().toLocaleLowerCase('zh-CN');
+    const demandTerm = demandFilter.trim().toLocaleLowerCase('zh-CN');
+    const compensationTerm = compensationFilter.trim().toLocaleLowerCase('zh-CN');
 
-  const counts = useMemo(() => Object.fromEntries(TABS.map((tab) => [
-    tab.key,
-    tab.statuses.length === 0
-      ? offers.length
-      : offers.filter((offer) => tab.statuses.includes(offer.status)).length,
-  ])) as Record<TabKey, number>, [offers]);
+    return offers
+      .filter((offer) => currentTab.statuses.length === 0 || currentTab.statuses.includes(offer.status))
+      .filter((offer) => !statusFilter || offer.status === statusFilter)
+      .filter((offer) => !identityTerm || [offer.candidate_name, offer.position]
+        .some((value) => value.toLocaleLowerCase('zh-CN').includes(identityTerm)))
+      .filter((offer) => !demandTerm || [offer.request_no, offer.department]
+        .some((value) => value.toLocaleLowerCase('zh-CN').includes(demandTerm)))
+      .filter((offer) => !compensationTerm || offer.salary_range
+        .toLocaleLowerCase('zh-CN').includes(compensationTerm))
+      .filter((offer) => !onboardDateFilter || offer.onboard_date === onboardDateFilter)
+      .sort((left, right) => updatedOrder === 'asc'
+        ? offerUpdatedAt(left) - offerUpdatedAt(right)
+        : offerUpdatedAt(right) - offerUpdatedAt(left));
+  }, [
+    compensationFilter,
+    currentTab.statuses,
+    demandFilter,
+    identityFilter,
+    onboardDateFilter,
+    offers,
+    statusFilter,
+    updatedOrder,
+  ]);
+
+  const counts = useMemo<Record<TabKey, number>>(() => {
+    const nextCounts: Record<TabKey, number> = {
+      all: 0,
+      draft: 0,
+      pending: 0,
+      delivery: 0,
+      reply: 0,
+      onboard: 0,
+      closed: 0,
+    };
+    for (const tab of TABS) {
+      nextCounts[tab.key] = tab.statuses.length === 0
+        ? offers.length
+        : offers.filter((offer) => tab.statuses.includes(offer.status)).length;
+    }
+    return nextCounts;
+  }, [offers]);
+
+  const hasColumnFilters = Boolean(
+    identityFilter.trim()
+    || demandFilter.trim()
+    || compensationFilter.trim()
+    || onboardDateFilter
+    || statusFilter
+    || updatedOrder !== 'desc',
+  );
+
+  const resetOfferFilters = () => {
+    setIdentityFilter('');
+    setDemandFilter('');
+    setCompensationFilter('');
+    setOnboardDateFilter('');
+    setStatusFilter('');
+    setUpdatedOrder('desc');
+  };
+
+  const selectTab = (tab: TabKey) => {
+    setActiveTab(tab);
+    setStatusFilter('');
+  };
 
   const openDetail = useCallback(async (summary: OfferRecord) => {
     const requestId = ++detailRequest.current;
@@ -196,7 +266,7 @@ export default function OffersPage() {
             <button
               key={tab.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => selectTab(tab.key)}
               className={`relative shrink-0 px-4 py-3 text-sm font-medium ${activeTab === tab.key ? 'text-primary-600' : 'text-foreground-500 hover:text-foreground-800'}`}
             >
               {tab.label}<span className="ml-1.5 text-xs">{counts[tab.key]}</span>
@@ -227,6 +297,13 @@ export default function OffersPage() {
               className="h-10 rounded-lg px-3 text-sm text-foreground-500 hover:bg-background-100"
             >清除</button>
           )}
+          {hasColumnFilters && (
+            <button
+              type="button"
+              onClick={resetOfferFilters}
+              className="h-10 rounded-lg px-3 text-sm text-foreground-500 hover:bg-background-100"
+            >重置列筛选</button>
+          )}
         </form>
 
         {loading ? (
@@ -236,14 +313,33 @@ export default function OffersPage() {
             <p className="text-sm text-red-600">{loadError}</p>
             <button type="button" onClick={() => void loadOffers()} className="mt-3 rounded-lg border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50">重新加载</button>
           </div>
-        ) : visibleOffers.length === 0 ? (
+        ) : visibleOffers.length === 0 && !hasColumnFilters ? (
           <div className="py-16 text-center">
             <i className="ri-file-list-3-line text-3xl text-foreground-300" aria-hidden="true"></i>
             <p className="mt-3 text-sm font-medium text-foreground-700">暂无符合条件的 Offer</p>
             <p className="mt-1 text-xs text-foreground-400">候选人进入 Offer 阶段后，可以创建真实草稿。</p>
           </div>
         ) : (
-          <OfferTable offers={visibleOffers} onOpen={(offer) => void openDetail(offer)} onEdit={openEdit} />
+          <OfferTable
+            offers={visibleOffers}
+            identityFilter={identityFilter}
+            demandFilter={demandFilter}
+            compensationFilter={compensationFilter}
+            onboardDateFilter={onboardDateFilter}
+            statusFilter={statusFilter}
+            updatedOrder={updatedOrder}
+            onOpen={(offer) => void openDetail(offer)}
+            onEdit={openEdit}
+            onIdentityFilterChange={setIdentityFilter}
+            onDemandFilterChange={setDemandFilter}
+            onCompensationFilterChange={setCompensationFilter}
+            onOnboardDateFilterChange={setOnboardDateFilter}
+            onStatusFilterChange={(nextStatus) => {
+              setStatusFilter(nextStatus);
+              if (nextStatus) setActiveTab('all');
+            }}
+            onUpdatedOrderChange={setUpdatedOrder}
+          />
         )}
       </section>
 

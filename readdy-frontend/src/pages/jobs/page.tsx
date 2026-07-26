@@ -32,7 +32,7 @@ const statusExtraActions: Record<string, { to: string; label: string; icon: stri
 
 export default function JobsPage() {
   const { showToast } = useToast();
-  const { userId, name } = useCompanyAuth();
+  const { userId } = useCompanyAuth();
   const { role } = useProductRole();
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,17 +67,17 @@ export default function JobsPage() {
   }, []);
 
   const loadOwners = useCallback(async () => {
-    if (role === 'recruiter' && userId) {
-      setOwners([{ id: userId, name: name || '当前招聘专员', email: '' }]);
+    if (!['recruiter', 'manager', 'admin'].includes(role ?? '')) {
+      setOwners([]);
       return;
     }
-    if (role !== 'manager' && role !== 'admin') return;
     try {
       setOwners(await demandsApi.listRecruiterOwners());
     } catch (error) {
+      setOwners([]);
       showToast(error instanceof Error ? error.message : '加载招聘负责人失败');
     }
-  }, [name, role, showToast, userId]);
+  }, [role, showToast]);
 
   useEffect(() => { void loadDemands(); }, [loadDemands]);
   useEffect(() => { void loadOwners(); }, [loadOwners]);
@@ -300,8 +300,6 @@ export default function JobsPage() {
                   expanded
                   owners={owners}
                   role={role}
-                  currentUserId={userId}
-                  currentUserName={name}
                   submitting={submitting}
                   serverErrors={createErrors}
                   onSubmit={handleCreate}

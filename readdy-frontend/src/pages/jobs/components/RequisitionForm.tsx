@@ -7,8 +7,6 @@ interface RequisitionFormProps {
   expanded: boolean;
   owners: DemandOwnerOption[];
   role: ProductRole | null;
-  currentUserId: number | null;
-  currentUserName: string | null;
   submitting: boolean;
   serverErrors?: Record<string, string>;
   onSubmit: (payload: RecruitmentDemandInput) => void;
@@ -69,8 +67,6 @@ export default function RequisitionForm({
   expanded,
   owners,
   role,
-  currentUserId,
-  currentUserName,
   submitting,
   serverErrors = {},
   onSubmit,
@@ -92,10 +88,13 @@ export default function RequisitionForm({
   const [localError, setLocalError] = useState('');
 
   useEffect(() => {
-    if (role === 'recruiter' && currentUserId) {
-      setFormData((current) => ({ ...current, owner: String(currentUserId) }));
+    if (role === 'recruiter' && owners.length === 1) {
+      const ownerId = String(owners[0].id);
+      setFormData((current) => current.owner === ownerId
+        ? current
+        : { ...current, owner: ownerId });
     }
-  }, [currentUserId, role]);
+  }, [owners, role]);
 
   const cities = useMemo(() => {
     if (!formData.province) return [];
@@ -235,17 +234,18 @@ export default function RequisitionForm({
               required
               value={formData.owner}
               onChange={(e) => { setFormData({ ...formData, owner: e.target.value }); setLocalError(''); }}
-              disabled={role === 'recruiter'}
-              className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm focus:outline-none focus:border-primary-300 cursor-pointer"
+              disabled={submitting}
+              className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm focus:outline-none focus:border-primary-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
             >
               <option value="">请选择</option>
-              {role === 'recruiter' && currentUserId ? (
-                <option value={currentUserId}>{currentUserName || '当前招聘专员'}</option>
-              ) : owners.map((owner) => (
+              {owners.map((owner) => (
                 <option key={owner.id} value={owner.id}>{owner.name}</option>
               ))}
             </select>
             {fieldError('owner_hr_id') && <p className="mt-1 text-xs text-red-500">{fieldError('owner_hr_id')}</p>}
+            {!fieldError('owner_hr_id') && owners.length === 0 && (
+              <p className="mt-1 text-xs text-amber-700">暂无可选招聘专员，请管理员先启用招聘专员账号。</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground-700 mb-1">
@@ -402,7 +402,7 @@ export default function RequisitionForm({
           type="button"
           onClick={() => setFormData({
             position: '', department: '', province: '', city: '', headcount: 1, startDate: localDateInputValue(), deadline: '',
-            priority: 'normal', owner: role === 'recruiter' && currentUserId ? String(currentUserId) : '', hiringManagerName: '', description: '', jdTemplate: '',
+            priority: 'normal', owner: role === 'recruiter' && owners.length === 1 ? String(owners[0].id) : '', hiringManagerName: '', description: '', jdTemplate: '',
           })}
           className="px-4 py-2 text-sm text-foreground-500 hover:text-foreground-700 transition-colors cursor-pointer whitespace-nowrap"
         >
@@ -410,7 +410,7 @@ export default function RequisitionForm({
         </button>
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || owners.length === 0}
           className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? '正在创建...' : '创建需求'}

@@ -8,6 +8,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 
 const page = read('readdy-frontend/src/pages/candidates/page.tsx');
 const modal = read('readdy-frontend/src/pages/candidates/components/PushToReviewerModal.tsx');
+const candidateTypes = read('readdy-frontend/src/features/candidates/types.ts');
 
 for (const method of [
   'candidatesApi.listCandidates',
@@ -33,6 +34,19 @@ assert.match(page, /target_demand_id:/, '真实上传必须携带数字 Demand I
 assert.match(page, /uploadResponse\.results/, '上传后必须展示后端逐文件结果');
 assert.match(page, /failedSourceNames/, '解析失败的源文件必须保留以便重试');
 assert.match(page, /loadCandidates/, '真实写入后必须重新加载候选人列表');
+
+for (const field of ['education', 'skill', 'min_score', 'city', 'source_channel', 'parse_status', 'pipeline_status', 'sort_by', 'sort_order']) {
+  assert.match(candidateTypes, new RegExp(`${field}\\?:`), `5190 候选人查询类型缺少 ${field}`);
+  assert.match(page, new RegExp(`${field}:`), `5190 候选人筛选必须向后端传递 ${field}`);
+}
+for (const column of ['identity', 'parse', 'profile', 'skills', 'source', 'stage', 'created']) {
+  assert.match(
+    page,
+    new RegExp(`data-ui="candidate-column-filter-${column}"`),
+    `5190 候选人表头 ${column} 必须可展开筛选`,
+  );
+}
+assert.match(page, /重置筛选/, '5190 候选人筛选必须提供一键重置');
 
 for (const stateCopy of [
   '加载候选人中',

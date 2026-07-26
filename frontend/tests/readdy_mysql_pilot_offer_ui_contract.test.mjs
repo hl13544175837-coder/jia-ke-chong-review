@@ -35,5 +35,15 @@ assert.doesNotMatch(drawer, /邮件已发送|已成功发送邮件/, '页面不�
 const table = read('readdy-frontend/src/pages/offers/components/OfferTable.tsx');
 assert.match(table, /OfferRecord/, 'Offer 表格必须使用真实 Offer 数据类型');
 assert.doesNotMatch(table, /@\/mocks\/offers/, 'Offer 表格不得使用假数据类型');
+for (const column of ['identity', 'demand', 'compensation', 'status', 'updated']) {
+  assert.match(
+    table,
+    new RegExp(`data-ui="offer-column-filter-${column}"`),
+    `5190 Offer 表头 ${column} 必须可展开筛选`,
+  );
+}
+assert.match(page, /resetOfferFilters/, 'Offer 列筛选必须支持一键重置');
+assert.match(page, /statusFilter/, 'Offer 列筛选必须支持精确状态');
+assert.match(page, /updatedOrder/, 'Offer 列筛选必须支持更新时间排序');
 
 console.log('readdy_mysql_pilot_offer_ui_contract: OK');

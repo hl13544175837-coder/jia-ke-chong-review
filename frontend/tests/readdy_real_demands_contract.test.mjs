@@ -32,6 +32,9 @@ assert.doesNotMatch(page, /zhipin-current-role/, '需求页不得使用假角色
 const form = read('readdy-frontend/src/pages/jobs/components/RequisitionForm.tsx');
 assert.match(form, /onSubmit/, '创建表单必须把真实需求参数交给页面提交');
 assert.match(form, /hiring_manager_name|hiringManagerName/, '创建需求必须填写用人负责人');
+assert.doesNotMatch(form, /disabled=\{role === 'recruiter'\}/, '招聘专员的招聘负责人下拉不能被前端禁用');
+assert.match(form, /role === 'recruiter' && owners\.length === 1/, '后端只返回本人时必须自动选中招聘负责人');
+assert.match(page, /\['recruiter', 'manager', 'admin'\]\.includes\(role \?\? ''\)/, '招聘专员必须从后端读取受权负责人选项');
 assert.doesNotMatch(form, /alert\(['"]招聘需求创建成功/, '创建表单不得再弹出假成功');
 
 const table = read('readdy-frontend/src/pages/jobs/components/RequisitionTable.tsx');

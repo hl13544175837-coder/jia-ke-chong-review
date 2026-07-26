@@ -1,9 +1,25 @@
-import type { OfferRecord, OfferStatus } from '@/features/offers/types';
+import { useState, type ReactNode } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { OFFER_STATUSES, type OfferRecord, type OfferStatus } from '@/features/offers/types';
+
+type OfferColumnFilter = 'identity' | 'demand' | 'compensation' | 'status' | 'updated';
 
 interface Props {
   offers: OfferRecord[];
+  identityFilter: string;
+  demandFilter: string;
+  compensationFilter: string;
+  onboardDateFilter: string;
+  statusFilter: '' | OfferStatus;
+  updatedOrder: 'asc' | 'desc';
   onOpen: (offer: OfferRecord) => void;
   onEdit: (offer: OfferRecord) => void;
+  onIdentityFilterChange: (value: string) => void;
+  onDemandFilterChange: (value: string) => void;
+  onCompensationFilterChange: (value: string) => void;
+  onOnboardDateFilterChange: (value: string) => void;
+  onStatusFilterChange: (value: '' | OfferStatus) => void;
+  onUpdatedOrderChange: (value: 'asc' | 'desc') => void;
 }
 
 const STATUS_META: Record<OfferStatus, { label: string; className: string }> = {
@@ -18,6 +34,60 @@ const STATUS_META: Record<OfferStatus, { label: string; className: string }> = {
   onboarded: { label: '已入职', className: 'bg-emerald-50 text-emerald-700' },
 };
 
+const filterControlClass = 'h-9 w-full rounded-lg border border-background-300 bg-white px-2.5 text-xs text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100';
+
+function isOfferStatus(value: string): value is OfferStatus {
+  return OFFER_STATUSES.some((status) => status === value);
+}
+
+function OfferColumnFilterHeader({
+  'data-ui': dataUi,
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  'data-ui': string;
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <th
+      className="relative px-5 py-3 font-medium"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.stopPropagation();
+          onToggle();
+        }
+      }}
+    >
+      <button
+        type="button"
+        data-ui={dataUi}
+        aria-expanded={open}
+        aria-controls={`${dataUi}-panel`}
+        onClick={onToggle}
+        className="inline-flex items-center gap-1 rounded text-left hover:text-foreground-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+      >
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          id={`${dataUi}-panel`}
+          role="group"
+          aria-label={`${label}筛选条件`}
+          className="absolute left-5 top-full z-30 mt-1 w-60 space-y-2 rounded-lg border border-background-200 bg-white p-3 shadow-xl"
+        >
+          {children}
+        </div>
+      )}
+    </th>
+  );
+}
+
 function formatTime(value: string | null) {
   if (!value) return '—';
   const date = new Date(value);
@@ -30,7 +100,29 @@ function formatTime(value: string | null) {
   }).format(date);
 }
 
-export default function OfferTable({ offers, onOpen, onEdit }: Props) {
+export default function OfferTable({
+  offers,
+  identityFilter,
+  demandFilter,
+  compensationFilter,
+  onboardDateFilter,
+  statusFilter,
+  updatedOrder,
+  onOpen,
+  onEdit,
+  onIdentityFilterChange,
+  onDemandFilterChange,
+  onCompensationFilterChange,
+  onOnboardDateFilterChange,
+  onStatusFilterChange,
+  onUpdatedOrderChange,
+}: Props) {
+  const [openColumnFilter, setOpenColumnFilter] = useState<OfferColumnFilter | null>(null);
+
+  const toggleColumnFilter = (column: OfferColumnFilter) => {
+    setOpenColumnFilter((current) => current === column ? null : column);
+  };
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[980px] table-fixed text-left text-sm">
@@ -44,16 +136,104 @@ export default function OfferTable({ offers, onOpen, onEdit }: Props) {
         </colgroup>
         <thead className="bg-background-50 text-xs text-foreground-500">
           <tr>
-            <th className="px-5 py-3 font-medium">候选人 / 岗位</th>
-            <th className="px-5 py-3 font-medium">招聘需求</th>
-            <th className="px-5 py-3 font-medium">薪酬 / 入职</th>
-            <th className="px-5 py-3 font-medium">状态</th>
-            <th className="px-5 py-3 font-medium">最近更新</th>
+            <OfferColumnFilterHeader
+              data-ui="offer-column-filter-identity"
+              label="候选人 / 岗位"
+              open={openColumnFilter === 'identity'}
+              onToggle={() => toggleColumnFilter('identity')}
+            >
+              <input
+                value={identityFilter}
+                onChange={(event) => onIdentityFilterChange(event.target.value)}
+                placeholder="候选人或岗位"
+                aria-label="按候选人或岗位筛选 Offer"
+                className={filterControlClass}
+              />
+            </OfferColumnFilterHeader>
+            <OfferColumnFilterHeader
+              data-ui="offer-column-filter-demand"
+              label="招聘需求"
+              open={openColumnFilter === 'demand'}
+              onToggle={() => toggleColumnFilter('demand')}
+            >
+              <input
+                value={demandFilter}
+                onChange={(event) => onDemandFilterChange(event.target.value)}
+                placeholder="需求编号或部门"
+                aria-label="按需求编号或部门筛选 Offer"
+                className={filterControlClass}
+              />
+            </OfferColumnFilterHeader>
+            <OfferColumnFilterHeader
+              data-ui="offer-column-filter-compensation"
+              label="薪酬 / 入职"
+              open={openColumnFilter === 'compensation'}
+              onToggle={() => toggleColumnFilter('compensation')}
+            >
+              <input
+                value={compensationFilter}
+                onChange={(event) => onCompensationFilterChange(event.target.value)}
+                placeholder="薪酬关键词"
+                aria-label="按薪酬方案筛选 Offer"
+                className={filterControlClass}
+              />
+              <input
+                type="date"
+                value={onboardDateFilter}
+                onChange={(event) => onOnboardDateFilterChange(event.target.value)}
+                aria-label="按预计入职日期筛选 Offer"
+                className={filterControlClass}
+              />
+            </OfferColumnFilterHeader>
+            <OfferColumnFilterHeader
+              data-ui="offer-column-filter-status"
+              label="状态"
+              open={openColumnFilter === 'status'}
+              onToggle={() => toggleColumnFilter('status')}
+            >
+              <select
+                value={statusFilter}
+                onChange={(event) => {
+                  const nextStatus = event.target.value;
+                  if (nextStatus === '' || isOfferStatus(nextStatus)) onStatusFilterChange(nextStatus);
+                }}
+                aria-label="按 Offer 状态筛选"
+                className={filterControlClass}
+              >
+                <option value="">全部状态</option>
+                {OFFER_STATUSES.map((status) => <option key={status} value={status}>{STATUS_META[status].label}</option>)}
+              </select>
+            </OfferColumnFilterHeader>
+            <OfferColumnFilterHeader
+              data-ui="offer-column-filter-updated"
+              label="最近更新"
+              open={openColumnFilter === 'updated'}
+              onToggle={() => toggleColumnFilter('updated')}
+            >
+              <select
+                value={updatedOrder}
+                onChange={(event) => {
+                  const nextOrder = event.target.value;
+                  if (nextOrder === 'asc' || nextOrder === 'desc') onUpdatedOrderChange(nextOrder);
+                }}
+                aria-label="按 Offer 更新时间排序"
+                className={filterControlClass}
+              >
+                <option value="desc">最近更新优先</option>
+                <option value="asc">最早更新优先</option>
+              </select>
+            </OfferColumnFilterHeader>
             <th className="px-5 py-3 text-right font-medium">操作</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-background-200">
-          {offers.map((offer) => {
+          {offers.length === 0 ? (
+            <tr>
+              <td colSpan={6} className="px-5 py-14 text-center text-sm text-foreground-500">
+                当前列筛选下没有符合条件的 Offer
+              </td>
+            </tr>
+          ) : offers.map((offer) => {
             const status = STATUS_META[offer.status];
             return (
               <tr

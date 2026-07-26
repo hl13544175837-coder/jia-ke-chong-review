@@ -1,13 +1,16 @@
-export type OfferStatus =
-  | 'draft'
-  | 'pending'
-  | 'approved'
-  | 'sent'
-  | 'accepted'
-  | 'declined'
-  | 'withdrawn'
-  | 'expired'
-  | 'onboarded';
+export const OFFER_STATUSES = [
+  'draft',
+  'pending',
+  'approved',
+  'sent',
+  'accepted',
+  'declined',
+  'withdrawn',
+  'expired',
+  'onboarded',
+] as const;
+
+export type OfferStatus = (typeof OFFER_STATUSES)[number];
 
 export type OfferAction =
   | 'submit'

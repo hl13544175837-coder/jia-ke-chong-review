@@ -1,11 +1,13 @@
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ChangeEvent,
   type DragEvent,
+  type ReactNode,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -13,6 +15,7 @@ import {
   ArrowLeft,
   BriefcaseBusiness,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -21,6 +24,7 @@ import {
   Inbox,
   LoaderCircle,
   RefreshCw,
+  RotateCcw,
   Search,
   Send,
   Upload,
@@ -33,6 +37,8 @@ import type {
   CandidateListItem,
   CandidateListResponse,
   CandidateResumeDetail,
+  CandidateStage,
+  ParseStatus,
   ResumeUploadResponse,
 } from '@/features/candidates/types';
 import { demandsApi } from '@/features/demands/api';
@@ -75,9 +81,90 @@ const stageLabels: Record<string, string> = {
   offer: 'Offer',
   onboarded: '已入职',
   rejected: '已淘汰',
+  transferred: '已转需求',
 };
 
 const sourceChannels = ['BOSS直聘', '58同城', '猎聘', '鱼泡直聘', '智联招聘', '前程无忧', '内推', '官网', 'LinkedIn'];
+const sourceFilterOptions = [...sourceChannels, '其他'];
+const educationOptions = ['博士', '硕士', '本科', '大专', '高中', '中专'];
+const cityOptions = ['北京', '上海', '深圳', '广州', '杭州', '成都', '武汉', '南京', '苏州', '西安', '长沙', '重庆', '天津', '厦门', '合肥', '郑州', '青岛', '宁波', '佛山'];
+const candidateStageOptions: CandidateStage[] = [
+  'pending',
+  'ai_screen',
+  'business_review',
+  'interview',
+  'offer',
+  'onboarded',
+  'rejected',
+  'transferred',
+];
+
+type CandidateColumnFilter = 'identity' | 'parse' | 'profile' | 'skills' | 'source' | 'stage' | 'created';
+type PipelineStatusFilter = '' | 'in_pipeline' | 'not_in_pipeline';
+type CandidateSortBy = 'created_at' | 'name_masked';
+type SortOrder = 'asc' | 'desc';
+
+const filterControlClass = 'h-9 w-full rounded-lg border border-background-300 bg-white px-2.5 text-xs text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100';
+
+function isCandidateStage(value: string): value is CandidateStage {
+  return candidateStageOptions.some((stage) => stage === value);
+}
+
+function isParseStatus(value: string): value is ParseStatus {
+  return value === 'pending' || value === 'processing' || value === 'ok' || value === 'failed';
+}
+
+function isPipelineStatus(value: string): value is Exclude<PipelineStatusFilter, ''> {
+  return value === 'in_pipeline' || value === 'not_in_pipeline';
+}
+
+function CandidateColumnFilterHeader({
+  'data-ui': dataUi,
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  'data-ui': string;
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <th
+      className="relative px-3 py-3 font-medium"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.stopPropagation();
+          onToggle();
+        }
+      }}
+    >
+      <button
+        type="button"
+        data-ui={dataUi}
+        aria-expanded={open}
+        aria-controls={`${dataUi}-panel`}
+        onClick={onToggle}
+        className="inline-flex items-center gap-1 rounded text-left hover:text-foreground-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+      >
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          id={`${dataUi}-panel`}
+          role="group"
+          aria-label={`${label}筛选条件`}
+          className="absolute left-3 top-full z-30 mt-1 w-60 space-y-2 rounded-lg border border-background-200 bg-white p-3 shadow-xl"
+        >
+          {children}
+        </div>
+      )}
+    </th>
+  );
+}
 
 interface InterviewerApiItem {
   id: number;
@@ -157,6 +244,17 @@ export default function CandidatesPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [demandFilter, setDemandFilter] = useState<number | ''>('');
+  const [cityFilter, setCityFilter] = useState('');
+  const [educationFilter, setEducationFilter] = useState('');
+  const [skillFilter, setSkillFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [parseStatusFilter, setParseStatusFilter] = useState<'' | ParseStatus>('');
+  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<PipelineStatusFilter>('');
+  const [stageFilter, setStageFilter] = useState<'' | CandidateStage>('');
+  const [scoreFilter, setScoreFilter] = useState('0');
+  const [sortBy, setSortBy] = useState<CandidateSortBy>('created_at');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [openColumnFilter, setOpenColumnFilter] = useState<CandidateColumnFilter | null>(null);
   const [page, setPage] = useState(1);
   const [candidateResponse, setCandidateResponse] = useState<CandidateListResponse>(emptyCandidateResponse);
   const [candidatesLoading, setCandidatesLoading] = useState(true);
@@ -196,6 +294,8 @@ export default function CandidatesPage() {
   const [pushTargets, setPushTargets] = useState<PushTarget[] | null>(null);
   const [pushSubmitting, setPushSubmitting] = useState(false);
   const [pushResults, setPushResults] = useState<PushResultItem[]>([]);
+  const deferredSearch = useDeferredValue(searchQuery.trim());
+  const deferredSkill = useDeferredValue(skillFilter.trim());
 
   const activeDemands = useMemo(
     () => demands.filter((demand) => demand.status === 'active' && demand.approval_status === 'approved'),
@@ -223,8 +323,18 @@ export default function CandidatesPage() {
     setCandidatesError(null);
     try {
       const response = await candidatesApi.listCandidates({
-        search: searchQuery.trim() || undefined,
+        search: deferredSearch || undefined,
         demand_id: demandFilter || undefined,
+        city: cityFilter || undefined,
+        education: educationFilter || undefined,
+        skill: deferredSkill || undefined,
+        min_score: Number(scoreFilter) || undefined,
+        source_channel: sourceFilter || undefined,
+        parse_status: parseStatusFilter || undefined,
+        pipeline_status: pipelineStatusFilter || undefined,
+        stage: stageFilter || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder,
         page,
         per_page: PER_PAGE,
       });
@@ -237,7 +347,21 @@ export default function CandidatesPage() {
     } finally {
       if (requestId === candidateRequestId.current) setCandidatesLoading(false);
     }
-  }, [demandFilter, page, searchQuery]);
+  }, [
+    cityFilter,
+    deferredSearch,
+    deferredSkill,
+    demandFilter,
+    educationFilter,
+    page,
+    parseStatusFilter,
+    pipelineStatusFilter,
+    scoreFilter,
+    sortBy,
+    sortOrder,
+    sourceFilter,
+    stageFilter,
+  ]);
 
   const loadDemands = useCallback(async () => {
     setDemandsLoading(true);
@@ -291,6 +415,49 @@ export default function CandidatesPage() {
     setDemandFilter(event.target.value ? Number(event.target.value) : '');
     setSelectedIds(new Set());
     setPage(1);
+  };
+
+  const changeFilter = (change: () => void) => {
+    change();
+    setSelectedIds(new Set());
+    setPage(1);
+  };
+
+  const resetCandidateFilters = () => {
+    setSearchQuery('');
+    setDemandFilter('');
+    setCityFilter('');
+    setEducationFilter('');
+    setSkillFilter('');
+    setSourceFilter('');
+    setParseStatusFilter('');
+    setPipelineStatusFilter('');
+    setStageFilter('');
+    setScoreFilter('0');
+    setSortBy('created_at');
+    setSortOrder('desc');
+    setOpenColumnFilter(null);
+    setSelectedIds(new Set());
+    setPage(1);
+  };
+
+  const hasActiveFilters = Boolean(
+    searchQuery.trim()
+    || demandFilter
+    || cityFilter
+    || educationFilter
+    || skillFilter.trim()
+    || sourceFilter
+    || parseStatusFilter
+    || pipelineStatusFilter
+    || stageFilter
+    || scoreFilter !== '0'
+    || sortBy !== 'created_at'
+    || sortOrder !== 'desc',
+  );
+
+  const toggleColumnFilter = (column: CandidateColumnFilter) => {
+    setOpenColumnFilter((current) => current === column ? null : column);
   };
 
   const toggleCandidate = (candidateId: number) => {
@@ -559,37 +726,166 @@ export default function CandidatesPage() {
         </div>
       </header>
 
-      <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
-          <label className="relative block min-w-0 flex-1 sm:max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
-            <span className="sr-only">搜索候选人</span>
+      <section className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+            <label className="relative block min-w-0 flex-1 sm:max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
+              <span className="sr-only">搜索候选人</span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                placeholder="搜索姓名、联系方式、公司、学校或简历内容"
+                className="h-10 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-sm text-foreground-900 outline-none placeholder:text-foreground-400 focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+              />
+            </label>
+            <label className="relative block sm:w-80">
+              <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
+              <span className="sr-only">按招聘需求筛选</span>
+              <select
+                value={demandFilter}
+                onChange={handleDemandFilterChange}
+                disabled={demandsLoading}
+                className="h-10 w-full appearance-none rounded-lg border border-background-300 bg-white pl-9 pr-8 text-sm text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-background-50"
+              >
+                <option value="">{demandsLoading ? '加载需求中' : '全部招聘需求'}</option>
+                {demands.map((demand) => (
+                  <option key={demand.id} value={demand.id}>{demand.request_no} · {demand.job_title}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="shrink-0 text-sm text-foreground-500">
+            共 <span className="font-semibold text-foreground-900">{candidateResponse.total}</span> 位候选人
+          </div>
+        </div>
+
+        <div className="grid gap-2 border-y border-background-200 bg-background-50 px-3 py-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">意向城市</span>
             <input
-              type="search"
-              value={searchQuery}
-              onChange={handleSearchChange}
-              placeholder="搜索姓名、联系方式或简历内容"
-              className="h-10 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-sm text-foreground-900 outline-none placeholder:text-foreground-400 focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+              list="candidate-city-options"
+              value={cityFilter}
+              onChange={(event) => changeFilter(() => setCityFilter(event.target.value))}
+              placeholder="全部城市或输入城市"
+              className={filterControlClass}
             />
           </label>
-          <label className="relative block sm:w-80">
-            <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
-            <span className="sr-only">按招聘需求筛选</span>
-            <select
-              value={demandFilter}
-              onChange={handleDemandFilterChange}
-              disabled={demandsLoading}
-              className="h-10 w-full appearance-none rounded-lg border border-background-300 bg-white pl-9 pr-8 text-sm text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-background-50"
-            >
-              <option value="">{demandsLoading ? '加载需求中' : '全部招聘需求'}</option>
-              {demands.map((demand) => (
-                <option key={demand.id} value={demand.id}>{demand.request_no} · {demand.job_title}</option>
-              ))}
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">学历</span>
+            <select value={educationFilter} onChange={(event) => changeFilter(() => setEducationFilter(event.target.value))} className={filterControlClass}>
+              <option value="">全部学历</option>
+              {educationOptions.map((education) => <option key={education} value={education}>{education}</option>)}
             </select>
           </label>
-        </div>
-        <div className="shrink-0 text-sm text-foreground-500">
-          共 <span className="font-semibold text-foreground-900">{candidateResponse.total}</span> 位候选人
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">技能关键词</span>
+            <input value={skillFilter} onChange={(event) => changeFilter(() => setSkillFilter(event.target.value))} placeholder="如 Java、Python" className={filterControlClass} />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">来源渠道</span>
+            <input
+              list="candidate-source-options"
+              value={sourceFilter}
+              onChange={(event) => changeFilter(() => setSourceFilter(event.target.value))}
+              placeholder="全部来源或输入渠道"
+              className={filterControlClass}
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">解析状态</span>
+            <select
+              value={parseStatusFilter}
+              onChange={(event) => {
+                const nextStatus = event.target.value;
+                if (nextStatus === '' || isParseStatus(nextStatus)) changeFilter(() => setParseStatusFilter(nextStatus));
+              }}
+              className={filterControlClass}
+            >
+              <option value="">全部状态</option>
+              {Object.entries(parseStatusMeta).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">流程状态</span>
+            <select
+              value={pipelineStatusFilter}
+              onChange={(event) => {
+                const nextStatus = event.target.value;
+                if (nextStatus === '' || isPipelineStatus(nextStatus)) changeFilter(() => setPipelineStatusFilter(nextStatus));
+              }}
+              className={filterControlClass}
+            >
+              <option value="">全部流程状态</option>
+              <option value="not_in_pipeline">未进入流程</option>
+              <option value="in_pipeline">已进入流程</option>
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">招聘阶段</span>
+            <select
+              value={stageFilter}
+              onChange={(event) => {
+                const nextStage = event.target.value;
+                if (nextStage === '' || isCandidateStage(nextStage)) changeFilter(() => setStageFilter(nextStage));
+              }}
+              className={filterControlClass}
+            >
+              <option value="">全部阶段</option>
+              {candidateStageOptions.map((stage) => <option key={stage} value={stage}>{stageLabels[stage]}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">最低技能分</span>
+            <select value={scoreFilter} onChange={(event) => changeFilter(() => setScoreFilter(event.target.value))} className={filterControlClass}>
+              <option value="0">全部分数</option>
+              <option value="3">3 分及以上</option>
+              <option value="4">4 分及以上</option>
+              <option value="5">5 分</option>
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">排序方式</span>
+            <select
+              value={`${sortBy}:${sortOrder}`}
+              onChange={(event) => {
+                const [nextSortBy, nextSortOrder] = event.target.value.split(':');
+                if (
+                  (nextSortBy === 'created_at' || nextSortBy === 'name_masked')
+                  && (nextSortOrder === 'asc' || nextSortOrder === 'desc')
+                ) {
+                  changeFilter(() => {
+                    setSortBy(nextSortBy);
+                    setSortOrder(nextSortOrder);
+                  });
+                }
+              }}
+              className={filterControlClass}
+            >
+              <option value="created_at:desc">最近入库</option>
+              <option value="created_at:asc">最早入库</option>
+              <option value="name_masked:asc">候选人名称升序</option>
+              <option value="name_masked:desc">候选人名称降序</option>
+            </select>
+          </label>
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={resetCandidateFilters}
+              disabled={!hasActiveFilters}
+              className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-background-300 bg-white px-3 text-xs font-medium text-foreground-600 hover:bg-background-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RotateCcw size={14} aria-hidden="true" />
+              重置筛选
+            </button>
+          </div>
+          <datalist id="candidate-city-options">
+            {cityOptions.map((city) => <option key={city} value={city} />)}
+          </datalist>
+          <datalist id="candidate-source-options">
+            {sourceFilterOptions.map((source) => <option key={source} value={source} />)}
+          </datalist>
         </div>
       </section>
 
@@ -645,12 +941,18 @@ export default function CandidatesPage() {
             <Inbox className="text-foreground-300" size={32} aria-hidden="true" />
             <p className="mt-3 text-sm font-medium text-foreground-900">暂无候选人</p>
             <p className="mt-1 text-sm text-foreground-500">
-              {searchQuery || demandFilter ? '当前条件下没有匹配结果' : '选择已审批的在招需求后导入简历'}
+              {hasActiveFilters ? '当前筛选条件下没有匹配结果' : '选择已审批的在招需求后导入简历'}
             </p>
+            {hasActiveFilters && (
+              <button type="button" onClick={resetCandidateFilters} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 px-3 py-2 text-sm font-medium text-foreground-600 hover:bg-background-50">
+                <RotateCcw size={14} aria-hidden="true" />
+                重置筛选
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] border-collapse text-left">
+            <table className="w-full min-w-[1320px] border-collapse text-left">
               <thead className="bg-background-50 text-xs font-medium text-foreground-500">
                 <tr>
                   <th className="w-12 px-4 py-3">
@@ -662,11 +964,162 @@ export default function CandidatesPage() {
                       className="h-4 w-4 rounded border-background-300 text-primary-500 focus:ring-primary-200"
                     />
                   </th>
-                  <th className="px-3 py-3">候选人</th>
-                  <th className="px-3 py-3">解析状态</th>
-                  <th className="px-3 py-3">学历摘要</th>
-                  <th className="px-3 py-3">当前阶段</th>
-                  <th className="px-3 py-3">入库日期</th>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-identity"
+                    label="候选人"
+                    open={openColumnFilter === 'identity'}
+                    onToggle={() => toggleColumnFilter('identity')}
+                  >
+                    <input
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                      placeholder="姓名、联系方式或经历"
+                      aria-label="按候选人信息筛选"
+                      className={filterControlClass}
+                    />
+                    <select
+                      value={sortBy === 'name_masked' ? sortOrder : ''}
+                      onChange={(event) => {
+                        const nextOrder = event.target.value;
+                        if (nextOrder === 'asc' || nextOrder === 'desc') {
+                          changeFilter(() => {
+                            setSortBy('name_masked');
+                            setSortOrder(nextOrder);
+                          });
+                        }
+                      }}
+                      aria-label="按候选人名称排序"
+                      className={filterControlClass}
+                    >
+                      <option value="">默认排序</option>
+                      <option value="asc">名称升序</option>
+                      <option value="desc">名称降序</option>
+                    </select>
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-parse"
+                    label="解析状态"
+                    open={openColumnFilter === 'parse'}
+                    onToggle={() => toggleColumnFilter('parse')}
+                  >
+                    <select
+                      value={parseStatusFilter}
+                      onChange={(event) => {
+                        const nextStatus = event.target.value;
+                        if (nextStatus === '' || isParseStatus(nextStatus)) changeFilter(() => setParseStatusFilter(nextStatus));
+                      }}
+                      aria-label="按解析状态筛选"
+                      className={filterControlClass}
+                    >
+                      <option value="">全部解析状态</option>
+                      {Object.entries(parseStatusMeta).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
+                    </select>
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-profile"
+                    label="学历 / 城市"
+                    open={openColumnFilter === 'profile'}
+                    onToggle={() => toggleColumnFilter('profile')}
+                  >
+                    <select value={educationFilter} onChange={(event) => changeFilter(() => setEducationFilter(event.target.value))} aria-label="按学历筛选" className={filterControlClass}>
+                      <option value="">全部学历</option>
+                      {educationOptions.map((education) => <option key={education} value={education}>{education}</option>)}
+                    </select>
+                    <input
+                      list="candidate-city-options"
+                      value={cityFilter}
+                      onChange={(event) => changeFilter(() => setCityFilter(event.target.value))}
+                      placeholder="输入意向城市"
+                      aria-label="按意向城市筛选"
+                      className={filterControlClass}
+                    />
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-skills"
+                    label="核心技能"
+                    open={openColumnFilter === 'skills'}
+                    onToggle={() => toggleColumnFilter('skills')}
+                  >
+                    <input value={skillFilter} onChange={(event) => changeFilter(() => setSkillFilter(event.target.value))} placeholder="技能关键词" aria-label="按技能关键词筛选" className={filterControlClass} />
+                    <select value={scoreFilter} onChange={(event) => changeFilter(() => setScoreFilter(event.target.value))} aria-label="按最低技能分筛选" className={filterControlClass}>
+                      <option value="0">全部分数</option>
+                      <option value="3">3 分及以上</option>
+                      <option value="4">4 分及以上</option>
+                      <option value="5">5 分</option>
+                    </select>
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-source"
+                    label="来源"
+                    open={openColumnFilter === 'source'}
+                    onToggle={() => toggleColumnFilter('source')}
+                  >
+                    <input
+                      list="candidate-source-options"
+                      value={sourceFilter}
+                      onChange={(event) => changeFilter(() => setSourceFilter(event.target.value))}
+                      placeholder="输入来源渠道"
+                      aria-label="按来源渠道筛选"
+                      className={filterControlClass}
+                    />
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-stage"
+                    label="当前阶段"
+                    open={openColumnFilter === 'stage'}
+                    onToggle={() => toggleColumnFilter('stage')}
+                  >
+                    <select
+                      value={stageFilter}
+                      onChange={(event) => {
+                        const nextStage = event.target.value;
+                        if (nextStage === '' || isCandidateStage(nextStage)) changeFilter(() => setStageFilter(nextStage));
+                      }}
+                      aria-label="按招聘阶段筛选"
+                      className={filterControlClass}
+                    >
+                      <option value="">全部阶段</option>
+                      {candidateStageOptions.map((stage) => <option key={stage} value={stage}>{stageLabels[stage]}</option>)}
+                    </select>
+                    <select
+                      value={pipelineStatusFilter}
+                      onChange={(event) => {
+                        const nextStatus = event.target.value;
+                        if (nextStatus === '' || isPipelineStatus(nextStatus)) changeFilter(() => setPipelineStatusFilter(nextStatus));
+                      }}
+                      aria-label="按流程状态筛选"
+                      className={filterControlClass}
+                    >
+                      <option value="">全部流程状态</option>
+                      <option value="not_in_pipeline">未进入流程</option>
+                      <option value="in_pipeline">已进入流程</option>
+                    </select>
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-created"
+                    label="入库日期"
+                    open={openColumnFilter === 'created'}
+                    onToggle={() => toggleColumnFilter('created')}
+                  >
+                    <select
+                      value={sortBy === 'created_at' ? sortOrder : ''}
+                      onChange={(event) => {
+                        const nextOrder = event.target.value;
+                        if (nextOrder === 'asc' || nextOrder === 'desc') {
+                          changeFilter(() => {
+                            setSortBy('created_at');
+                            setSortOrder(nextOrder);
+                          });
+                        }
+                      }}
+                      aria-label="按入库日期排序"
+                      className={filterControlClass}
+                    >
+                      <option value="">默认排序</option>
+                      <option value="desc">最近入库</option>
+                      <option value="asc">最早入库</option>
+                    </select>
+                  </CandidateColumnFilterHeader>
                   <th className="w-32 px-4 py-3 text-right">操作</th>
                 </tr>
               </thead>
@@ -696,7 +1149,7 @@ export default function CandidatesPage() {
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium text-foreground-900">{candidate.name_masked}</p>
                             <p className="mt-0.5 truncate text-xs text-foreground-400">
-                              {candidate.phone_masked || candidate.email_masked || `ID ${candidate.id}`}
+                              {candidate.phone_masked || candidate.email_masked || '暂无联系方式'}
                             </p>
                           </div>
                         </div>
@@ -706,6 +1159,21 @@ export default function CandidatesPage() {
                       </td>
                       <td className="max-w-64 px-3 py-3.5 text-sm text-foreground-600">
                         <span className="line-clamp-2">{candidate.education_summary || '—'}</span>
+                        {candidate.intent_city && <span className="mt-1 block text-xs text-foreground-400">意向 {candidate.intent_city}</span>}
+                      </td>
+                      <td className="max-w-64 px-3 py-3.5">
+                        {candidate.top_tags?.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {candidate.top_tags.slice(0, 3).map((tag) => (
+                              <span key={tag.tag} className="inline-flex rounded-md bg-primary-50 px-2 py-1 text-xs text-primary-700">
+                                {tag.tag}{tag.score ? ` · ${tag.score}分` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        ) : <span className="text-sm text-foreground-400">—</span>}
+                      </td>
+                      <td className="px-3 py-3.5 text-sm text-foreground-600">
+                        {candidate.source?.channel || '—'}
                       </td>
                       <td className="px-3 py-3.5 text-sm text-foreground-600">
                         {candidate.current_stage ? (stageLabels[candidate.current_stage] || candidate.current_stage) : '—'}

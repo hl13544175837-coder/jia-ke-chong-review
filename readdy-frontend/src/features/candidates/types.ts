@@ -1,6 +1,27 @@
 import type { OriginalResumeInfo } from '@/features/businessReviews/types';
 
 export type ParseStatus = 'pending' | 'processing' | 'ok' | 'failed';
+export type CandidateStage =
+  | 'pending'
+  | 'ai_screen'
+  | 'business_review'
+  | 'interview'
+  | 'offer'
+  | 'onboarded'
+  | 'rejected'
+  | 'transferred';
+
+export interface CandidateTag {
+  tag: string;
+  score: number;
+}
+
+export interface CandidateSourceInfo {
+  batch_id: number;
+  channel: string;
+  note: string;
+  created_at: string | null;
+}
 
 export interface CandidateListItem {
   id: number;
@@ -15,6 +36,15 @@ export interface CandidateListItem {
   tag_count: number;
   current_stage?: string | null;
   education_summary?: string;
+  top_tags?: CandidateTag[];
+  max_score?: number;
+  intent_city?: string;
+  latest_experience?: {
+    company: string;
+    position: string;
+    duration: string;
+  } | null;
+  source?: CandidateSourceInfo | null;
 }
 
 export interface CandidateListResponse {
@@ -28,7 +58,16 @@ export interface CandidateListResponse {
 export interface CandidateListQuery {
   search?: string;
   demand_id?: number;
-  stage?: string;
+  stage?: CandidateStage;
+  city?: string;
+  education?: string;
+  skill?: string;
+  min_score?: number;
+  source_channel?: string;
+  parse_status?: ParseStatus;
+  pipeline_status?: 'in_pipeline' | 'not_in_pipeline';
+  sort_by?: 'created_at' | 'name_masked';
+  sort_order?: 'asc' | 'desc';
   page?: number;
   per_page?: number;
 }
