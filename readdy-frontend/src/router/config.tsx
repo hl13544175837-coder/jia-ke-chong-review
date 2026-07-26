@@ -4,6 +4,7 @@ import LoginPage from '@/pages/login/page';
 import MainLayout from '@/components/feature/MainLayout';
 import DashboardPage from '@/pages/dashboard/page';
 import DashboardInterviewsPage from '@/pages/dashboard/interviews/page';
+import RecruiterInterviewsPage from '@/pages/interviews/page';
 import HiredPage from '@/pages/dashboard/hired/page';
 import CyclePage from '@/pages/dashboard/cycle/page';
 import DashboardOffersPage from '@/pages/dashboard/offers/page';
@@ -87,7 +88,7 @@ const routes: RouteObject[] = [
       },
       {
         path: '/interviews',
-        element: <RequireCompanyRole allow={hrRoles}><DashboardInterviewsPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={hrRoles}><RecruiterInterviewsPage /></RequireCompanyRole>,
       },
       {
         path: '/offers',

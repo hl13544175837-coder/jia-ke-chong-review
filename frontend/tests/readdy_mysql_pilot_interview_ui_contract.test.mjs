@@ -14,6 +14,23 @@ assert.match(page, /candidatesApi\.getResume/, '面试详情必须读取真实�
 assert.match(page, /demandsApi\.getDemand/, '面试详情必须读取真实招聘需求和 JD');
 assert.doesNotMatch(page, /@\/mocks\/interviews|@\/mocks\/interviewer/, '我的面试不得继续使用假任务');
 assert.doesNotMatch(page, /ScorecardModal/, '试点评价不得继续使用复杂评分大表');
+assert.match(page, /useSearchParams/, '面试官必须承接通知中的面试任务上下文');
+assert.match(page, /searchParams\.get\(['"]candidate['"]\)/, '面试官页必须定位到对应候选人');
+
+const recruiterPage = read('readdy-frontend/src/pages/interviews/page.tsx');
+const interviewApi = read('readdy-frontend/src/features/interviews/api.ts');
+const router = read('readdy-frontend/src/router/config.tsx');
+for (const method of ['listManagementRows', 'listInterviewers', 'createAssignment', 'updateAssignment', 'markConducted', 'remindFeedback', 'cancelAssignment']) {
+  assert.match(interviewApi, new RegExp(`${method}\\(`), `招聘专员面试 API 缺少 ${method}`);
+}
+assert.match(recruiterPage, /interviewsApi\.listManagementRows/, '招聘专员面试管理必须读真实待办');
+assert.match(recruiterPage, /useSearchParams/, '招聘专员面试页必须承接业务筛选上下文');
+for (const label of ['待安排', '已安排', '待反馈', '已完成', '安排面试', '调整安排', '确认已面试', '催反馈']) {
+  assert.ok(recruiterPage.includes(label), `招聘专员面试工作台缺少“${label}”`);
+}
+assert.doesNotMatch(recruiterPage, /@\/mocks\//, '招聘专员面试管理不得使用假任务');
+assert.match(router, /RecruiterInterviewsPage/, '/interviews 必须切换为真实招聘专员面试工作台');
+assert.match(router, /path:\s*['"]\/interviews['"][\s\S]*?<RecruiterInterviewsPage/, '/interviews 路由必须使用真实工作台');
 
 const modal = read('readdy-frontend/src/pages/interviewer/interviews/components/SimpleFeedbackModal.tsx');
 for (const value of ['satisfied', 'pending', 'unsatisfied']) {

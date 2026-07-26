@@ -10,7 +10,8 @@ import {
   Search,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { candidatesApi } from '@/features/candidates/api';
 import type { CandidateResumeDetail } from '@/features/candidates/types';
@@ -67,6 +68,10 @@ function readableValue(value: unknown): string {
 }
 
 export default function InterviewerInterviewsPage() {
+  const [searchParams] = useSearchParams();
+  const requestedDemandId = Number(searchParams.get('demand')) || null;
+  const requestedCandidateId = Number(searchParams.get('candidate')) || null;
+  const handledCandidateId = useRef<number | null>(null);
   const [assignments, setAssignments] = useState<InterviewAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -96,6 +101,9 @@ export default function InterviewerInterviewsPage() {
 
   useEffect(() => {
     void loadAssignments();
+    const refreshAssignments = () => void loadAssignments();
+    window.addEventListener('focus', refreshAssignments);
+    return () => window.removeEventListener('focus', refreshAssignments);
   }, [loadAssignments]);
 
   const filtered = useMemo(() => assignments.filter((item) => {
@@ -145,6 +153,17 @@ export default function InterviewerInterviewsPage() {
       setDetailLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (loading || !requestedCandidateId || handledCandidateId.current === requestedCandidateId) return;
+    const assignment = assignments.find((item) => (
+      item.candidate_id === requestedCandidateId
+      && (!requestedDemandId || item.demand_id === requestedDemandId)
+    ));
+    if (!assignment) return;
+    handledCandidateId.current = requestedCandidateId;
+    void openDetail(assignment);
+  }, [assignments, loading, openDetail, requestedCandidateId, requestedDemandId]);
 
   const openOriginalResume = async (download: boolean) => {
     if (!selected) return;

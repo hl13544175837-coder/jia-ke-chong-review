@@ -1,13 +1,56 @@
 import { apiRequest } from '@/lib/api';
 import type {
   InterviewAssignment,
+  InterviewAssignmentInput,
+  InterviewAssignmentUpdateInput,
   InterviewFeedback,
   InterviewFeedbackInput,
   InterviewFeedbackMutationResult,
   InterviewFeedbackUpdateInput,
+  InterviewManagementRow,
+  InterviewerOption,
 } from './types';
 
 export const interviewsApi = {
+  listManagementRows(): Promise<InterviewManagementRow[]> {
+    return apiRequest('/interview/management-rows');
+  },
+  listInterviewers(): Promise<InterviewerOption[]> {
+    return apiRequest('/interview/interviewers');
+  },
+  createAssignment(
+    payload: InterviewAssignmentInput,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<InterviewAssignment & { deduplicated?: boolean }> {
+    return apiRequest('/interview/assignments', {
+      method: 'POST',
+      body: payload,
+      idempotencyKey,
+    });
+  },
+  updateAssignment(
+    assignmentId: number,
+    payload: InterviewAssignmentUpdateInput,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<InterviewAssignment & { deduplicated?: boolean }> {
+    return apiRequest(`/interview/assignments/${assignmentId}`, {
+      method: 'PATCH',
+      body: payload,
+      idempotencyKey,
+    });
+  },
+  markConducted(assignmentId: number): Promise<InterviewAssignment & { deduplicated?: boolean }> {
+    return apiRequest(`/interview/assignments/${assignmentId}/mark-conducted`, { method: 'POST' });
+  },
+  remindFeedback(assignmentId: number): Promise<InterviewAssignment & { deduplicated?: boolean }> {
+    return apiRequest(`/interview/assignments/${assignmentId}/remind-feedback`, { method: 'POST' });
+  },
+  cancelAssignment(assignmentId: number, reason: string): Promise<InterviewAssignment & { deduplicated?: boolean }> {
+    return apiRequest(`/interview/assignments/${assignmentId}/cancel`, {
+      method: 'PATCH',
+      body: { reason },
+    });
+  },
   listMyAssignments(): Promise<InterviewAssignment[]> {
     return apiRequest('/interview/assignments');
   },

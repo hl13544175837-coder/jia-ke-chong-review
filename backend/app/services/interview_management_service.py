@@ -8,6 +8,7 @@ from sqlalchemy.orm import aliased
 from .. import db
 from ..middleware.events import record_event
 from ..models import (
+    BusinessReviewTask,
     Candidate,
     CandidateDemandFlow,
     Event,
@@ -69,6 +70,18 @@ def interview_management_rows(*, user_id, role, org_id):
             PipelineStage.demand_id,
         )
         .subquery()
+    )
+    latest_business_review_status = (
+        db.session.query(BusinessReviewTask.status)
+        .filter(
+            BusinessReviewTask.org_id == CandidateDemandFlow.org_id,
+            BusinessReviewTask.candidate_id == CandidateDemandFlow.candidate_id,
+            BusinessReviewTask.demand_id == CandidateDemandFlow.demand_id,
+        )
+        .order_by(BusinessReviewTask.id.desc())
+        .limit(1)
+        .correlate(CandidateDemandFlow)
+        .scalar_subquery()
     )
     interviewer = aliased(User)
     query = (
@@ -145,6 +158,7 @@ def interview_management_rows(*, user_id, role, org_id):
             db.or_(
                 PipelineStage.stage.in_(INTERVIEW_PIPELINE_STAGES),
                 InterviewAssignment.id.isnot(None),
+                latest_business_review_status == "approved",
             ),
         )
     )
@@ -277,7 +291,7 @@ def update_interview_assignment(
                     f"第 {assignment.round_sequence} 轮面试的时间、地点或面试官已更新。"
                 ),
                 link=(
-                    f"/interviews?demand={assignment.demand_id}"
+                    f"/interviewer/interviews?demand={assignment.demand_id}"
                     f"&candidate={assignment.candidate_id}"
                 ),
             )
@@ -335,7 +349,7 @@ def mark_interview_conducted(*, assignment):
             title="面试已确认完成，请提交反馈",
             body=f"第 {assignment.round_sequence} 轮面试已由招聘团队确认进行。",
             link=(
-                f"/interviews?demand={assignment.demand_id}"
+                f"/interviewer/interviews?demand={assignment.demand_id}"
                 f"&candidate={assignment.candidate_id}"
             ),
         )
@@ -403,7 +417,7 @@ def remind_interview_feedback(*, assignment):
             title="请尽快补充面试反馈",
             body=f"第 {assignment.round_sequence} 轮面试仍在等待反馈。",
             link=(
-                f"/interviews?demand={assignment.demand_id}"
+                f"/interviewer/interviews?demand={assignment.demand_id}"
                 f"&candidate={assignment.candidate_id}"
             ),
         )

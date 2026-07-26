@@ -4,6 +4,7 @@ from sqlalchemy import event
 
 from app import db
 from app.models import (
+    BusinessReviewTask,
     Candidate,
     CandidateDemandFlow,
     Event,
@@ -30,6 +31,7 @@ def _seed_interview_candidate(
     interviewer_id=None,
     scheduled_at=None,
     assignment_status="scheduled",
+    pipeline_stage="interview",
 ):
     with app.app_context():
         job = Job(
@@ -80,7 +82,7 @@ def _seed_interview_candidate(
                 candidate_id=candidate.id,
                 job_id=job.id,
                 demand_id=demand.id,
-                stage="interview",
+                stage=pipeline_stage,
                 updated_by=owner_id,
             )
         )
@@ -212,6 +214,135 @@ def test_management_rows_include_unassigned_and_enforce_role_demand_and_org_scop
         "feedback_passed": None,
         "feedback_result": None,
     }
+
+
+def test_approved_business_review_is_ready_to_schedule_and_notifies_interviewer_route(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "approved-review-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "approved-review-interviewer@example.com", role="interviewer", name="业务面试官"
+    )
+    seeded = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="APPROVED-REVIEW",
+        pipeline_stage="business_review",
+    )
+    with app.app_context():
+        db.session.add(
+            BusinessReviewTask(
+                org_id=1,
+                demand_id=seeded["demand_id"],
+                candidate_id=seeded["candidate_id"],
+                reviewer_id=interviewer_id,
+                status="approved",
+                pending_slot=None,
+                created_by=owner_id,
+                decided_by=interviewer_id,
+                decided_at=utc_now(),
+            )
+        )
+        db.session.commit()
+
+    rows = client.get(
+        "/api/interview/management-rows", headers=_auth(owner_token)
+    )
+    assert rows.status_code == 200
+    assert rows.get_json()[0]["assignment_status"] == "unassigned"
+    assert rows.get_json()[0]["candidate_id"] == seeded["candidate_id"]
+
+    created = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": seeded["candidate_id"],
+            "demand_id": seeded["demand_id"],
+            "round": "round_1",
+            "round_sequence": 1,
+            "interviewer_id": interviewer_id,
+            "scheduled_at": "2026-08-10T10:00:00",
+            "location": "第一会议室",
+        },
+    )
+    assert created.status_code == 201
+    with app.app_context():
+        latest_stage = (
+            PipelineStage.query.filter_by(
+                demand_id=seeded["demand_id"],
+                candidate_id=seeded["candidate_id"],
+            )
+            .order_by(PipelineStage.id.desc())
+            .first()
+        )
+        assert latest_stage.stage == "interview"
+        notice = Notification.query.filter_by(
+            user_id=interviewer_id,
+            demand_id=seeded["demand_id"],
+            type="interview_assignment",
+        ).one()
+        assert "新的面试安排" in notice.title
+        assert "候选人-APPROVED-REVIEW" in notice.body
+        assert "08-10 10:00" in notice.body
+        assert "第一会议室" in notice.body
+        assert notice.link == (
+            f"/interviewer/interviews?demand={seeded['demand_id']}"
+            f"&candidate={seeded['candidate_id']}"
+        )
+
+
+def test_only_latest_business_review_decision_can_enter_schedule_queue(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "latest-review-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "latest-review-interviewer@example.com", role="interviewer"
+    )
+    seeded = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="LATEST-REVIEW",
+        pipeline_stage="business_review",
+    )
+    with app.app_context():
+        approved = BusinessReviewTask(
+            org_id=1,
+            demand_id=seeded["demand_id"],
+            candidate_id=seeded["candidate_id"],
+            reviewer_id=interviewer_id,
+            status="approved",
+            created_by=owner_id,
+            decided_by=interviewer_id,
+            decided_at=utc_now(),
+        )
+        db.session.add(approved)
+        db.session.flush()
+        approved.pending_slot = None
+        db.session.flush()
+        needs_info = BusinessReviewTask(
+            org_id=1,
+            demand_id=seeded["demand_id"],
+            candidate_id=seeded["candidate_id"],
+            reviewer_id=interviewer_id,
+            status="needs_info",
+            created_by=owner_id,
+            decided_by=interviewer_id,
+            decided_at=utc_now() + timedelta(seconds=1),
+        )
+        db.session.add(needs_info)
+        db.session.flush()
+        needs_info.pending_slot = None
+        db.session.commit()
+
+    rows = client.get(
+        "/api/interview/management-rows", headers=_auth(owner_token)
+    )
+    assert rows.status_code == 200
+    assert rows.get_json() == []
 
 
 def test_management_rows_use_latest_pipeline_stage_and_do_not_make_n_plus_one_queries(
