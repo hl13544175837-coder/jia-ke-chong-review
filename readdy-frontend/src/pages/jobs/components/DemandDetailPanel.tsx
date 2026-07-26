@@ -6,10 +6,13 @@ interface DemandDetailPanelProps {
   saving: boolean;
   error: string;
   canReview: boolean;
+  canRecruit: boolean;
   onClose: () => void;
   onSave: (demandId: number, payload: DemandUpdateInput) => void;
   onApprove: (demandId: number) => Promise<boolean>;
   onReject: (demandId: number, reason: string) => Promise<boolean>;
+  onSelectCandidates: (demand: RecruitmentDemand) => void;
+  onImportResume: (demand: RecruitmentDemand) => void;
 }
 
 export default function DemandDetailPanel({
@@ -17,10 +20,13 @@ export default function DemandDetailPanel({
   saving,
   error,
   canReview,
+  canRecruit,
   onClose,
   onSave,
   onApprove,
   onReject,
+  onSelectCandidates,
+  onImportResume,
 }: DemandDetailPanelProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<DemandUpdateInput | null>(null);
@@ -55,6 +61,9 @@ export default function DemandDetailPanel({
   const reviewable = canReview
     && demand.approval_status === 'pending'
     && Boolean(demand.submitted_at);
+  const recruitable = canRecruit
+    && demand.approval_status === 'approved'
+    && demand.status === 'active';
 
   const submitRejection = async () => {
     if (!rejectReason.trim()) {
@@ -179,6 +188,16 @@ export default function DemandDetailPanel({
                 <button type="button" disabled={saving} onClick={() => setEditing(true)} className="flex items-center gap-1.5 rounded-lg border border-background-200 px-4 py-2 text-sm text-foreground-700 hover:bg-background-50 disabled:opacity-50">
                   <i className="ri-edit-line"></i>编辑需求
                 </button>
+                {recruitable && (
+                  <>
+                    <button type="button" disabled={saving} onClick={() => onImportResume(demand)} className="flex items-center gap-1.5 rounded-lg border border-primary-200 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50">
+                      <i className="ri-upload-2-line"></i>上传简历
+                    </button>
+                    <button type="button" disabled={saving} onClick={() => onSelectCandidates(demand)} className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:opacity-50">
+                      <i className="ri-user-add-line"></i>选择候选人
+                    </button>
+                  </>
+                )}
                 {reviewable && !rejectOpen && (
                   <>
                     <button type="button" disabled={saving} onClick={() => { void onApprove(demand.id); }} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">

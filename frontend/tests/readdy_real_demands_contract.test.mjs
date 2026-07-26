@@ -44,5 +44,7 @@ assert.doesNotMatch(table, /@\/mocks\/jobs/, '需求表格不得再读取需求�
 const detail = read('readdy-frontend/src/pages/jobs/components/DemandDetailPanel.tsx');
 assert.match(detail, /保存修改/, '真实需求详情必须提供编辑保存入口');
 assert.match(detail, /onSave/, '编辑保存必须回调真实 API');
+assert.match(detail, /选择候选人/, '已通过需求详情必须提供直接选人入口');
+assert.match(detail, /上传简历/, '已通过需求详情必须提供直接上传入口');
 
 console.log('readdy_real_demands_contract: OK');

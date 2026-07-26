@@ -241,6 +241,19 @@ export default function JobsPage() {
     navigate('/candidates', { state: { fromJobs: true, demandId: Number(req.id), jobTitle: req.title, targetStage: stage } });
   };
 
+  const openCandidateWorkspaceFromDetail = (demand: RecruitmentDemand) => {
+    if (demand.approval_status !== 'approved') {
+      showToast('招聘需求通过审核后才能加入或推送候选人');
+      return;
+    }
+    if (demand.status !== 'active') {
+      showToast('只有招聘中的需求才能加入或推送候选人');
+      return;
+    }
+    setSelectedDemand(null);
+    setCandidateDemand(demand);
+  };
+
   return (
     <div className="space-y-5 p-6" data-ui="real-demand-page">
       {navState?.fromDashboard && (
@@ -326,10 +339,13 @@ export default function JobsPage() {
         saving={detailSaving}
         error={detailError}
         canReview={role === 'recruiter' || role === 'manager' || role === 'admin'}
+        canRecruit={role === 'recruiter' || role === 'manager' || role === 'admin'}
         onClose={() => setSelectedDemand(null)}
         onSave={handleUpdate}
         onApprove={handleApprove}
         onReject={handleReject}
+        onSelectCandidates={openCandidateWorkspaceFromDetail}
+        onImportResume={openCandidateWorkspaceFromDetail}
       />
     </div>
   );
