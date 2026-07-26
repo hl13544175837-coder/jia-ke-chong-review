@@ -79,6 +79,73 @@ class CandidateTag(db.Model):
     score = db.Column(db.Integer)  # 1-5
 
 
+class CandidateFavorite(db.Model):
+    __tablename__ = "candidate_favorites"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "org_id",
+            "user_id",
+            "candidate_id",
+            name="uq_candidate_favorites_org_user_candidate",
+        ),
+        db.Index(
+            "ix_candidate_favorites_org_candidate",
+            "org_id",
+            "candidate_id",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, default=1, nullable=False)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    candidate_id = db.Column(
+        db.Integer,
+        db.ForeignKey("candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+
+class CandidateMerge(db.Model):
+    __tablename__ = "candidate_merges"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "org_id",
+            "duplicate_candidate_id",
+            name="uq_candidate_merges_org_duplicate",
+        ),
+        db.Index(
+            "ix_candidate_merges_org_primary",
+            "org_id",
+            "primary_candidate_id",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, default=1, nullable=False)
+    primary_candidate_id = db.Column(
+        db.Integer,
+        db.ForeignKey("candidates.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    duplicate_candidate_id = db.Column(
+        db.Integer,
+        db.ForeignKey("candidates.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    merged_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    reason = db.Column(db.String(240), nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+
 class Job(db.Model):
     __tablename__ = "jobs"
     id = db.Column(db.Integer, primary_key=True)

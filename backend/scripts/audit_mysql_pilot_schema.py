@@ -21,7 +21,7 @@ if str(BACKEND_DIR) not in sys.path:
 from database_urls import normalize_database_url
 
 
-EXPECTED_REVISION = "20260724_08"
+EXPECTED_REVISION = "20260726_09"
 KNOWN_PREDECESSOR_REVISIONS = {
     "20260710_01",
     "20260711_02",
@@ -30,6 +30,7 @@ KNOWN_PREDECESSOR_REVISIONS = {
     "20260721_05",
     "20260721_06",
     "20260722_07",
+    "20260724_08",
 }
 
 EXPECTED_COLUMNS = {
@@ -70,6 +71,22 @@ EXPECTED_COLUMNS = {
         "created_at": {"family": "datetime", "nullable": False},
         "updated_at": {"family": "datetime", "nullable": False},
     },
+    "candidate_favorites": {
+        "id": {"family": "integer", "nullable": False, "primary_key": True},
+        "org_id": {"family": "integer", "nullable": False},
+        "user_id": {"family": "integer", "nullable": False},
+        "candidate_id": {"family": "integer", "nullable": False},
+        "created_at": {"family": "datetime", "nullable": False},
+    },
+    "candidate_merges": {
+        "id": {"family": "integer", "nullable": False, "primary_key": True},
+        "org_id": {"family": "integer", "nullable": False},
+        "primary_candidate_id": {"family": "integer", "nullable": False},
+        "duplicate_candidate_id": {"family": "integer", "nullable": False},
+        "merged_by": {"family": "integer", "nullable": False},
+        "reason": {"family": "string", "length": 240, "nullable": False},
+        "created_at": {"family": "datetime", "nullable": False},
+    },
 }
 
 EXPECTED_INDEXES = {
@@ -91,6 +108,34 @@ EXPECTED_INDEXES = {
             ),
             "unique": True,
         },
+    },
+    "candidate_favorites": {
+        "ix_candidate_favorites_org_candidate": {
+            "columns": ("org_id", "candidate_id"),
+            "unique": False,
+        },
+    },
+    "candidate_merges": {
+        "ix_candidate_merges_org_primary": {
+            "columns": ("org_id", "primary_candidate_id"),
+            "unique": False,
+        },
+    },
+}
+
+EXPECTED_UNIQUE_CONSTRAINTS = {
+    "candidate_favorites": {
+        "uq_candidate_favorites_org_user_candidate": (
+            "org_id",
+            "user_id",
+            "candidate_id",
+        ),
+    },
+    "candidate_merges": {
+        "uq_candidate_merges_org_duplicate": (
+            "org_id",
+            "duplicate_candidate_id",
+        ),
     },
 }
 
@@ -284,6 +329,39 @@ def _inspect_indexes(inspector, table_names, report):
                 )
 
 
+def _inspect_unique_constraints(inspector, table_names, report):
+    for table_name, expected_constraints in EXPECTED_UNIQUE_CONSTRAINTS.items():
+        if table_name not in table_names:
+            continue
+        actual_constraints = {
+            constraint.get("name"): tuple(constraint.get("column_names") or ())
+            for constraint in inspector.get_unique_constraints(table_name)
+            if constraint.get("name")
+        }
+        table_state = report["tables"][table_name]
+        table_state["unique_constraints"] = {}
+        for constraint_name, expected_columns in expected_constraints.items():
+            actual_columns = actual_constraints.get(constraint_name)
+            if actual_columns is None:
+                report["missing"].append(
+                    f"missing_unique:{table_name}.{constraint_name}"
+                )
+                table_state["unique_constraints"][constraint_name] = {
+                    "present": False,
+                }
+                continue
+            ok = actual_columns == expected_columns
+            table_state["unique_constraints"][constraint_name] = {
+                "present": True,
+                "columns": list(actual_columns),
+                "ok": ok,
+            }
+            if not ok:
+                report["conflicts"].append(
+                    f"unique_definition:{table_name}.{constraint_name}"
+                )
+
+
 def audit_database():
     """Inspect DATABASE_URL without changing schema or data."""
 
@@ -307,6 +385,7 @@ def audit_database():
             _inspect_revision(connection, inspector, report)
             _inspect_columns(inspector, table_names, report)
             _inspect_indexes(inspector, table_names, report)
+            _inspect_unique_constraints(inspector, table_names, report)
     except Exception as exc:  # Never expose a driver error that may embed its URL.
         report["errors"].append(f"database_audit:{exc.__class__.__name__}")
     finally:

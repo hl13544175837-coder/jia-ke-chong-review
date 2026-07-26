@@ -1,6 +1,6 @@
 # Readdy 新前端迁移与验收矩阵
 
-> 状态：5190 当前入口为 `readdy-frontend`。基于 `f48e433` 已把候选人筛选、创建需求的招聘负责人选择和 Offer 列筛选落实到该入口；准确功能提交以 `git log -1` 为准。本文是迁移过程的接线真源，不代替已部署环境证明。
+> 状态：5190 当前入口为 `readdy-frontend`。基于 `f48e433` 已把候选人筛选、公司人才库复用、创建需求的招聘负责人选择和 Offer 列筛选落实到该入口；准确功能提交以 `git log -1` 为准。本文是迁移过程的接线真源，不代替已部署环境证明。
 >
 > 代码基线：当前分支 `codex/readdy-resume-ui-merge`，开发起点 `f48e433`。旧公司招聘系统是视觉基准，Figma/Readdy 是流程与交互基准。
 >
@@ -47,7 +47,7 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 | `/login` | 未登录 | 网关 OAuth + `/auth/me` | 保留公司登录视觉与真实协议，补齐错误态和会话恢复；不为嫁接流程改动鉴权底座 |
 | `/dashboard` 及统计抽屉 | 全部角色 | `/candidates`、`/demands`、`/interviews`、`/notifications`；manager/admin 可用 `/bi/overview` | KPI 点击在当前页打开真实口径说明抽屉；组织级汇总无法唯一定位 Demand 时只给宽范围次级入口，不冒充精准下钻 |
 | `/demands` / `/jobs` 招聘管理 | recruiter/manager/admin | `/demands`、`/jobs`、`/jobs/clarify`、匹配接口 | Demand 六个表头均可展开真实服务端筛选；职位、编号、部门、城市和截止日期保留快速筛选。创建需求时负责人选项由后端按角色裁剪，招聘专员可操作下拉且只能选择本人。行内负责人、HC、阶段数字和状态作为具体 Demand 信息，首击在当前页打开对应右侧抽屉；完整看板/工作台只作为抽屉中次级入口。岗位/JD 模板位于 `/job-templates`，新增岗位和 AI 澄清/保存仍走真实接口 |
-| `/candidates` 简历库 | recruiter/manager/admin | `/candidates`、`/resume/*`、候选人流程、批量入流程 | 搜索、学历、意向城市、技能、来源、解析状态、入流程状态、任一 Demand 当前阶段和最低技能分均在分页前真实筛选；候选人关键表头可展开同一组条件。上传、负责人和加入 Demand 全部真实化；候选人行和姓名点击在当前页打开详情与真实流程抽屉，完整档案为次级入口 |
+| `/candidates` 简历库 | recruiter/manager/admin | `/candidates`、`/resume/*`、收藏、查重合并、匹配预览和批量入流程 | 支持先入公司人才库再匹配 Demand；全部、活动流程、公司人才库、个人收藏四个范围和多维条件均在分页前真实筛选。当前阶段与兼容简历学历真实返回；单人/批量收藏、加入流程、淘汰后带原因重新启用已接通；manager/admin 可按完整联系方式安全合并无业务历史的重复档案 |
 | `/kanban` 进度看板 | recruiter/manager/admin | `/pipeline/demands/*` | Demand 选择器 + KPI 卡 + 阶段列真实看板；候选人卡片在当前页打开流程详情抽屉；推进、淘汰、修正、转 Demand 和历史继续走真实接口；面试官无写操作按钮 |
 | `/interviews` 面试管理 | recruiter/manager/admin | `/interviews`、`/interview/assignments`、取消、反馈、AI 面试 | 统计卡在当前页筛选，面试行打开右侧详情（面试信息/反馈/流程记录）；安排、取消、反馈仍是受权限控制的真实操作；支持 `status` 和 `demand` URL 筛选 |
 | `/offers` Offer 管理 | recruiter/manager/admin | `/offers`、`/offers/<id>`、`/offers/<id>/actions`、Demand Offer 草稿接口 | Offer 行和姓名点击打开当前页真实详情/历史抽屉；候选人/岗位、招聘需求、薪酬/入职、状态和最近更新表头可展开列筛选并一键重置；草稿、审批、发放、回复、撤回、入职状态机不变；详情快速切换已有请求竞态保护 |
@@ -128,13 +128,13 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 - 登录、公司网关身份、Readdy 主壳、工作台和 Readdy 路由别名已接入；旧的假角色选择已移除。
 - Offer 已形成真实数据库闭环。招聘专员可维护草稿和推进发放/回复/入职；只有 manager/admin 可审批；确认入职会同步把 Demand 下候选人推进到 `onboarded`。
 - Offer 的所有状态变化写入 `offer_events` 和通用 `events`；重复请求可用 `Idempotency-Key` 安全重放。
-- 当前 Alembic head 为 `20260722_07`；05 保留已有 `offer_records` 数据并新增生命周期/历史，06 新增组织级流程口径表，07 补齐 AI 会话归档/调用审计并增加 Offer 组织内唯一约束。
+- 当前 Alembic head 为 `20260726_09`；08 补齐试点审批与业务筛选 schema，09 新增个人收藏与候选人合并审计表。
 - KPI 标准已从浏览器假持久化迁入真实后端；主管/管理员可维护，跨组织隔离，版本冲突不会静默覆盖；目标日期、阶段停滞、无推荐、低面试转化候选人量、开放过久阈值和阻塞分类已被 Demand/BI 服务读取，旧版本缺字段时由后端补默认值，旧存量死字段则兼容忽略。
 - 人才地图已从隐藏试验页变为正式 Readdy 路由；地图、目标公司、潜在人选、筛选、优先级和接触状态都由后端持久化，不使用 mock 或浏览器业务存储。
 - Readdy `/jobs` 已映射为真实用人需求（Demand）；旧岗位/JD 模板迁到 `/job-templates`，仍可从创建需求和岗位匹配流程到达。
 - Dashboard 的面试、Offer、已入职和招聘周期路由已映射到真实面试、Offer、Pipeline 和 Demand BI；面试官与总监的 Readdy 路由已按后端角色守卫接入。
 - Figma 文件 `PkZwN0jscEZXBXas5XdhKO` 用于核对新流程、信息关系和抽屉交互，不再作为颜色、字体、间距和组件外观的唯一视觉真源；全局品牌色已回到旧公司招聘系统的 `#00c07b` / `#009e66` 体系。
-- 简历库已按 Readdy 三段式（全部候选人/招聘流程中/人才池）嫁接：批量勾选加入 Demand 走真实 `batch-pipeline`，快速详情抽屉保留完整简历入口，范围统计失败显示错误和重试。
+- 简历库已按 Readdy 四范围（全部候选人/招聘流程中/公司人才库/我的收藏）接入真实后端：上传可不绑 Demand，单人或批量加入流程先展示岗位匹配；淘汰候选人可带原因重新启用，manager/admin 可执行受控精确查重合并。
 - 招聘进度看板 `/kanban` 已按 Figma/Readdy 流程重组并沿用公司视觉：Demand 选择器、KPI 卡、阶段列、推进/淘汰/修正/历史全部走真实接口；面试官角色只读。
 - 面试管理 `/interviews` 已换成 Readdy 真实页面：安排（默认面试官+时间冲突提示）、取消（填原因）、本人反馈、查看反馈；不触碰主流程推进；角色收敛为 recruiter/manager/admin。
 - 已入职 `/dashboard/hired` 已形成真实视图：Offer 生命周期 `onboarded` 记录、累计/本月/Offer 至入职周期摘要，不再是跳转占位；完整招聘周期须以后端明确起点与统计字段为准。

@@ -22,7 +22,7 @@ except ImportError:  # Direct execution: python backend/scripts/verify_demand_sc
     from audit_demand_scope import FACT_SPECS, fact_context
 
 
-EXPECTED_REVISION = "20260724_08"
+EXPECTED_REVISION = "20260726_09"
 EXPECTED_COLUMNS = {
     "recruitment_demands": {
         "approval_status",

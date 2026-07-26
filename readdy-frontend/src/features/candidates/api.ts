@@ -4,6 +4,11 @@ import type { CreateBusinessReviewInput, BusinessReviewTask } from '@/features/b
 import type {
   CandidateListQuery,
   CandidateListResponse,
+  CandidateDuplicateResponse,
+  CandidateFavoriteResult,
+  CandidateMatchPreview,
+  CandidateMergeResult,
+  CandidatePipelineAddResult,
   CandidateResumeDetail,
   ResumeUploadResponse,
   ResumeUploadSource,
@@ -25,7 +30,7 @@ export const candidatesApi = {
   uploadResumes(files: File[], source: ResumeUploadSource): Promise<ResumeUploadResponse> {
     const form = new FormData();
     files.forEach((item) => form.append('files', item));
-    form.append('target_demand_id', String(source.target_demand_id));
+    if (source.target_demand_id) form.append('target_demand_id', String(source.target_demand_id));
     if (source.source_channel) form.append('source_channel', source.source_channel);
     if (source.source_note) form.append('source_note', source.source_note);
     return apiMultipart('/resume/upload', form);
@@ -33,7 +38,53 @@ export const candidatesApi = {
   getResume(candidateId: number): Promise<CandidateResumeDetail> {
     return apiRequest(`/resume/${candidateId}`);
   },
-  pushToBusinessReview(payload: CreateBusinessReviewInput): Promise<BusinessReviewTask> {
+  setFavorites(candidateIds: number[], favorite: boolean): Promise<CandidateFavoriteResult> {
+    return apiRequest('/candidates/favorites/set', {
+      method: 'POST',
+      body: { candidate_ids: candidateIds, favorite },
+    });
+  },
+  addToPipeline(
+    demandId: number,
+    candidateIds: number[],
+    reason?: string,
+  ): Promise<CandidatePipelineAddResult> {
+    return apiRequest('/candidates/pipeline/add', {
+      method: 'POST',
+      body: {
+        demand_id: demandId,
+        candidate_ids: candidateIds,
+        reactivate_rejected: Boolean(reason?.trim()),
+        reason: reason?.trim() || undefined,
+      },
+    });
+  },
+  previewMatches(demandId: number, candidateIds: number[]): Promise<CandidateMatchPreview> {
+    return apiRequest('/candidates/match/preview', {
+      method: 'POST',
+      body: { demand_id: demandId, candidate_ids: candidateIds },
+    });
+  },
+  getDuplicateGroups(): Promise<CandidateDuplicateResponse> {
+    return apiRequest('/candidates/duplicates/get');
+  },
+  mergeDuplicates(
+    primaryCandidateId: number,
+    duplicateCandidateIds: number[],
+    reason: string,
+  ): Promise<CandidateMergeResult> {
+    return apiRequest('/candidates/duplicates/merge', {
+      method: 'POST',
+      body: {
+        primary_candidate_id: primaryCandidateId,
+        duplicate_candidate_ids: duplicateCandidateIds,
+        reason,
+      },
+    });
+  },
+  pushToBusinessReview(
+    payload: CreateBusinessReviewInput,
+  ): Promise<BusinessReviewTask & { deduplicated?: boolean }> {
     return businessReviewsApi.createTask(payload);
   },
 };

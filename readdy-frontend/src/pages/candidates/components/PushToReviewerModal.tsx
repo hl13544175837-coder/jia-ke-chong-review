@@ -43,7 +43,6 @@ export interface PushResultItem {
   candidateId: number;
   candidateName: string;
   status: 'created' | 'deduplicated' | 'failed';
-  taskId?: number;
   message: string;
 }
 
@@ -175,9 +174,9 @@ export default function PushToReviewerModal({
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground-900">{target.candidateName}</p>
-                      <p className="mt-0.5 text-xs text-foreground-500">候选人 ID {target.candidateId}</p>
+                      <p className="mt-0.5 text-xs text-foreground-500">{target.currentStage || '候选人档案'}</p>
                     </div>
-                    <span className="ml-3 text-xs text-foreground-400">{target.currentStage || '待业务筛选'}</span>
+                    <span className="ml-3 text-xs text-foreground-400">待推送业务筛选</span>
                   </div>
                 ))}
               </div>
@@ -329,7 +328,6 @@ export default function PushToReviewerModal({
                         <div className="min-w-0 text-sm">
                           <p className={`font-medium ${failed ? 'text-red-800' : 'text-emerald-800'}`}>
                             {result.candidateName}
-                            {result.taskId ? <span className="ml-2 font-normal">任务 #{result.taskId}</span> : null}
                           </p>
                           <p className={`mt-0.5 text-xs ${failed ? 'text-red-700' : 'text-emerald-700'}`}>
                             {result.message}

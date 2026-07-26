@@ -6,15 +6,16 @@ from datetime import timedelta
 from pathlib import Path
 
 from flask import Blueprint, Response, current_app, jsonify, request, g
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from runtime_paths import DEFAULT_UPLOAD_FOLDER, RuntimePathError, resolve_stored_upload_path
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from .. import db
 from ..models import (
     Candidate,
-    CandidateTag,
     CandidateDemandFlow,
+    CandidateFavorite,
+    CandidateTag,
     CandidateDisposition,
     Event,
     Job,
@@ -30,11 +31,23 @@ from ..models import (
 from ..time_utils import utc_now
 from ..services.demand_context_service import (
     DemandContextError,
+    can_manage_demand,
     can_read_demand,
     resolve_demand_context,
     visible_demand_query,
 )
 from ..services.interview_workflow_service import active_assignment_filter
+from ..services.candidate_library_service import (
+    CandidateLibraryError,
+    add_candidates_to_demand,
+    education_summary,
+    find_duplicate_groups,
+    latest_experience,
+    merge_candidates,
+    resume_info,
+    set_candidate_favorites,
+)
+from ..services.match_service import MatchService
 from ..source_channels import normalize_resume_source_channel, resume_source_channel_filter_values
 from .pipeline import LEGACY_INTERVIEW_STAGES, STAGE_ORDER, _latest_stage_subquery, normalize_pipeline_stage
 from .access import (
@@ -95,11 +108,7 @@ CITY_LABEL_PATTERN = re.compile(
 
 
 def _resume_info(candidate):
-    resume = candidate.resume_json or {}
-    if not isinstance(resume, dict):
-        return {}
-    info = resume.get("extracted_info") or {}
-    return info if isinstance(info, dict) else {}
+    return resume_info(candidate)
 
 
 def _normalize_city_value(value):
@@ -157,28 +166,11 @@ def _candidate_intent_city(candidate):
 
 
 def _latest_experience(info):
-    experiences = info.get("experience") or []
-    if not isinstance(experiences, list) or not experiences:
-        return None
-    exp = experiences[0] if isinstance(experiences[0], dict) else {}
-    return {
-        "company": str(exp.get("company") or "")[:120],
-        "position": str(exp.get("position") or "")[:120],
-        "duration": str(exp.get("duration") or "")[:80],
-    }
+    return latest_experience(info)
 
 
 def _education_summary(info):
-    education = info.get("education") or []
-    if not isinstance(education, list) or not education:
-        return ""
-    edu = education[0] if isinstance(education[0], dict) else {}
-    parts = [
-        str(edu.get("school") or "").strip(),
-        str(edu.get("degree") or "").strip(),
-        str(edu.get("major") or "").strip(),
-    ]
-    return " · ".join([p for p in parts if p])[:240]
+    return education_summary(info)
 
 
 def _candidate_education_text(candidate):
@@ -186,7 +178,7 @@ def _candidate_education_text(candidate):
     return json.dumps(education, ensure_ascii=False).casefold()
 
 
-def _candidate_library_item(candidate):
+def _candidate_library_item(candidate, *, stage_context=None, favorite=False):
     info = _resume_info(candidate)
     tags = sorted(
         [{"tag": t.tag, "score": t.score or 0} for t in candidate.tags if t.tag],
@@ -198,6 +190,10 @@ def _candidate_library_item(candidate):
         "email_masked": candidate.email_masked,
         "phone_masked": candidate.phone_masked,
         "owner_hr_id": candidate.owner_hr_id,
+        "current_demand_id": candidate.current_demand_id,
+        "current_stage": stage_context["stage"] if stage_context else None,
+        "latest_demand_id": stage_context["demand_id"] if stage_context else None,
+        "is_favorite": favorite,
         "created_at": candidate.created_at.isoformat(),
         "parse_status": candidate.parse_status,
         "parse_error": candidate.parse_error,
@@ -209,6 +205,71 @@ def _candidate_library_item(candidate):
         "education_summary": _education_summary(info),
         "source": _candidate_source_payload(candidate),
     }
+
+
+def _candidate_stage_context_by_ids(candidate_ids, demand_id=None):
+    candidate_ids = list(dict.fromkeys(candidate_ids))
+    if not candidate_ids:
+        return {}
+    latest = (
+        db.session.query(
+            PipelineStage.candidate_id.label("candidate_id"),
+            func.max(PipelineStage.id).label("max_id"),
+        )
+        .filter(
+            PipelineStage.org_id == g.org_id,
+            PipelineStage.candidate_id.in_(candidate_ids),
+        )
+    )
+    if demand_id is not None:
+        latest = latest.filter(PipelineStage.demand_id == demand_id)
+    latest = latest.group_by(PipelineStage.candidate_id).subquery()
+    rows = (
+        db.session.query(PipelineStage)
+        .join(latest, PipelineStage.id == latest.c.max_id)
+        .all()
+    )
+    return {
+        row.candidate_id: {
+            "stage": normalize_pipeline_stage(row.stage),
+            "demand_id": row.demand_id,
+        }
+        for row in rows
+    }
+
+
+def _candidate_stage_context(candidates, demand_id=None):
+    return _candidate_stage_context_by_ids(
+        [candidate.id for candidate in candidates],
+        demand_id=demand_id,
+    )
+
+
+def _candidate_favorite_ids(candidates):
+    candidate_ids = [candidate.id for candidate in candidates]
+    if not candidate_ids:
+        return set()
+    return {
+        row[0]
+        for row in db.session.query(CandidateFavorite.candidate_id).filter(
+            CandidateFavorite.org_id == g.org_id,
+            CandidateFavorite.user_id == g.user_id,
+            CandidateFavorite.candidate_id.in_(candidate_ids),
+        ).all()
+    }
+
+
+def _candidate_library_payload(candidates, demand_id=None):
+    stages = _candidate_stage_context(candidates, demand_id=demand_id)
+    favorites = _candidate_favorite_ids(candidates)
+    return [
+        _candidate_library_item(
+            candidate,
+            stage_context=stages.get(candidate.id),
+            favorite=candidate.id in favorites,
+        )
+        for candidate in candidates
+    ]
 
 
 def _export_count_for_actor(window=timedelta(minutes=10)):
@@ -306,6 +367,7 @@ def list_candidates():
             "source_channel",
             "parse_status",
             "pipeline_status",
+            "favorite",
             "education",
             "skill",
             "min_score",
@@ -319,7 +381,7 @@ def list_candidates():
     query = visible_candidate_query(g.user_id, g.role)
 
     if not wants_paginated:
-        return jsonify([_candidate_library_item(c) for c in query.all()])
+        return jsonify(_candidate_library_payload(query.all()))
 
     search = request.args.get("search", "").strip()
     stage = request.args.get("stage", "").strip()
@@ -329,6 +391,7 @@ def list_candidates():
     source_channel = request.args.get("source_channel", "").strip()
     parse_status = request.args.get("parse_status", "").strip()
     pipeline_status = request.args.get("pipeline_status", "").strip()
+    favorite = request.args.get("favorite", "").strip().lower()
     education = request.args.get("education", "").strip()
     skill = request.args.get("skill", "").strip()
     min_score = request.args.get("min_score", type=int)
@@ -397,11 +460,58 @@ def list_candidates():
         query = query.filter(Candidate.parse_status == parse_status)
 
     if pipeline_status in {"in_pipeline", "not_in_pipeline"}:
-        pipeline_subquery = select(PipelineStage.candidate_id).distinct()
+        active_flow_ids = select(CandidateDemandFlow.candidate_id).where(
+            CandidateDemandFlow.org_id == g.org_id,
+            CandidateDemandFlow.status == "active",
+        )
+        latest_by_demand = (
+            db.session.query(
+                PipelineStage.candidate_id.label("candidate_id"),
+                PipelineStage.demand_id.label("demand_id"),
+                func.max(PipelineStage.id).label("max_id"),
+            )
+            .filter(PipelineStage.org_id == g.org_id)
+            .group_by(PipelineStage.candidate_id, PipelineStage.demand_id)
+            .subquery()
+        )
+        legacy_active_ids = (
+            select(PipelineStage.candidate_id)
+            .join(latest_by_demand, PipelineStage.id == latest_by_demand.c.max_id)
+            .where(PipelineStage.stage.notin_(("onboarded", "rejected", "transferred")))
+        )
+        active_condition = or_(
+            Candidate.current_demand_id.isnot(None),
+            Candidate.id.in_(active_flow_ids),
+            Candidate.id.in_(legacy_active_ids),
+        )
         if pipeline_status == "in_pipeline":
-            query = query.filter(Candidate.id.in_(pipeline_subquery))
+            query = query.filter(active_condition)
         else:
-            query = query.filter(Candidate.id.notin_(pipeline_subquery))
+            latest_by_candidate = (
+                db.session.query(
+                    PipelineStage.candidate_id.label("candidate_id"),
+                    func.max(PipelineStage.id).label("max_id"),
+                )
+                .filter(PipelineStage.org_id == g.org_id)
+                .group_by(PipelineStage.candidate_id)
+                .subquery()
+            )
+            unavailable_talent_ids = (
+                select(PipelineStage.candidate_id)
+                .join(latest_by_candidate, PipelineStage.id == latest_by_candidate.c.max_id)
+                .where(PipelineStage.stage.in_(("onboarded", "transferred")))
+            )
+            query = query.filter(
+                ~active_condition,
+                ~Candidate.id.in_(unavailable_talent_ids),
+            )
+
+    if favorite in {"true", "1"}:
+        favorite_ids = select(CandidateFavorite.candidate_id).where(
+            CandidateFavorite.org_id == g.org_id,
+            CandidateFavorite.user_id == g.user_id,
+        )
+        query = query.filter(Candidate.id.in_(favorite_ids))
 
     if education:
         education_term = education.casefold()
@@ -444,11 +554,207 @@ def list_candidates():
     candidates = query.offset((page - 1) * per_page).limit(per_page).all()
 
     return jsonify({
-        "candidates": [_candidate_library_item(c) for c in candidates],
+        "candidates": _candidate_library_payload(
+            candidates,
+            demand_id=scope_demand.id if scope_demand is not None else None,
+        ),
         "total": total,
         "page": page,
         "per_page": per_page,
         "pages": max(1, (total + per_page - 1) // per_page),
+    })
+
+
+def _candidate_ids_from_payload(data, *, limit=100):
+    raw_ids = data.get("candidate_ids")
+    if not isinstance(raw_ids, list):
+        return None, (jsonify({"error": "candidate_ids required", "code": "candidate_ids_required"}), 400)
+    candidate_ids = []
+    seen = set()
+    for raw_id in raw_ids:
+        try:
+            candidate_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if candidate_id > 0 and candidate_id not in seen:
+            candidate_ids.append(candidate_id)
+            seen.add(candidate_id)
+    if not candidate_ids:
+        return None, (jsonify({"error": "candidate_ids required", "code": "candidate_ids_required"}), 400)
+    if len(candidate_ids) > limit:
+        return None, (jsonify({"error": f"单次最多处理 {limit} 位候选人", "code": "candidate_batch_too_large"}), 400)
+    return candidate_ids, None
+
+
+@bp.post("/candidates/favorites/set")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def set_favorites():
+    data = request.get_json(silent=True) or {}
+    candidate_ids, error = _candidate_ids_from_payload(data)
+    if error:
+        return error
+    favorite = data.get("favorite")
+    if not isinstance(favorite, bool):
+        return jsonify({"error": "favorite must be boolean", "code": "invalid_favorite_value"}), 400
+
+    visible_ids = {
+        row[0]
+        for row in visible_candidate_query(g.user_id, g.role)
+        .with_entities(Candidate.id)
+        .filter(Candidate.id.in_(candidate_ids))
+        .all()
+    }
+    if visible_ids != set(candidate_ids):
+        return jsonify({"error": "候选人不存在或无权操作", "code": "candidate_not_found"}), 404
+
+    changed = set_candidate_favorites(
+        org_id=g.org_id,
+        user_id=g.user_id,
+        candidate_ids=candidate_ids,
+        favorite=favorite,
+    )
+    record_event(
+        "candidate.favorite.updated",
+        entity_type="candidate",
+        payload={"candidate_ids": candidate_ids, "favorite": favorite, "changed": changed},
+    )
+    return jsonify({
+        "candidate_ids": candidate_ids,
+        "favorite": favorite,
+        "changed": changed,
+    })
+
+
+@bp.get("/candidates/duplicates/get")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def candidate_duplicates():
+    candidates = visible_candidate_query(g.user_id, g.role).order_by(Candidate.created_at.asc()).all()
+    groups = find_duplicate_groups(candidates, g.role)
+    return jsonify({"groups": groups, "total_groups": len(groups)})
+
+
+@bp.post("/candidates/duplicates/merge")
+@require_auth
+@require_role("manager", "admin")
+def merge_duplicate_candidates():
+    data = request.get_json(silent=True) or {}
+    try:
+        primary_candidate_id = int(data.get("primary_candidate_id") or 0)
+    except (TypeError, ValueError):
+        primary_candidate_id = 0
+    duplicate_candidate_ids, error = _candidate_ids_from_payload(
+        {"candidate_ids": data.get("duplicate_candidate_ids")},
+        limit=20,
+    )
+    if error:
+        return error
+    if primary_candidate_id <= 0 or primary_candidate_id in duplicate_candidate_ids:
+        return jsonify({"error": "主档候选人无效", "code": "invalid_primary_candidate"}), 400
+    try:
+        result = merge_candidates(
+            org_id=g.org_id,
+            actor_id=g.user_id,
+            primary_candidate_id=primary_candidate_id,
+            duplicate_candidate_ids=duplicate_candidate_ids,
+            reason=data.get("reason"),
+        )
+    except CandidateLibraryError as error:
+        return jsonify({"error": error.message, "code": error.code}), error.status_code
+    record_event(
+        "candidate.duplicates.merged",
+        entity_id=primary_candidate_id,
+        entity_type="candidate",
+        payload=result,
+        severity="warning",
+    )
+    return jsonify(result)
+
+
+@bp.post("/candidates/pipeline/add")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def add_candidates_to_pipeline():
+    data = request.get_json(silent=True) or {}
+    candidate_ids, error = _candidate_ids_from_payload(data)
+    if error:
+        return error
+    try:
+        demand = resolve_demand_context(
+            org_id=g.org_id,
+            demand_id=data.get("demand_id"),
+            open_only=True,
+        )
+    except DemandContextError as error:
+        return jsonify(error.as_payload()), error.status_code
+    if not can_manage_demand(g.user_id, g.role, g.org_id, demand):
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+
+    visible_ids = {
+        row[0]
+        for row in visible_candidate_query(g.user_id, g.role)
+        .with_entities(Candidate.id)
+        .filter(Candidate.id.in_(candidate_ids))
+        .all()
+    }
+    result = add_candidates_to_demand(
+        demand=demand,
+        candidate_ids=candidate_ids,
+        visible_candidate_ids=visible_ids,
+        org_id=g.org_id,
+        actor_id=g.user_id,
+        reactivate_rejected=data.get("reactivate_rejected") is True,
+        reason=data.get("reason"),
+    )
+    record_event(
+        "pipeline.batch_add",
+        entity_id=demand.id,
+        entity_type="recruitment_demand",
+        demand_id=demand.id,
+        payload=result,
+    )
+    return jsonify(result)
+
+
+@bp.post("/candidates/match/preview")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def preview_candidate_matches():
+    data = request.get_json(silent=True) or {}
+    candidate_ids, error = _candidate_ids_from_payload(data)
+    if error:
+        return error
+    try:
+        demand = resolve_demand_context(
+            org_id=g.org_id,
+            demand_id=data.get("demand_id"),
+            open_only=True,
+        )
+    except DemandContextError as error:
+        return jsonify(error.as_payload()), error.status_code
+    if not can_read_demand(g.user_id, g.role, g.org_id, demand):
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+
+    candidate_query = visible_candidate_query(g.user_id, g.role).filter(
+        Candidate.id.in_(candidate_ids)
+    )
+    visible_count = candidate_query.count()
+    if visible_count != len(candidate_ids):
+        return jsonify({"error": "候选人不存在或无权查看", "code": "candidate_not_found"}), 404
+    results = MatchService().rank_for_job_readonly(
+        demand.job_id,
+        top_n=len(candidate_ids),
+        candidate_query=candidate_query,
+    )
+    demand_stages = _candidate_stage_context_by_ids(candidate_ids, demand_id=demand.id)
+    for item in results:
+        context = demand_stages.get(item["candidate_id"])
+        item["latest_stage"] = context["stage"] if context else None
+    return jsonify({
+        "demand_id": demand.id,
+        "job_id": demand.job_id,
+        "results": results,
     })
 
 

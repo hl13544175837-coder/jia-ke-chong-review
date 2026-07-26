@@ -210,6 +210,19 @@ def seed():
 
         # ── 4. CANDIDATES + TAGS ──────────────────────────────────────────────
         def make_candidate(owner_id, name_masked, email_masked, phone_masked, resume_json, created_days_ago):
+            if "extracted_info" not in resume_json:
+                raw_skills = resume_json.get("skills") or []
+                resume_json = {
+                    "extracted_info": {
+                        key: value
+                        for key, value in resume_json.items()
+                        if key != "skills"
+                    },
+                    "skills": [
+                        {"skill_name": str(skill), "score": 3, "category": "演示数据"}
+                        for skill in raw_skills
+                    ],
+                }
             c = Candidate(
                 owner_hr_id=owner_id,
                 name_masked=name_masked,

@@ -21,21 +21,26 @@ import {
   Download,
   Eye,
   FileText,
+  GitMerge,
   Inbox,
   LoaderCircle,
   RefreshCw,
   RotateCcw,
   Search,
   Send,
+  Star,
   Upload,
+  UserPlus,
   UserRound,
   X,
 } from 'lucide-react';
+import { useProductRole } from '@/auth/productRole';
 import { apiRequest } from '@/lib/api';
 import { candidatesApi } from '@/features/candidates/api';
 import type {
   CandidateListItem,
   CandidateListResponse,
+  CandidatePipelineAddResult,
   CandidateResumeDetail,
   CandidateStage,
   ParseStatus,
@@ -44,7 +49,6 @@ import type {
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { businessReviewsApi } from '@/features/businessReviews/api';
-import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import { useToast } from '@/hooks/useToast';
 import PushToReviewerModal, {
   type BusinessReviewerOption,
@@ -53,6 +57,8 @@ import PushToReviewerModal, {
   type PushResultItem,
   type PushTarget,
 } from './components/PushToReviewerModal';
+import AddToPipelineModal from './components/AddToPipelineModal';
+import DuplicateCandidatesModal from './components/DuplicateCandidatesModal';
 
 const PER_PAGE = 20;
 const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif|zip)$/i;
@@ -73,7 +79,7 @@ const parseStatusMeta = {
   failed: { label: '解析失败', className: 'border-red-200 bg-red-50 text-red-700' },
 } as const;
 
-const stageLabels: Record<string, string> = {
+const stageLabels: Record<CandidateStage, string> = {
   pending: 'HR 初筛',
   ai_screen: 'AI 筛选',
   business_review: '业务筛选',
@@ -173,8 +179,6 @@ interface InterviewerApiItem {
   role: string;
 }
 
-type PushTaskResponse = BusinessReviewTask & { deduplicated?: boolean };
-
 function errorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message.trim()) return error.message;
   return fallback;
@@ -236,11 +240,24 @@ function belongsToSourceFile(resultFile: string, sourceFile: string) {
   return resultFile === sourceFile || resultFile.startsWith(`${sourceFile} →`);
 }
 
+interface CandidateNavigationState {
+  fromJobs?: boolean;
+  jobTitle?: string;
+}
+
+function isCandidateNavigationState(value: unknown): value is CandidateNavigationState {
+  if (typeof value !== 'object' || value === null) return false;
+  if ('fromJobs' in value && typeof value.fromJobs !== 'boolean') return false;
+  if ('jobTitle' in value && typeof value.jobTitle !== 'string') return false;
+  return true;
+}
+
 export default function CandidatesPage() {
+  const { role } = useProductRole();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  const navState = location.state as { fromJobs?: boolean; jobTitle?: string } | null;
+  const navState = isCandidateNavigationState(location.state) ? location.state : null;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [demandFilter, setDemandFilter] = useState<number | ''>('');
@@ -250,6 +267,7 @@ export default function CandidatesPage() {
   const [sourceFilter, setSourceFilter] = useState('');
   const [parseStatusFilter, setParseStatusFilter] = useState<'' | ParseStatus>('');
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState<PipelineStatusFilter>('');
+  const [favoriteFilter, setFavoriteFilter] = useState(false);
   const [stageFilter, setStageFilter] = useState<'' | CandidateStage>('');
   const [scoreFilter, setScoreFilter] = useState('0');
   const [sortBy, setSortBy] = useState<CandidateSortBy>('created_at');
@@ -270,6 +288,11 @@ export default function CandidatesPage() {
   const [reviewerError, setReviewerError] = useState<string | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [favoriteSaving, setFavoriteSaving] = useState(false);
+  const [pipelineTargets, setPipelineTargets] = useState<CandidateListItem[] | null>(null);
+  const [pipelineSubmitting, setPipelineSubmitting] = useState(false);
+  const [pipelineResult, setPipelineResult] = useState<CandidatePipelineAddResult | null>(null);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadDemandId, setUploadDemandId] = useState<number | ''>('');
@@ -332,6 +355,7 @@ export default function CandidatesPage() {
         source_channel: sourceFilter || undefined,
         parse_status: parseStatusFilter || undefined,
         pipeline_status: pipelineStatusFilter || undefined,
+        favorite: favoriteFilter || undefined,
         stage: stageFilter || undefined,
         sort_by: sortBy,
         sort_order: sortOrder,
@@ -353,6 +377,7 @@ export default function CandidatesPage() {
     deferredSkill,
     demandFilter,
     educationFilter,
+    favoriteFilter,
     page,
     parseStatusFilter,
     pipelineStatusFilter,
@@ -432,6 +457,7 @@ export default function CandidatesPage() {
     setSourceFilter('');
     setParseStatusFilter('');
     setPipelineStatusFilter('');
+    setFavoriteFilter(false);
     setStageFilter('');
     setScoreFilter('0');
     setSortBy('created_at');
@@ -450,6 +476,7 @@ export default function CandidatesPage() {
     || sourceFilter
     || parseStatusFilter
     || pipelineStatusFilter
+    || favoriteFilter
     || stageFilter
     || scoreFilter !== '0'
     || sortBy !== 'created_at'
@@ -477,7 +504,11 @@ export default function CandidatesPage() {
 
   const openUploadDialog = () => {
     setUploadOpen(true);
-    setUploadDemandId(demandFilter || '');
+    setUploadDemandId(
+      demandFilter && activeDemands.some((demand) => demand.id === demandFilter)
+        ? demandFilter
+        : '',
+    );
     setUploadSourceChannel('');
     setUploadNote('');
     setUploadFiles([]);
@@ -512,13 +543,13 @@ export default function CandidatesPage() {
   };
 
   const submitUpload = async () => {
-    if (!uploadDemandId || uploadFiles.length === 0 || uploadSubmitting) return;
+    if (uploadFiles.length === 0 || uploadSubmitting) return;
     setUploadSubmitting(true);
     setUploadError(null);
     setUploadResponse(null);
     try {
       const uploadResponse = await candidatesApi.uploadResumes(uploadFiles, {
-        target_demand_id: uploadDemandId,
+        target_demand_id: uploadDemandId || undefined,
         source_channel: uploadSourceChannel || undefined,
         source_note: uploadNote.trim() || undefined,
       });
@@ -536,11 +567,11 @@ export default function CandidatesPage() {
 
       const successfulCount = uploadResponse.results.filter((result) => result.status === 'ok').length;
       if (uploadResponse.deduplicated) {
-        showToast(`上传批次 #${uploadResponse.batch_id} 与近期内容重复，已返回原处理结果`);
+        showToast('该批文件与近期上传内容重复，已返回原处理结果');
       } else if (successfulCount > 0) {
-        showToast(`上传批次 #${uploadResponse.batch_id} 已处理，成功 ${successfulCount} 份`);
+        showToast(`简历已处理，成功入库 ${successfulCount} 份`);
       } else {
-        showToast(`上传批次 #${uploadResponse.batch_id} 已完成，但没有成功解析的简历`);
+        showToast('文件处理已完成，但没有成功解析的简历');
       }
     } catch (error) {
       setUploadError(errorMessage(error, '简历上传失败'));
@@ -623,11 +654,68 @@ export default function CandidatesPage() {
       candidateId: candidate.id,
       candidateName: candidate.name_masked,
       currentDemandId: candidate.current_demand_id ?? (demandFilter || null),
-      currentStage: candidate.current_stage ? (stageLabels[candidate.current_stage] || candidate.current_stage) : null,
+      currentStage: candidate.current_stage ? stageLabels[candidate.current_stage] : null,
     })));
     setPushResults([]);
     if (reviewers.length === 0 && !reviewersLoading) void loadReviewers();
   };
+
+  const updateFavorites = async (candidates: CandidateListItem[], favorite: boolean) => {
+    if (candidates.length === 0 || favoriteSaving) return;
+    setFavoriteSaving(true);
+    try {
+      await candidatesApi.setFavorites(candidates.map((candidate) => candidate.id), favorite);
+      showToast(favorite ? `已收藏 ${candidates.length} 位候选人` : `已取消收藏 ${candidates.length} 位候选人`);
+      await loadCandidates();
+    } catch (error) {
+      showToast(errorMessage(error, favorite ? '收藏候选人失败' : '取消收藏失败'));
+    } finally {
+      setFavoriteSaving(false);
+    }
+  };
+
+  const openPipelineModal = (candidates: CandidateListItem[]) => {
+    if (candidates.length === 0) return;
+    setPipelineTargets(candidates);
+    setPipelineResult(null);
+  };
+
+  const handleAddToPipeline = async (demandId: number, reason: string) => {
+    if (!pipelineTargets || pipelineSubmitting) return;
+    setPipelineSubmitting(true);
+    try {
+      const result = await candidatesApi.addToPipeline(
+        demandId,
+        pipelineTargets.map((candidate) => candidate.id),
+        reason,
+      );
+      setPipelineResult(result);
+      setSelectedIds(new Set());
+      await loadCandidates();
+      showToast(`已加入 ${result.added} 位，重新启用 ${result.reactivated} 位候选人`);
+    } catch (error) {
+      showToast(errorMessage(error, '加入招聘流程失败'));
+    } finally {
+      setPipelineSubmitting(false);
+    }
+  };
+
+  const selectLibraryScope = (scope: 'all' | 'in_pipeline' | 'talent_pool' | 'favorite') => {
+    changeFilter(() => {
+      setFavoriteFilter(scope === 'favorite');
+      setPipelineStatusFilter(
+        scope === 'in_pipeline' ? 'in_pipeline' : scope === 'talent_pool' ? 'not_in_pipeline' : '',
+      );
+    });
+  };
+
+  const libraryScope = favoriteFilter
+    ? 'favorite'
+    : pipelineStatusFilter === 'in_pipeline'
+      ? 'in_pipeline'
+      : pipelineStatusFilter === 'not_in_pipeline'
+        ? 'talent_pool'
+        : 'all';
 
   const handlePushToBusiness = async (value: PushFormValue) => {
     if (!pushTargets || pushSubmitting) return;
@@ -643,13 +731,12 @@ export default function CandidatesPage() {
           reviewer_id: value.reviewerId,
           hr_note: value.hrNote,
           due_at: value.dueAt,
-        }) as PushTaskResponse;
+        });
         const deduplicated = task.deduplicated === true;
         results.push({
           candidateId: target.candidateId,
           candidateName: target.candidateName,
           status: deduplicated ? 'deduplicated' : 'created',
-          taskId: task.id,
           message: deduplicated ? '该候选人已在等待业务筛选' : '业务筛选任务已创建',
         });
       } catch (error) {
@@ -679,6 +766,10 @@ export default function CandidatesPage() {
   const initialPushDemandId = demandFilter || null;
   const allVisibleSelected = candidateResponse.candidates.length > 0
     && candidateResponse.candidates.every((candidate) => selectedIds.has(candidate.id));
+  const selectedAllFavorite = selectedCandidates.length > 0
+    && selectedCandidates.every((candidate) => candidate.is_favorite);
+  const selectedAllInPipeline = selectedCandidates.length > 0
+    && selectedCandidates.every((candidate) => candidate.current_demand_id);
 
   return (
     <div className="space-y-5 px-4 pb-6 pt-3 sm:px-6">
@@ -715,6 +806,16 @@ export default function CandidatesPage() {
           >
             <RefreshCw className={candidatesLoading ? 'animate-spin' : ''} size={16} aria-hidden="true" />
           </button>
+          {(role === 'manager' || role === 'admin') && (
+            <button
+              type="button"
+              onClick={() => setDuplicatesOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-background-300 bg-white px-3.5 py-2 text-sm font-medium text-foreground-700 transition-colors hover:bg-background-50"
+            >
+              <GitMerge size={16} aria-hidden="true" />
+              查重合并
+            </button>
+          )}
           <button
             type="button"
             onClick={openUploadDialog}
@@ -727,6 +828,25 @@ export default function CandidatesPage() {
       </header>
 
       <section className="space-y-3">
+        <div className="flex flex-wrap gap-1 border-b border-background-200" role="tablist" aria-label="候选人库范围">
+          {([
+            ['all', '全部候选人'],
+            ['in_pipeline', '招聘流程中'],
+            ['talent_pool', '公司人才库'],
+            ['favorite', '我的收藏'],
+          ] as const).map(([scope, label]) => (
+            <button
+              key={scope}
+              type="button"
+              role="tab"
+              aria-selected={libraryScope === scope}
+              onClick={() => selectLibraryScope(scope)}
+              className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${libraryScope === scope ? 'border-primary-500 text-primary-700' : 'border-transparent text-foreground-500 hover:text-foreground-800'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
             <label className="relative block min-w-0 flex-1 sm:max-w-md">
@@ -902,16 +1022,35 @@ export default function CandidatesPage() {
       {selectedIds.size > 0 && (
         <div className="flex flex-col gap-3 border-y border-primary-200 bg-primary-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm font-medium text-primary-800">已选 {selectedIds.size} 位候选人</span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setSelectedIds(new Set())} className="text-sm font-medium text-foreground-600 hover:text-foreground-900">取消选择</button>
             <button
               type="button"
-              onClick={() => openPushModal(selectedCandidates)}
+              onClick={() => void updateFavorites(selectedCandidates, !selectedAllFavorite)}
+              disabled={favoriteSaving}
+              className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-white px-3.5 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100 disabled:opacity-50"
+            >
+              <Star size={15} fill={selectedAllFavorite ? 'currentColor' : 'none'} aria-hidden="true" />
+              {selectedAllFavorite ? '取消收藏' : '批量收藏'}
+            </button>
+            <button
+              type="button"
+              onClick={() => openPipelineModal(selectedCandidates)}
               className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600"
             >
-              <Send size={15} aria-hidden="true" />
-              推送业务筛选
+              <UserPlus size={15} aria-hidden="true" />
+              加入招聘流程
             </button>
+            {selectedAllInPipeline && (
+              <button
+                type="button"
+                onClick={() => openPushModal(selectedCandidates)}
+                className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-white px-3.5 py-2 text-sm font-medium text-primary-700 transition-colors hover:bg-primary-100"
+              >
+                <Send size={15} aria-hidden="true" />
+                推送业务筛选
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -941,7 +1080,7 @@ export default function CandidatesPage() {
             <Inbox className="text-foreground-300" size={32} aria-hidden="true" />
             <p className="mt-3 text-sm font-medium text-foreground-900">暂无候选人</p>
             <p className="mt-1 text-sm text-foreground-500">
-              {hasActiveFilters ? '当前筛选条件下没有匹配结果' : '选择已审批的在招需求后导入简历'}
+              {hasActiveFilters ? '当前筛选条件下没有匹配结果' : '导入简历建立公司人才库，再按岗位筛选并加入招聘流程'}
             </p>
             {hasActiveFilters && (
               <button type="button" onClick={resetCandidateFilters} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 px-3 py-2 text-sm font-medium text-foreground-600 hover:bg-background-50">
@@ -1176,11 +1315,30 @@ export default function CandidatesPage() {
                         {candidate.source?.channel || '—'}
                       </td>
                       <td className="px-3 py-3.5 text-sm text-foreground-600">
-                        {candidate.current_stage ? (stageLabels[candidate.current_stage] || candidate.current_stage) : '—'}
+                        {candidate.current_stage ? stageLabels[candidate.current_stage] : '—'}
                       </td>
                       <td className="px-3 py-3.5 text-sm text-foreground-500">{formatDate(candidate.created_at)}</td>
                       <td className="px-4 py-3.5" onClick={(event) => event.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void updateFavorites([candidate], !candidate.is_favorite)}
+                            disabled={favoriteSaving}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${candidate.is_favorite ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' : 'text-foreground-400 hover:bg-background-100 hover:text-amber-600'}`}
+                            aria-label={`${candidate.is_favorite ? '取消收藏' : '收藏'} ${candidate.name_masked}`}
+                            title={candidate.is_favorite ? '取消收藏' : '收藏'}
+                          >
+                            <Star size={16} fill={candidate.is_favorite ? 'currentColor' : 'none'} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openPipelineModal([candidate])}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700"
+                            aria-label={`将 ${candidate.name_masked} 加入招聘流程`}
+                            title="加入招聘流程"
+                          >
+                            <UserPlus size={16} aria-hidden="true" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => openCandidateDetail(candidate)}
@@ -1190,15 +1348,17 @@ export default function CandidatesPage() {
                           >
                             <Eye size={16} aria-hidden="true" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => openPushModal([candidate])}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700"
-                            aria-label={`推送 ${candidate.name_masked} 进行业务筛选`}
-                            title="推送业务筛选"
-                          >
-                            <Send size={16} aria-hidden="true" />
-                          </button>
+                          {candidate.current_demand_id && (
+                            <button
+                              type="button"
+                              onClick={() => openPushModal([candidate])}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700"
+                              aria-label={`推送 ${candidate.name_masked} 进行业务筛选`}
+                              title="推送业务筛选"
+                            >
+                              <Send size={16} aria-hidden="true" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1253,7 +1413,7 @@ export default function CandidatesPage() {
             <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
               <div>
                 <h2 id="upload-resume-title" className="text-lg font-bold text-foreground-900">导入简历</h2>
-                <p className="mt-1 text-sm text-foreground-500">简历将直接加入所选招聘需求</p>
+                <p className="mt-1 text-sm text-foreground-500">可先存入公司人才库，也可在入库时关联招聘需求</p>
               </div>
               <button
                 type="button"
@@ -1269,36 +1429,27 @@ export default function CandidatesPage() {
 
             <div className="space-y-5 overflow-y-auto px-6 py-5">
               <div>
-                <label htmlFor="upload-demand" className="mb-2 block text-xs font-medium text-foreground-600">目标招聘需求 <span className="text-red-500">*</span></label>
-                {demandsLoading ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-background-200 px-3 py-3 text-sm text-foreground-500">
-                    <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />
-                    加载已审批需求中
-                  </div>
-                ) : demandError ? (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
-                    <p>{demandError}</p>
-                    <button type="button" onClick={() => void loadDemands()} className="mt-2 inline-flex items-center gap-1 font-medium hover:text-red-800">
-                      <RefreshCw size={14} aria-hidden="true" />
-                      重试
-                    </button>
-                  </div>
-                ) : activeDemands.length === 0 ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">暂无已审批且招聘中的需求</div>
-                ) : (
-                  <select
-                    id="upload-demand"
-                    value={uploadDemandId}
-                    onChange={(event) => setUploadDemandId(event.target.value ? Number(event.target.value) : '')}
-                    disabled={uploadSubmitting}
-                    className="w-full rounded-lg border border-background-300 bg-white px-3 py-2.5 text-sm text-foreground-900 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
-                  >
-                    <option value="">请选择已审批的在招需求</option>
-                    {activeDemands.map((demand) => (
-                      <option key={demand.id} value={demand.id}>{demand.request_no} · {demand.job_title} · {demand.job_department}</option>
-                    ))}
-                  </select>
+                <label htmlFor="upload-demand" className="mb-2 block text-xs font-medium text-foreground-600">入库后关联需求（选填）</label>
+                <select
+                  id="upload-demand"
+                  value={uploadDemandId}
+                  onChange={(event) => setUploadDemandId(event.target.value ? Number(event.target.value) : '')}
+                  disabled={uploadSubmitting || demandsLoading}
+                  className="w-full rounded-lg border border-background-300 bg-white px-3 py-2.5 text-sm text-foreground-900 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 disabled:bg-background-50"
+                >
+                  <option value="">暂不关联，先存公司人才库</option>
+                  {activeDemands.map((demand) => (
+                    <option key={demand.id} value={demand.id}>{demand.request_no} · {demand.job_title} · {demand.job_department}</option>
+                  ))}
+                </select>
+                {demandsLoading && <p className="mt-1 text-xs text-foreground-400">正在加载可关联的招聘需求</p>}
+                {demandError && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    招聘需求暂时不可用，仍可先入人才库。
+                    <button type="button" onClick={() => void loadDemands()} className="ml-1 font-medium hover:text-amber-800">重试</button>
+                  </p>
                 )}
+                {!demandsLoading && !demandError && activeDemands.length === 0 && <p className="mt-1 text-xs text-foreground-400">暂无在招需求，本次简历将保存到公司人才库</p>}
               </div>
 
               <div
@@ -1386,7 +1537,7 @@ export default function CandidatesPage() {
               {uploadResponse && (
                 <div aria-live="polite">
                   <div className="mb-2 flex items-center justify-between gap-3">
-                    <p className="text-xs font-medium text-foreground-600">后端处理结果 · 批次 #{uploadResponse.batch_id}</p>
+                    <p className="text-xs font-medium text-foreground-600">文件处理结果</p>
                     {uploadResponse.deduplicated && <span className="text-xs font-medium text-amber-700">重复批次</span>}
                   </div>
                   <div className="max-h-52 space-y-2 overflow-y-auto">
@@ -1398,7 +1549,7 @@ export default function CandidatesPage() {
                           <div className="min-w-0 flex-1">
                             <p className={`break-words text-sm font-medium ${success ? 'text-emerald-800' : 'text-red-800'}`}>{result.file}</p>
                             <p className={`mt-0.5 text-xs ${success ? 'text-emerald-700' : 'text-red-700'}`}>
-                              {success ? `已入库${result.candidate_id ? ` · 候选人 ID ${result.candidate_id}` : ''}` : (result.reason || `处理状态：${result.status}`)}
+                              {success ? '候选人档案已入库' : (result.reason || `处理状态：${result.status}`)}
                             </p>
                           </div>
                         </div>
@@ -1421,7 +1572,7 @@ export default function CandidatesPage() {
               <button
                 type="button"
                 onClick={() => void submitUpload()}
-                disabled={uploadSubmitting || uploadFiles.length === 0 || !uploadDemandId}
+                disabled={uploadSubmitting || uploadFiles.length === 0}
                 className="inline-flex min-w-32 items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-background-300 disabled:text-foreground-500"
               >
                 {uploadSubmitting ? <LoaderCircle className="animate-spin" size={16} aria-hidden="true" /> : <Upload size={16} aria-hidden="true" />}
@@ -1444,7 +1595,7 @@ export default function CandidatesPage() {
             <div className="flex items-start justify-between border-b border-background-200 px-5 py-4 sm:px-6">
               <div className="min-w-0">
                 <h2 id="candidate-detail-title" className="truncate text-lg font-bold text-foreground-900">{detailCandidate.name_masked}</h2>
-                <p className="mt-1 text-xs text-foreground-500">候选人 ID {detailCandidate.id}</p>
+                <p className="mt-1 text-xs text-foreground-500">{detailCandidate.is_favorite ? '已收藏' : '公司候选人档案'} · 入库于 {formatDate(detailCandidate.created_at)}</p>
               </div>
               <button
                 type="button"
@@ -1485,8 +1636,8 @@ export default function CandidatesPage() {
                       <p className="mt-1 text-sm font-medium text-foreground-800">{parseStatusMeta[resumeDetail.parse_status].label}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-foreground-400">HR 负责人 ID</p>
-                      <p className="mt-1 text-sm font-medium text-foreground-800">{resumeDetail.owner_hr_id ?? '—'}</p>
+                      <p className="text-xs text-foreground-400">HR 负责人</p>
+                      <p className="mt-1 text-sm font-medium text-foreground-800">{resumeDetail.owner_hr_id ? '已分配' : '待分配'}</p>
                     </div>
                     <div>
                       <p className="text-xs text-foreground-400">标签数</p>
@@ -1583,16 +1734,28 @@ export default function CandidatesPage() {
               ) : null}
             </div>
 
-            <div className="flex items-center justify-between border-t border-background-200 bg-background-50 px-5 py-4 sm:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-background-200 bg-background-50 px-5 py-4 sm:px-6">
               <button type="button" onClick={closeCandidateDetail} className="rounded-lg border border-background-300 bg-white px-4 py-2 text-sm font-medium text-foreground-700 hover:bg-background-100">关闭</button>
-              <button
-                type="button"
-                onClick={() => openPushModal([detailCandidate])}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600"
-              >
-                <Send size={15} aria-hidden="true" />
-                推送业务筛选
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openPipelineModal([detailCandidate])}
+                  className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-white px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+                >
+                  <UserPlus size={15} aria-hidden="true" />
+                  加入招聘流程
+                </button>
+                {detailCandidate.current_demand_id && (
+                  <button
+                    type="button"
+                    onClick={() => openPushModal([detailCandidate])}
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600"
+                  >
+                    <Send size={15} aria-hidden="true" />
+                    推送业务筛选
+                  </button>
+                )}
+              </div>
             </div>
           </aside>
         </div>
@@ -1614,6 +1777,31 @@ export default function CandidatesPage() {
           onRetryReviewers={() => void loadReviewers()}
           onClose={() => { setPushTargets(null); setPushResults([]); }}
           onPush={(value) => void handlePushToBusiness(value)}
+        />
+      )}
+
+      {pipelineTargets && (
+        <AddToPipelineModal
+          candidates={pipelineTargets}
+          demands={activeDemands}
+          initialDemandId={demandFilter || null}
+          demandsLoading={demandsLoading}
+          demandError={demandError}
+          submitting={pipelineSubmitting}
+          result={pipelineResult}
+          onRetryDemands={() => void loadDemands()}
+          onClose={() => { setPipelineTargets(null); setPipelineResult(null); }}
+          onAdd={(demandId, reason) => void handleAddToPipeline(demandId, reason)}
+        />
+      )}
+
+      {duplicatesOpen && (
+        <DuplicateCandidatesModal
+          onClose={() => setDuplicatesOpen(false)}
+          onMerged={() => {
+            showToast('重复候选人档案已合并');
+            void loadCandidates();
+          }}
         />
       )}
     </div>

@@ -30,11 +30,13 @@ export interface CandidateListItem {
   phone_masked?: string;
   owner_hr_id: number | null;
   current_demand_id?: number | null;
+  latest_demand_id?: number | null;
+  is_favorite: boolean;
   created_at: string;
   parse_status: ParseStatus;
   parse_error?: string | null;
   tag_count: number;
-  current_stage?: string | null;
+  current_stage?: CandidateStage | null;
   education_summary?: string;
   top_tags?: CandidateTag[];
   max_score?: number;
@@ -66,6 +68,7 @@ export interface CandidateListQuery {
   source_channel?: string;
   parse_status?: ParseStatus;
   pipeline_status?: 'in_pipeline' | 'not_in_pipeline';
+  favorite?: boolean;
   sort_by?: 'created_at' | 'name_masked';
   sort_order?: 'asc' | 'desc';
   page?: number;
@@ -98,7 +101,73 @@ export interface ResumeUploadResponse {
 }
 
 export interface ResumeUploadSource {
-  target_demand_id: number;
+  target_demand_id?: number;
   source_channel?: string;
   source_note?: string;
+}
+
+export interface CandidateFavoriteResult {
+  candidate_ids: number[];
+  favorite: boolean;
+  changed: number;
+}
+
+export interface CandidatePipelineAddResult {
+  demand_id: number;
+  job_id: number;
+  added: number;
+  reactivated: number;
+  skipped_existing: number;
+  skipped_missing: number;
+  skipped_conflict: number;
+  failures: Array<{
+    candidate_id: number;
+    code: string;
+    error: string;
+  }>;
+}
+
+export interface CandidateMatchResult {
+  candidate_id: number;
+  name_masked: string;
+  score: number;
+  matched_tags: string[];
+  missing_tags: string[];
+  latest_stage: CandidateStage | null;
+}
+
+export interface CandidateMatchPreview {
+  demand_id: number;
+  job_id: number;
+  results: CandidateMatchResult[];
+}
+
+export interface DuplicateCandidateItem {
+  id: number;
+  name_masked: string;
+  email_masked: string;
+  phone_masked: string;
+  education_summary: string;
+  created_at: string;
+  has_business_history: boolean;
+}
+
+export interface DuplicateCandidateGroup {
+  key: string;
+  match_basis: string[];
+  can_merge: boolean;
+  candidates: DuplicateCandidateItem[];
+}
+
+export interface CandidateDuplicateResponse {
+  groups: DuplicateCandidateGroup[];
+  total_groups: number;
+}
+
+export interface CandidateMergeResult {
+  primary_candidate_id: number;
+  primary_candidate_name: string;
+  merged_candidate_ids: number[];
+  merged_count: number;
+  reason: string;
 }

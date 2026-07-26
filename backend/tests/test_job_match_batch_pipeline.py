@@ -162,3 +162,168 @@ def test_batch_add_rolls_back_moves_when_summary_audit_fails(
         assert Event.query.filter_by(
             action="pipeline.moved", entity_id=candidate_id
         ).count() == 0
+
+
+def test_talent_pool_candidates_can_preview_match_join_and_reactivate(
+    client,
+    make_user,
+    app,
+):
+    user_id, token = make_user("talent-pool-reuse@example.com", role="recruiter")
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, CandidateTag, Job, PipelineStage, RecruitmentDemand
+
+        job = Job(
+            title="Python 工程师",
+            jd_text="负责 Python 与 SQL 开发",
+            jd_structured={"skill_tags_raw": "Python, SQL"},
+            owner_hr_id=user_id,
+        )
+        new_candidate = Candidate(
+            owner_hr_id=user_id,
+            name_masked="人才库候选人",
+            resume_json={},
+        )
+        rejected_candidate = Candidate(
+            owner_hr_id=user_id,
+            name_masked="待重新启用候选人",
+            resume_json={},
+        )
+        onboarded_candidate = Candidate(
+            owner_hr_id=user_id,
+            name_masked="已入职候选人",
+            resume_json={},
+        )
+        db.session.add_all([job, new_candidate, rejected_candidate, onboarded_candidate])
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=user_id,
+            request_no="REQ-TALENT-POOL-REUSE",
+            status="active",
+            approval_status="approved",
+        )
+        other_demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=user_id,
+            request_no="REQ-TALENT-POOL-OTHER",
+            status="active",
+            approval_status="approved",
+        )
+        db.session.add_all([demand, other_demand])
+        db.session.flush()
+        db.session.add_all([
+            CandidateTag(candidate_id=new_candidate.id, tag="Python", score=5),
+            PipelineStage(
+                candidate_id=rejected_candidate.id,
+                job_id=job.id,
+                demand_id=demand.id,
+                stage="rejected",
+                updated_by=user_id,
+                note="本轮经验不足",
+            ),
+            PipelineStage(
+                candidate_id=onboarded_candidate.id,
+                job_id=job.id,
+                demand_id=demand.id,
+                stage="onboarded",
+                updated_by=user_id,
+            ),
+            PipelineStage(
+                candidate_id=rejected_candidate.id,
+                job_id=job.id,
+                demand_id=other_demand.id,
+                stage="rejected",
+                updated_by=user_id,
+                note="另一招聘需求未通过",
+            ),
+        ])
+        db.session.commit()
+        demand_id = demand.id
+        new_candidate_id = new_candidate.id
+        rejected_candidate_id = rejected_candidate.id
+        onboarded_candidate_id = onboarded_candidate.id
+
+    preview = client.post(
+        "/api/candidates/match/preview",
+        headers=_auth(token),
+        json={
+            "demand_id": demand_id,
+            "candidate_ids": [new_candidate_id, rejected_candidate_id],
+        },
+    )
+    assert preview.status_code == 200
+    preview_by_candidate = {
+        item["candidate_id"]: item
+        for item in preview.get_json()["results"]
+    }
+    assert preview_by_candidate[new_candidate_id]["score"] > 0
+    assert preview_by_candidate[new_candidate_id]["latest_stage"] is None
+    assert preview_by_candidate[rejected_candidate_id]["latest_stage"] == "rejected"
+
+    first_add = client.post(
+        "/api/candidates/pipeline/add",
+        headers=_auth(token),
+        json={
+            "demand_id": demand_id,
+            "candidate_ids": [new_candidate_id, rejected_candidate_id],
+            "reactivate_rejected": True,
+        },
+    )
+    assert first_add.status_code == 200
+    assert first_add.get_json()["added"] == 1
+    assert first_add.get_json()["skipped_conflict"] == 1
+    assert first_add.get_json()["failures"][0]["code"] == "reactivation_reason_required"
+
+    talent_pool = client.get(
+        "/api/candidates?pipeline_status=not_in_pipeline&page=1&per_page=20",
+        headers=_auth(token),
+    )
+    assert talent_pool.status_code == 200
+    talent_pool_ids = {
+        candidate["id"] for candidate in talent_pool.get_json()["candidates"]
+    }
+    assert rejected_candidate_id in talent_pool_ids
+    assert new_candidate_id not in talent_pool_ids
+    assert onboarded_candidate_id not in talent_pool_ids
+
+    reactivate = client.post(
+        "/api/candidates/pipeline/add",
+        headers=_auth(token),
+        json={
+            "demand_id": demand_id,
+            "candidate_ids": [rejected_candidate_id],
+            "reactivate_rejected": True,
+            "reason": "候选人补充了符合岗位要求的新项目经验",
+        },
+    )
+    assert reactivate.status_code == 200
+    assert reactivate.get_json()["reactivated"] == 1
+
+    active_pipeline = client.get(
+        "/api/candidates?pipeline_status=in_pipeline&page=1&per_page=20",
+        headers=_auth(token),
+    )
+    assert active_pipeline.status_code == 200
+    assert rejected_candidate_id in {
+        candidate["id"] for candidate in active_pipeline.get_json()["candidates"]
+    }
+
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, CandidateDemandFlow, PipelineStage
+
+        rejected = db.session.get(Candidate, rejected_candidate_id)
+        latest = PipelineStage.query.filter_by(
+            candidate_id=rejected_candidate_id,
+            demand_id=demand_id,
+        ).order_by(PipelineStage.id.desc()).first()
+        flow = CandidateDemandFlow.query.filter_by(
+            candidate_id=rejected_candidate_id,
+            demand_id=demand_id,
+        ).one()
+        assert rejected.current_demand_id == demand_id
+        assert latest.stage == "pending"
+        assert "人才库重新启用" in latest.note
+        assert flow.status == "active"

@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
     create_engine,
     text,
 )
@@ -21,7 +22,7 @@ from scripts import audit_mysql_pilot_schema, backup_pilot_data, prepare_mysql_p
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPECTED_REVISION = "20260724_08"
+EXPECTED_REVISION = "20260726_09"
 
 
 def _sqlite_schema(
@@ -107,6 +108,48 @@ def _sqlite_schema(
             tasks.c.pending_slot,
             unique=True,
         )
+
+    favorites = Table(
+        "candidate_favorites",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("org_id", Integer, nullable=False),
+        Column("user_id", Integer, nullable=False),
+        Column("candidate_id", Integer, nullable=False),
+        Column("created_at", DateTime, nullable=False),
+        UniqueConstraint(
+            "org_id",
+            "user_id",
+            "candidate_id",
+            name="uq_candidate_favorites_org_user_candidate",
+        ),
+    )
+    Index(
+        "ix_candidate_favorites_org_candidate",
+        favorites.c.org_id,
+        favorites.c.candidate_id,
+    )
+    merges = Table(
+        "candidate_merges",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("org_id", Integer, nullable=False),
+        Column("primary_candidate_id", Integer, nullable=False),
+        Column("duplicate_candidate_id", Integer, nullable=False),
+        Column("merged_by", Integer, nullable=False),
+        Column("reason", String(240), nullable=False),
+        Column("created_at", DateTime, nullable=False),
+        UniqueConstraint(
+            "org_id",
+            "duplicate_candidate_id",
+            name="uq_candidate_merges_org_duplicate",
+        ),
+    )
+    Index(
+        "ix_candidate_merges_org_primary",
+        merges.c.org_id,
+        merges.c.primary_candidate_id,
+    )
 
     engine = create_engine(database_url)
     metadata.create_all(engine)

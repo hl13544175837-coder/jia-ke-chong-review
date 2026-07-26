@@ -58,5 +58,5 @@ def test_offer_lifecycle_migration_preserves_existing_offer_rows(tmp_path):
         ).scalar_one() == "30-35K"
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260724_08"
+        ).scalar_one() == "20260726_09"
     engine.dispose()

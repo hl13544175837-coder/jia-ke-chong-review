@@ -231,6 +231,8 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `candidates` | `Candidate` | `org_id`, `owner_hr_id`, `current_demand_id`, `name_masked`, `resume_json`, `raw_file_path`, `deleted_at`, `deleted_by`, `anonymized_at` | 候选人主档与当前唯一活跃 Demand 指针；支持软删除与匿名化 |
 | `upload_batches` | `UploadBatch` | `org_id`, `owner_hr_id`, `target_job_id`, `demand_id`, `source_channel`, `note` | 批量上传元数据；误导入撤回按批次定位候选人 |
 | `candidate_tags` | `CandidateTag` | `org_id`, `candidate_id`, `tag`, `score` | 简历技能标签及评分 |
+| `candidate_favorites` | `CandidateFavorite` | `org_id`, `user_id`, `candidate_id`, `created_at` | 当前用户对候选人的收藏；组织、用户、候选人三元唯一 |
+| `candidate_merges` | `CandidateMerge` | `org_id`, `primary_candidate_id`, `duplicate_candidate_id`, `merged_by`, `reason`, `created_at` | 重复档案软合并审计；重复档只允许记录一次，保留主档、操作人和原因 |
 | `jobs` | `Job` | `org_id`, `title`, `jd_text`, `jd_structured`, `owner_hr_id`, `status` | 岗位主档与结构化 JD |
 | `matches` | `Match` | `org_id`, `job_id`, `candidate_id`, `score`, `reason` | 持久化的岗位匹配结果 |
 | `interviews` | `Interview` | `org_id`, `candidate_id`, `job_id`, `demand_id`, `qa_json`, `ai_report`, `score`, `pass_recommended` | Demand 下 AI 面试记录与评分；不自动改流程 |
@@ -312,7 +314,12 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `POST` | `/resume/upload` | recruiter/manager/admin | 批量上传 PDF / DOCX / ZIP 简历，AI 解析入库；旧版 `.doc` 跳过；旧调用若带 `target_job_id`，后端会校验岗位负责人、组织和在招状态；同一用户 10 分钟内重复上传同一批文件和来源信息时复用首次结果 |
 | `POST` | `/resume/batches/<batch_id>/rollback` | 批次上传人/manager/admin | 撤回误导入批次，候选人软删除、匿名化、删除原文件并写审计 |
 | `GET` | `/resume/<candidate_id>` | 登录 + 候选人可见权限 | 候选人简历详情与技能标签，返回 `owner_hr_id` 供负责人展示与转派 |
-| `GET` | `/candidates` | 登录 | 候选人列表，recruiter 只看当前组织内自己负责的；`search` 会覆盖姓名、邮箱、电话、技能标签和简历解析 JSON 中的公司、岗位、学校等文本；分页查询还支持意向城市、学历、技能关键词、最低技能分、解析状态、入流程状态和任一 Demand 当前阶段筛选；软删除候选人不返回 |
+| `GET` | `/candidates` | 登录 | 候选人列表，recruiter 只看当前组织内自己负责的；`search` 会覆盖姓名、邮箱、电话、技能标签和简历解析 JSON 中的公司、岗位、学校等文本；分页查询还支持意向城市、学历、技能关键词、最低技能分、解析状态、活动流程状态、个人收藏和任一 Demand 当前阶段筛选；返回 `current_stage`、`current_demand_id`、`latest_demand_id` 与 `is_favorite`，软删除候选人不返回 |
+| `POST` | `/candidates/favorites/set` | recruiter/manager/admin | 单人或批量设置当前用户收藏状态；候选人必须在当前权限范围内，写入通用审计 |
+| `GET` | `/candidates/duplicates/get` | recruiter/manager/admin | 按完整手机号或邮箱列出可解释的重复组；不使用姓名模糊匹配自动判重 |
+| `POST` | `/candidates/duplicates/merge` | manager/admin | 选择主档并填写原因后安全合并；有业务历史的档案必须保留为主档，多份档案均有历史时拒绝自动合并 |
+| `POST` | `/candidates/match/preview` | recruiter/manager/admin | 传 `demand_id` 与候选人集合，返回只读岗位匹配结果及每位候选人在该 Demand 内的 `latest_stage`，不写 `matches` |
+| `POST` | `/candidates/pipeline/add` | recruiter/manager/admin | 单人或批量加入 Demand；同一 Demand 已淘汰候选人仅在显式重新启用并填写原因时回到 `pending` |
 | `GET` | `/candidates/owner-options` | recruiter/manager/admin/interviewer | 获取启用中的招聘专员下拉选项；recruiter 只返回本人，其他允许角色返回当前组织内可选招聘专员 |
 | `GET` | `/candidates/<id>/pipelines` | 登录 | 候选人参与的招聘需求流程 |
 | `GET` | `/candidates/<id>/journey?demand_id=` | 登录 + Demand 权限 | 候选人在具体 Demand 下的完整时间线、AI 面试和面试官反馈；兼容 `job_id` 仅在零/一/多 Demand 规则可唯一解析时代理 |
@@ -576,8 +583,9 @@ flowchart TD
 5. 招聘需求卡片和岗位画像列表都可作为匹配入口；需求卡片是业务主入口，岗位列表保留给复用画像和维护 JD。
 6. 岗位匹配页提供“AI 推荐 / 全部候选人”视角。AI 推荐使用 `/jobs/<id>/match` 的持久化排序；全部候选人使用 `/candidates?search=` 在当前账号权限范围内搜索，再调用 `/jobs/<id>/match-preview?candidate_ids=` 展示当前搜索结果与岗位的命中标签、缺失标签和匹配分。
 7. 页面筛选支持匹配度、入需求流程状态、匹配技能和缺失技能；批量加入只作用于当前筛选后已勾选且尚未进入该需求流程的候选人。
-8. 简历库筛选区使用“目标招聘需求”选择具体 `demand_id`，再使用该需求关联的 `job_id` 调用 `/jobs/<id>/match-preview` 生成岗位适配预览；预览只返回当前页候选人的命中标签、缺失标签和匹配分，不写入 `matches`。用户点击“加入所选需求”时必须同时传入 `demand_id`；搜索、学历、意向城市、技能关键词、最低技能分、来源、解析状态、入流程状态和任一 Demand 当前阶段均在后端分页前筛选，不能只过滤当前页。
-9. `/jobs/<id>/match` 会清理该岗位旧 match 记录并写入新的 top N。
+8. 5190 简历库可先上传到公司人才库而不绑定 Demand；后续选择具体 `demand_id`，调用 `/candidates/match/preview` 生成当前选择的岗位适配预览，再通过 `/candidates/pipeline/add` 单人或批量加入。预览返回命中标签、缺失标签、匹配分和目标 Demand 内的 `latest_stage`，不写入 `matches`；重新启用判断必须使用该 Demand 内阶段，不能使用候选人的全局最新阶段。搜索、学历、意向城市、技能关键词、最低技能分、来源、解析状态、活动流程状态、个人收藏和任一 Demand 当前阶段均在后端分页前筛选，不能只过滤当前页。已淘汰候选人没有活动 Flow，因此属于公司人才库；最新状态为已入职或仅有已转出终态的档案不进入该可复用范围。重新加入原 Demand 时必须填写原因并追加新的 `pending` 流水。
+9. 重复档案只按未脱敏的完整手机号或邮箱精确分组。manager/admin 选择主档后，系统合并档案补充字段、标签、匹配与收藏，将重复档软删除并写 `candidate_merges` 和通用事件；招聘流程、面试、反馈或 Offer 等业务历史绝不自动搬迁。
+10. `/jobs/<id>/match` 会清理该岗位旧 match 记录并写入新的 top N。
 
 风险边界：
 
@@ -830,7 +838,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 发布通道另有一层不受运行时环境变量覆盖的边界：Makefile 只接受精确 `RC` / `GA`，并把发布通道写入镜像内 `.release-channel` 文件。entrypoint 先读取该标记；GA 镜像若被 K8S env 覆盖为 SIT 放行、自动迁移/空库初始化、公开注册或关闭安全头/限流，会在任何 DDL 之前拒绝启动。RC 镜像则保留本轮已授权的完全宽松测试配置。
 
-当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
+当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07` → `20260724_08` → `20260726_09`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。08 补齐 Demand 审批、业务筛选任务与反馈更新字段。09 新建个人收藏和候选人合并审计表；降级会破坏合并历史，因此不支持在线破坏性 downgrade。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|
