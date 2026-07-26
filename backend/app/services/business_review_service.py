@@ -23,7 +23,7 @@ from ..models import (
     User,
 )
 from ..time_utils import utc_now
-from .pipeline_service import can_enter_business_review
+from .pipeline_service import can_enter_business_review, normalize_pipeline_stage
 
 
 BUSINESS_REVIEW_STATUSES = {"pending", "approved", "rejected", "needs_info"}
@@ -516,6 +516,15 @@ def _demand_focus_points(demand):
 def business_review_payload(task):
     demand = db.session.get(RecruitmentDemand, task.demand_id)
     candidate = db.session.get(Candidate, task.candidate_id)
+    latest_stage = (
+        PipelineStage.query.filter_by(
+            org_id=task.org_id,
+            demand_id=task.demand_id,
+            candidate_id=task.candidate_id,
+        )
+        .order_by(PipelineStage.id.desc())
+        .first()
+    )
     reviewer = db.session.get(User, task.reviewer_id)
     creator = db.session.get(User, task.created_by)
     decider = db.session.get(User, task.decided_by) if task.decided_by else None
@@ -556,6 +565,11 @@ def business_review_payload(task):
         "candidate": {
             "id": task.candidate_id,
             "name_masked": candidate.name_masked if candidate else None,
+            "current_stage": (
+                normalize_pipeline_stage(latest_stage.stage)
+                if latest_stage
+                else None
+            ),
             "resume_json": candidate.resume_json if candidate else {},
             "parse_status": candidate.parse_status if candidate else "failed",
             "original_resume": (

@@ -128,6 +128,10 @@ assert.match(page, /businessReviewsApi\.loadResume/, '原版简历预览必须�
 assert.match(page, /businessReviewsApi\.downloadResume/, '原版简历下载必须使用带登录态的 Blob 请求');
 assert.match(page, /interviewsApi\.listManagementRows/, '业务筛选通过后的按钮必须读取真实面试安排');
 assert.match(page, /查看\/调整面试/, '已安排面试时不能继续显示“安排面试”');
+for (const stage of ['offer', 'onboarded', 'rejected', 'transferred']) {
+  assert.match(page, new RegExp(`task\\.candidate\\.current_stage === ['"]${stage}['"]`), `业务筛选结果必须识别后续阶段 ${stage}`);
+}
+assert.match(page, /已入职，流程已完成/, '已入职候选人的旧业务筛选结果不得再显示“安排面试”');
 assert.match(page, /deduplicated/, '页面必须识别后端返回的重复推送');
 assert.match(page, /该候选人已在等待业务筛选/, '重复推送必须明确告知 HR');
 assert.doesNotMatch(page, /候选人 ID/, '候选人页面不得向用户展示内部候选人 ID');

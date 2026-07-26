@@ -155,7 +155,7 @@ function candidateFromReviewTask(task: BusinessReviewTask): CandidateListItem {
     created_at: task.created_at,
     parse_status: parseStatus,
     tag_count: 0,
-    current_stage: 'business_review',
+    current_stage: task.candidate.current_stage || 'business_review',
   };
 }
 
@@ -758,6 +758,26 @@ export default function CandidatesPage() {
 
   const renderReviewAction = (task: BusinessReviewTask) => {
     if (task.status === 'approved') {
+      if (task.candidate.current_stage === 'offer') {
+        return (
+          <button
+            type="button"
+            onClick={() => navigate(`/offers?demand=${task.demand_id}&candidate=${task.candidate_id}`)}
+            className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
+          >
+            查看 Offer
+          </button>
+        );
+      }
+      if (task.candidate.current_stage === 'onboarded') {
+        return <span className="text-xs font-medium text-emerald-700">已入职，流程已完成</span>;
+      }
+      if (task.candidate.current_stage === 'rejected') {
+        return <span className="text-xs font-medium text-red-700">已淘汰，流程已结束</span>;
+      }
+      if (task.candidate.current_stage === 'transferred') {
+        return <span className="text-xs font-medium text-foreground-600">已转至其他招聘需求</span>;
+      }
       if (interviewRowsError) {
         return <span className="text-xs text-amber-700">面试状态暂不可用，请刷新后再操作</span>;
       }

@@ -236,6 +236,42 @@ def test_duplicate_pending_push_reuses_task_and_side_effects(
     assert [item["id"] for item in mine.get_json()] == [first["id"]]
 
 
+def test_review_payload_exposes_latest_demand_stage_after_handoff(
+    client, make_user, app
+):
+    hr_id, hr_token = make_user(
+        "hr-review-stage-payload@example.com", role="recruiter"
+    )
+    reviewer_id, reviewer_token = make_user(
+        "review-stage-payload@example.com", role="interviewer"
+    )
+    case = _seed_review_case(app, hr_id, suffix="PAYLOAD-STAGE")
+    task = _push_review(client, hr_token, case, reviewer_id).get_json()
+    decided = client.post(
+        f"/api/business-reviews/{task['id']}/decision",
+        headers=_auth(reviewer_token),
+        json={"decision": "approved", "note": ""},
+    )
+    assert decided.status_code == 200
+    with app.app_context():
+        db.session.add(
+            PipelineStage(
+                org_id=1,
+                candidate_id=case["candidate_id"],
+                job_id=case["job_id"],
+                demand_id=case["demand_id"],
+                stage="onboarded",
+                updated_by=hr_id,
+            )
+        )
+        db.session.commit()
+
+    response = client.get("/api/business-reviews", headers=_auth(hr_token))
+
+    assert response.status_code == 200
+    assert response.get_json()[0]["candidate"]["current_stage"] == "onboarded"
+
+
 @pytest.mark.parametrize(
     "later_stage", ["interview", "offer", "onboarded", "rejected", "transferred"]
 )

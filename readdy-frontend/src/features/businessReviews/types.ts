@@ -1,3 +1,5 @@
+import type { CandidateStage } from '@/features/candidates/types';
+
 export type BusinessReviewStatus = 'pending' | 'approved' | 'rejected' | 'needs_info';
 
 export interface OriginalResumeInfo {
@@ -11,6 +13,7 @@ export interface OriginalResumeInfo {
 export interface BusinessReviewCandidate {
   id: number;
   name_masked: string;
+  current_stage: CandidateStage | null;
   resume_json: Record<string, unknown>;
   parse_status: string;
   original_resume: OriginalResumeInfo;
