@@ -87,4 +87,19 @@ for (const hiddenPath of ['/ai-assistant', '/kpi-standards']) {
 assert.match(app, /<ProductRoleProvider>/, '应用必须挂载产品角色 Provider');
 assert.match(app, /<CompanySecurityBoundary>/, '角色导航必须保留公司权限上下文');
 
+assert.match(routes, /import \{ Navigate \} from 'react-router-dom'/, '旧工作台入口必须使用显式重定向');
+assert.match(
+  routes,
+  /path: '\/dashboard\/interviews'[\s\S]{0,180}<Navigate to="\/interviews" replace \/>/,
+  '旧面试入口必须重定向到真实面试工作台',
+);
+assert.match(
+  routes,
+  /path: '\/dashboard\/offers'[\s\S]{0,180}<Navigate to="\/offers" replace \/>/,
+  '旧 Offer 入口必须重定向到真实 Offer 工作台',
+);
+assert.doesNotMatch(routes, /DashboardInterviewsPage|DashboardOffersPage/, '旧演示工作台不能继续挂载');
+assert.doesNotMatch(layout, /setPreviewRole|previewEnabled|切换预览角色|本地预览/, '主界面不能提供与真实权限不一致的假角色切换');
+assert.doesNotMatch(productRole, /PREVIEW_ROLE_KEY|VITE_ENABLE_ROLE_PREVIEW|setPreviewRole/, '角色上下文必须只使用真实登录账号');
+
 console.log('readdy_mysql_pilot_role_navigation_contract: OK');

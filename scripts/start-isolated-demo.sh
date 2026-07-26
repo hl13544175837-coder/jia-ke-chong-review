@@ -144,13 +144,6 @@ else
     "VITE_DEFAULT_ROLE=admin"
   )
 fi
-if [[ "$MYSQL_PILOT_MODE" == "true" ]]; then
-  READDY_AUTH_ENV+=("VITE_ENABLE_ROLE_PREVIEW=false")
-elif [[ "${READDY_AUTH_MODE:-company}" == "local" ]]; then
-  READDY_AUTH_ENV+=("VITE_ENABLE_ROLE_PREVIEW=true")
-else
-  READDY_AUTH_ENV+=("VITE_ENABLE_ROLE_PREVIEW=false")
-fi
 (
   cd "$APP_ROOT/readdy-frontend"
   nohup env "${READDY_AUTH_ENV[@]}" "$NODE_BIN" "$READDY_VITE_BIN" \

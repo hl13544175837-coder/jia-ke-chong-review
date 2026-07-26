@@ -5,7 +5,7 @@ import { useCompanyPermissions } from '@/auth/companyPermissions';
 import {
   useProductRole,
 } from '@/auth/productRole';
-import { homePathForRole, PRODUCT_ROLES, type ProductRole } from '@/auth/productRoleModel';
+import { PRODUCT_ROLES, type ProductRole } from '@/auth/productRoleModel';
 import { notificationsApi } from '@/features/notifications/api';
 import type { NotificationItem } from '@/features/notifications/types';
 
@@ -76,12 +76,7 @@ export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { name, logout } = useCompanyAuth();
-  const {
-    role,
-    assignedRole,
-    previewEnabled,
-    setPreviewRole,
-  } = useProductRole();
+  const { role } = useProductRole();
   const { reload: reloadPermissions } = useCompanyPermissions();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -90,9 +85,8 @@ export default function MainLayout() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const currentRole: ProductRole = role ?? 'recruiter';
   const roleInfo = PRODUCT_ROLES.find((item) => item.key === currentRole) || PRODUCT_ROLES[0];
-  const assignedRoleInfo = PRODUCT_ROLES.find((item) => item.key === assignedRole);
-  const displayName = previewEnabled ? roleInfo.label : name;
-  const avatar = previewEnabled ? roleInfo.avatar : name?.trim().charAt(0) || roleInfo.avatar;
+  const displayName = name || roleInfo.label;
+  const avatar = name?.trim().charAt(0) || roleInfo.avatar;
 
   const unreadCount = notifications.filter((notification) => !notification.is_read).length;
 
@@ -406,56 +400,10 @@ export default function MainLayout() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-foreground-900">{displayName}</p>
-                        <p className="text-xs text-foreground-500">
-                          {previewEnabled ? `${name} · 本地预览` : `${roleInfo.label} · ${roleInfo.status}`}
-                        </p>
-                        {previewEnabled && assignedRoleInfo && currentRole !== assignedRole && (
-                          <p className="mt-1 text-[11px] text-primary-600">
-                            本地预览 · 登录身份为{assignedRoleInfo.label}
-                          </p>
-                        )}
+                        <p className="text-xs text-foreground-500">{roleInfo.label} · {roleInfo.status}</p>
                       </div>
                     </div>
                   </div>
-                  {previewEnabled && (
-                    <div className="border-b border-background-100 py-2">
-                      <div className="flex items-center justify-between px-4 py-1.5">
-                        <p className="text-xs font-medium text-foreground-500">切换预览角色</p>
-                        <span className="rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-medium text-primary-600">
-                          仅本地
-                        </span>
-                      </div>
-                      {PRODUCT_ROLES.map((item) => (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={() => {
-                            setPreviewRole(item.key);
-                            setRoleMenuOpen(false);
-                            navigate(homePathForRole(item.key));
-                          }}
-                          className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                            currentRole === item.key
-                              ? 'bg-primary-50 text-primary-700'
-                              : 'text-foreground-700 hover:bg-background-50'
-                          }`}
-                        >
-                          <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
-                            currentRole === item.key
-                              ? 'bg-primary-100 text-primary-600'
-                              : 'bg-background-100 text-foreground-500'
-                          }`}>
-                            {item.avatar}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-medium">{item.label}</span>
-                            <span className="block truncate text-[11px] text-foreground-400">{item.description}</span>
-                          </span>
-                          {currentRole === item.key && <i className="ri-check-line text-primary-600" />}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                   <div className="p-2">
                     <button
                       type="button"

@@ -1,483 +1,129 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CURRENT_INTERVIEWER, myInterviews, getTodayInterviews, getPendingFeedback, getUpcomingInterviews, getPendingConfirmations } from '@/mocks/interviewer';
-import type { InterviewerInterview } from '@/mocks/interviewer';
-import { resumePushRecords, getPendingReviews, type ResumePushRecord } from '@/mocks/resumePush';
-import { candidateList, stageColorMap } from '@/mocks/candidates';
-import { interviews } from '@/mocks/interviews';
-import ReviewActionModal from './components/ReviewActionModal';
-import RescheduleModal from './components/RescheduleModal';
-import InterviewDetailDrawer from '@/pages/interviewer/interviews/components/InterviewDetailDrawer';
-import { useToast } from '@/hooks/useToast';
+import { useCompanyAuth } from '@/auth/companyAuth';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewTask } from '@/features/businessReviews/types';
+import { interviewsApi } from '@/features/interviews/api';
+import type { InterviewAssignment } from '@/features/interviews/types';
+
+function dateTime(value: string | null) {
+  if (!value) return '时间待安排';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(parsed);
+}
 
 export default function InterviewerDashboardPage() {
-  const { showToast } = useToast();
   const navigate = useNavigate();
-  const todayInterviews = useMemo(() => getTodayInterviews(), []);
-  const pendingConfirmations = useMemo(() => getPendingConfirmations(), []);
-  const pendingFeedback = useMemo(() => getPendingFeedback(), []);
-  const upcomingInterviews = useMemo(() => getUpcomingInterviews(), []);
-  const [reviewModalRecord, setReviewModalRecord] = useState<ResumePushRecord | null>(null);
-  const [selectedInterview, setSelectedInterview] = useState<InterviewerInterview | null>(null);
-  const [showReschedule, setShowReschedule] = useState(false);
-  const [realPendingReviews, setRealPendingReviews] = useState<BusinessReviewTask[]>([]);
+  const { name } = useCompanyAuth();
+  const [reviews, setReviews] = useState<BusinessReviewTask[]>([]);
+  const [assignments, setAssignments] = useState<InterviewAssignment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errors, setErrors] = useState<string[]>([]);
 
-  const loadRealPendingReviews = useCallback(async () => {
-    try {
-      const response = await businessReviewsApi.listMine('pending');
-      setRealPendingReviews(response.items);
-    } catch {
-      // 演示数据仍可用，真实待办读取失败不阻断工作台。
-    }
+  const loadWork = useCallback(async () => {
+    setLoading(true);
+    const [reviewResult, interviewResult] = await Promise.allSettled([
+      businessReviewsApi.listMine(),
+      interviewsApi.listMyAssignments(),
+    ]);
+    setErrors([
+      ...(reviewResult.status === 'rejected' ? ['业务筛选数据暂不可用'] : []),
+      ...(interviewResult.status === 'rejected' ? ['面试数据暂不可用'] : []),
+    ]);
+    if (reviewResult.status === 'fulfilled') setReviews(reviewResult.value.items);
+    if (interviewResult.status === 'fulfilled') setAssignments(interviewResult.value);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    void loadRealPendingReviews();
-    window.addEventListener('focus', loadRealPendingReviews);
-    return () => window.removeEventListener('focus', loadRealPendingReviews);
-  }, [loadRealPendingReviews]);
+    void loadWork();
+    const refresh = () => void loadWork();
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [loadWork]);
 
-  // Refs for scroll targets
-  const pendingReviewsRef = useRef<HTMLDivElement>(null);
-  const todayInterviewsRef = useRef<HTMLDivElement>(null);
-  const pendingFeedbackRef = useRef<HTMLDivElement>(null);
-  const upcomingInterviewsRef = useRef<HTMLDivElement>(null);
-
-  const handleStatCardClick = useCallback((label: string) => {
-    switch (label) {
-      case '待评审简历':
-        pendingReviewsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        break;
-      case '今日面试':
-        todayInterviewsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        break;
-      case '待确认邀请':
-        navigate('/interviewer/interviews');
-        break;
-      case '待提交反馈':
-        pendingFeedbackRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        break;
-      case '即将开始的面试':
-        upcomingInterviewsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        break;
-    }
-  }, [navigate]);
-
-  const pendingReviews = useMemo(
-    () => getPendingReviews(CURRENT_INTERVIEWER.id),
-    []
-  );
-  const [localPendingReviews, setLocalPendingReviews] = useState<typeof pendingReviews>(pendingReviews);
-
-  const handleReviewSubmit = useCallback((action: 'approved' | 'rejected' | 'needMoreInfo', comment: string) => {
-    if (!reviewModalRecord) return;
-    const now = new Date().toISOString();
-
-    // Update push record
-    const record = resumePushRecords.find((r) => r.id === reviewModalRecord.id);
-    if (record) {
-      record.status = action;
-      record.reviewComment = comment;
-      record.reviewTime = now;
-    }
-
-    // Update candidate in candidateList
-    const cand = candidateList.find((c) => c.id === reviewModalRecord.candidateId);
-    if (cand) {
-      if (action === 'approved') {
-        cand.stage = '同意面试';
-        cand.stageColor = stageColorMap['同意面试'];
-        cand.reviewerFeedback = 'approved';
-      } else if (action === 'rejected') {
-        cand.stage = '已淘汰';
-        cand.stageColor = stageColorMap['已淘汰'];
-        cand.reviewerFeedback = 'rejected';
-        cand.blockReason = `面试官${CURRENT_INTERVIEWER.name}评审不通过：${comment}`;
-      } else {
-        // needMoreInfo: candidate stays in 面试官评审中 but marked as need info
-        cand.reviewerFeedback = 'pending';
-        cand.blockReason = `面试官${CURRENT_INTERVIEWER.name}要求补充信息：${comment}`;
-      }
-    }
-
-    // If approved and the candidate isn't yet in interviews list, add them
-    if (action === 'approved') {
-      const existingInterview = interviews.find(
-        (iv) => iv.candidateName === reviewModalRecord.candidateName
-      );
-      if (!existingInterview) {
-        const maxId = interviews.reduce((m, iv) => Math.max(m, iv.id), 0);
-        const scoreDimensions = ['技术深度', '编码能力', '架构思维', '工程化能力', '协作能力', '学习能力'];
-        interviews.push({
-          id: maxId + 1,
-          candidateName: reviewModalRecord.candidateName,
-          candidateAvatar: reviewModalRecord.candidateName.charAt(0),
-          position: reviewModalRecord.position,
-          stage: '一面',
-          interviewer: '',
-          interviewerId: '',
-          interviewerRole: '',
-          scheduledAt: '',
-          scheduledEndAt: '',
-          type: '线下面试',
-          location: '',
-          status: '待安排',
-          scores: scoreDimensions.map((d) => ({ dimension: d, score: null, max: 10, note: '' })),
-          overall: null,
-          feedback: '',
-          recruiter: reviewModalRecord.pusher,
-          source: reviewModalRecord.source,
-          jdSent: false,
-          scorecardSent: false,
-          wecomSynced: false,
-          candidateNotified: false,
-          interviewerNotified: false,
-          reqId: `REQ-${record?.reviewerId || 'DEFAULT'}`,
-          reqName: reviewModalRecord.position,
-          submittedBy: '',
-          submittedByRole: '',
-        });
-      }
-    }
-
-    setLocalPendingReviews((prev) => prev.filter((r) => r.id !== reviewModalRecord.id));
-    setReviewModalRecord(null);
-
-    const actionLabel = action === 'approved' ? '同意面试' : action === 'rejected' ? '标记为不合适' : '要求补充信息';
-    showToast(`已对「${reviewModalRecord.candidateName}」${actionLabel}`);
-  }, [reviewModalRecord, showToast]);
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return '上午好';
-    if (hour < 18) return '下午好';
-    return '晚上好';
-  };
-
-  const getStatusBadge = (status: InterviewerInterview['status']) => {
-    switch (status) {
-      case '待面试': return 'bg-accent-100 text-accent-700';
-      case '待确认': return 'bg-accent-100 text-accent-700';
-      case '待反馈': return 'bg-primary-100 text-primary-700';
-      case '已完成': return 'bg-background-200 text-foreground-400';
-    }
-  };
-
-  const getStatusLabel = (status: InterviewerInterview['status']) => {
-    switch (status) {
-      case '待面试': return '待面试';
-      case '待确认': return '待确认';
-      case '待反馈': return '待提交反馈';
-      case '已完成': return '已完成';
-    }
-  };
-
-  const statCards = [
-    {
-      label: '待评审简历',
-      count: realPendingReviews.length || localPendingReviews.length,
-      icon: 'ri-file-search-line',
-      color: 'bg-amber-500',
-      bgColor: 'bg-amber-50',
-      textColor: 'text-amber-700',
-    },
-    {
-      label: '今日面试',
-      count: todayInterviews.length,
-      icon: 'ri-calendar-check-line',
-      color: 'bg-accent-500',
-      bgColor: 'bg-accent-50',
-      textColor: 'text-accent-700',
-    },
-    {
-      label: '待确认邀请',
-      count: pendingConfirmations.length,
-      icon: 'ri-question-answer-line',
-      color: 'bg-accent-500',
-      bgColor: 'bg-accent-50',
-      textColor: 'text-accent-700',
-    },
-    {
-      label: '待提交反馈',
-      count: pendingFeedback.length,
-      icon: 'ri-survey-line',
-      color: 'bg-primary-500',
-      bgColor: 'bg-primary-50',
-      textColor: 'text-primary-700',
-    },
-    {
-      label: '即将开始的面试',
-      count: upcomingInterviews.length,
-      icon: 'ri-timer-line',
-      color: 'bg-accent-500',
-      bgColor: 'bg-accent-50',
-      textColor: 'text-accent-700',
-    },
-  ];
+  const work = useMemo(() => ({
+    pendingReviews: reviews.filter((item) => item.status === 'pending'),
+    upcoming: assignments.filter((item) => !item.feedback_submitted && item.status !== 'awaiting_feedback'),
+    feedback: assignments.filter((item) => !item.feedback_submitted && (item.status === 'awaiting_feedback' || item.is_overdue)),
+    completed: assignments.filter((item) => item.feedback_submitted),
+  }), [assignments, reviews]);
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-          <span className="text-lg font-bold text-primary-600">{CURRENT_INTERVIEWER.avatar}</span>
-        </div>
+    <div className="space-y-5 p-6" data-ui="real-interviewer-dashboard">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-heading font-bold text-foreground-900">
-            {getGreeting()}，{CURRENT_INTERVIEWER.name}
-          </h1>
-          <p className="text-sm text-foreground-500 mt-0.5">
-            {CURRENT_INTERVIEWER.role} · {CURRENT_INTERVIEWER.department}
-          </p>
+          <h1 className="text-xl font-bold text-foreground-900">工作台</h1>
+          <p className="mt-1 text-sm text-foreground-500">你好，{name || '面试官'}。这里只展示真实分配给你的任务。</p>
         </div>
+        <button type="button" onClick={() => void loadWork()} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-600 disabled:opacity-60">
+          <i className={`ri-refresh-line ${loading ? 'animate-spin' : ''}`} />刷新
+        </button>
       </div>
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        {statCards.map((card) => (
-          <div
-            key={card.label}
-            onClick={() => handleStatCardClick(card.label)}
-            className="bg-white rounded-xl border border-background-200 p-5 cursor-pointer hover:border-primary-300 hover:bg-primary-50/30 transition-all duration-200"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-foreground-500">{card.label}</p>
-                <p className="text-3xl font-bold text-foreground-900 mt-1">{card.count}</p>
-              </div>
-              <div className={`w-11 h-11 rounded-xl ${card.bgColor} flex items-center justify-center`}>
-                <i className={`${card.icon} ${card.textColor} text-xl`}></i>
-              </div>
-            </div>
-          </div>
+      {errors.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="font-medium">部分数据暂不可用</p>
+          <p className="mt-1 text-xs">{errors.join('、')}，请刷新重试。</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          ['待业务筛选', work.pendingReviews.length, 'ri-file-search-line', '/interviewer/screening'],
+          ['待参加面试', work.upcoming.length, 'ri-calendar-event-line', '/interviewer/interviews'],
+          ['待提交评价', work.feedback.length, 'ri-survey-line', '/interviewer/interviews'],
+          ['已完成面试', work.completed.length, 'ri-checkbox-circle-line', '/interviewer/interviews'],
+        ].map(([label, count, icon, path]) => (
+          <button key={String(label)} type="button" onClick={() => navigate(String(path))} className="rounded-xl border border-background-200 bg-white p-4 text-left hover:border-primary-300 hover:bg-primary-50/30">
+            <div className="flex items-center justify-between"><span className="text-sm text-foreground-500">{label}</span><i className={`${icon} text-lg text-primary-600`} /></div>
+            <p className="mt-2 text-2xl font-bold text-foreground-900">{loading ? '—' : count}</p>
+          </button>
         ))}
       </div>
 
-      {/* Pending Resume Reviews */}
-      {realPendingReviews.length > 0 && (
-        <div ref={pendingReviewsRef} className="bg-white rounded-xl border border-amber-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-                <i className="ri-file-search-line text-amber-600"></i>
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground-900 text-sm">待业务筛选</h3>
-                <p className="text-xs text-foreground-500">招聘专员真实推送给你的简历</p>
-              </div>
-            </div>
-            <span className="text-xs font-medium text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full">
-              {realPendingReviews.length} 份
-            </span>
+      <div className="grid gap-5 xl:grid-cols-2">
+        <section className="overflow-hidden rounded-xl border border-background-200 bg-white">
+          <div className="border-b border-background-100 px-5 py-4">
+            <h2 className="text-sm font-semibold text-foreground-900">待业务筛选</h2>
+            <p className="mt-0.5 text-xs text-foreground-500">查看完整简历和需求后，再给出明确结论</p>
           </div>
           <div className="divide-y divide-background-100">
-            {realPendingReviews.map((task) => (
-              <div key={task.id} className="px-5 py-4 flex items-center gap-4 hover:bg-background-50/50 transition-colors">
-                <div className="w-9 h-9 rounded-full bg-primary-50 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-semibold text-primary-600">
-                    {task.candidate.name_masked.charAt(0) || '候'}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground-900">{task.candidate.name_masked}</p>
-                  <p className="text-xs text-foreground-500 mt-0.5">
-                    {task.demand.job_title} · {task.demand.department || '部门未填写'} · 推送人：{task.created_by_name || '招聘专员'}
-                  </p>
-                  <p className="text-xs text-foreground-400 mt-1 truncate">
-                    HR 备注：{task.hr_note || '未填写'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/interviewer/screening?task=${task.id}`)}
-                  className="px-3 py-1.5 text-xs font-medium bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  去筛选
-                </button>
-              </div>
+            {work.pendingReviews.map((task) => (
+              <button key={task.id} type="button" onClick={() => navigate(`/interviewer/screening?task=${task.id}`)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-sm font-bold text-amber-700">{task.candidate.name_masked.slice(0, 1) || '候'}</span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-foreground-900">{task.candidate.name_masked}</span><span className="mt-0.5 block truncate text-xs text-foreground-500">{task.demand.job_title} · {task.demand.department || '部门未填写'}</span></span>
+                <span className="text-xs font-medium text-primary-600">去筛选</span>
+              </button>
             ))}
+            {!loading && work.pendingReviews.length === 0 && <div className="px-5 py-12 text-center text-sm text-foreground-500">当前没有待业务筛选的简历</div>}
           </div>
-        </div>
-      )}
+        </section>
 
-      {realPendingReviews.length === 0 && localPendingReviews.length > 0 && (
-        <div ref={pendingReviewsRef} className="bg-white rounded-xl border border-amber-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-                <i className="ri-file-search-line text-amber-600"></i>
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground-900 text-sm">待评审简历</h3>
-                <p className="text-xs text-foreground-500">招聘专员推送的简历等待你的评审</p>
-              </div>
-            </div>
-            <span className="text-xs font-medium text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full">{localPendingReviews.length} 份</span>
+        <section className="overflow-hidden rounded-xl border border-background-200 bg-white">
+          <div className="border-b border-background-100 px-5 py-4">
+            <h2 className="text-sm font-semibold text-foreground-900">我的面试任务</h2>
+            <p className="mt-0.5 text-xs text-foreground-500">站内日程为真实记录；企业微信日历仍待接入</p>
           </div>
           <div className="divide-y divide-background-100">
-            {localPendingReviews.map((pr) => (
-              <div key={pr.id} className="px-5 py-4 flex items-center gap-4 hover:bg-background-50/50 transition-colors">
-                <div className="w-9 h-9 rounded-full bg-primary-50 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-semibold text-primary-600">{pr.candidateName.charAt(0)}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground-900">{pr.candidateName}</p>
-                  <p className="text-xs text-foreground-500 mt-0.5">
-                    {pr.position} · {pr.source} · 推送人：{pr.pusher}
-                  </p>
-                  <p className="text-xs text-foreground-400 mt-1 truncate">
-                    截止：{pr.deadline} · {pr.keyRequirements.slice(0, 40)}...
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => setReviewModalRecord(pr)}
-                    className="px-3 py-1.5 text-xs font-medium bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    去评审
-                  </button>
-                </div>
-              </div>
+            {[...work.feedback, ...work.upcoming].slice(0, 8).map((item) => (
+              <button key={item.id} type="button" onClick={() => navigate(`/interviewer/interviews?demand=${item.demand_id}&candidate=${item.candidate_id}`)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
+                <span className={`flex h-10 w-10 items-center justify-center rounded-lg ${item.status === 'awaiting_feedback' || item.is_overdue ? 'bg-violet-100 text-violet-700' : 'bg-primary-100 text-primary-700'}`}><i className={item.status === 'awaiting_feedback' || item.is_overdue ? 'ri-survey-line' : 'ri-calendar-event-line'} /></span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-foreground-900">{item.name_masked || `候选人 #${item.candidate_id}`}</span><span className="mt-0.5 block truncate text-xs text-foreground-500">{item.job_title || `岗位 #${item.job_id}`} · {dateTime(item.scheduled_at)}</span></span>
+                <span className="text-xs font-medium text-primary-600">{item.status === 'awaiting_feedback' || item.is_overdue ? '去评价' : '查看'}</span>
+              </button>
             ))}
+            {!loading && assignments.length === 0 && <div className="px-5 py-12 text-center text-sm text-foreground-500">当前没有分配给你的面试</div>}
           </div>
-        </div>
-      )}
-
-      {/* Today's interviews */}
-      <div ref={todayInterviewsRef} className="bg-white rounded-xl border border-background-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-background-200 flex items-center justify-between">
-          <h3 className="font-semibold text-foreground-900 text-sm">今日面试</h3>
-          <span className="text-xs text-foreground-500">{todayInterviews.length} 场</span>
-        </div>
-        {todayInterviews.length > 0 ? (
-          <div className="divide-y divide-background-100">
-            {todayInterviews.map((iv) => (
-              <div
-                key={iv.id}
-                onClick={() => setSelectedInterview(iv)}
-                className="px-5 py-4 flex items-center gap-4 hover:bg-background-50/50 transition-colors cursor-pointer"
-              >
-                <div className="w-9 h-9 rounded-full bg-primary-50 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-semibold text-primary-600">{iv.candidateAvatar}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground-900">{iv.candidateName}</p>
-                  <p className="text-xs text-foreground-500 mt-0.5">{iv.position} · {iv.stage}</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-sm font-medium text-foreground-700">{iv.scheduledAt.slice(11, 16)} - {iv.scheduledEndAt.slice(11, 16)}</p>
-                  <p className="text-xs text-foreground-400 mt-0.5">{iv.type} · {iv.location}</p>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${getStatusBadge(iv.status)}`}>
-                  {getStatusLabel(iv.status)}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="py-12 text-center">
-            <div className="w-12 h-12 rounded-full bg-background-100 flex items-center justify-center mx-auto mb-3">
-              <i className="ri-calendar-check-line text-xl text-foreground-400"></i>
-            </div>
-            <p className="text-sm text-foreground-500">今日暂无面试安排</p>
-          </div>
-        )}
+        </section>
       </div>
-
-      {/* Upcoming interviews */}
-      {upcomingInterviews.length > 0 && (
-        <div ref={upcomingInterviewsRef} className="bg-white rounded-xl border border-background-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-background-200 flex items-center justify-between">
-            <h3 className="font-semibold text-foreground-900 text-sm">即将开始的面试</h3>
-            <span className="text-xs text-foreground-500">{upcomingInterviews.length} 场</span>
-          </div>
-          <div className="divide-y divide-background-100">
-            {upcomingInterviews.slice(0, 5).map((iv) => (
-              <div
-                key={iv.id}
-                onClick={() => setSelectedInterview(iv)}
-                className="px-5 py-4 flex items-center gap-4 hover:bg-background-50/50 transition-colors cursor-pointer"
-              >
-                <div className="w-9 h-9 rounded-full bg-primary-50 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-semibold text-primary-600">{iv.candidateAvatar}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground-900">{iv.candidateName}</p>
-                  <p className="text-xs text-foreground-500 mt-0.5">{iv.position} · {iv.stage}</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-sm font-medium text-foreground-700">{iv.scheduledAt.slice(0, 10)}</p>
-                  <p className="text-xs text-foreground-400 mt-0.5">{iv.scheduledAt.slice(11, 16)} - {iv.scheduledEndAt.slice(11, 16)}</p>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${getStatusBadge(iv.status)}`}>
-                  {getStatusLabel(iv.status)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Pending feedback reminder */}
-      {pendingFeedback.length > 0 && (
-        <div ref={pendingFeedbackRef} className="bg-primary-50 border border-primary-200 rounded-xl p-5">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <i className="ri-survey-line text-lg text-primary-600"></i>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-primary-700">待提交面试反馈</p>
-              <p className="text-xs text-primary-500 mt-1">你有 {pendingFeedback.length} 场面试反馈待提交，请尽快完成以推进招聘流程。</p>
-              <div className="mt-3 space-y-2">
-                {pendingFeedback.map((iv) => (
-                  <div
-                    key={iv.id}
-                    onClick={() => setSelectedInterview(iv)}
-                    className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 cursor-pointer hover:bg-primary-100/50 transition-colors"
-                  >
-                    <span className="text-sm font-medium text-foreground-900">{iv.candidateName}</span>
-                    <span className="text-xs text-foreground-500">{iv.position}</span>
-                    <span className="text-xs text-foreground-400 ml-auto">{iv.scheduledAt.slice(0, 10)}</span>
-                    <i className="ri-arrow-right-s-line text-foreground-400 text-sm"></i>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {reviewModalRecord && (
-        <ReviewActionModal
-          record={reviewModalRecord}
-          onClose={() => setReviewModalRecord(null)}
-          onSubmit={handleReviewSubmit}
-        />
-      )}
-      {selectedInterview && (
-        <InterviewDetailDrawer
-          interview={selectedInterview}
-          onClose={() => setSelectedInterview(null)}
-          onReschedule={() => setShowReschedule(true)}
-        />
-      )}
-      {showReschedule && selectedInterview && (
-        <RescheduleModal
-          interview={selectedInterview}
-          onClose={() => setShowReschedule(false)}
-          onConfirm={(newDate, newStart, newEnd, reason) => {
-            const idx = myInterviews.findIndex((iv) => iv.id === selectedInterview.id);
-            if (idx !== -1) {
-              myInterviews[idx].scheduledAt = `${newDate} ${newStart}`;
-              myInterviews[idx].scheduledEndAt = `${newDate} ${newEnd}`;
-            }
-            setSelectedInterview(null);
-            setShowReschedule(false);
-            showToast(`已为「${selectedInterview.candidateName}」提交改约申请，新时间：${newDate} ${newStart}-${newEnd}`);
-          }}
-        />
-      )}
     </div>
   );
 }
