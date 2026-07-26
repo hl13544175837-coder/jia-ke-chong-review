@@ -52,13 +52,13 @@ import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewStatus, BusinessReviewTask } from '@/features/businessReviews/types';
 import { useToast } from '@/hooks/useToast';
 import PushToReviewerModal, {
-  canEnterBusinessReview,
   type BusinessReviewerOption,
   type PushDemandOption,
   type PushFormValue,
   type PushResultItem,
   type PushTarget,
 } from './components/PushToReviewerModal';
+import { canEnterBusinessReview } from '@/features/businessReviews/stages';
 import AddToPipelineModal from './components/AddToPipelineModal';
 import DuplicateCandidatesModal from './components/DuplicateCandidatesModal';
 

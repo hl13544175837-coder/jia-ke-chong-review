@@ -10,17 +10,8 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
+import { canEnterBusinessReview } from '@/features/businessReviews/stages';
 import type { CandidateStage } from '@/features/candidates/types';
-
-export const BUSINESS_REVIEW_ENTRY_STAGES = new Set<CandidateStage>([
-  'pending',
-  'ai_screen',
-  'business_review',
-]);
-
-export function canEnterBusinessReview(stage?: CandidateStage | null) {
-  return !stage || BUSINESS_REVIEW_ENTRY_STAGES.has(stage);
-}
 
 export interface PushTarget {
   candidateId: number;

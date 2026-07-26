@@ -16,6 +16,10 @@ const reviewModal = readFileSync(
   join(projectRoot, 'readdy-frontend/src/pages/candidates/components/PushToReviewerModal.tsx'),
   'utf8',
 );
+const reviewStages = readFileSync(
+  join(projectRoot, 'readdy-frontend/src/features/businessReviews/stages.ts'),
+  'utf8',
+);
 const candidatePage = readFileSync(
   join(projectRoot, 'readdy-frontend/src/pages/candidates/page.tsx'),
   'utf8',
@@ -39,6 +43,7 @@ assert.match(
 
 assert.match(screeningModal, /该筛选结论必须填写备注/, '业务筛选不合适或需补充时必须填写具体原因');
 assert.match(screeningModal, /commentRequired/, '业务筛选弹窗必须根据结论校验原因');
-assert.match(reviewModal, /BUSINESS_REVIEW_ENTRY_STAGES/, '推送弹窗必须识别允许进入业务筛选的阶段');
+assert.match(reviewStages, /BUSINESS_REVIEW_ENTRY_STAGES/, '必须集中定义允许进入业务筛选的阶段');
+assert.match(reviewModal, /canEnterBusinessReview/, '推送弹窗必须识别允许进入业务筛选的阶段');
 assert.match(reviewModal, /不能退回业务筛选/, '后续流程候选人必须显示不能退回的原因');
 assert.match(candidatePage, /canEnterBusinessReview/, '候选人页面必须隐藏或禁用后续阶段的业务筛选动作');
