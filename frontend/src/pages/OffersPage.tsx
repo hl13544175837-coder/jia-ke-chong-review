@@ -1,12 +1,14 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Check,
+  ChevronDown,
   Clock3,
   FileCheck2,
   History,
   Mail,
   Plus,
+  RotateCcw,
   Search,
   Send,
   UserCheck,
@@ -57,6 +59,23 @@ const STATUS_META: Record<OfferStatus, { label: string; tone: 'neutral' | 'warni
   expired: { label: '已过期', tone: 'neutral' },
   onboarded: { label: '已入职', tone: 'success' },
 };
+const OFFER_STATUS_OPTIONS: OfferStatus[] = [
+  'draft',
+  'pending',
+  'approved',
+  'sent',
+  'accepted',
+  'declined',
+  'withdrawn',
+  'expired',
+  'onboarded',
+];
+
+type OfferColumnFilter = 'identity' | 'demand' | 'compensation' | 'status' | 'updated';
+
+function isOfferStatus(value: string): value is OfferStatus {
+  return OFFER_STATUS_OPTIONS.some((status) => status === value);
+}
 
 const ACTION_LABELS: Record<OfferAction, string> = {
   submit: '提交审批',
@@ -90,6 +109,61 @@ function demandLabel(demand: RecruitmentDemand) {
 function offerStatus(offer: OfferRecord): OfferStatus {
   return offer.status || offer.approval_status;
 }
+
+function offerUpdatedAt(offer: OfferRecord): number {
+  const parsed = Date.parse(offer.updated_at || offer.created_at || '');
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function OfferColumnFilterHeader({
+  'data-ui': dataUi,
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  'data-ui': string;
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <th
+      className="relative min-w-44 px-5 py-3 align-top font-medium"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.stopPropagation();
+          onToggle();
+        }
+      }}
+    >
+      <button
+        type="button"
+        data-ui={dataUi}
+        aria-expanded={open}
+        aria-controls={`${dataUi}-panel`}
+        onClick={onToggle}
+        className="inline-flex items-center gap-1 rounded text-left text-xs text-[#777b78] hover:text-[#454946] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--enterprise-brand)]"
+      >
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          id={`${dataUi}-panel`}
+          role="group"
+          aria-label={`${label}筛选条件`}
+          className="absolute left-5 top-full z-30 mt-1 w-60 space-y-2 rounded-md border border-[#dedfd9] bg-white p-3 shadow-lg"
+        >
+          {children}
+        </div>
+      )}
+    </th>
+  );
+}
+
+const OFFER_COLUMN_FIELD_CLASS = 'h-8 w-full rounded-md border border-[#dedfd9] bg-white px-2 text-xs text-[#454946] outline-none focus:border-[var(--enterprise-brand)]';
 
 function ModalShell({
   title,
@@ -460,6 +534,13 @@ export function OffersPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [openColumnFilter, setOpenColumnFilter] = useState<OfferColumnFilter | null>(null);
+  const [identityFilter, setIdentityFilter] = useState('');
+  const [demandFilter, setDemandFilter] = useState('');
+  const [compensationFilter, setCompensationFilter] = useState('');
+  const [onboardDateFilter, setOnboardDateFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | OfferStatus>('all');
+  const [updatedOrder, setUpdatedOrder] = useState<'asc' | 'desc'>('desc');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<OfferRecord | null>(null);
   const [selected, setSelected] = useState<OfferRecord | null>(null);
@@ -473,10 +554,37 @@ export function OffersPage() {
     [],
   );
   const offers = useMemo(() => offersAsync.data?.items ?? [], [offersAsync.data?.items]);
-  const activeConfig = TAB_CONFIG.find((item) => item.key === activeTab)!;
-  const filtered = activeConfig.statuses.length === 0
-    ? offers
-    : offers.filter((offer) => activeConfig.statuses.includes(offerStatus(offer)));
+  const activeConfig = TAB_CONFIG.find((item) => item.key === activeTab) ?? TAB_CONFIG[0];
+  const filtered = useMemo(() => {
+    const identityTerm = identityFilter.trim().toLocaleLowerCase('zh-CN');
+    const demandTerm = demandFilter.trim().toLocaleLowerCase('zh-CN');
+    const compensationTerm = compensationFilter.trim().toLocaleLowerCase('zh-CN');
+    return offers
+      .filter((offer) => (
+        activeConfig.statuses.length === 0
+        || activeConfig.statuses.includes(offerStatus(offer))
+      ))
+      .filter((offer) => statusFilter === 'all' || offerStatus(offer) === statusFilter)
+      .filter((offer) => !identityTerm || [offer.candidate_name, offer.position]
+        .some((value) => value.toLocaleLowerCase('zh-CN').includes(identityTerm)))
+      .filter((offer) => !demandTerm || [offer.request_no, offer.department]
+        .some((value) => value.toLocaleLowerCase('zh-CN').includes(demandTerm)))
+      .filter((offer) => !compensationTerm || (offer.salary_range || '')
+        .toLocaleLowerCase('zh-CN').includes(compensationTerm))
+      .filter((offer) => !onboardDateFilter || offer.onboard_date === onboardDateFilter)
+      .sort((left, right) => updatedOrder === 'asc'
+        ? offerUpdatedAt(left) - offerUpdatedAt(right)
+        : offerUpdatedAt(right) - offerUpdatedAt(left));
+  }, [
+    activeConfig.statuses,
+    compensationFilter,
+    demandFilter,
+    identityFilter,
+    offers,
+    onboardDateFilter,
+    statusFilter,
+    updatedOrder,
+  ]);
   const counts = useMemo(() => Object.fromEntries(TAB_CONFIG.map((tab) => [
     tab.key,
     tab.statuses.length === 0
@@ -488,6 +596,32 @@ export function OffersPage() {
     (item) => ['pending', 'active'].includes(item.status),
   ).length;
   const canCreateOffer = !demandsAsync.loading && !demandsAsync.error && activeDemandCount > 0;
+  const hasColumnFilters =
+    identityFilter.trim() !== ''
+    || demandFilter.trim() !== ''
+    || compensationFilter.trim() !== ''
+    || onboardDateFilter !== ''
+    || statusFilter !== 'all'
+    || updatedOrder !== 'desc';
+
+  function toggleColumnFilter(column: OfferColumnFilter) {
+    setOpenColumnFilter((current) => current === column ? null : column);
+  }
+
+  function resetColumnFilters() {
+    setIdentityFilter('');
+    setDemandFilter('');
+    setCompensationFilter('');
+    setOnboardDateFilter('');
+    setStatusFilter('all');
+    setUpdatedOrder('desc');
+    setOpenColumnFilter(null);
+  }
+
+  function selectTab(tab: TabKey) {
+    setActiveTab(tab);
+    setStatusFilter('all');
+  }
 
   async function openDetail(offer: OfferRecord) {
     const requestId = ++detailRequestRef.current;
@@ -595,7 +729,7 @@ export function OffersPage() {
             <button
               key={tab.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => selectTab(tab.key)}
               className={`relative shrink-0 px-4 py-4 text-sm font-medium ${activeTab === tab.key ? 'text-[var(--enterprise-brand-dark)]' : 'text-[#777b78] hover:text-[#454946]'}`}
             >
               {tab.label}<span className="ml-1.5 text-xs">{counts[tab.key] ?? 0}</span>
@@ -617,6 +751,12 @@ export function OffersPage() {
             />
           </div>
           <Button type="submit" variant="secondary">搜索</Button>
+          {hasColumnFilters && (
+            <Button type="button" variant="ghost" onClick={resetColumnFilters}>
+              <RotateCcw className="h-4 w-4" />
+              重置列筛选
+            </Button>
+          )}
         </form>
 
         {offersAsync.loading && <div className="flex items-center justify-center gap-2 py-20 text-sm text-[#777b78]"><Spinner />加载 Offer…</div>}
@@ -629,11 +769,104 @@ export function OffersPage() {
             <table className="w-full min-w-[1050px] text-left text-sm">
               <thead className="bg-[#fafaf8] text-xs text-[#777b78]">
                 <tr>
-                  <th className="px-5 py-3 font-medium">候选人 / 岗位</th>
-                  <th className="px-5 py-3 font-medium">需求</th>
-                  <th className="px-5 py-3 font-medium">薪酬 / 入职</th>
-                  <th className="px-5 py-3 font-medium">状态</th>
-                  <th className="px-5 py-3 font-medium">最近更新</th>
+                  <OfferColumnFilterHeader
+                    data-ui="offer-column-filter-identity"
+                    label="候选人 / 岗位"
+                    open={openColumnFilter === 'identity'}
+                    onToggle={() => toggleColumnFilter('identity')}
+                  >
+                    <input
+                      aria-label="按候选人或岗位筛选 Offer"
+                      value={identityFilter}
+                      onChange={(event) => setIdentityFilter(event.target.value)}
+                      placeholder="候选人或岗位"
+                      className={OFFER_COLUMN_FIELD_CLASS}
+                    />
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setIdentityFilter('')}>清除</Button>
+                  </OfferColumnFilterHeader>
+                  <OfferColumnFilterHeader
+                    data-ui="offer-column-filter-demand"
+                    label="招聘需求"
+                    open={openColumnFilter === 'demand'}
+                    onToggle={() => toggleColumnFilter('demand')}
+                  >
+                    <input
+                      aria-label="按需求编号或部门筛选 Offer"
+                      value={demandFilter}
+                      onChange={(event) => setDemandFilter(event.target.value)}
+                      placeholder="需求编号或部门"
+                      className={OFFER_COLUMN_FIELD_CLASS}
+                    />
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setDemandFilter('')}>清除</Button>
+                  </OfferColumnFilterHeader>
+                  <OfferColumnFilterHeader
+                    data-ui="offer-column-filter-compensation"
+                    label="薪酬 / 入职"
+                    open={openColumnFilter === 'compensation'}
+                    onToggle={() => toggleColumnFilter('compensation')}
+                  >
+                    <input
+                      aria-label="按薪酬方案筛选 Offer"
+                      value={compensationFilter}
+                      onChange={(event) => setCompensationFilter(event.target.value)}
+                      placeholder="薪酬关键词"
+                      className={OFFER_COLUMN_FIELD_CLASS}
+                    />
+                    <input
+                      aria-label="按预计入职日期筛选 Offer"
+                      type="date"
+                      value={onboardDateFilter}
+                      onChange={(event) => setOnboardDateFilter(event.target.value)}
+                      className={OFFER_COLUMN_FIELD_CLASS}
+                    />
+                    <Button type="button" size="sm" variant="ghost" onClick={() => {
+                      setCompensationFilter('');
+                      setOnboardDateFilter('');
+                    }}>清除</Button>
+                  </OfferColumnFilterHeader>
+                  <OfferColumnFilterHeader
+                    data-ui="offer-column-filter-status"
+                    label="状态"
+                    open={openColumnFilter === 'status'}
+                    onToggle={() => toggleColumnFilter('status')}
+                  >
+                    <select
+                      aria-label="按 Offer 状态筛选"
+                      value={statusFilter}
+                      onChange={(event) => {
+                        const nextStatus = event.target.value;
+                        if (nextStatus === 'all' || isOfferStatus(nextStatus)) {
+                          setStatusFilter(nextStatus);
+                          if (nextStatus !== 'all') setActiveTab('all');
+                        }
+                      }}
+                      className={OFFER_COLUMN_FIELD_CLASS}
+                    >
+                      <option value="all">全部状态</option>
+                      {OFFER_STATUS_OPTIONS.map((status) => (
+                        <option key={status} value={status}>{STATUS_META[status].label}</option>
+                      ))}
+                    </select>
+                  </OfferColumnFilterHeader>
+                  <OfferColumnFilterHeader
+                    data-ui="offer-column-filter-updated"
+                    label="最近更新"
+                    open={openColumnFilter === 'updated'}
+                    onToggle={() => toggleColumnFilter('updated')}
+                  >
+                    <select
+                      aria-label="按 Offer 更新时间排序"
+                      value={updatedOrder}
+                      onChange={(event) => {
+                        const nextOrder = event.target.value;
+                        if (nextOrder === 'asc' || nextOrder === 'desc') setUpdatedOrder(nextOrder);
+                      }}
+                      className={OFFER_COLUMN_FIELD_CLASS}
+                    >
+                      <option value="desc">最近更新优先</option>
+                      <option value="asc">最早更新优先</option>
+                    </select>
+                  </OfferColumnFilterHeader>
                   <th className="px-5 py-3 text-right font-medium">操作</th>
                 </tr>
               </thead>
@@ -685,9 +918,9 @@ export function OffersPage() {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <button type="button" onClick={() => setActiveTab('pending')} className="rounded-xl border border-[#e8e7e1] bg-white p-4 text-left transition-colors hover:border-[#c47b55]"><Clock3 className="h-5 w-5 text-[#c47b55]" /><p className="mt-3 text-xs text-[#777b78]">审批中</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.pending ?? 0}</p></button>
-        <button type="button" onClick={() => setActiveTab('reply')} className="rounded-xl border border-[#e8e7e1] bg-white p-4 text-left transition-colors hover:border-[var(--enterprise-brand)]"><Mail className="h-5 w-5 text-[var(--enterprise-brand)]" /><p className="mt-3 text-xs text-[#777b78]">等待候选人回复</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.reply ?? 0}</p></button>
-        <button type="button" onClick={() => setActiveTab('onboard')} className="rounded-xl border border-[#e8e7e1] bg-white p-4 text-left transition-colors hover:border-[var(--enterprise-brand)]"><UserCheck className="h-5 w-5 text-[var(--enterprise-brand)]" /><p className="mt-3 text-xs text-[#777b78]">待入职</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.onboard ?? 0}</p></button>
+        <button type="button" onClick={() => selectTab('pending')} className="rounded-xl border border-[#e8e7e1] bg-white p-4 text-left transition-colors hover:border-[#c47b55]"><Clock3 className="h-5 w-5 text-[#c47b55]" /><p className="mt-3 text-xs text-[#777b78]">审批中</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.pending ?? 0}</p></button>
+        <button type="button" onClick={() => selectTab('reply')} className="rounded-xl border border-[#e8e7e1] bg-white p-4 text-left transition-colors hover:border-[var(--enterprise-brand)]"><Mail className="h-5 w-5 text-[var(--enterprise-brand)]" /><p className="mt-3 text-xs text-[#777b78]">等待候选人回复</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.reply ?? 0}</p></button>
+        <button type="button" onClick={() => selectTab('onboard')} className="rounded-xl border border-[#e8e7e1] bg-white p-4 text-left transition-colors hover:border-[var(--enterprise-brand)]"><UserCheck className="h-5 w-5 text-[var(--enterprise-brand)]" /><p className="mt-3 text-xs text-[#777b78]">待入职</p><p className="mt-1 text-2xl font-bold text-[#292b2a]">{counts.onboard ?? 0}</p></button>
       </div>
 
       {showForm && (

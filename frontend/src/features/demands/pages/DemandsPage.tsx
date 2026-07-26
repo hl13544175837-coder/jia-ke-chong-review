@@ -17,7 +17,7 @@ import { DemandWorkspaceDrawer, type DemandDrawerContext } from '../components/D
 const EMPTY_RESPONSE: DemandListResponse = { items: [], total: 0, page: 1, page_size: 20, pages: 0 };
 
 export function DemandsPage() {
-  const { role, userId, name } = useAuth();
+  const { role, userId } = useAuth();
   const [query, setQuery] = useState<DemandListQuery>({ status: 'all', page: 1, page_size: 20, sort: 'created_at_desc' });
   const [createDrawerOpen, setCreateDrawerOpen] = useState(false);
   const [workspace, setWorkspace] = useState<{
@@ -54,7 +54,7 @@ export function DemandsPage() {
   );
   const jobs = useAsync(() => api.listJobs('active'), []);
   const owners = useAsync(
-    () => (role === 'manager' || role === 'admin'
+    () => (['recruiter', 'manager', 'admin'].includes(role ?? '')
       ? api.listCandidateOwners()
       : Promise.resolve([] as CandidateOwnerOption[])),
     [role],
@@ -242,8 +242,6 @@ export function DemandsPage() {
             jobs={jobs.data ?? []}
             owners={owners.data ?? []}
             role={role}
-            currentUserId={userId}
-            currentUserName={name}
             interviewers={interviewers.data ?? []}
             interviewersLoading={interviewers.loading}
             interviewersError={interviewers.error?.message ?? null}

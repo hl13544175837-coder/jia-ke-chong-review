@@ -25,6 +25,9 @@ assert.match(types, /city\?:\s*string/, 'Candidate list query should support cit
 assert.match(types, /parse_status\?:\s*ParseStatus/, 'Candidate list query should support parse status filtering');
 assert.match(types, /source_channel\?:\s*string/, 'Candidate list query should support source channel filtering');
 assert.match(types, /pipeline_status\?:/, 'Candidate list query should support assignment status filtering');
+assert.match(types, /education\?:\s*string/, 'Candidate list query should support education filtering');
+assert.match(types, /skill\?:\s*string/, 'Candidate list query should support skill filtering');
+assert.match(types, /min_score\?:\s*number/, 'Candidate list query should support minimum skill score filtering');
 
 const candidatesPage = readSource('features/candidates/pages/CandidatesPage.tsx');
 assert.match(candidatesPage, /useDebounce/, 'Candidate page should debounce server search');
@@ -56,3 +59,21 @@ assert.match(candidatesPage, /listDemands/, 'Candidate page should load active d
 assert.match(candidatesPage, /targetDemandId/, 'Candidate page should keep the exact target demand context');
 assert.match(candidatesPage, /batchAddToPipeline\(selectedJobId, \[candidateId\], demandId\)/, 'Candidate page should add selected resumes to the chosen demand safely');
 assert.match(candidatesPage, /加入所选需求/, 'Candidate page should expose the action to add library resumes to a demand');
+for (const column of ['identity', 'profile', 'skills', 'source', 'score', 'created']) {
+  assert.match(
+    candidatesPage,
+    new RegExp(`data-ui="candidate-column-filter-${column}"`),
+    `${column} candidate table header should expose a clickable filter`,
+  );
+}
+assert.match(candidatesPage, /label="学历"/, 'Candidate page should provide an education filter');
+assert.match(candidatesPage, /label="技能关键词"/, 'Candidate page should accept a skill keyword beyond current-page tags');
+assert.match(candidatesPage, /label="招聘阶段（任一需求）"/, 'Candidate page should explain the demand-scoped stage filter');
+assert.match(candidatesPage, /education:\s*educationFilter === 'all' \? undefined : educationFilter/, 'Education must be sent to server search');
+assert.match(candidatesPage, /skill:\s*debouncedSkill\.trim\(\) \|\| undefined/, 'Skill keyword must be sent to server search');
+assert.match(candidatesPage, /min_score:\s*Number\(scoreFilter\) \|\| undefined/, 'Minimum score must be sent to server search');
+assert.doesNotMatch(
+  candidatesPage,
+  /const matchesTag =[\s\S]*candidateTags\(candidate\)\.some/,
+  'Skill filtering must not be limited to the current page',
+);

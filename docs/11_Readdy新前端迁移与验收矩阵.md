@@ -46,11 +46,11 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 |---|---|---|---|
 | `/login` | 未登录 | 网关 OAuth + `/auth/me` | 保留公司登录视觉与真实协议，补齐错误态和会话恢复；不为嫁接流程改动鉴权底座 |
 | `/dashboard` 及统计抽屉 | 全部角色 | `/candidates`、`/demands`、`/interviews`、`/notifications`；manager/admin 可用 `/bi/overview` | KPI 点击在当前页打开真实口径说明抽屉；组织级汇总无法唯一定位 Demand 时只给宽范围次级入口，不冒充精准下钻 |
-| `/demands` / `/jobs` 招聘管理 | recruiter/manager/admin | `/demands`、`/jobs`、`/jobs/clarify`、匹配接口 | Demand 六个表头均可展开真实服务端筛选；职位、编号、部门、城市和截止日期保留快速筛选。行内负责人、HC、阶段数字和状态作为具体 Demand 信息，首击在当前页打开对应右侧抽屉；完整看板/工作台只作为抽屉中次级入口。岗位/JD 模板位于 `/job-templates`，新增岗位和 AI 澄清/保存仍走真实接口 |
-| `/candidates` 简历库 | recruiter/manager/admin | `/candidates`、`/resume/*`、候选人流程、批量入流程 | 搜索/筛选/上传/负责人/加入 Demand 全部真实化；候选人行和姓名点击在当前页打开详情与真实流程抽屉，完整档案为次级入口 |
+| `/demands` / `/jobs` 招聘管理 | recruiter/manager/admin | `/demands`、`/jobs`、`/jobs/clarify`、匹配接口 | Demand 六个表头均可展开真实服务端筛选；职位、编号、部门、城市和截止日期保留快速筛选。创建需求时负责人选项由后端按角色裁剪，招聘专员可操作下拉且只能选择本人。行内负责人、HC、阶段数字和状态作为具体 Demand 信息，首击在当前页打开对应右侧抽屉；完整看板/工作台只作为抽屉中次级入口。岗位/JD 模板位于 `/job-templates`，新增岗位和 AI 澄清/保存仍走真实接口 |
+| `/candidates` 简历库 | recruiter/manager/admin | `/candidates`、`/resume/*`、候选人流程、批量入流程 | 搜索、学历、意向城市、技能、来源、解析状态、入流程状态、任一 Demand 当前阶段和最低技能分均在分页前真实筛选；候选人关键表头可展开同一组条件。上传、负责人和加入 Demand 全部真实化；候选人行和姓名点击在当前页打开详情与真实流程抽屉，完整档案为次级入口 |
 | `/kanban` 进度看板 | recruiter/manager/admin | `/pipeline/demands/*` | Demand 选择器 + KPI 卡 + 阶段列真实看板；候选人卡片在当前页打开流程详情抽屉；推进、淘汰、修正、转 Demand 和历史继续走真实接口；面试官无写操作按钮 |
 | `/interviews` 面试管理 | recruiter/manager/admin | `/interviews`、`/interview/assignments`、取消、反馈、AI 面试 | 统计卡在当前页筛选，面试行打开右侧详情（面试信息/反馈/流程记录）；安排、取消、反馈仍是受权限控制的真实操作；支持 `status` 和 `demand` URL 筛选 |
-| `/offers` Offer 管理 | recruiter/manager/admin | `/offers`、`/offers/<id>`、`/offers/<id>/actions`、Demand Offer 草稿接口 | Offer 行和姓名点击打开当前页真实详情/历史抽屉；草稿、审批、发放、回复、撤回、入职状态机不变；详情快速切换已有请求竞态保护 |
+| `/offers` Offer 管理 | recruiter/manager/admin | `/offers`、`/offers/<id>`、`/offers/<id>/actions`、Demand Offer 草稿接口 | Offer 行和姓名点击打开当前页真实详情/历史抽屉；候选人/岗位、招聘需求、薪酬/入职、状态和最近更新表头可展开列筛选并一键重置；草稿、审批、发放、回复、撤回、入职状态机不变；详情快速切换已有请求竞态保护 |
 | `/talent-map` | recruiter/manager/admin | `/talent-maps*`、`/talent-map-companies/*`、`/talent-map-people/*` | **代码候选已接通**：正式路由、地图/公司/人选真实写入、筛选、公司优先级和人选接触状态持久化；招聘专员限本人，manager/admin 限本组织 |
 | `/analytics` | manager/admin | `/bi/overview`、`/bi/demand/*` | 团队 KPI + 漏斗 + Demand 下钻；KPI 点击在当前页打开说明/下钻抽屉；无个人绩效排名、成本或编造月度趋势 |
 | `/dashboard/hired` | recruiter/manager/admin | `/offers`（status=onboarded） | 真实已入职视图；入职行和姓名点击在当前页打开详情抽屉，完整候选人档案为次级入口 |
@@ -165,9 +165,9 @@ Readdy 的角色选择器只是演示开关，正式产品必须删除。角色�
 
 - 新增共享右侧抽屉 `DrawerShell`：通过 portal 挂到页面根层，提供遮罩关闭、`Esc` 关闭、焦点约束与恢复、背景滚动锁定、对辅助技术的 dialog 语义，以及窄屏全宽展示。
 - Demand：六个信息表头均可展开内联筛选；职位和需求编号使用精确条件，部门、城市、负责人、HC、截止日期、阶段和状态筛选在数据库分页前执行。行内负责人、HC、阶段数字和状态均在当前 `/demands` 打开对应右抽屉，不再重复套用已有筛选造成“点了没反应”。阶段抽屉使用当前 Demand 真实看板；“全部”候选人次级链接只携带 `demand`，不传无效的 `stage=all`。独立“查看详情”仍打开概览抽屉；新增 Demand、调整优先级、转派负责人、暂停/关闭和恢复继续复用真实 API、角色校验与审计。
-- 候选人：点击行或姓名打开同页详情；概览和当前/历史应聘流程来自真实候选人流程接口，完整档案只作为次级入口。
+- 候选人：点击行或姓名打开同页详情；概览和当前/历史应聘流程来自真实候选人流程接口，完整档案只作为次级入口。搜索、学历、城市、技能、来源、解析状态、流程状态、阶段和最低技能分在数据库分页前生效，关键表头可直接展开这些条件。
 - Kanban：点击候选人卡片或姓名打开当前 Demand 范围内的流程抽屉；切换 Demand 会清空旧详情和旧操作目标，避免跨 Demand 串数据；卡片外层不再伪装成包含子按钮的嵌套按钮，键盘入口由候选人姓名承担。
-- 面试、Offer、已入职：点击表格行或姓名留在当前页，分别打开面试详情、Offer 详情/操作历史和入职详情；行内取消、反馈、审批或状态动作不会误触整行详情。面试的 `status` / `demand` 深链接筛选与地址栏双向同步，清除筛选后刷新不会恢复旧条件。
+- 面试、Offer、已入职：点击表格行或姓名留在当前页，分别打开面试详情、Offer 详情/操作历史和入职详情；行内取消、反馈、审批或状态动作不会误触整行详情。Offer 五个信息表头可展开列筛选，状态页签与状态列筛选不会叠加出隐含冲突；面试的 `status` / `demand` 深链接筛选与地址栏双向同步，清除筛选后刷新不会恢复旧条件。
 - Dashboard、Analytics、总监驾驶舱：KPI、今日待办、管理提醒、阶段条、阶段停留候选人与待补反馈均从纯信息/整行跳转变为当前页说明或下钻抽屉；完整工作台只在抽屉底部作为次级入口；无法唯一定位 Demand 的组织汇总不会伪装成精准阶段链接。
 - 岗位模板：岗位行驱动原页面右侧详情；筛选为空时不再显示被排除岗位；新增岗位改为右侧抽屉并保留真实 AI 澄清/保存链路。
 - 总监审批：待审批和最近审批行打开真实 Offer 审批详情抽屉，审批/驳回仍走后端状态机。

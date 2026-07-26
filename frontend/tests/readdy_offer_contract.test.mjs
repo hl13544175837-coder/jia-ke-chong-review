@@ -17,6 +17,14 @@ assert.match(page, /boardAsync\.loading \|\| !!boardAsync\.error \|\| !candidate
 assert.match(page, /role === 'manager' \|\| role === 'admin'/);
 assert.match(page, /action === 'onboard' && !onboardDate/, '确认入职必须要求实际入职日期');
 assert.match(page, /status === 'accepted'/, '只有已接受 Offer 显示确认入职动作');
+for (const column of ['identity', 'demand', 'compensation', 'status', 'updated']) {
+  assert.match(
+    page,
+    new RegExp(`data-ui="offer-column-filter-${column}"`),
+    `${column} Offer 表头应能展开真实筛选控件`,
+  );
+}
+assert.match(page, /重置列筛选/, 'Offer 列筛选应能一键清除');
 assert.doesNotMatch(page, /mocks\/offers|sessionStorage|zhipin-current-role|initialOffers/);
 
 assert.match(api, /listOffers\(/);

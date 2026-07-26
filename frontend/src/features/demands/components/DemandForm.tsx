@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { SearchableInterviewerField } from '../../../components/interviewRecords/SearchableInterviewerField';
 import { Button, Input } from '../../../components/ui';
 import type {
@@ -14,8 +14,6 @@ interface DemandFormProps {
   jobs: JobListItem[];
   owners: CandidateOwnerOption[];
   role: Role | null;
-  currentUserId: number | null;
-  currentUserName: string | null;
   interviewers: InterviewerOption[];
   interviewersLoading?: boolean;
   interviewersError?: string | null;
@@ -67,8 +65,6 @@ export function DemandForm({
   jobs,
   owners,
   role,
-  currentUserId,
-  currentUserName,
   interviewers,
   interviewersLoading = false,
   interviewersError = null,
@@ -78,16 +74,11 @@ export function DemandForm({
   serverErrors = {},
   onSubmit,
 }: DemandFormProps) {
-  const ownerOptions = useMemo(() => {
-    if (role === 'recruiter' && currentUserId) {
-      return [{ id: currentUserId, name: currentUserName || '当前招聘专员', email: '' }];
-    }
-    return owners;
-  }, [currentUserId, currentUserName, owners, role]);
+  const ownerOptions = owners;
 
   const [form, setForm] = useState<FormState>(() => ({
     job_id: '',
-    owner_hr_id: role === 'recruiter' && currentUserId ? String(currentUserId) : '',
+    owner_hr_id: '',
     default_interviewer_id: null,
     request_no: '',
     requester_name: '',
@@ -104,10 +95,13 @@ export function DemandForm({
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (role === 'recruiter' && currentUserId) {
-      setForm((current) => ({ ...current, owner_hr_id: String(currentUserId) }));
+    if (role === 'recruiter' && ownerOptions.length === 1) {
+      const ownerId = String(ownerOptions[0].id);
+      setForm((current) => current.owner_hr_id === ownerId
+        ? current
+        : { ...current, owner_hr_id: ownerId });
     }
-  }, [currentUserId, role]);
+  }, [ownerOptions, role]);
 
   useEffect(() => {
     if (interviewersLoading || interviewersError || form.default_interviewer_id === null) return;
@@ -270,7 +264,7 @@ export function DemandForm({
             required
             aria-required="true"
             aria-invalid={Boolean(error('owner_hr_id')) || undefined}
-            disabled={role === 'recruiter'}
+            disabled={busy}
             value={form.owner_hr_id}
             onChange={(event) => patch('owner_hr_id', event.target.value)}
             className="h-10 w-full rounded-md border border-hairline bg-canvas px-3 text-sm text-ink disabled:bg-surface-soft"
@@ -283,6 +277,9 @@ export function DemandForm({
             ))}
           </select>
           {error('owner_hr_id') && <p className="mt-1 text-xs text-danger-600">{error('owner_hr_id')}</p>}
+          {!error('owner_hr_id') && ownerOptions.length === 0 && (
+            <p className="mt-1 text-xs text-muted">暂无可选招聘专员，请管理员先启用招聘专员账号。</p>
+          )}
         </label>
         <SearchableInterviewerField
           label="默认面试官（可选）"

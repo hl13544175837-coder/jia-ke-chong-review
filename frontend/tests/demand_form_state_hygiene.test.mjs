@@ -75,3 +75,19 @@ assert.match(
   /onFieldChange=\{clearCreateError\}/,
   'The form should route all field changes through stale-error cleanup',
 );
+
+assert.doesNotMatch(
+  form,
+  /disabled=\{role === 'recruiter'\}/,
+  '招聘专员的负责人下拉不能被前端直接禁用',
+);
+assert.match(
+  page,
+  /\['recruiter', 'manager', 'admin'\]\.includes\(role \?\? ''\)/,
+  '创建需求页面应为招聘专员加载后端裁剪后的负责人选项',
+);
+assert.match(
+  form,
+  /role === 'recruiter' && ownerOptions\.length === 1/,
+  '招聘专员只有本人一个可选项时应自动补齐负责人',
+);
