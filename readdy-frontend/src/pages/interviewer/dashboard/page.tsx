@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CURRENT_INTERVIEWER, myInterviews, getTodayInterviews, getPendingFeedback, getUpcomingInterviews, getPendingConfirmations } from '@/mocks/interviewer';
 import type { InterviewerInterview } from '@/mocks/interviewer';
@@ -9,6 +9,8 @@ import ReviewActionModal from './components/ReviewActionModal';
 import RescheduleModal from './components/RescheduleModal';
 import InterviewDetailDrawer from '@/pages/interviewer/interviews/components/InterviewDetailDrawer';
 import { useToast } from '@/hooks/useToast';
+import { businessReviewsApi } from '@/features/businessReviews/api';
+import type { BusinessReviewTask } from '@/features/businessReviews/types';
 
 export default function InterviewerDashboardPage() {
   const { showToast } = useToast();
@@ -20,6 +22,22 @@ export default function InterviewerDashboardPage() {
   const [reviewModalRecord, setReviewModalRecord] = useState<ResumePushRecord | null>(null);
   const [selectedInterview, setSelectedInterview] = useState<InterviewerInterview | null>(null);
   const [showReschedule, setShowReschedule] = useState(false);
+  const [realPendingReviews, setRealPendingReviews] = useState<BusinessReviewTask[]>([]);
+
+  const loadRealPendingReviews = useCallback(async () => {
+    try {
+      const response = await businessReviewsApi.listMine('pending');
+      setRealPendingReviews(response.items);
+    } catch {
+      // 演示数据仍可用，真实待办读取失败不阻断工作台。
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRealPendingReviews();
+    window.addEventListener('focus', loadRealPendingReviews);
+    return () => window.removeEventListener('focus', loadRealPendingReviews);
+  }, [loadRealPendingReviews]);
 
   // Refs for scroll targets
   const pendingReviewsRef = useRef<HTMLDivElement>(null);
@@ -159,7 +177,7 @@ export default function InterviewerDashboardPage() {
   const statCards = [
     {
       label: '待评审简历',
-      count: localPendingReviews.length,
+      count: realPendingReviews.length || localPendingReviews.length,
       icon: 'ri-file-search-line',
       color: 'bg-amber-500',
       bgColor: 'bg-amber-50',
@@ -238,7 +256,53 @@ export default function InterviewerDashboardPage() {
       </div>
 
       {/* Pending Resume Reviews */}
-      {localPendingReviews.length > 0 && (
+      {realPendingReviews.length > 0 && (
+        <div ref={pendingReviewsRef} className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+          <div className="px-5 py-4 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                <i className="ri-file-search-line text-amber-600"></i>
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground-900 text-sm">待业务筛选</h3>
+                <p className="text-xs text-foreground-500">招聘专员真实推送给你的简历</p>
+              </div>
+            </div>
+            <span className="text-xs font-medium text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full">
+              {realPendingReviews.length} 份
+            </span>
+          </div>
+          <div className="divide-y divide-background-100">
+            {realPendingReviews.map((task) => (
+              <div key={task.id} className="px-5 py-4 flex items-center gap-4 hover:bg-background-50/50 transition-colors">
+                <div className="w-9 h-9 rounded-full bg-primary-50 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-semibold text-primary-600">
+                    {task.candidate.name_masked.charAt(0) || '候'}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground-900">{task.candidate.name_masked}</p>
+                  <p className="text-xs text-foreground-500 mt-0.5">
+                    {task.demand.job_title} · {task.demand.department || '部门未填写'} · 推送人：{task.created_by_name || '招聘专员'}
+                  </p>
+                  <p className="text-xs text-foreground-400 mt-1 truncate">
+                    HR 备注：{task.hr_note || '未填写'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/interviewer/screening?task=${task.id}`)}
+                  className="px-3 py-1.5 text-xs font-medium bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  去筛选
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {realPendingReviews.length === 0 && localPendingReviews.length > 0 && (
         <div ref={pendingReviewsRef} className="bg-white rounded-xl border border-amber-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
             <div className="flex items-center gap-2">

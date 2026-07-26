@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowRight,
@@ -75,6 +76,9 @@ function errorMessage(error: unknown) {
 
 export default function InterviewerScreeningPage() {
   const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
+  const requestedTaskId = Number(searchParams.get('task'));
+  const handledTaskId = useRef<number | null>(null);
   const [activeTab, setActiveTab] = useState<BusinessReviewStatus>('pending');
   const [tasks, setTasks] = useState<BusinessReviewTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +103,20 @@ export default function InterviewerScreeningPage() {
 
   useEffect(() => {
     void loadTasks();
+    const refreshTasks = () => void loadTasks(false);
+    window.addEventListener('focus', refreshTasks);
+    return () => window.removeEventListener('focus', refreshTasks);
   }, [loadTasks]);
+
+  useEffect(() => {
+    if (!Number.isInteger(requestedTaskId) || requestedTaskId <= 0) return;
+    if (handledTaskId.current === requestedTaskId) return;
+    const requestedTask = tasks.find((task) => task.id === requestedTaskId);
+    if (!requestedTask) return;
+    handledTaskId.current = requestedTaskId;
+    setActiveTab(requestedTask.status);
+    setSelectedTask(requestedTask);
+  }, [requestedTaskId, tasks]);
 
   const tabCounts = useMemo(() => {
     const counts: Record<BusinessReviewStatus, number> = {

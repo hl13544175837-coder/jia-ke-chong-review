@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
-import { notificationList, typeIconMap, typeColorMap } from '@/mocks/notifications';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useCompanyPermissions } from '@/auth/companyPermissions';
 import {
   useProductRole,
 } from '@/auth/productRole';
 import { homePathForRole, PRODUCT_ROLES, type ProductRole } from '@/auth/productRoleModel';
+import { notificationsApi } from '@/features/notifications/api';
+import type { NotificationItem } from '@/features/notifications/types';
 
 interface NavItem {
   path: string;
@@ -42,6 +43,33 @@ const bottomNavItems: NavItem[] = [
   { path: '/settings', icon: 'ri-settings-3-line', label: '系统设置', roles: ['admin'], menuCode: 'settings' },
 ];
 
+const notificationVisuals: Record<string, { icon: string; color: string }> = {
+  business_review: { icon: 'ri-file-search-line', color: 'bg-amber-100 text-amber-700' },
+  business_review_decision: { icon: 'ri-checkbox-circle-line', color: 'bg-primary-100 text-primary-700' },
+  interview_assignment: { icon: 'ri-calendar-event-line', color: 'bg-sky-100 text-sky-700' },
+  interview_feedback: { icon: 'ri-survey-line', color: 'bg-violet-100 text-violet-700' },
+};
+
+function notificationVisual(type: string) {
+  return notificationVisuals[type] ?? {
+    icon: 'ri-notification-3-line',
+    color: 'bg-background-100 text-foreground-600',
+  };
+}
+
+function notificationTime(value: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -57,14 +85,29 @@ export default function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [notifications, setNotifications] = useState(notificationList);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const currentRole: ProductRole = role ?? 'recruiter';
   const roleInfo = PRODUCT_ROLES.find((item) => item.key === currentRole) || PRODUCT_ROLES[0];
   const assignedRoleInfo = PRODUCT_ROLES.find((item) => item.key === assignedRole);
   const displayName = previewEnabled ? roleInfo.label : name;
   const avatar = previewEnabled ? roleInfo.avatar : name?.trim().charAt(0) || roleInfo.avatar;
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const unreadCount = notifications.filter((notification) => !notification.is_read).length;
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const response = await notificationsApi.list(1, 20);
+      setNotifications(response.notifications);
+    } catch {
+      // 通知读取失败不应阻断用户的主流程。
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadNotifications();
+    window.addEventListener('focus', loadNotifications);
+    return () => window.removeEventListener('focus', loadNotifications);
+  }, [loadNotifications]);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -103,12 +146,30 @@ export default function MainLayout() {
     return location.pathname.startsWith(path);
   };
 
-  const markRead = (id: number) => {
-    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, isRead: true } : n));
+  const markRead = async (id: number) => {
+    setNotifications((prev) => prev.map((item) => (
+      item.id === id ? { ...item, is_read: true } : item
+    )));
+    try {
+      await notificationsApi.markRead([id]);
+    } catch {
+      void loadNotifications();
+    }
   };
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+  const markAllRead = async () => {
+    setNotifications((prev) => prev.map((item) => ({ ...item, is_read: true })));
+    try {
+      await notificationsApi.markRead();
+    } catch {
+      void loadNotifications();
+    }
+  };
+
+  const openNotification = (notification: NotificationItem) => {
+    if (!notification.is_read) void markRead(notification.id);
+    setNotifOpen(false);
+    if (notification.link) navigate(notification.link);
   };
 
   return (
@@ -249,7 +310,7 @@ export default function MainLayout() {
                     </div>
                     {unreadCount > 0 && (
                       <button
-                        onClick={markAllRead}
+                        onClick={() => void markAllRead()}
                         className="text-xs text-foreground-500 hover:text-primary-600 transition-colors cursor-pointer"
                       >
                         全部已读
@@ -257,38 +318,46 @@ export default function MainLayout() {
                     )}
                   </div>
                   <div className="max-h-[420px] overflow-y-auto">
-                    {notifications.map((n) => (
-                      <div
-                        key={n.id}
-                        onClick={() => markRead(n.id)}
-                        className={`flex items-start gap-3 px-4 py-3 border-b border-background-50 cursor-pointer transition-colors ${
-                          n.isRead ? 'hover:bg-background-50' : 'bg-primary-50/30 hover:bg-primary-50/50'
+                    {notifications.map((notification) => {
+                      const visual = notificationVisual(notification.type);
+                      return (
+                      <button
+                        type="button"
+                        key={notification.id}
+                        onClick={() => openNotification(notification)}
+                        className={`flex w-full items-start gap-3 px-4 py-3 border-b border-background-50 cursor-pointer transition-colors ${
+                          notification.is_read ? 'hover:bg-background-50' : 'bg-primary-50/30 hover:bg-primary-50/50'
                         }`}
                       >
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${typeColorMap[n.type]}`}>
-                          <i className={`${typeIconMap[n.type]} text-sm`}></i>
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${visual.color}`}>
+                          <i className={`${visual.icon} text-sm`}></i>
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 text-left">
                           <div className="flex items-center gap-2">
-                            <p className={`text-sm font-medium ${n.isRead ? 'text-foreground-700' : 'text-foreground-900'}`}>
-                              {n.title}
+                            <p className={`text-sm font-medium ${notification.is_read ? 'text-foreground-700' : 'text-foreground-900'}`}>
+                              {notification.title}
                             </p>
-                            {!n.isRead && (
+                            {!notification.is_read && (
                               <span className="w-2 h-2 bg-accent-500 rounded-full flex-shrink-0"></span>
                             )}
                           </div>
-                          <p className="text-xs text-foreground-500 mt-0.5 leading-relaxed">{n.content}</p>
-                          <p className="text-[11px] text-foreground-400 mt-1">{n.time}</p>
+                          <p className="text-xs text-foreground-500 mt-0.5 leading-relaxed">{notification.body}</p>
+                          <p className="text-[11px] text-foreground-400 mt-1">{notificationTime(notification.created_at)}</p>
                         </div>
+                      </button>
+                    )})}
+                    {notifications.length === 0 && (
+                      <div className="px-4 py-10 text-center text-sm text-foreground-500">
+                        暂无通知
                       </div>
-                    ))}
+                    )}
                   </div>
                   <div className="px-4 py-3 border-t border-background-100">
                     <button
                       onClick={() => setNotifOpen(false)}
                       className="w-full text-center text-xs text-foreground-500 hover:text-primary-600 transition-colors cursor-pointer"
                     >
-                      查看全部通知
+                      收起通知
                     </button>
                   </div>
                 </div>

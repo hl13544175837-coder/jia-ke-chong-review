@@ -10,12 +10,31 @@ const read = (relativePath) => fs.readFileSync(file(relativePath), 'utf8');
 const screeningPath = 'readdy-frontend/src/pages/interviewer/screening/page.tsx';
 const modalPath = 'readdy-frontend/src/pages/interviewer/dashboard/components/ReviewActionModal.tsx';
 const detailPath = 'readdy-frontend/src/pages/interviewer/screening/components/BusinessReviewDetail.tsx';
+const notificationApiPath = 'readdy-frontend/src/features/notifications/api.ts';
+const shellPath = 'readdy-frontend/src/components/feature/MainLayout.tsx';
+const dashboardPath = 'readdy-frontend/src/pages/interviewer/dashboard/page.tsx';
 
 const screening = read(screeningPath);
 assert.match(screening, /businessReviewsApi\.listMine\s*\(/, '业务筛选列表必须读取当前账号的真实任务');
 assert.match(screening, /businessReviewsApi\.decideTask\s*\(/, '业务筛选决定必须提交到真实任务接口');
 assert.match(screening, /await\s+loadTasks\s*\(/, '提交决定后必须重新读取服务端任务');
 assert.match(screening, /BusinessReviewDetail/, '业务筛选页必须使用独立的真实详情组件');
+assert.match(screening, /useSearchParams/, '业务筛选页必须读取通知携带的任务定位参数');
+assert.match(screening, /searchParams\.get\(['"]task['"]\)/, '业务筛选页必须按 task 参数定位真实任务');
+
+assert.ok(fs.existsSync(file(notificationApiPath)), '必须提供真实通知 API 封装');
+const notificationApi = read(notificationApiPath);
+const shell = read(shellPath);
+const dashboard = read(dashboardPath);
+for (const method of ['list', 'unreadCount', 'markRead']) {
+  assert.match(notificationApi, new RegExp(`${method}\\(`), `通知 API 缺少 ${method}`);
+}
+assert.match(shell, /notificationsApi\.list/, '顶部通知中心必须读取当前账号的真实通知');
+assert.match(shell, /notificationsApi\.markRead/, '通知已读状态必须写回后端');
+assert.doesNotMatch(shell, /@\/mocks\/notifications/, '顶部通知中心不得继续只读固定通知');
+assert.match(dashboard, /businessReviewsApi\.listMine/, '面试官工作台必须读取真实业务筛选任务');
+assert.match(dashboard, /\/interviewer\/screening\?task=/, '真实待办必须能直接进入对应业务筛选任务');
+assert.match(dashboard, /addEventListener\(['"]focus['"]/, '面试官工作台重新获得焦点时必须刷新真实待办');
 
 for (const [state, label] of [
   ['pending', '待筛选'],
