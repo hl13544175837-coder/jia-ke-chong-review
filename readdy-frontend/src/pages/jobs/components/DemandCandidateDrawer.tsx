@@ -1,20 +1,35 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+} from 'react';
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
   FileUp,
   LoaderCircle,
   RefreshCw,
   Search,
   Send,
+  SlidersHorizontal,
   UserPlus,
   X,
 } from 'lucide-react';
 import { candidatesApi } from '@/features/candidates/api';
 import type {
   CandidateListItem,
+  CandidateListResponse,
   CandidateMatchResult,
   CandidatePipelineAddResult,
+  CandidateResumeDetail,
+  CandidateStage,
   ResumeUploadResponse,
 } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
@@ -27,8 +42,44 @@ interface DemandCandidateDrawerProps {
   onReadyToPush: (demand: RecruitmentDemand, targets: PushTarget[]) => void;
 }
 
+type OperationFilter = 'all' | 'actionable' | 'pushable';
+type SortOption = 'created_desc' | 'created_asc' | 'name_asc';
+
+const PER_PAGE = 20;
 const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif|zip)$/i;
 const supportedResumeAccept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,.zip,image/jpeg,image/png,image/webp,image/gif,application/zip';
+const emptyCandidateResponse: CandidateListResponse = {
+  candidates: [],
+  total: 0,
+  page: 1,
+  per_page: PER_PAGE,
+  pages: 1,
+};
+
+const stageOptions: Array<{ value: '' | CandidateStage; label: string }> = [
+  { value: '', label: '全部流程阶段' },
+  { value: 'pending', label: '待初筛' },
+  { value: 'ai_screen', label: 'AI 初筛' },
+  { value: 'business_review', label: '业务筛选' },
+  { value: 'interview', label: '面试中' },
+  { value: 'offer', label: 'Offer' },
+  { value: 'onboarded', label: '已入职' },
+  { value: 'rejected', label: '已淘汰' },
+  { value: 'transferred', label: '已转入其他需求' },
+];
+
+const resumeLabels: Record<string, string> = {
+  extracted_info: '简历解析信息',
+  summary: '个人概况',
+  education: '教育经历',
+  experience: '工作经历',
+  work_experience: '工作经历',
+  projects: '项目经历',
+  project_experience: '项目经历',
+  skills: '专业技能',
+  intent_city: '意向城市',
+  target_position: '目标岗位',
+};
 
 function messageOf(error: unknown, fallback: string) {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
@@ -38,8 +89,8 @@ function candidateStatus(candidate: CandidateListItem, demandId: number, match?:
   if (candidate.current_demand_id === demandId) {
     const canPush = !match?.latest_stage || ['pending', 'ai_screen', 'business_review'].includes(match.latest_stage);
     return canPush
-      ? { label: '已在当前需求，可推送', selectable: true, action: 'push', tone: 'text-primary-700 bg-primary-50' }
-      : { label: '已进入后续阶段', selectable: false, action: 'blocked', tone: 'text-foreground-600 bg-background-100' };
+      ? { label: '已在当前需求，可推送', selectable: true, action: 'push' as const, tone: 'text-primary-700 bg-primary-50' }
+      : { label: '已进入后续阶段', selectable: false, action: 'blocked' as const, tone: 'text-foreground-600 bg-background-100' };
   }
   if (candidate.current_demand_id) {
     return {
@@ -47,13 +98,17 @@ function candidateStatus(candidate: CandidateListItem, demandId: number, match?:
         ? `当前岗位：${candidate.current_demand.job_title}`
         : '其他需求流程中',
       selectable: true,
-      action: 'transfer',
+      action: 'transfer' as const,
       tone: 'text-amber-700 bg-amber-50',
     };
   }
-  if (match?.latest_stage === 'rejected') return { label: '当前需求曾淘汰', selectable: true, action: 'add', tone: 'text-red-700 bg-red-50' };
-  if (match?.latest_stage) return { label: '已有当前需求记录', selectable: false, action: 'blocked', tone: 'text-foreground-600 bg-background-100' };
-  return { label: '可加入', selectable: true, action: 'add', tone: 'text-emerald-700 bg-emerald-50' };
+  if (match?.latest_stage === 'rejected') {
+    return { label: '当前需求曾淘汰', selectable: true, action: 'add' as const, tone: 'text-red-700 bg-red-50' };
+  }
+  if (match?.latest_stage) {
+    return { label: '已有当前需求记录', selectable: false, action: 'blocked' as const, tone: 'text-foreground-600 bg-background-100' };
+  }
+  return { label: '可加入', selectable: true, action: 'add' as const, tone: 'text-emerald-700 bg-emerald-50' };
 }
 
 function resultSummary(result: CandidatePipelineAddResult) {
@@ -65,11 +120,40 @@ function resultSummary(result: CandidatePipelineAddResult) {
   return parts.join('，');
 }
 
+function readableResumeValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '未填写';
+  if (Array.isArray(value)) {
+    return value.map((item) => (
+      typeof item === 'object' ? Object.entries(item as Record<string, unknown>)
+        .map(([key, nested]) => `${resumeLabels[key] || key}：${readableResumeValue(nested)}`)
+        .join('；') : String(item)
+    )).join('\n');
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, nested]) => `${resumeLabels[key] || key}：${readableResumeValue(nested)}`)
+      .join('\n');
+  }
+  return String(value);
+}
+
 export default function DemandCandidateDrawer({ demand, onClose, onChanged, onReadyToPush }: DemandCandidateDrawerProps) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
-  const [candidates, setCandidates] = useState<CandidateListItem[]>([]);
+  const [city, setCity] = useState('');
+  const [education, setEducation] = useState('');
+  const [skill, setSkill] = useState('');
+  const [sourceChannel, setSourceChannel] = useState('');
+  const [stage, setStage] = useState<'' | CandidateStage>('');
+  const [minScore, setMinScore] = useState('');
+  const [pipelineStatus, setPipelineStatus] = useState<'' | 'in_pipeline' | 'not_in_pipeline'>('');
+  const [operationFilter, setOperationFilter] = useState<OperationFilter>('all');
+  const [sort, setSort] = useState<SortOption>('created_desc');
+  const [page, setPage] = useState(1);
+  const [candidateResponse, setCandidateResponse] = useState<CandidateListResponse>(emptyCandidateResponse);
   const [matches, setMatches] = useState<Map<number, CandidateMatchResult>>(new Map());
+  const [matchConfigured, setMatchConfigured] = useState<boolean | null>(null);
+  const [requiredSkills, setRequiredSkills] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -81,59 +165,97 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   const [uploadDragOver, setUploadDragOver] = useState(false);
   const [uploadResponse, setUploadResponse] = useState<ResumeUploadResponse | null>(null);
   const [uploadError, setUploadError] = useState('');
+  const [resumeCandidate, setResumeCandidate] = useState<CandidateListItem | null>(null);
+  const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [resumeError, setResumeError] = useState('');
 
   const loadCandidates = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     try {
+      const [sortBy, sortOrder] = sort === 'name_asc'
+        ? ['name_masked', 'asc'] as const
+        : ['created_at', sort === 'created_asc' ? 'asc' : 'desc'] as const;
       const response = await candidatesApi.listCandidates({
         search: search.trim() || undefined,
-        page: 1,
-        per_page: 50,
-        sort_by: 'created_at',
-        sort_order: 'desc',
+        city: city.trim() || undefined,
+        education: education.trim() || undefined,
+        skill: skill.trim() || undefined,
+        source_channel: sourceChannel.trim() || undefined,
+        stage: stage || undefined,
+        min_score: minScore ? Number(minScore) : undefined,
+        pipeline_status: pipelineStatus || undefined,
+        page: page,
+        per_page: PER_PAGE,
+        sort_by: sortBy,
+        sort_order: sortOrder,
       });
-      setCandidates(response.candidates);
-      setSelectedIds((current) => new Set(response.candidates.filter((item) => current.has(item.id)).map((item) => item.id)));
+      setCandidateResponse(response);
+      setSelectedIds(new Set());
       if (response.candidates.length === 0) {
         setMatches(new Map());
       } else {
-        const preview = await candidatesApi.previewMatches(demand.id, response.candidates.map((item) => item.id));
+        const preview = await candidatesApi.previewMatches(
+          demand.id,
+          response.candidates.map((item) => item.id),
+        );
         setMatches(new Map(preview.results.map((item) => [item.candidate_id, item])));
+        setMatchConfigured(preview.match_configured);
+        setRequiredSkills(preview.required_skills);
       }
     } catch (error) {
       setLoadError(messageOf(error, '候选人加载失败'));
     } finally {
       setLoading(false);
     }
-  }, [demand.id, search]);
+  }, [city, demand.id, education, minScore, page, pipelineStatus, search, skill, sort, sourceChannel, stage]);
 
   useEffect(() => {
     void loadCandidates();
   }, [loadCandidates]);
 
-  const visibleCandidates = useMemo(
-    () => [...candidates].sort((left, right) => {
-      const leftSelectable = candidateStatus(left, demand.id, matches.get(left.id)).selectable ? 1 : 0;
-      const rightSelectable = candidateStatus(right, demand.id, matches.get(right.id)).selectable ? 1 : 0;
-      return rightSelectable - leftSelectable
-        || (matches.get(right.id)?.score ?? -1) - (matches.get(left.id)?.score ?? -1);
-    }),
-    [candidates, demand.id, matches],
-  );
+  const changeFilter = (change: () => void) => {
+    change();
+    setPage(1);
+  };
+
+  const resetFilters = () => {
+    setSearch('');
+    setCity('');
+    setEducation('');
+    setSkill('');
+    setSourceChannel('');
+    setStage('');
+    setMinScore('');
+    setPipelineStatus('');
+    setOperationFilter('all');
+    setSort('created_desc');
+    setPage(1);
+  };
+
+  const visibleCandidates = useMemo(() => candidateResponse.candidates.filter((candidate) => {
+    const status = candidateStatus(candidate, demand.id, matches.get(candidate.id));
+    if (operationFilter === 'actionable' && !status.selectable) return false;
+    if (operationFilter === 'pushable' && status.action !== 'push') return false;
+    return true;
+  }).sort((left, right) => {
+    if (operationFilter !== 'all') return 0;
+    const leftSelectable = candidateStatus(left, demand.id, matches.get(left.id)).selectable ? 1 : 0;
+    const rightSelectable = candidateStatus(right, demand.id, matches.get(right.id)).selectable ? 1 : 0;
+    return rightSelectable - leftSelectable;
+  }), [candidateResponse.candidates, demand.id, matches, operationFilter]);
 
   const selectedCandidates = useMemo(
-    () => visibleCandidates.filter((item) => selectedIds.has(item.id)),
-    [selectedIds, visibleCandidates],
+    () => candidateResponse.candidates.filter((item) => selectedIds.has(item.id)),
+    [candidateResponse.candidates, selectedIds],
   );
   const needsReactivationReason = selectedCandidates.some((item) => matches.get(item.id)?.latest_stage === 'rejected');
   const transferCandidates = selectedCandidates.filter(
     (item) => item.current_demand_id && item.current_demand_id !== demand.id,
   );
   const needsTransferReason = transferCandidates.length > 0;
-  const needsPipelineChange = selectedCandidates.some(
-    (item) => item.current_demand_id !== demand.id,
-  );
+  const needsPipelineChange = selectedCandidates.some((item) => item.current_demand_id !== demand.id);
 
   const toggleCandidate = (candidate: CandidateListItem) => {
     const status = candidateStatus(candidate, demand.id, matches.get(candidate.id));
@@ -145,6 +267,20 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
       return next;
     });
     setSaveMessage('');
+  };
+
+  const openResume = async (candidate: CandidateListItem) => {
+    setResumeCandidate(candidate);
+    setResumeDetail(null);
+    setResumeError('');
+    setResumeLoading(true);
+    try {
+      setResumeDetail(await candidatesApi.getResume(candidate.id));
+    } catch (error) {
+      setResumeError(messageOf(error, '完整简历加载失败'));
+    } finally {
+      setResumeLoading(false);
+    }
   };
 
   const submitSelected = async (pushAfterSave: boolean) => {
@@ -184,30 +320,21 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
           needsReactivationReason ? reactivationReason.trim() : undefined,
         );
         const failedIds = new Set(result.failures.map((item) => item.candidate_id));
-        addCandidates
-          .filter((item) => !failedIds.has(item.id))
-          .forEach((item) => readyToPush.add(item.id));
+        addCandidates.filter((item) => !failedIds.has(item.id)).forEach((item) => readyToPush.add(item.id));
         summary = resultSummary(result);
       }
-
-      if (transferCandidates.length > 0) {
-        summary = `${summary ? `${summary}，` : ''}成功转入 ${transferCandidates.length} 位`;
-      }
+      if (transferCandidates.length > 0) summary = `${summary ? `${summary}，` : ''}成功转入 ${transferCandidates.length} 位`;
       if (readyToPush.size === 0) throw new Error(summary || '所选候选人未能进入当前需求');
 
       await onChanged();
       if (pushAfterSave) {
-        onReadyToPush(
-          demand,
-          selectedCandidates
-            .filter((item) => readyToPush.has(item.id))
-            .map((item) => ({
-              candidateId: item.id,
-              candidateName: item.name_masked,
-              currentDemandId: demand.id,
-              currentStage: matches.get(item.id)?.latest_stage || 'pending',
-            })),
-        );
+        onReadyToPush(demand, selectedCandidates.filter((item) => readyToPush.has(item.id)).map((item) => ({
+          candidateId: item.id,
+          candidateName: item.name_masked,
+          currentDemandId: demand.id,
+          currentStage: matches.get(item.id)?.latest_stage || 'pending',
+          currentStageCode: matches.get(item.id)?.latest_stage || 'pending',
+        })));
         return;
       }
 
@@ -261,49 +388,60 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-foreground-900/35" role="presentation">
       <button type="button" aria-label="关闭需求候选人工作区" className="absolute inset-0 cursor-default" onClick={onClose} />
-      <aside className="relative flex h-full w-full max-w-5xl flex-col bg-white shadow-2xl" aria-label={`${demand.job_title}候选人工作区`}>
+      <aside className="relative flex h-full w-full max-w-6xl flex-col bg-white shadow-2xl" aria-label={`${demand.job_title}候选人工作区`}>
         <header className="flex items-start justify-between border-b border-background-200 px-6 py-4">
           <div>
             <h2 className="text-lg font-bold text-foreground-900">当前需求候选人</h2>
-            <p className="mt-1 text-sm text-foreground-500">
-              {demand.request_no} · {demand.job_title} · {demand.job_city || '城市未填写'}
-            </p>
+            <p className="mt-1 text-sm text-foreground-500">{demand.request_no} · {demand.job_title} · {demand.job_city || '城市未填写'}</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="关闭" className="flex h-9 w-9 items-center justify-center rounded-lg text-foreground-500 hover:bg-background-100">
-            <X size={19} aria-hidden="true" />
-          </button>
+          <button type="button" onClick={onClose} aria-label="关闭" className="flex h-9 w-9 items-center justify-center rounded-lg text-foreground-500 hover:bg-background-100"><X size={19} /></button>
         </header>
 
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[1fr_300px]">
+        <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_300px]">
           <section className="flex min-h-0 flex-col border-r border-background-200">
-            <div className="flex gap-2 border-b border-background-100 px-5 py-3">
-              <label className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-2.5 text-foreground-400" size={16} aria-hidden="true" />
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="搜索姓名、公司、学校、岗位或技能"
-                  className="h-9 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-primary-400"
-                />
-              </label>
-              <button type="button" onClick={() => void loadCandidates()} disabled={loading} className="flex h-9 items-center gap-2 rounded-lg border border-background-300 px-3 text-sm text-foreground-600 disabled:opacity-50">
-                <RefreshCw size={15} className={loading ? 'animate-spin' : ''} aria-hidden="true" />刷新
-              </button>
+            <div className="border-b border-background-100 px-5 py-3">
+              <div className="flex gap-2">
+                <label className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 text-foreground-400" size={16} />
+                  <input value={search} onChange={(event) => changeFilter(() => setSearch(event.target.value))} placeholder="搜索姓名、公司、学校、岗位或技能" className="h-9 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-primary-400" />
+                </label>
+                <button type="button" onClick={() => void loadCandidates()} disabled={loading} className="flex h-9 items-center gap-2 rounded-lg border border-background-300 px-3 text-sm text-foreground-600 disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} />刷新</button>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
+                <input value={city} onChange={(event) => changeFilter(() => setCity(event.target.value))} placeholder="意向城市" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
+                <input value={education} onChange={(event) => changeFilter(() => setEducation(event.target.value))} placeholder="学历，如 本科" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
+                <input value={skill} onChange={(event) => changeFilter(() => setSkill(event.target.value))} placeholder="技能关键词" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
+                <input value={sourceChannel} onChange={(event) => changeFilter(() => setSourceChannel(event.target.value))} placeholder="来源渠道" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
+                <select value={stage} onChange={(event) => changeFilter(() => setStage(event.target.value as '' | CandidateStage))} className="h-9 rounded-lg border border-background-300 bg-white px-2 text-xs">{stageOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
+                <select value={pipelineStatus} onChange={(event) => changeFilter(() => setPipelineStatus(event.target.value as '' | 'in_pipeline' | 'not_in_pipeline'))} className="h-9 rounded-lg border border-background-300 bg-white px-2 text-xs"><option value="">全部流程状态</option><option value="in_pipeline">招聘流程中</option><option value="not_in_pipeline">人才库可用</option></select>
+                <select value={operationFilter} onChange={(event) => setOperationFilter(event.target.value as OperationFilter)} className="h-9 rounded-lg border border-background-300 bg-white px-2 text-xs"><option value="all">全部可见候选人</option><option value="actionable">本页只看可加入/转入</option><option value="pushable">本页只看当前需求可推送</option></select>
+                <div className="flex gap-2">
+                  <select value={minScore} onChange={(event) => changeFilter(() => setMinScore(event.target.value))} className="h-9 min-w-0 flex-1 rounded-lg border border-background-300 bg-white px-2 text-xs"><option value="">全部技能分</option><option value="3">技能分 ≥ 3</option><option value="4">技能分 ≥ 4</option><option value="5">技能分 = 5</option></select>
+                  <select value={sort} onChange={(event) => changeFilter(() => setSort(event.target.value as SortOption))} className="h-9 min-w-0 flex-1 rounded-lg border border-background-300 bg-white px-2 text-xs"><option value="created_desc">最近入库</option><option value="created_asc">最早入库</option><option value="name_asc">姓名排序</option></select>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="inline-flex items-center gap-1.5 text-[11px] text-foreground-400"><SlidersHorizontal size={13} />共 {candidateResponse.total} 位，当前第 {candidateResponse.page}/{candidateResponse.pages} 页</p>
+                <button type="button" onClick={resetFilters} className="text-xs font-medium text-primary-600 hover:text-primary-700">重置筛选</button>
+              </div>
             </div>
+
+            {matchConfigured === false && (
+              <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800">
+                <strong>岗位技能尚未配置。</strong> 当前不能计算真实匹配度，请先在需求/JD 中补充技能关键词；候选人仍可按简历条件筛选和查看。
+              </div>
+            )}
+            {matchConfigured && requiredSkills.length > 0 && (
+              <div className="border-b border-primary-100 bg-primary-50/40 px-5 py-2 text-xs text-primary-700">岗位必备技能：{requiredSkills.join('、')}</div>
+            )}
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {loading ? (
-                <div className="flex min-h-56 items-center justify-center text-sm text-foreground-500"><LoaderCircle className="mr-2 animate-spin" size={18} />正在计算岗位匹配度...</div>
+                <div className="flex min-h-56 items-center justify-center text-sm text-foreground-500"><LoaderCircle className="mr-2 animate-spin" size={18} />正在读取候选人与岗位信息...</div>
               ) : loadError ? (
-                <div className="flex min-h-56 flex-col items-center justify-center text-center">
-                  <AlertCircle size={24} className="text-red-600" />
-                  <p className="mt-3 text-sm text-red-700">{loadError}</p>
-                  <button type="button" onClick={() => void loadCandidates()} className="mt-3 rounded-lg border px-3 py-2 text-sm">重试</button>
-                </div>
+                <div className="flex min-h-56 flex-col items-center justify-center text-center"><AlertCircle size={24} className="text-red-600" /><p className="mt-3 text-sm text-red-700">{loadError}</p><button type="button" onClick={() => void loadCandidates()} className="mt-3 rounded-lg border px-3 py-2 text-sm">重试</button></div>
               ) : visibleCandidates.length === 0 ? (
-                <div className="flex min-h-56 flex-col items-center justify-center text-center text-sm text-foreground-500">
-                  <UserPlus size={26} className="mb-3 text-foreground-300" />没有找到候选人，可在右侧直接导入简历。
-                </div>
+                <div className="flex min-h-56 flex-col items-center justify-center text-center text-sm text-foreground-500"><UserPlus size={26} className="mb-3 text-foreground-300" />没有符合条件的候选人，可调整筛选或在右侧直接导入简历。</div>
               ) : (
                 <div className="space-y-2">
                   {visibleCandidates.map((candidate) => {
@@ -311,67 +449,42 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
                     const status = candidateStatus(candidate, demand.id, match);
                     const selected = selectedIds.has(candidate.id);
                     return (
-                      <button
-                        type="button"
-                        key={candidate.id}
-                        onClick={() => toggleCandidate(candidate)}
-                        disabled={!status.selectable}
-                        className={`grid w-full grid-cols-[32px_1fr_auto] items-center gap-3 rounded-lg border px-3 py-3 text-left transition-colors ${selected ? 'border-primary-400 bg-primary-50' : 'border-background-200 bg-white hover:border-background-300'} disabled:cursor-not-allowed disabled:opacity-70`}
-                      >
-                        <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${selected ? 'bg-primary-500 text-white' : 'bg-background-100 text-foreground-600'}`}>
-                          {selected ? '✓' : (candidate.name_masked.slice(0, 1) || '候')}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground-900">{candidate.name_masked}</span>
-                            <span className={`rounded px-2 py-0.5 text-[11px] ${status.tone}`}>{status.label}</span>
+                      <article key={candidate.id} className={`grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-3 ${selected ? 'border-primary-400 bg-primary-50' : 'border-background-200 bg-white'}`}>
+                        <button type="button" onClick={() => toggleCandidate(candidate)} disabled={!status.selectable} aria-label={`${selected ? '取消选择' : '选择'} ${candidate.name_masked}`} className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${selected ? 'bg-primary-500 text-white' : status.selectable ? 'bg-background-100 text-foreground-600 hover:bg-primary-100' : 'cursor-not-allowed bg-background-100 text-foreground-300'}`}>{selected ? '✓' : candidate.name_masked.slice(0, 1) || '候'}</button>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold text-foreground-900">{candidate.name_masked}</span><span className={`rounded px-2 py-0.5 text-[11px] ${status.tone}`}>{status.label}</span></div>
+                          <p className="mt-1 truncate text-xs text-foreground-500">{candidate.education_summary || '学历信息待补充'} · {candidate.intent_city || '城市待补充'} · {candidate.top_tags?.slice(0, 3).map((item) => item.tag).join('、') || '技能待补充'}</p>
+                          {match?.matched_tags.length ? <p className="mt-1 truncate text-[11px] text-primary-600">命中：{match.matched_tags.slice(0, 4).join('、')}</p> : null}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button type="button" onClick={() => void openResume(candidate)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-background-300 bg-white px-2.5 text-xs font-medium text-foreground-700 hover:bg-background-50"><Eye size={14} />查看简历</button>
+                          <span className="min-w-16 text-right">
+                            {matchConfigured === false ? <><span className="block text-xs font-semibold text-amber-700">未配置</span><span className="text-[10px] text-foreground-400">匹配度</span></> : <><span className="block text-lg font-bold text-primary-700">{Math.round(match?.score ?? 0)}</span><span className="text-[10px] text-foreground-400">岗位匹配度</span></>}
                           </span>
-                          <span className="mt-1 block truncate text-xs text-foreground-500">
-                            {candidate.education_summary || '学历信息待补充'} · {candidate.top_tags?.slice(0, 3).map((item) => item.tag).join('、') || '技能待补充'}
-                          </span>
-                          {match?.matched_tags.length ? <span className="mt-1 block truncate text-[11px] text-primary-600">命中：{match.matched_tags.slice(0, 4).join('、')}</span> : null}
-                        </span>
-                        <span className="text-right">
-                          <span className="block text-lg font-bold text-primary-700">{Math.round(match?.score ?? 0)}</span>
-                          <span className="text-[11px] text-foreground-400">岗位匹配度</span>
-                        </span>
-                      </button>
+                        </div>
+                      </article>
                     );
                   })}
                 </div>
               )}
             </div>
 
+            <div className="flex items-center justify-between border-t border-background-100 px-5 py-2.5">
+              <p className="text-xs text-foreground-500">第 {candidateResponse.page} / {candidateResponse.pages} 页 · 每页 {candidateResponse.per_page} 位</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || page <= 1} className="inline-flex h-8 items-center gap-1 rounded-lg border border-background-300 px-2.5 text-xs disabled:opacity-40"><ChevronLeft size={14} />上一页</button>
+                <button type="button" onClick={() => setPage((current) => Math.min(candidateResponse.pages, current + 1))} disabled={loading || page >= candidateResponse.pages} className="inline-flex h-8 items-center gap-1 rounded-lg border border-background-300 px-2.5 text-xs disabled:opacity-40">下一页<ChevronRight size={14} /></button>
+              </div>
+            </div>
+
             <footer className="border-t border-background-200 px-5 py-3">
-              {needsReactivationReason && (
-                <input
-                  value={reactivationReason}
-                  onChange={(event) => setReactivationReason(event.target.value)}
-                  placeholder="请填写重新启用曾淘汰候选人的原因"
-                  className="mb-2 h-9 w-full rounded-lg border border-amber-300 px-3 text-sm outline-none focus:border-amber-500"
-                />
-              )}
-              {needsTransferReason && (
-                <input
-                  value={transferReason}
-                  onChange={(event) => setTransferReason(event.target.value)}
-                  placeholder="请填写从其他岗位转入当前需求的原因"
-                  className="mb-2 h-9 w-full rounded-lg border border-amber-300 px-3 text-sm outline-none focus:border-amber-500"
-                />
-              )}
+              {needsReactivationReason && <input value={reactivationReason} onChange={(event) => setReactivationReason(event.target.value)} placeholder="请填写重新启用曾淘汰候选人的原因" className="mb-2 h-9 w-full rounded-lg border border-amber-300 px-3 text-sm" />}
+              {needsTransferReason && <input value={transferReason} onChange={(event) => setTransferReason(event.target.value)} placeholder="请填写从其他岗位转入当前需求的原因" className="mb-2 h-9 w-full rounded-lg border border-amber-300 px-3 text-sm" />}
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-foreground-500">已选 {selectedIds.size} 位候选人{saveMessage ? ` · ${saveMessage}` : ''}</p>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {needsPipelineChange && (
-                    <button type="button" onClick={() => void submitSelected(false)} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-200 bg-white px-4 text-sm font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50">
-                      {saving ? <LoaderCircle className="animate-spin" size={15} /> : <UserPlus size={15} />}
-                      加入/转入当前需求
-                    </button>
-                  )}
-                  <button type="button" onClick={() => void submitSelected(true)} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-500 px-4 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50">
-                    {saving ? <LoaderCircle className="animate-spin" size={15} /> : <Send size={15} />}
-                    {needsPipelineChange ? '加入/转入并推送业务筛选' : '推送业务筛选'}
-                  </button>
+                <p className="text-sm text-foreground-500">本页已选 {selectedIds.size} 位{saveMessage ? ` · ${saveMessage}` : ''}</p>
+                <div className="flex flex-wrap gap-2">
+                  {needsPipelineChange && <button type="button" onClick={() => void submitSelected(false)} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-200 bg-white px-4 text-sm font-medium text-primary-700 disabled:opacity-50">{saving ? <LoaderCircle className="animate-spin" size={15} /> : <UserPlus size={15} />}加入/转入当前需求</button>}
+                  <button type="button" onClick={() => void submitSelected(true)} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-500 px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? <LoaderCircle className="animate-spin" size={15} /> : <Send size={15} />}{needsPipelineChange ? '加入/转入并推送业务筛选' : '推送业务筛选'}</button>
                 </div>
               </div>
             </footer>
@@ -381,26 +494,30 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
             <h3 className="text-sm font-semibold text-foreground-900">直接导入当前需求</h3>
             <p className="mt-1 text-xs leading-5 text-foreground-500">拖入后自动关联“{demand.job_title}”，无需再次选择需求。</p>
             <input ref={uploadInputRef} type="file" multiple accept={supportedResumeAccept} onChange={handleUploadSelect} className="hidden" />
-            <div
-              onDragOver={(event) => { event.preventDefault(); setUploadDragOver(true); }}
-              onDragLeave={() => setUploadDragOver(false)}
-              onDrop={handleUploadDrop}
-              className={`mt-4 flex min-h-44 flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 text-center transition-colors ${uploadDragOver ? 'border-primary-400 bg-primary-50' : 'border-background-300 bg-background-50'}`}
-            >
+            <div onDragOver={(event) => { event.preventDefault(); setUploadDragOver(true); }} onDragLeave={() => setUploadDragOver(false)} onDrop={handleUploadDrop} className={`mt-4 flex min-h-44 flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 text-center ${uploadDragOver ? 'border-primary-400 bg-primary-50' : 'border-background-300 bg-background-50'}`}>
               {uploading ? <LoaderCircle className="animate-spin text-primary-600" size={28} /> : <FileUp className="text-foreground-400" size={28} />}
-              <p className="mt-3 text-sm font-medium text-foreground-700">拖入简历到这里</p>
-              <p className="mt-1 text-xs text-foreground-400">PDF、DOCX、图片或 ZIP</p>
+              <p className="mt-3 text-sm font-medium text-foreground-700">拖入简历到这里</p><p className="mt-1 text-xs text-foreground-400">PDF、DOCX、图片或 ZIP</p>
               <button type="button" onClick={() => uploadInputRef.current?.click()} disabled={uploading} className="mt-3 rounded-lg border border-background-300 bg-white px-3 py-2 text-sm text-foreground-700 disabled:opacity-50">选择文件</button>
             </div>
             {uploadError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{uploadError}</p>}
-            {uploadResponse && (
-              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-800">
-                <p className="flex items-center gap-2 font-medium"><CheckCircle2 size={15} />已处理 {uploadResponse.total} 份文件</p>
-                <p className="mt-1">成功 {uploadResponse.results.filter((item) => item.status === 'ok').length} 份，失败 {uploadResponse.results.filter((item) => item.status !== 'ok').length} 份。</p>
-              </div>
-            )}
+            {uploadResponse && <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-800"><p className="flex items-center gap-2 font-medium"><CheckCircle2 size={15} />已处理 {uploadResponse.total} 份文件</p><p className="mt-1">成功 {uploadResponse.results.filter((item) => item.status === 'ok').length} 份，失败 {uploadResponse.results.filter((item) => item.status !== 'ok').length} 份。</p></div>}
           </section>
         </div>
+
+        {resumeCandidate && (
+          <div className="absolute inset-0 z-20 flex justify-end bg-foreground-900/30" role="presentation" onMouseDown={() => setResumeCandidate(null)}>
+            <aside className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-label={`${resumeCandidate.name_masked}完整简历`} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between gap-4"><div><h3 className="text-lg font-bold text-foreground-900">{resumeCandidate.name_masked}</h3><p className="mt-1 text-sm text-foreground-500">完整候选人简历 · 查看不会改变勾选状态</p></div><button type="button" onClick={() => setResumeCandidate(null)} className="rounded-lg p-2 text-foreground-500 hover:bg-background-100"><X size={18} /></button></div>
+              {resumeLoading ? <div className="py-20 text-center text-sm text-foreground-500"><LoaderCircle className="mx-auto mb-2 animate-spin" size={20} />加载完整简历中...</div> : resumeError ? <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{resumeError}</div> : resumeDetail ? (
+                <div className="mt-6 space-y-4">
+                  <div className="rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">{resumeDetail.original_resume.available ? `原版文件：${resumeDetail.original_resume.filename || '未命名文件'}` : '当前没有原版文件，以下为系统解析信息'}</div>
+                  {Object.entries(resumeDetail.resume_json).map(([key, value]) => <section key={key} className="border-t border-background-200 pt-4 first:border-t-0"><h4 className="text-sm font-semibold text-foreground-800">{resumeLabels[key] || key}</h4><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground-600">{readableResumeValue(value)}</p></section>)}
+                  {Object.keys(resumeDetail.resume_json).length === 0 && <p className="py-12 text-center text-sm text-foreground-500">暂无结构化简历信息</p>}
+                </div>
+              ) : null}
+            </aside>
+          </div>
+        )}
       </aside>
     </div>
   );

@@ -5,6 +5,83 @@ def _auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_match_preview_distinguishes_unconfigured_job_from_zero_match(
+    client, make_user, app
+):
+    user_id, token = make_user(
+        "match-readiness@example.com", role="recruiter"
+    )
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, CandidateTag, Job, RecruitmentDemand
+
+        unconfigured_job = Job(
+            title="未配置技能岗位",
+            jd_text="负责平台建设",
+            jd_structured={},
+            owner_hr_id=user_id,
+            status="active",
+        )
+        configured_job = Job(
+            title="Python 岗位",
+            jd_text="负责 Python 平台建设",
+            jd_structured={"must_have_skills": ["Python"]},
+            owner_hr_id=user_id,
+            status="active",
+        )
+        candidate = Candidate(
+            owner_hr_id=user_id,
+            name_masked="技能候选人",
+            resume_json={},
+        )
+        db.session.add_all([unconfigured_job, configured_job, candidate])
+        db.session.flush()
+        db.session.add(CandidateTag(candidate_id=candidate.id, tag="Python", score=5))
+        unconfigured_demand = RecruitmentDemand(
+            job_id=unconfigured_job.id,
+            owner_hr_id=user_id,
+            request_no="REQ-MATCH-UNCONFIGURED",
+            status="active",
+            approval_status="approved",
+        )
+        configured_demand = RecruitmentDemand(
+            job_id=configured_job.id,
+            owner_hr_id=user_id,
+            request_no="REQ-MATCH-CONFIGURED",
+            status="active",
+            approval_status="approved",
+        )
+        db.session.add_all([unconfigured_demand, configured_demand])
+        db.session.commit()
+        candidate_id = candidate.id
+        unconfigured_demand_id = unconfigured_demand.id
+        configured_demand_id = configured_demand.id
+
+    unconfigured = client.post(
+        "/api/candidates/match/preview",
+        headers=_auth(token),
+        json={
+            "demand_id": unconfigured_demand_id,
+            "candidate_ids": [candidate_id],
+        },
+    )
+    configured = client.post(
+        "/api/candidates/match/preview",
+        headers=_auth(token),
+        json={
+            "demand_id": configured_demand_id,
+            "candidate_ids": [candidate_id],
+        },
+    )
+
+    assert unconfigured.status_code == configured.status_code == 200
+    assert unconfigured.get_json()["match_configured"] is False
+    assert unconfigured.get_json()["required_skills"] == []
+    assert configured.get_json()["match_configured"] is True
+    assert configured.get_json()["required_skills"] == ["Python"]
+    assert configured.get_json()["results"][0]["score"] > 0
+
+
 def test_batch_add_to_pipeline_adds_only_missing_candidates(client, make_user, app):
     user_id, token = make_user("batch-pipeline@example.com", role="recruiter")
 

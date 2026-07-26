@@ -97,6 +97,8 @@ assert.match(page, /批量收藏/, '候选人列表必须提供批量收藏');
 assert.match(page, /加入招聘流程/, '候选人列表必须提供批量加入流程');
 
 assert.match(pipelineModal, /candidatesApi\.previewMatches/, '加入流程前必须预览候选人与岗位匹配结果');
+assert.match(pipelineModal, /matchConfigured/, '候选人库加入流程时必须读取岗位匹配配置状态');
+assert.match(pipelineModal, /岗位技能尚未配置/, '未配置岗位技能时不能把未知匹配显示为 0 分');
 assert.match(candidateTypes, /latest_stage:\s*CandidateStage \| null/, '岗位匹配结果必须返回目标需求内的最新阶段');
 assert.match(pipelineModal, /match\.latest_stage === 'rejected'/, '重新启用判断必须使用目标需求内的阶段');
 assert.match(pipelineModal, /人才库重新启用|重新启用原因/, '淘汰候选人必须可填写原因后重新启用');

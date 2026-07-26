@@ -15,15 +15,64 @@ class MatchService:
     def __init__(self):
         self.matcher = JobMatcher()
 
+    def _job_skill_tags(self, job) -> list[tuple[str, int]]:
+        jd_structured = job.jd_structured or {}
+        raw_tags = jd_structured.get("skill_tags_raw", "")
+        parsed = self.matcher.parse_job_skills(raw_tags)
+        if parsed:
+            return parsed
+
+        collected = []
+        seen = set()
+        for key in (
+            "must_have_skills",
+            "required_skills",
+            "skill_tags",
+            "skills",
+        ):
+            values = jd_structured.get(key) or []
+            if isinstance(values, str):
+                values = [item.strip() for item in values.replace("，", ",").split(",")]
+            if not isinstance(values, list):
+                continue
+            for item in values:
+                if isinstance(item, dict):
+                    name = str(
+                        item.get("skill_name")
+                        or item.get("name")
+                        or item.get("tag")
+                        or ""
+                    ).strip()
+                    raw_score = item.get("score") or item.get("weight") or 3
+                else:
+                    name = str(item or "").strip()
+                    raw_score = 3
+                normalized = name.casefold()
+                if not name or normalized in seen:
+                    continue
+                try:
+                    score = min(5, max(1, int(raw_score)))
+                except (TypeError, ValueError):
+                    score = 3
+                collected.append((name, score))
+                seen.add(normalized)
+        return collected
+
+    def configuration_for_job(self, job_id: int) -> Dict[str, Any]:
+        job = db.session.get(Job, job_id)
+        tags = self._job_skill_tags(job) if job else []
+        return {
+            "match_configured": bool(tags),
+            "required_skills": [name for name, _score in tags],
+        }
+
     def _compute_rankings(self, job_id: int, candidate_query=None) -> List[Dict[str, Any]]:
         """纯计算匹配排名，不持久化。"""
         job = db.session.get(Job, job_id)
         if not job:
             return []
 
-        jd_structured = job.jd_structured or {}
-        jd_skill_tags_raw = jd_structured.get("skill_tags_raw", "")
-        jd_tags = self.matcher.parse_job_skills(jd_skill_tags_raw)
+        jd_tags = self._job_skill_tags(job)
 
         candidates = (candidate_query or Candidate.query.filter(Candidate.deleted_at.is_(None))).all()
         results = []

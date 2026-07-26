@@ -56,6 +56,8 @@ export default function AddToPipelineModal({
   const [matchedDemandId, setMatchedDemandId] = useState(0);
   const [matchLoading, setMatchLoading] = useState(false);
   const [matchError, setMatchError] = useState('');
+  const [matchConfigured, setMatchConfigured] = useState<boolean | null>(null);
+  const [requiredSkills, setRequiredSkills] = useState<string[]>([]);
   const matchRequestId = useRef(0);
 
   useEffect(() => {
@@ -67,6 +69,8 @@ export default function AddToPipelineModal({
     setMatches(new Map());
     setMatchedDemandId(0);
     setMatchError('');
+    setMatchConfigured(null);
+    setRequiredSkills([]);
     if (!demandId || candidates.length === 0) {
       setMatchLoading(false);
       return;
@@ -77,6 +81,8 @@ export default function AddToPipelineModal({
         if (matchRequestId.current !== requestId) return;
         setMatches(new Map(response.results.map((item) => [item.candidate_id, item])));
         setMatchedDemandId(demandId);
+        setMatchConfigured(response.match_configured);
+        setRequiredSkills(response.required_skills);
       })
       .catch((error: unknown) => {
         if (matchRequestId.current !== requestId) return;
@@ -179,6 +185,15 @@ export default function AddToPipelineModal({
                 {matchError}，仍可由 HR 人工判断后加入流程。
               </div>
             )}
+            {matchConfigured === false && (
+              <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <AlertCircle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span><strong>岗位技能尚未配置。</strong> 当前分数未知，不等于候选人匹配度为 0；请由 HR 核对简历，或先补充 JD 技能关键词。</span>
+              </div>
+            )}
+            {matchConfigured && requiredSkills.length > 0 && (
+              <p className="mb-2 rounded-lg bg-primary-50 px-3 py-2 text-xs text-primary-700">岗位必备技能：{requiredSkills.join('、')}</p>
+            )}
             <div className="max-h-64 divide-y divide-background-200 overflow-y-auto rounded-lg border border-background-200">
               {candidates.map((candidate) => {
                 const match = matchedDemandId === demandId ? matches.get(candidate.id) : undefined;
@@ -192,8 +207,8 @@ export default function AddToPipelineModal({
                       {sameRejectedDemand && <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-amber-700"><RotateCcw size={12} aria-hidden="true" />该需求中曾被淘汰，将按原因重新启用</p>}
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-sm font-semibold text-primary-700">{match ? `${Math.round(match.score)} 分` : '—'}</p>
-                      <p className="mt-0.5 max-w-56 truncate text-xs text-foreground-400">{match?.matched_tags.length ? `命中：${match.matched_tags.slice(0, 3).join('、')}` : '暂无明确命中技能'}</p>
+                      <p className="text-sm font-semibold text-primary-700">{matchConfigured === false ? '未配置' : match ? `${Math.round(match.score)} 分` : '—'}</p>
+                      <p className="mt-0.5 max-w-56 truncate text-xs text-foreground-400">{matchConfigured === false ? '匹配度暂未知' : match?.matched_tags.length ? `命中：${match.matched_tags.slice(0, 3).join('、')}` : '暂无明确命中技能'}</p>
                     </div>
                   </div>
                 );

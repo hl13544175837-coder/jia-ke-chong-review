@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useProductRole } from '@/auth/productRole';
 import { candidatesApi } from '@/features/candidates/api';
@@ -61,6 +61,8 @@ export default function JobsPage() {
   const { role } = useProductRole();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDemandId = Number(searchParams.get('demand')) || null;
   const navState = location.state as { fromDashboard?: boolean; openTitle?: string; tab?: string } | null;
   const [activeTab, setActiveTab] = useState(navState?.tab || 'all');
   const [formOpen, setFormOpen] = useState(false);
@@ -141,6 +143,15 @@ export default function JobsPage() {
     if (match) setSelectedDemand(match);
     navigate(location.pathname, { replace: true, state: null });
   }, [demands, location.pathname, navState?.openTitle, navigate]);
+
+  useEffect(() => {
+    if (!requestedDemandId || demands.length === 0) return;
+    const match = demands.find((demand) => demand.id === requestedDemandId);
+    if (match) setSelectedDemand(match);
+    const next = new URLSearchParams(searchParams);
+    next.delete('demand');
+    setSearchParams(next, { replace: true });
+  }, [demands, requestedDemandId, searchParams, setSearchParams]);
 
   const filteredData = useMemo(() => {
     let data = [...requisitions];

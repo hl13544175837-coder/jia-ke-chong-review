@@ -782,7 +782,9 @@ def preview_candidate_matches():
     visible_count = candidate_query.count()
     if visible_count != len(candidate_ids):
         return jsonify({"error": "候选人不存在或无权查看", "code": "candidate_not_found"}), 404
-    results = MatchService().rank_for_job_readonly(
+    match_service = MatchService()
+    configuration = match_service.configuration_for_job(demand.job_id)
+    results = match_service.rank_for_job_readonly(
         demand.job_id,
         top_n=len(candidate_ids),
         candidate_query=candidate_query,
@@ -794,6 +796,7 @@ def preview_candidate_matches():
     return jsonify({
         "demand_id": demand.id,
         "job_id": demand.job_id,
+        **configuration,
         "results": results,
     })
 

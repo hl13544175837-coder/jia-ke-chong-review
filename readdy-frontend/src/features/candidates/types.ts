@@ -154,6 +154,8 @@ export interface CandidateMatchResult {
 export interface CandidateMatchPreview {
   demand_id: number;
   job_id: number;
+  match_configured: boolean;
+  required_skills: string[];
   results: CandidateMatchResult[];
 }
 
