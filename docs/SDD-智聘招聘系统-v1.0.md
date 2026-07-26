@@ -351,7 +351,7 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
-| `POST` | `/pipeline/demands/<demand_id>/move`（兼容 `/pipeline/move`） | recruiter/manager/admin；interviewer 禁止 | Demand RBAC 下推进，追加流水、更新 Flow 和审计；重复请求不追加重复事实 |
+| `POST` | `/pipeline/demands/<demand_id>/move`（兼容 `/pipeline/move`） | recruiter/manager/admin；interviewer 禁止 | Demand RBAC 下推进，追加流水、更新 Flow 和审计；重复请求不追加重复事实；`stage=onboarded` 返回 409 `offer_onboard_action_required` |
 | `POST` | `/pipeline/demands/<source_demand_id>/transfer`（兼容 `/pipeline/transfer`） | recruiter/manager/admin；interviewer 禁止 | 单事务将来源写为 `transferred`、目标从 `pending` 承接，失败整体回滚 |
 | `GET` | `/pipeline/demands/<demand_id>` | 登录且有 Demand 权限 | 具体 Demand 当前阶段人数 |
 | `GET` | `/pipeline/demands/<demand_id>/board` | 登录且有 Demand 权限 | 具体 Demand 看板候选人卡片数据 |
@@ -366,7 +366,7 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `GET` | `/offers/<offer_id>` | recruiter/manager/admin + Demand 读取权 | 返回候选人、需求、当前状态、回复和 append-only 操作历史 |
 | `POST` | `/offers/<offer_id>/actions` | Demand owner/manager/admin；审批/审批拒绝仅 manager/admin | 状态机动作：`submit/approve/reject/send/accept/decline/withdraw/expire/onboard/resend/follow_up`；支持 `Idempotency-Key`，关键动作写通用审计 |
 
-Offer 状态顺序为 `draft → pending → approved → sent → accepted → onboarded`，审批拒绝或候选人拒绝进入 `declined`，在途记录可进入 `withdrawn`，超时可进入 `expired`。确认入职与候选人主流程推进到 `onboarded` 在同一事务完成；失败整体回滚。面试官不可访问 Offer 管理接口。
+Offer 状态顺序为 `draft → pending → approved → sent → accepted → onboarded`，审批拒绝或候选人拒绝进入 `declined`，在途记录可进入 `withdrawn`，超时可进入 `expired`。只有 `accepted` Offer 的 `onboard` 动作可写入 `onboarded`，且请求必须提供 `onboard_date`；通用 Pipeline 推进和阶段修正写入该终态均返回 409 `offer_onboard_action_required`。确认入职在同一事务更新 OfferRecord、OfferEvent、PipelineStage、CandidateDemandFlow、Candidate.current_demand_id 与双方审计，任一步失败整体回滚。面试官不可访问 Offer 管理接口。
 
 ### 7.5.2 招聘流程口径（当前代码候选）
 
@@ -425,7 +425,7 @@ P0 不通过页面猜测 Demand，`demand_id` 必须在路径、请求体或服�
 | Demand 关闭/恢复 | `POST /demands/<demand_id>/close|restore` | 只更改 Demand，不修改 Job；HC 满额只返回 `completion_suggested` |
 | Demand 负责人转派 | `PATCH /demands/<demand_id>/owner` | 事务内更新 Demand、所有 active flow 及候选人当前 owner；不改 Job owner，不改历史 actor |
 | 流程看板 | `GET /pipeline/demands/<demand_id>` 及其 board/history 变体 | 当前状态按 `(candidate_id, demand_id)` 取值 |
-| 流程推进 | `POST /pipeline/move` 显式携带 `demand_id`, `candidate_id`, `stage`, `note` | 校验 active flow、Demand 状态、RBAC 和组织边界；写入流水、投影与审计 |
+| 流程推进 | `POST /pipeline/move` 显式携带 `demand_id`, `candidate_id`, `stage`, `note` | 校验 active flow、Demand 状态、RBAC 和组织边界；写入流水、投影与审计；`stage=onboarded` 固定返回 409 `offer_onboard_action_required`，必须改走 Offer 确认入职 |
 | 转 Demand | `POST /pipeline/transfer` 携带 `source_demand_id`, `target_demand_id`, `candidate_id`, `reason` | 单事务把源 flow 置为 `transferred`、目标 flow 置为 `pending`，当前 owner 跟随目标 Demand |
 | 面试 | 安排、取消、反馈、详情契约都带 `demand_id`；反馈必须解析为当前用户的有效 `assignment_id` | 轮次不拆主流程阶段；每轮一个 primary；未分配/已取消任务拒绝反馈；未反馈任务可说明原因取消并释放轮次槽，已有反馈不可取消；任何反馈都不推进主流程 |
 | Demand BI | `GET /bi/demand/<demand_id>` 和 Demand 维度的 overview/drill-down | 只解释进度、瓶颈与当前责任协同，不产生人员排名或考核结论 |

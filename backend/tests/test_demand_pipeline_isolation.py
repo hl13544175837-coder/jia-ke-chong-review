@@ -457,24 +457,69 @@ def test_onboarded_reaching_hc_suggests_completion_without_closing_demand(
     client, make_user, app
 ):
     owner_id, token = make_user("pipeline-hc@example.com", role="recruiter")
+    _, manager_token = make_user("pipeline-hc-manager@example.com", role="manager")
     seeded = _seed_sibling_demands(app, owner_id, headcount=1)
+    demand_id = seeded["first_demand_id"]
+    candidate_id = seeded["first_candidate_id"]
+
+    moved = client.post(
+        f"/api/pipeline/demands/{demand_id}/move",
+        headers=_auth(token),
+        json={"candidate_id": candidate_id, "stage": "offer"},
+    )
+    assert moved.status_code == 200
+    offer = client.put(
+        f"/api/pipeline/demands/{demand_id}/offer/{candidate_id}",
+        headers=_auth(token),
+        json={"salary_range": "30-35K"},
+    ).get_json()
+    offer_id = offer["id"]
+    assert client.post(
+        f"/api/offers/{offer_id}/actions",
+        headers=_auth(token),
+        json={"action": "submit"},
+    ).status_code == 200
+    assert client.post(
+        f"/api/offers/{offer_id}/actions",
+        headers=_auth(manager_token),
+        json={"action": "approve"},
+    ).status_code == 200
+    assert client.post(
+        f"/api/offers/{offer_id}/actions",
+        headers=_auth(token),
+        json={"action": "send"},
+    ).status_code == 200
+    assert client.post(
+        f"/api/offers/{offer_id}/actions",
+        headers=_auth(token),
+        json={"action": "accept"},
+    ).status_code == 200
 
     response = client.post(
-        f"/api/pipeline/demands/{seeded['first_demand_id']}/move",
+        f"/api/offers/{offer_id}/actions",
         headers=_auth(token),
-        json={
-            "candidate_id": seeded["first_candidate_id"],
-            "stage": "onboarded",
-        },
+        json={"action": "onboard", "onboard_date": "2026-08-15"},
     )
     assert response.status_code == 200
-    assert response.get_json()["onboarded_count"] == 1
-    assert response.get_json()["completion_suggested"] is True
-    assert response.get_json()["demand_status"] == "active"
+    assert response.get_json()["status"] == "onboarded"
+
+    board = client.get(
+        f"/api/pipeline/demands/{demand_id}/board",
+        headers=_auth(token),
+    ).get_json()
+    assert board["candidates"][0]["stage"] == "onboarded"
 
     with app.app_context():
-        demand = db.session.get(RecruitmentDemand, seeded["first_demand_id"])
-        candidate = db.session.get(Candidate, seeded["first_candidate_id"])
+        demand = db.session.get(RecruitmentDemand, demand_id)
+        candidate = db.session.get(Candidate, candidate_id)
+        latest_stage = (
+            PipelineStage.query.filter_by(candidate_id=candidate_id, demand_id=demand_id)
+            .order_by(PipelineStage.id.desc())
+            .first()
+        )
+        assert latest_stage is not None
+        assert latest_stage.stage == "onboarded"
+        assert demand.headcount == 1
         assert demand.status == "active"
         assert candidate.current_demand_id is None
 

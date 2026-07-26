@@ -79,6 +79,18 @@ assert.match(
   'Stage correction should require a second confirmation because it changes current pipeline and BI stock',
 );
 
+assert.match(
+  candidateProfile,
+  /to="\/offers"/,
+  'Offer 阶段应引导到唯一的 Offer 管理确认入职入口',
+);
+
+assert.match(
+  candidateProfile,
+  /item\.key !== 'onboarded'/,
+  'Candidate profile stage correction must not directly write onboarded',
+);
+
 assert.doesNotMatch(
   candidateProfile,
   /推进到[^<]*(?:确认|原因（必填）)/,

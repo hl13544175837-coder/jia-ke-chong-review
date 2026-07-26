@@ -232,14 +232,22 @@ export function PipelineCandidatePanel({
               </Link>
             )}
             {candidate.stage === 'offer' && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowOffer((value) => !value)}
-                disabled={busy}
-              >
-                记录 Offer
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setShowOffer((value) => !value)}
+                  disabled={busy}
+                >
+                  记录 Offer
+                </Button>
+                <Link
+                  to="/offers"
+                  className="inline-flex h-8 items-center justify-center rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
+                >
+                  前往 Offer 管理
+                </Link>
+              </>
             )}
             {!terminal && (
               <Button
@@ -364,7 +372,7 @@ export function PipelineCandidatePanel({
                   className="h-9 flex-1 rounded-md border border-hairline bg-canvas px-2 text-sm text-ink focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
                 >
                   <option value="">选择阶段</option>
-                  {STAGES.map((item) => (
+                  {STAGES.filter((item) => item.key !== 'onboarded').map((item) => (
                     <option key={item.key} value={item.key} disabled={item.key === candidate.stage}>
                       {item.label}
                     </option>

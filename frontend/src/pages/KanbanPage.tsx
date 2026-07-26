@@ -69,6 +69,27 @@ function offerKey(demandId: number, candidateId: number) {
   return `${demandId}:${candidateId}`;
 }
 
+function offerActionGuidance(status: OfferStatus | undefined): string {
+  switch (status) {
+    case 'accepted':
+      return '候选人已接受 Offer，请前往 Offer 管理确认实际入职日期。';
+    case 'draft':
+      return '请前往 Offer 管理补齐 Offer 信息并提交审批。';
+    case 'pending':
+      return 'Offer 正在审批，请在 Offer 管理跟进审批结果。';
+    case 'approved':
+      return 'Offer 已审批，请前往 Offer 管理发放给候选人。';
+    case 'sent':
+      return 'Offer 已发放，请在 Offer 管理记录候选人是否接受。';
+    case 'declined':
+    case 'withdrawn':
+    case 'expired':
+      return '当前 Offer 已结束，请前往 Offer 管理确认后续处理。';
+    default:
+      return '尚未创建 Offer，请前往 Offer 管理补齐 Offer 信息。';
+  }
+}
+
 function parsePositiveParam(value: string | null) {
   if (value === null) return { provided: false, value: null as number | null };
   const parsed = Number(value);
@@ -241,7 +262,7 @@ function CorrectModal({
             }}
           >
             <option value="">选择阶段</option>
-            {STAGES.map((stage) => (
+            {STAGES.filter((stage) => stage.key !== 'onboarded').map((stage) => (
               <option key={stage.key} value={stage.key} disabled={stage.key === candidate.stage}>
                 {stage.label}
               </option>
@@ -483,6 +504,11 @@ function CandidateCard({
           <Badge tone={offerMeta.tone}>{offerMeta.label}</Badge>
         </div>
       )}
+      {candidate.stage === 'offer' && (
+        <p className="mt-2 text-xs leading-5 text-[#5f6561]">
+          {offerActionGuidance(offer?.status || offer?.approval_status)}
+        </p>
+      )}
       {candidate.note && (
         <p className="mt-2 line-clamp-2 text-xs text-[#5f6561]" title={candidate.note}>
           {candidate.note}
@@ -502,6 +528,15 @@ function CandidateCard({
             推进到{stageLabel(next)}
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
+        )}
+        {canMove && candidate.stage === 'offer' && (
+          <Link
+            to="/offers"
+            onClick={(event) => event.stopPropagation()}
+            className="inline-flex h-8 items-center justify-center rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
+          >
+            {offerMeta?.label === '候选人已接受' ? '确认入职' : '前往 Offer 管理'}
+          </Link>
         )}
         {canMove && !terminal && (
           <Button

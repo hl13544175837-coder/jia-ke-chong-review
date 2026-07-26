@@ -6,7 +6,6 @@ export const NEXT_STAGE: Partial<Record<PipelineStage, PipelineStage>> = {
   ai_screen: 'business_review',
   business_review: 'interview',
   interview: 'offer',
-  offer: 'onboarded',
 };
 
 export function isInterviewStage(stage: PipelineStage): boolean {

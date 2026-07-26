@@ -1294,15 +1294,23 @@ function CandidatePipelineActionPanel({
                 </Link>
               )}
               {pipeline.stage === 'offer' && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setShowOffer((value) => !value)}
-                  disabled={moving}
-                >
-                  记录 Offer
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setShowOffer((value) => !value)}
+                    disabled={moving}
+                  >
+                    记录 Offer
+                  </Button>
+                  <Link
+                    to="/offers"
+                    className="inline-flex h-8 items-center justify-center rounded-md border border-hairline bg-canvas px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-soft"
+                  >
+                    前往 Offer 管理
+                  </Link>
+                </>
               )}
               <Link
                 to={`/kanban?demand=${pipeline.demand_id}&candidate=${candidateId}&stage=${pipeline.stage}`}
@@ -1366,7 +1374,7 @@ function CandidatePipelineActionPanel({
                       className="mt-2 h-9 w-full rounded-md border border-hairline bg-canvas px-2 text-sm text-ink focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
                     >
                       <option value="">选择阶段</option>
-                      {STAGES.map((item) => (
+                      {STAGES.filter((item) => item.key !== 'onboarded').map((item) => (
                         <option key={item.key} value={item.key} disabled={item.key === pipeline.stage}>
                           {item.label}
                         </option>
