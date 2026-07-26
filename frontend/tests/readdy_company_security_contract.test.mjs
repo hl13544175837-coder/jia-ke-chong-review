@@ -72,12 +72,12 @@ assert.match(routes, /RequireCompanyRole/, '角色页面必须有真实角色守
 const layout = read('readdy-frontend/src/components/feature/MainLayout.tsx');
 assert.match(layout, /useCompanyAuth/, '主壳必须读取公司真实会话');
 assert.match(layout, /logout/, '主壳必须提供真实退出登录');
-assert.match(layout, /previewEnabled\s*&&/, '本地角色预览入口必须受显式开关保护');
+assert.doesNotMatch(layout, /previewEnabled|setPreviewRole|预览角色/, '主产品不得保留本地假角色切换入口');
 assert.doesNotMatch(layout, /zhipin-current-role/, '正式角色禁止从 localStorage 演示开关读取');
 
 const productRole = read('readdy-frontend/src/auth/productRole.tsx');
-assert.match(productRole, /import\.meta\.env\.DEV/, '角色预览不得进入正式构建');
-assert.match(productRole, /VITE_ENABLE_ROLE_PREVIEW/, '角色预览必须由隔离环境显式开启');
+assert.doesNotMatch(productRole, /setPreviewRole|VITE_ENABLE_ROLE_PREVIEW|zhipin-current-role/, '角色上下文只能读取真实登录身份');
+assert.match(productRole, /useCompanyAuth/, '产品角色必须来自公司会话');
 
 const vite = read('readdy-frontend/vite.config.ts');
 assert.match(vite, /COMPANY_GATEWAY_PROXY_TARGET/, '5190 必须显式代理公司网关');

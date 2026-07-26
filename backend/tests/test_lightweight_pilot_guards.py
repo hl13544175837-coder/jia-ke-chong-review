@@ -1,4 +1,5 @@
 import io
+from datetime import UTC, datetime, timedelta
 
 
 def _auth(token):
@@ -69,12 +70,15 @@ def test_repeated_interview_assignment_returns_existing_assignment(client, make_
     owner_id, token = make_user("pilot-assign@example.com", role="recruiter")
     interviewer_id, _ = make_user("pilot-interviewer@example.com", role="interviewer")
     job_id, candidate_id = _seed_job_candidate(app, owner_id)
+    scheduled_at = (
+        datetime.now(UTC).replace(tzinfo=None) + timedelta(days=2)
+    ).isoformat(timespec="seconds")
     payload = {
         "candidate_id": candidate_id,
         "job_id": job_id,
         "round": "round_1",
         "interviewer_id": interviewer_id,
-        "scheduled_at": "2026-06-24T10:00:00",
+        "scheduled_at": scheduled_at,
     }
 
     first = client.post("/api/interview/assignments", headers=_auth(token), json=payload)
@@ -95,19 +99,22 @@ def test_interview_assignment_rejects_same_interviewer_time_conflict(client, mak
     first_job_id, first_candidate_id = _seed_job_candidate(app, owner_id)
     second_job_id, second_candidate_id = _seed_job_candidate(app, owner_id)
 
+    scheduled_at = (
+        datetime.now(UTC).replace(tzinfo=None) + timedelta(days=2)
+    ).isoformat(timespec="seconds")
     first = client.post("/api/interview/assignments", headers=_auth(token), json={
         "candidate_id": first_candidate_id,
         "job_id": first_job_id,
         "round": "round_1",
         "interviewer_id": interviewer_id,
-        "scheduled_at": "2026-06-24T10:00:00",
+        "scheduled_at": scheduled_at,
     })
     second = client.post("/api/interview/assignments", headers=_auth(token), json={
         "candidate_id": second_candidate_id,
         "job_id": second_job_id,
         "round": "round_1",
         "interviewer_id": interviewer_id,
-        "scheduled_at": "2026-06-24T10:00:00",
+        "scheduled_at": scheduled_at,
     })
 
     assert first.status_code == 201

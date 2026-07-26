@@ -473,7 +473,7 @@ def test_mysql_shell_contract_is_secret_safe_and_fail_closed():
     assert 'LOCAL_SCHEMA_COMPAT_VALUE=true' in start_script
     assert 'LOCAL_SCHEMA_COMPAT_VALUE=false' in start_script
     assert "PILOT_SCHEMA_VERIFIED" in start_script
-    assert "VITE_ENABLE_ROLE_PREVIEW=false" in start_script
+    assert "VITE_ENABLE_ROLE_PREVIEW" not in start_script
 
     for script in (prepare_script, serve_script, check_script):
         assert "mysql-pilot.env" in script

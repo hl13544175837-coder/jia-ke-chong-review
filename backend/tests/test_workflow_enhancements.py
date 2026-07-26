@@ -377,6 +377,9 @@ def test_interview_assignment_can_be_created_and_listed(client, make_user, app):
     interviewer_id, _ = make_user("assign-iv@x.com", role="interviewer", name="李面试官")
     jid, cid = _seed_job_candidate(app, owner_id=uid)
 
+    scheduled_at = (
+        datetime.now(UTC).replace(tzinfo=None) + timedelta(days=2)
+    ).isoformat(timespec="seconds")
     response = client.post(
         "/api/interview/assignments",
         headers=_auth(token),
@@ -385,7 +388,7 @@ def test_interview_assignment_can_be_created_and_listed(client, make_user, app):
             "job_id": jid,
             "round": "interview_first",
             "interviewer_id": interviewer_id,
-            "scheduled_at": "2026-06-20T10:00:00",
+            "scheduled_at": scheduled_at,
             "location": "腾讯会议 123",
             "note": "重点看产品判断",
         },
@@ -394,7 +397,7 @@ def test_interview_assignment_can_be_created_and_listed(client, make_user, app):
     assert response.status_code == 201
     created = response.get_json()
     assert created["interviewer_name"] == "李面试官"
-    assert created["scheduled_at"].startswith("2026-06-20T10:00:00")
+    assert created["scheduled_at"].startswith(scheduled_at)
 
     listed = client.get("/api/interview/assignments", headers=_auth(token)).get_json()
     assert any(item["id"] == created["id"] for item in listed)
@@ -469,7 +472,8 @@ def test_assignment_payload_flags_overdue_and_feedback_status(client, make_user,
     uid, token = make_user("overdue-hr@x.com", role="recruiter")
     interviewer_id, iv_token = make_user("overdue-iv@x.com", role="interviewer", name="周面试官")
     jid, cid = _seed_job_candidate(app, owner_id=uid)
-    past = (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)).isoformat(timespec="seconds")
+    future = (datetime.now(UTC).replace(tzinfo=None) + timedelta(days=2)).isoformat(timespec="seconds")
+    past = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
 
     created = client.post(
         "/api/interview/assignments",
@@ -479,9 +483,17 @@ def test_assignment_payload_flags_overdue_and_feedback_status(client, make_user,
             "job_id": jid,
             "round": "interview_first",
             "interviewer_id": interviewer_id,
-            "scheduled_at": past,
+            "scheduled_at": future,
         },
     ).get_json()
+
+    with app.app_context():
+        from app import db
+        from app.models import InterviewAssignment
+
+        assignment = db.session.get(InterviewAssignment, created["id"])
+        assignment.scheduled_at = past
+        db.session.commit()
 
     listed = client.get("/api/interview/assignments", headers=_auth(iv_token)).get_json()
     item = next(row for row in listed if row["id"] == created["id"])
@@ -515,9 +527,10 @@ def test_cancelled_assignment_is_never_reported_as_overdue(
         "cancelled-iv@x.com", role="interviewer"
     )
     job_id, candidate_id = _seed_job_candidate(app, owner_id=owner_id)
-    past = (
-        datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
+    future = (
+        datetime.now(UTC).replace(tzinfo=None) + timedelta(days=2)
     ).isoformat(timespec="seconds")
+    past = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
 
     response = client.post(
         "/api/interview/assignments",
@@ -527,11 +540,18 @@ def test_cancelled_assignment_is_never_reported_as_overdue(
             "job_id": job_id,
             "round": "round_1",
             "interviewer_id": interviewer_id,
-            "scheduled_at": past,
+            "scheduled_at": future,
         },
     )
 
     assert response.status_code == 201
+    with app.app_context():
+        from app import db
+        from app.models import InterviewAssignment
+
+        assignment = db.session.get(InterviewAssignment, response.get_json()["id"])
+        assignment.scheduled_at = past
+        db.session.commit()
     cancelled = client.patch(
         f"/api/interview/assignments/{response.get_json()['id']}/cancel",
         headers=_auth(owner_token),

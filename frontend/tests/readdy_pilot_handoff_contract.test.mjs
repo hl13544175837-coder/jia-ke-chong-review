@@ -25,19 +25,24 @@ const handoffPath = path.join(root, 'docs/13_试点业务流程与研发接口�
 assert.ok(fs.existsSync(handoffPath), '必须提供研发可直接使用的试点流程与接口交接文档');
 const handoff = read('docs/13_试点业务流程与研发接口交接.md');
 for (const phrase of [
-  '业务填写招聘需求',
-  'HR 筛选',
+  '需求生效',
+  '当前需求内选人/导入简历',
+  'HR 初筛并推送',
   '业务筛选',
-  '一面',
-  '二面',
-  'Offer',
+  '创建面试',
+  '面试评价',
+  '招聘专员决策',
+  'Offer 与入职',
   '原版简历',
   '满意',
   '待定',
   '不满意',
   '需要 HR 补充信息',
   '不自动推进',
-  '研发负责提供',
+  '实际入职',
+  'HC',
+  '企业微信',
+  '待接入',
 ]) {
   assert.ok(handoff.includes(phrase), `研发交接文档缺少：${phrase}`);
 }
