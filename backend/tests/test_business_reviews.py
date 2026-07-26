@@ -168,6 +168,13 @@ def test_assigned_reviewer_can_submit_fixed_decisions_without_advancing_pipeline
             type="business_review_decided",
         ).one()
         assert owner_notice.user_id == hr_id
+        assert owner_notice.link == (
+            f"/candidates?demand={case['demand_id']}"
+            f"&candidate={case['candidate_id']}"
+        )
+        assert "Review Candidate" in owner_notice.body
+        assert "Data Analyst" in owner_notice.body
+        assert "任务 #" not in owner_notice.body
 
 
 @pytest.mark.parametrize("decision", ["rejected", "needs_info"])

@@ -51,6 +51,7 @@ interface PushToReviewerModalProps {
   demands: PushDemandOption[];
   reviewers: BusinessReviewerOption[];
   initialDemandId?: number | null;
+  initialReviewerId?: number | null;
   demandsLoading: boolean;
   demandError: string | null;
   reviewersLoading: boolean;
@@ -77,6 +78,7 @@ export default function PushToReviewerModal({
   demands,
   reviewers,
   initialDemandId,
+  initialReviewerId,
   demandsLoading,
   demandError,
   reviewersLoading,
@@ -103,13 +105,20 @@ export default function PushToReviewerModal({
   }, [demands, initialDemandId, targets]);
 
   const [demandId, setDemandId] = useState(fallbackDemandId);
-  const [reviewerId, setReviewerId] = useState(0);
+  const fallbackReviewerId = initialReviewerId && reviewers.some((reviewer) => reviewer.id === initialReviewerId)
+    ? initialReviewerId
+    : 0;
+  const [reviewerId, setReviewerId] = useState(fallbackReviewerId);
   const [hrNote, setHrNote] = useState('');
   const [dueDate, setDueDate] = useState('');
 
   useEffect(() => {
     if (demandId === 0 && fallbackDemandId > 0) setDemandId(fallbackDemandId);
   }, [demandId, fallbackDemandId]);
+
+  useEffect(() => {
+    if (reviewerId === 0 && fallbackReviewerId > 0) setReviewerId(fallbackReviewerId);
+  }, [fallbackReviewerId, reviewerId]);
 
   const selectedDemand = demands.find((demand) => demand.id === demandId) ?? null;
   const selectedReviewer = reviewers.find((reviewer) => reviewer.id === reviewerId) ?? null;
@@ -144,8 +153,8 @@ export default function PushToReviewerModal({
       >
         <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div>
-            <h2 id="push-review-title" className="text-lg font-bold text-foreground-900">推送业务筛选</h2>
-            <p className="mt-1 text-sm text-foreground-500">已选 {targets.length} 位候选人，后端会为每人返回独立任务</p>
+            <h2 id="push-review-title" className="text-lg font-bold text-foreground-900">推送业务负责人筛选</h2>
+            <p className="mt-1 text-sm text-foreground-500">通过后由招聘专员安排面试，每位候选人会生成一条待办</p>
           </div>
           <button
             type="button"

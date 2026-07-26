@@ -8,7 +8,8 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ApiError } from '@/lib/api';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
@@ -52,15 +53,18 @@ function formatTime(value: string | null | undefined) {
 
 interface MoveDialogProps {
   candidate: PipelineBoardCandidate;
+  initialTarget?: PipelineStage | null;
   busy: boolean;
   error: string;
   onClose: () => void;
   onSubmit: (stage: PipelineStage, reason: string) => void;
 }
 
-function MoveDialog({ candidate, busy, error, onClose, onSubmit }: MoveDialogProps) {
+function MoveDialog({ candidate, initialTarget, busy, error, onClose, onSubmit }: MoveDialogProps) {
   const targets = moveTargets(candidate.stage);
-  const [target, setTarget] = useState<PipelineStage | ''>(targets[0] || '');
+  const [target, setTarget] = useState<PipelineStage | ''>(
+    initialTarget && targets.includes(initialTarget) ? initialTarget : targets[0] || '',
+  );
   const [reason, setReason] = useState('');
   const reasonRequired = target === 'rejected' || candidate.stage === 'rejected';
 
@@ -125,8 +129,13 @@ function MoveDialog({ candidate, busy, error, onClose, onSubmit }: MoveDialogPro
 }
 
 export default function KanbanPage() {
+  const [searchParams] = useSearchParams();
+  const requestedDemandId = Number(searchParams.get('demand')) || null;
+  const requestedCandidateId = Number(searchParams.get('candidate')) || null;
+  const requestedTarget = searchParams.get('target') === 'rejected' ? 'rejected' : null;
+  const handledCandidateId = useRef<number | null>(null);
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
-  const [demandId, setDemandId] = useState<number | null>(null);
+  const [demandId, setDemandId] = useState<number | null>(requestedDemandId);
   const [board, setBoard] = useState<PipelineBoard | null>(null);
   const [loadingDemands, setLoadingDemands] = useState(true);
   const [loadingBoard, setLoadingBoard] = useState(false);
@@ -186,6 +195,14 @@ export default function KanbanPage() {
     if (demandId) void loadBoard(demandId);
     else setBoard(null);
   }, [demandId, loadBoard]);
+
+  useEffect(() => {
+    if (!board || !requestedCandidateId || handledCandidateId.current === requestedCandidateId) return;
+    const candidate = board.candidates.find((item) => item.candidate_id === requestedCandidateId);
+    if (!candidate) return;
+    handledCandidateId.current = requestedCandidateId;
+    setMoveCandidate(candidate);
+  }, [board, requestedCandidateId]);
 
   const openHistory = async (candidate: PipelineBoardCandidate) => {
     if (!demandId) return;
@@ -391,6 +408,7 @@ export default function KanbanPage() {
       {moveCandidate && (
         <MoveDialog
           candidate={moveCandidate}
+          initialTarget={requestedTarget}
           busy={moveBusy}
           error={moveError}
           onClose={() => !moveBusy && setMoveCandidate(null)}

@@ -12,6 +12,7 @@ const pipelineModal = read('readdy-frontend/src/pages/candidates/components/AddT
 const duplicateModal = read('readdy-frontend/src/pages/candidates/components/DuplicateCandidatesModal.tsx');
 const candidateApi = read('readdy-frontend/src/features/candidates/api.ts');
 const candidateTypes = read('readdy-frontend/src/features/candidates/types.ts');
+const kanbanPage = read('readdy-frontend/src/pages/kanban/page.tsx');
 
 for (const field of ['demandId?: number', 'targetStage?: string']) {
   assert.match(page, new RegExp(field.replace('?', '\\?')), `需求跳转上下文缺少 ${field}`);
@@ -32,6 +33,17 @@ assert.match(
   '需求上下文必须同时作为简历上传的默认目标',
 );
 assert.match(page, /当前需求候选人/, '需求上下文页面必须使用清楚的候选人工作区名称');
+assert.match(page, /useSearchParams/, '候选人页必须读取业务筛选通知的定位参数');
+assert.match(page, /searchParams\.get\(['"]demand['"]\)/, '通知必须定位到对应需求');
+assert.match(page, /searchParams\.get\(['"]candidate['"]\)/, '通知必须定位到对应候选人');
+assert.match(page, /businessReviewsApi\.listForHr/, '招聘专员必须读取真实的业务筛选结果');
+for (const copy of ['业务筛选结果', '安排面试', '去流程处理', '补充并再次推送']) {
+  assert.match(page, new RegExp(copy), `招聘专员结果页缺少“${copy}”`);
+}
+assert.match(page, /\/interviews\?demand=/, '业务通过后必须直达对应候选人的面试安排');
+assert.match(page, /\/kanban\?demand=/, '业务认为不合适后必须直达该候选人的流程处理');
+assert.match(kanbanPage, /useSearchParams/, '招聘进度页必须承接业务筛选结果上下文');
+assert.match(kanbanPage, /searchParams\.get\(['"]candidate['"]\)/, '招聘进度页必须定位到对应候选人');
 
 for (const method of [
   'candidatesApi.listCandidates',
@@ -123,5 +135,6 @@ for (const field of ['demandId: number', 'reviewerId: number', 'hrNote: string',
 assert.match(modal, /disabled=\{!canSubmit \|\| isSubmitting\}/, '推送请求期间必须禁用提交');
 assert.match(modal, /暂无可推送的已审批在招需求/, '无可用需求时必须显示真实空状态');
 assert.match(modal, /加载业务评审人中/, '评审人列表必须有加载状态');
+assert.match(modal, /通过后由招聘专员安排面试/, '推送弹窗必须说清楚下一步责任人');
 
 console.log('readdy_mysql_pilot_candidate_ui_contract: OK');

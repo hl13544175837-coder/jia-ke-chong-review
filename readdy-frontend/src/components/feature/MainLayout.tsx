@@ -45,7 +45,9 @@ const bottomNavItems: NavItem[] = [
 
 const notificationVisuals: Record<string, { icon: string; color: string }> = {
   business_review: { icon: 'ri-file-search-line', color: 'bg-amber-100 text-amber-700' },
+  business_review_assigned: { icon: 'ri-file-search-line', color: 'bg-amber-100 text-amber-700' },
   business_review_decision: { icon: 'ri-checkbox-circle-line', color: 'bg-primary-100 text-primary-700' },
+  business_review_decided: { icon: 'ri-checkbox-circle-line', color: 'bg-primary-100 text-primary-700' },
   interview_assignment: { icon: 'ri-calendar-event-line', color: 'bg-sky-100 text-sky-700' },
   interview_feedback: { icon: 'ri-survey-line', color: 'bg-violet-100 text-violet-700' },
 };

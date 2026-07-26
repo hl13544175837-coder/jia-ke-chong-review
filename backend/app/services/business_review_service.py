@@ -401,6 +401,16 @@ def decide_business_review(org_id, task_id, actor_id, decision, note):
     task.decided_by = actor_id
     task.decided_at = utc_now()
     if demand is not None and demand.owner_hr_id is not None:
+        candidate = db.session.get(Candidate, task.candidate_id)
+        decision_label = {
+            "approved": "已通过，待安排面试",
+            "rejected": "不合适，待 HR 确认",
+            "needs_info": "需要 HR 补充信息",
+        }[decision]
+        candidate_name = candidate.name_masked if candidate else "候选人"
+        job_title = demand.job_title_snapshot or (
+            demand.job.title if demand.job else "招聘需求"
+        )
         db.session.add(
             Notification(
                 org_id=org_id,
@@ -408,7 +418,7 @@ def decide_business_review(org_id, task_id, actor_id, decision, note):
                 demand_id=task.demand_id,
                 type="business_review_decided",
                 title="业务筛选已有结论",
-                body=f"任务 #{task.id} · {decision}",
+                body=f"{candidate_name} · {job_title} · {decision_label}",
                 link=f"/candidates?demand={task.demand_id}&candidate={task.candidate_id}",
             )
         )

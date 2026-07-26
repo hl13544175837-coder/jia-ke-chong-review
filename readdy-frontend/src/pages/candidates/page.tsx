@@ -9,7 +9,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowLeft,
@@ -49,6 +49,7 @@ import type {
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { businessReviewsApi } from '@/features/businessReviews/api';
+import type { BusinessReviewStatus, BusinessReviewTask } from '@/features/businessReviews/types';
 import { useToast } from '@/hooks/useToast';
 import PushToReviewerModal, {
   type BusinessReviewerOption,
@@ -105,6 +106,13 @@ const candidateStageOptions: CandidateStage[] = [
   'transferred',
 ];
 
+const businessReviewStatusMeta: Record<BusinessReviewStatus, { label: string; className: string }> = {
+  pending: { label: '等待业务负责人', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+  approved: { label: '已通过', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  rejected: { label: '不合适', className: 'border-red-200 bg-red-50 text-red-700' },
+  needs_info: { label: '待 HR 补充', className: 'border-sky-200 bg-sky-50 text-sky-700' },
+};
+
 type CandidateColumnFilter = 'identity' | 'parse' | 'profile' | 'skills' | 'source' | 'stage' | 'created';
 type PipelineStatusFilter = '' | 'in_pipeline' | 'not_in_pipeline';
 type CandidateSortBy = 'created_at' | 'name_masked';
@@ -122,6 +130,29 @@ function isParseStatus(value: string): value is ParseStatus {
 
 function isPipelineStatus(value: string): value is Exclude<PipelineStatusFilter, ''> {
   return value === 'in_pipeline' || value === 'not_in_pipeline';
+}
+
+function positiveSearchId(value: string | null) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function candidateFromReviewTask(task: BusinessReviewTask): CandidateListItem {
+  const parseStatus = isParseStatus(task.candidate.parse_status)
+    ? task.candidate.parse_status
+    : 'pending';
+  return {
+    id: task.candidate_id,
+    name_masked: task.candidate.name_masked,
+    owner_hr_id: task.demand.owner_hr_id,
+    current_demand_id: task.demand_id,
+    latest_demand_id: task.demand_id,
+    is_favorite: false,
+    created_at: task.created_at,
+    parse_status: parseStatus,
+    tag_count: 0,
+    current_stage: 'business_review',
+  };
 }
 
 function CandidateColumnFilterHeader({
@@ -271,7 +302,14 @@ export default function CandidatesPage() {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  const navState = isCandidateNavigationState(location.state) ? location.state : null;
+  const [searchParams] = useSearchParams();
+  const requestedDemandId = positiveSearchId(searchParams.get('demand'));
+  const requestedCandidateId = positiveSearchId(searchParams.get('candidate'));
+  const navState = isCandidateNavigationState(location.state)
+    ? location.state
+    : requestedDemandId
+      ? { demandId: requestedDemandId }
+      : null;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [demandFilter, setDemandFilter] = useState<number | ''>(navState?.demandId ?? '');
@@ -300,6 +338,10 @@ export default function CandidatesPage() {
   const [reviewers, setReviewers] = useState<BusinessReviewerOption[]>([]);
   const [reviewersLoading, setReviewersLoading] = useState(false);
   const [reviewerError, setReviewerError] = useState<string | null>(null);
+
+  const [reviewTasks, setReviewTasks] = useState<BusinessReviewTask[]>([]);
+  const [reviewTasksLoading, setReviewTasksLoading] = useState(true);
+  const [reviewTasksError, setReviewTasksError] = useState<string | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [favoriteSaving, setFavoriteSaving] = useState(false);
@@ -331,6 +373,8 @@ export default function CandidatesPage() {
   const [pushTargets, setPushTargets] = useState<PushTarget[] | null>(null);
   const [pushSubmitting, setPushSubmitting] = useState(false);
   const [pushResults, setPushResults] = useState<PushResultItem[]>([]);
+  const [pushInitialReviewerId, setPushInitialReviewerId] = useState<number | null>(null);
+  const handledCandidateQuery = useRef<number | null>(null);
   const deferredSearch = useDeferredValue(searchQuery.trim());
   const deferredSkill = useDeferredValue(skillFilter.trim());
 
@@ -433,6 +477,19 @@ export default function CandidatesPage() {
     }
   }, []);
 
+  const loadReviewTasks = useCallback(async () => {
+    setReviewTasksLoading(true);
+    setReviewTasksError(null);
+    try {
+      const response = await businessReviewsApi.listForHr();
+      setReviewTasks(response.items);
+    } catch (error) {
+      setReviewTasksError(errorMessage(error, '业务筛选结果加载失败'));
+    } finally {
+      setReviewTasksLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadCandidates();
   }, [loadCandidates]);
@@ -440,6 +497,13 @@ export default function CandidatesPage() {
   useEffect(() => {
     void loadDemands();
   }, [loadDemands]);
+
+  useEffect(() => {
+    void loadReviewTasks();
+    const refreshReviewTasks = () => void loadReviewTasks();
+    window.addEventListener('focus', refreshReviewTasks);
+    return () => window.removeEventListener('focus', refreshReviewTasks);
+  }, [loadReviewTasks]);
 
   useEffect(() => () => {
     if (resumePreviewUrl) URL.revokeObjectURL(resumePreviewUrl);
@@ -610,13 +674,50 @@ export default function CandidatesPage() {
     }
   }, []);
 
-  const openCandidateDetail = (candidate: CandidateListItem) => {
+  const openCandidateDetail = useCallback((candidate: CandidateListItem) => {
     setDetailCandidate(candidate);
     setResumeDetail(null);
     setResumePreviewUrl(null);
     setOriginalResumeError(null);
     void loadCandidateDetail(candidate.id);
-  };
+  }, [loadCandidateDetail]);
+
+  const focusedReview = useMemo(() => reviewTasks.find((task) => (
+    task.candidate_id === requestedCandidateId
+    && (!requestedDemandId || task.demand_id === requestedDemandId)
+  )) ?? null, [requestedCandidateId, requestedDemandId, reviewTasks]);
+
+  const visibleReviewResults = useMemo(() => {
+    if (focusedReview) return [focusedReview];
+    return reviewTasks
+      .filter((task) => task.status !== 'pending' && (!demandFilter || task.demand_id === demandFilter))
+      .slice(0, 5);
+  }, [demandFilter, focusedReview, reviewTasks]);
+
+  const detailReview = useMemo(() => {
+    if (!detailCandidate) return null;
+    return reviewTasks.find((task) => (
+      task.candidate_id === detailCandidate.id
+      && (!detailCandidate.current_demand_id || task.demand_id === detailCandidate.current_demand_id)
+    )) ?? null;
+  }, [detailCandidate, reviewTasks]);
+
+  useEffect(() => {
+    if (!requestedCandidateId || candidatesLoading || reviewTasksLoading) return;
+    if (handledCandidateQuery.current === requestedCandidateId) return;
+    const candidate = candidateResponse.candidates.find((item) => item.id === requestedCandidateId)
+      ?? (focusedReview ? candidateFromReviewTask(focusedReview) : null);
+    if (!candidate) return;
+    handledCandidateQuery.current = requestedCandidateId;
+    openCandidateDetail(candidate);
+  }, [
+    candidateResponse.candidates,
+    candidatesLoading,
+    focusedReview,
+    openCandidateDetail,
+    requestedCandidateId,
+    reviewTasksLoading,
+  ]);
 
   const closeCandidateDetail = () => {
     detailRequestId.current += 1;
@@ -662,7 +763,7 @@ export default function CandidatesPage() {
     }
   };
 
-  const openPushModal = (candidates: CandidateListItem[]) => {
+  const openPushModal = (candidates: CandidateListItem[], reviewerId: number | null = null) => {
     if (candidates.length === 0) return;
     setPushTargets(candidates.map((candidate) => ({
       candidateId: candidate.id,
@@ -671,7 +772,50 @@ export default function CandidatesPage() {
       currentStage: candidate.current_stage ? stageLabels[candidate.current_stage] : null,
     })));
     setPushResults([]);
+    setPushInitialReviewerId(reviewerId);
     if (reviewers.length === 0 && !reviewersLoading) void loadReviewers();
+  };
+
+  const repeatBusinessReview = (task: BusinessReviewTask) => {
+    setDemandFilter(task.demand_id);
+    openPushModal([candidateFromReviewTask(task)], task.reviewer_id);
+  };
+
+  const renderReviewAction = (task: BusinessReviewTask) => {
+    if (task.status === 'approved') {
+      return (
+        <button
+          type="button"
+          onClick={() => navigate(`/interviews?demand=${task.demand_id}&candidate=${task.candidate_id}`)}
+          className="rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white hover:bg-primary-600"
+        >
+          安排面试
+        </button>
+      );
+    }
+    if (task.status === 'rejected') {
+      return (
+        <button
+          type="button"
+          onClick={() => navigate(`/kanban?demand=${task.demand_id}&candidate=${task.candidate_id}&target=rejected`)}
+          className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+        >
+          去流程处理
+        </button>
+      );
+    }
+    if (task.status === 'needs_info') {
+      return (
+        <button
+          type="button"
+          onClick={() => repeatBusinessReview(task)}
+          className="rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white hover:bg-primary-600"
+        >
+          补充并再次推送
+        </button>
+      );
+    }
+    return <span className="text-xs text-foreground-500">等待业务负责人处理</span>;
   };
 
   const updateFavorites = async (candidates: CandidateListItem[], favorite: boolean) => {
@@ -767,6 +911,7 @@ export default function CandidatesPage() {
     setPushSubmitting(false);
     if (results.some((result) => result.status !== 'failed')) {
       await loadCandidates();
+      await loadReviewTasks();
       const created = results.filter((result) => result.status === 'created');
       const duplicate = results.filter((result) => result.status === 'deduplicated');
       if (created.length > 0) {
@@ -842,6 +987,42 @@ export default function CandidatesPage() {
           </button>
         </div>
       </header>
+
+      {(visibleReviewResults.length > 0 || (requestedCandidateId && reviewTasksError)) && (
+        <section className="rounded-lg border border-primary-200 bg-primary-50/40 px-4 py-4" aria-label="业务筛选结果">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground-900">业务筛选结果</h2>
+              <p className="mt-0.5 text-xs text-foreground-500">业务负责人只给结论，最终推进由招聘专员确认</p>
+            </div>
+            <button type="button" onClick={() => void loadReviewTasks()} className="text-xs font-medium text-primary-700 hover:text-primary-800">
+              刷新结果
+            </button>
+          </div>
+          {reviewTasksError ? (
+            <p className="mt-3 text-sm text-red-700">{reviewTasksError}</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {visibleReviewResults.map((task) => {
+                const meta = businessReviewStatusMeta[task.status];
+                return (
+                  <article key={task.id} className="flex flex-col gap-3 rounded-lg border border-background-200 bg-white px-4 py-3 sm:flex-row sm:items-center">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-foreground-900">{task.candidate.name_masked}</p>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${meta.className}`}>{meta.label}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-foreground-500">{task.demand.job_title} · 业务负责人：{task.reviewer_name || '未显示'}</p>
+                      {task.business_note && <p className="mt-1 text-xs text-foreground-700">业务备注：{task.business_note}</p>}
+                    </div>
+                    <div className="shrink-0">{renderReviewAction(task)}</div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex flex-wrap gap-1 border-b border-background-200" role="tablist" aria-label="候选人库范围">
@@ -1646,6 +1827,28 @@ export default function CandidatesPage() {
                 </div>
               ) : resumeDetail ? (
                 <div className="space-y-6">
+                  {detailReview && (
+                    <section className="rounded-lg border border-primary-200 bg-primary-50/40 px-4 py-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-semibold text-foreground-900">业务筛选结果</h3>
+                            <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${businessReviewStatusMeta[detailReview.status].className}`}>
+                              {businessReviewStatusMeta[detailReview.status].label}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-foreground-500">
+                            {detailReview.demand.job_title} · 业务负责人：{detailReview.reviewer_name || '未显示'}
+                          </p>
+                          {detailReview.business_note && (
+                            <p className="mt-2 text-sm text-foreground-700">业务备注：{detailReview.business_note}</p>
+                          )}
+                        </div>
+                        <div className="shrink-0">{renderReviewAction(detailReview)}</div>
+                      </div>
+                    </section>
+                  )}
+
                   <section className="grid grid-cols-2 gap-3 border-b border-background-200 pb-5 sm:grid-cols-4">
                     <div>
                       <p className="text-xs text-foreground-400">解析状态</p>
@@ -1783,6 +1986,7 @@ export default function CandidatesPage() {
           demands={pushDemandOptions}
           reviewers={reviewers}
           initialDemandId={initialPushDemandId}
+          initialReviewerId={pushInitialReviewerId}
           demandsLoading={demandsLoading}
           demandError={demandError}
           reviewersLoading={reviewersLoading}
@@ -1791,7 +1995,7 @@ export default function CandidatesPage() {
           results={pushResults}
           onRetryDemands={() => void loadDemands()}
           onRetryReviewers={() => void loadReviewers()}
-          onClose={() => { setPushTargets(null); setPushResults([]); }}
+          onClose={() => { setPushTargets(null); setPushResults([]); setPushInitialReviewerId(null); }}
           onPush={(value) => void handlePushToBusiness(value)}
         />
       )}
