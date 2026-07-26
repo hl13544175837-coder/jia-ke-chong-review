@@ -9,7 +9,7 @@ import type { RecruitmentDemand } from '@/features/demands/types';
 import { interviewsApi } from '@/features/interviews/api';
 import type { InterviewManagementRow } from '@/features/interviews/types';
 import { offersApi } from '@/features/offers/api';
-import type { OfferRecord } from '@/features/offers/types';
+import type { OfferRecord, OfferStatus } from '@/features/offers/types';
 
 interface DashboardFacts {
   demands: RecruitmentDemand[];
@@ -25,6 +25,18 @@ const emptyFacts: DashboardFacts = {
   interviews: [],
   offers: [],
   reviews: [],
+};
+
+const offerStatusLabels: Record<OfferStatus, string> = {
+  draft: '草稿',
+  pending: '待审批',
+  approved: '待发放',
+  sent: '待回复',
+  accepted: '待入职',
+  declined: '已拒绝',
+  withdrawn: '已撤回',
+  expired: '已过期',
+  onboarded: '已入职',
 };
 
 function greeting() {
@@ -180,7 +192,7 @@ export default function DashboardPage() {
             {summary.offerActions.slice(0, 3).map((item) => (
               <button key={`offer-${item.id}`} type="button" onClick={() => navigate('/offers')} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700"><i className="ri-mail-send-line" /></span>
-                <span className="flex-1"><span className="block text-sm font-medium text-foreground-900">{item.candidate_name} 的 Offer 待处理</span><span className="mt-0.5 block text-xs text-foreground-500">{item.position} · 当前状态 {item.status}</span></span>
+                <span className="flex-1"><span className="block text-sm font-medium text-foreground-900">{item.candidate_name} 的 Offer 待处理</span><span className="mt-0.5 block text-xs text-foreground-500">{item.position} · 当前状态 {offerStatusLabels[item.status]}</span></span>
                 <i className="ri-arrow-right-s-line text-foreground-400" />
               </button>
             ))}
