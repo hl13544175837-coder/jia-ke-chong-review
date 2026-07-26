@@ -45,34 +45,19 @@ def test_llm_client_uses_resolved_keychain_env(monkeypatch):
     assert client._resolve_key() == "sk-from-keychain"
 
 
-def test_resume_parser_uses_resolved_keychain_env(monkeypatch, tmp_path):
-    import resume_parser
-
-    captured = {}
+def test_image_resume_parser_uses_resolved_keychain_env(monkeypatch):
+    from image_resume_parser import DashScopeVisionConfig
 
     def fake_run(cmd, check, capture_output, text):
         return subprocess.CompletedProcess(cmd, 0, stdout="sk-from-keychain\n", stderr="")
 
-    class DummyAPIKeyManager:
-        def __init__(self, keys):
-            captured["keys"] = keys
-
-    class DummyLLMClient:
-        def __init__(self, api_key_manager):
-            captured["manager"] = api_key_manager
-
-    monkeypatch.setenv("OPENAI_API_KEY", "keychain:zhipin-deepseek-api-key")
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.delenv("API_KEY", raising=False)
-    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "keychain:zhipin-dashscope-api-key")
+    monkeypatch.setenv(
+        "DASHSCOPE_BASE_URL",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    )
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(resume_parser, "APIKeyManager", DummyAPIKeyManager)
-    monkeypatch.setattr(resume_parser, "LLMClient", DummyLLMClient)
-    monkeypatch.setattr(resume_parser, "DEFAULT_API_KEY_FILE", tmp_path / "missing.md")
-    monkeypatch.setattr(resume_parser.ResumeParser, "_load_tags", lambda self: set())
-    monkeypatch.setattr(resume_parser.ResumeParser, "_load_level3_and_tags", lambda self: ([], {}))
 
-    resume_parser.ResumeParser()
+    config = DashScopeVisionConfig.from_environment()
 
-    assert captured["keys"] == ["sk-from-keychain"]
+    assert config.api_key == "sk-from-keychain"

@@ -242,7 +242,14 @@ OPENAI_API_KEY=sk-你的key
 DEEPSEEK_API_KEY=sk-你的key
 API_KEY=sk-你的key
 LLM_API_KEY=sk-你的key
+
+# PDF / DOCX / 图片简历统一视觉解析
+DASHSCOPE_API_KEY=keychain:zhipin-dashscope-api-key
+DASHSCOPE_BASE_URL=https://<含业务空间ID的百炼兼容地址>/v1
+DASHSCOPE_VISION_MODEL=qwen3.7-plus
 ```
+
+`DASHSCOPE_API_KEY` 可以直接由环境或 CI 注入；macOS 本地也可使用 `keychain:<service>` 引用钥匙串，系统会在调用视觉模型前解析，不会把引用字符串当成真实密钥发出。
 
 ---
 

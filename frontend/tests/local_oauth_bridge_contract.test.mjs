@@ -21,6 +21,11 @@ assert.match(
 );
 assert.match(bridge, /\/auth\/login/);
 assert.match(bridge, /\/auth\/me/);
+assert.match(
+  bridge,
+  /userId:\s*user\.id/,
+  '本地 OAuth profile 必须透传后端真实数字用户 ID',
+);
 assert.match(bridge, /\/pgs\/oauth\/login/);
 assert.match(bridge, /\/pgs\/oauth\/api\/profile/);
 assert.match(bridge, /\/pgs\/oauth\/api\/queryCurrentUserMenu/);

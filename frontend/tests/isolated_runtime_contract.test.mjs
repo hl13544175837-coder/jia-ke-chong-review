@@ -15,20 +15,18 @@ const commonScript = read('scripts/isolated-demo-common.sh');
 assert.match(commonScript, /BACKEND_PORT=5010/);
 assert.match(commonScript, /OAUTH_PORT=5110/);
 assert.match(commonScript, /FRONTEND_PORT=5190/);
-assert.match(commonScript, /OPERATIONS_PORT=5192/);
-assert.match(commonScript, /OPERATIONS_FRONTEND_PID_FILE/);
+assert.doesNotMatch(commonScript, /OPERATIONS_PORT|OPERATIONS_FRONTEND_PID_FILE/, '本地只保留 5190 主产品');
 assert.match(commonScript, /RUNTIME_ROOT=.*ISOLATION_ROOT.*runtime/);
 assert.match(commonScript, /zhipin-demo\.db/);
 
 const startScript = read('scripts/start-isolated-demo.sh');
 assert.match(startScript, /seed_dev\.py/);
-assert.match(startScript, /LOCAL_BACKEND_PROXY_TARGET/);
-assert.match(startScript, /LOCAL_OAUTH_PROXY_TARGET/);
+assert.match(startScript, /COMPANY_API_PROXY_TARGET/);
+assert.match(startScript, /COMPANY_GATEWAY_PROXY_TARGET/);
 assert.match(startScript, /VITE_API_BASE_URL=\/api/);
 assert.match(startScript, /VITE_OAUTH_BASE_URL=\/pgs\/oauth/);
-assert.match(startScript, /cd "\$APP_ROOT\/frontend"/);
 assert.match(startScript, /cd "\$APP_ROOT\/readdy-frontend"/);
-assert.match(startScript, /OPERATIONS_PORT/);
+assert.doesNotMatch(startScript, /OPERATIONS_PORT|cd "\$APP_ROOT\/frontend"/, '启动脚本不得再打开旧前端');
 assert.match(startScript, /READDY_VITE_BIN/);
 assert.doesNotMatch(startScript, /rm\s+-rf/);
 
@@ -50,7 +48,7 @@ assert.doesNotMatch(serveScript, /pkill|rm\s+-rf/);
 const checkScript = read('scripts/check-isolated-demo.sh');
 assert.match(checkScript, /api\/health/);
 assert.match(checkScript, /5190/);
-assert.match(checkScript, /5192/);
+assert.doesNotMatch(checkScript, /5192/, '健康检查只验收 5190 主产品');
 assert.doesNotMatch(checkScript, /\$(?:label|url)[：）]/);
 
 for (const script of [commonScript, startScript, stopScript, serveScript, checkScript]) {

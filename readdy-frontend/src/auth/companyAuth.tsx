@@ -30,6 +30,7 @@ interface GatewayUserInfo {
   nickname?: string | null;
   ymEmpCode?: string | null;
   yhUserCode?: string | null;
+  userId?: number | null;
   role?: CompanyRole | null;
 }
 
@@ -120,6 +121,7 @@ async function gatewayLogin(account: string, password: string): Promise<string> 
 async function gatewayProfile(token: string): Promise<{
   name: string;
   empCode: string;
+  userId: number | null;
   role: CompanyRole;
 }> {
   let response: Response;
@@ -136,11 +138,14 @@ async function gatewayProfile(token: string): Promise<{
   const info = data.userInfo ?? {};
   const empCode = info.ymEmpCode || info.yhUserCode || '';
   const name = info.empName || info.nickname || info.yhUserCode || info.ymEmpCode || '用户';
+  const userId = Number.isSafeInteger(info.userId) && Number(info.userId) > 0
+    ? Number(info.userId)
+    : null;
   const role = info.role && VALID_ROLES.includes(info.role) ? info.role : DEFAULT_ROLE;
   if (!empCode) {
     throw new CompanyAuthError(502, '公司账号缺少工号，请联系系统管理员');
   }
-  return { name, empCode, role };
+  return { name, empCode, userId, role };
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -149,12 +154,11 @@ export async function loginViaCompanyGateway(
   password: string,
 ): Promise<CompanyLoginResult> {
   const token = await gatewayLogin(account, password);
-  const { name, empCode, role } = await gatewayProfile(token);
-  const numericUserId = Number(empCode);
+  const { name, empCode, userId, role } = await gatewayProfile(token);
   localStorage.setItem(EMP_CODE_KEY, empCode);
   return {
     token,
-    user_id: Number.isSafeInteger(numericUserId) && numericUserId > 0 ? numericUserId : null,
+    user_id: userId,
     role,
     name,
   };

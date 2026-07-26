@@ -15,6 +15,8 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 from PIL import Image, UnidentifiedImageError
 
+from llm_client import resolve_secret_value
+
 IMAGE_RESUME_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "webp", "gif"})
 IMAGE_RESUME_MAX_FILE_SIZE = 10 * 1024 * 1024
 MODEL_IMAGE_PAYLOAD_MAX_SIZE = 7 * 1024 * 1024
@@ -61,7 +63,7 @@ class DashScopeVisionConfig:
 
     @classmethod
     def from_environment(cls) -> "DashScopeVisionConfig":
-        api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
+        api_key = resolve_secret_value(os.getenv("DASHSCOPE_API_KEY", "").strip()).strip()
         if not api_key:
             raise RuntimeError("图片简历识别未配置：请设置 DASHSCOPE_API_KEY")
 
