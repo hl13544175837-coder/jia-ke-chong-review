@@ -20,7 +20,7 @@
 - Modify: `readdy-frontend/src/pages/dashboard/page.tsx`
 - Modify: `readdy-frontend/src/pages/interviewer/dashboard/page.tsx`
 
-- [ ] **Step 1: Add failing route and data-source contracts**
+- [x] **Step 1: Add failing route and data-source contracts**
 
 ```js
 assert.match(routerSource, /Navigate[\s\S]*to="\/interviews"/)
@@ -30,13 +30,13 @@ assert.match(dashboardSource, /demandsApi\.|interviewsApi\.|offersApi\./)
 assert.doesNotMatch(interviewerDashboardSource, /mockInterviews/)
 ```
 
-- [ ] **Step 2: Run the contracts and verify RED**
+- [x] **Step 2: Run the contracts and verify RED**
 
 Run: `node frontend/tests/readdy_mysql_pilot_role_navigation_contract.test.mjs && node frontend/tests/readdy_dashboard_contract.test.mjs`
 
 Expected: FAIL because legacy dashboards remain writable, role preview is still exposed, or a dashboard still reads mock operational facts.
 
-- [ ] **Step 3: Replace legacy entries with redirects and real data**
+- [x] **Step 3: Replace legacy entries with redirects and real data**
 
 ```tsx
 <Route path="/dashboard/interviews" element={<Navigate to="/interviews" replace />} />
@@ -45,13 +45,13 @@ Expected: FAIL because legacy dashboards remain writable, role preview is still 
 
 Remove the local role mutation control. Dashboard counts and links must be built from the existing demand, candidate, interview, Offer, business-review, and notification API clients; an API error renders “数据暂不可用” rather than a fabricated zero.
 
-- [ ] **Step 4: Verify GREEN and regress navigation**
+- [x] **Step 4: Verify GREEN and regress navigation**
 
 Run: `node frontend/tests/readdy_mysql_pilot_role_navigation_contract.test.mjs && node frontend/tests/readdy_dashboard_contract.test.mjs && npm --prefix readdy-frontend run type-check`
 
 Expected: all commands PASS.
 
-- [ ] **Step 5: Commit only Task 1 files**
+- [x] **Step 5: Commit only Task 1 files**
 
 ```bash
 git add frontend/tests/readdy_mysql_pilot_role_navigation_contract.test.mjs frontend/tests/readdy_dashboard_contract.test.mjs readdy-frontend/src/router/config.tsx readdy-frontend/src/components/feature/MainLayout.tsx readdy-frontend/src/pages/dashboard/page.tsx readdy-frontend/src/pages/interviewer/dashboard/page.tsx
@@ -68,7 +68,7 @@ git commit -m "fix: converge recruitment workflow routes"
 - Modify: `readdy-frontend/src/pages/interviewer/screening/components/BusinessReviewDetail.tsx`
 - Modify: `frontend/tests/rejection_disposition_requires_reason.test.mjs`
 
-- [ ] **Step 1: Add failing backend tests for forbidden regression and required notes**
+- [x] **Step 1: Add failing backend tests for forbidden regression and required notes**
 
 ```python
 @pytest.mark.parametrize("stage", ["interview", "offer", "onboarded", "rejected"])
@@ -86,13 +86,13 @@ def test_business_review_requires_note_for_non_approval(client, interviewer_head
     assert response.status_code == 400
 ```
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `backend/.venv/bin/pytest backend/tests/test_business_reviews.py -q`
 
 Expected: new cases FAIL because later-stage review creation or blank-note decisions are accepted.
 
-- [ ] **Step 3: Add one shared stage guard and service validation**
+- [x] **Step 3: Add one shared stage guard and service validation**
 
 ```python
 BUSINESS_REVIEW_ENTRY_STAGES = {"pending", "ai_screen", "business_review"}
@@ -104,7 +104,7 @@ def assert_business_review_entry_allowed(stage: str) -> None:
 
 Call this rule inside the review service before creating a task. Require a trimmed note for `rejected` and `needs_info`; keep the route thin and return the existing stable 400/409 envelopes.
 
-- [ ] **Step 4: Add front-end status-aware controls**
+- [x] **Step 4: Add front-end status-aware controls**
 
 ```tsx
 const canPushToReview = ['pending', 'ai_screen', 'business_review'].includes(candidate.stage)
@@ -112,13 +112,13 @@ const canPushToReview = ['pending', 'ai_screen', 'business_review'].includes(can
 
 Hide/disable the push action after interview entry and show the server conflict in plain Chinese. Keep the note field required for “不合适” and “需补充”.
 
-- [ ] **Step 5: Verify GREEN**
+- [x] **Step 5: Verify GREEN**
 
 Run: `backend/.venv/bin/pytest backend/tests/test_business_reviews.py backend/tests/test_pipeline_rounds.py -q && node frontend/tests/rejection_disposition_requires_reason.test.mjs && npm --prefix readdy-frontend run type-check`
 
 Expected: all commands PASS.
 
-- [ ] **Step 6: Commit only Task 2 files**
+- [x] **Step 6: Commit only Task 2 files**
 
 ```bash
 git add backend/tests/test_business_reviews.py backend/app/services/business_review_service.py backend/app/services/pipeline_service.py readdy-frontend/src/pages/candidates/components/PushToReviewerModal.tsx readdy-frontend/src/pages/interviewer/screening/components/BusinessReviewDetail.tsx frontend/tests/rejection_disposition_requires_reason.test.mjs
@@ -140,7 +140,7 @@ git commit -m "fix: guard business review workflow stages"
 - Modify: `readdy-frontend/src/pages/interviewer/interviews/components/SimpleFeedbackModal.tsx`
 - Modify: `frontend/tests/readdy_mysql_pilot_interview_ui_contract.test.mjs`
 
-- [ ] **Step 1: Add failing tests for past scheduling, future completion, conflicts, and next-round ownership**
+- [x] **Step 1: Add failing tests for past scheduling, future completion, conflicts, and next-round ownership**
 
 ```python
 def test_create_assignment_rejects_past_time(client, hr_headers, interview_payload):
@@ -155,13 +155,13 @@ def test_overlapping_active_assignment_is_rejected(client, hr_headers, overlappi
     assert client.post("/api/interviews/assignments", headers=hr_headers, json=overlapping_payload).status_code == 409
 ```
 
-- [ ] **Step 2: Run focused backend tests and verify RED**
+- [x] **Step 2: Run focused backend tests and verify RED**
 
 Run: `backend/.venv/bin/pytest backend/tests/test_interview_management_contract.py backend/tests/test_interview_loop.py -q`
 
 Expected: at least one new assertion FAILS for missing time or conflict enforcement.
 
-- [ ] **Step 3: Implement server-owned timing and overlap rules**
+- [x] **Step 3: Implement server-owned timing and overlap rules**
 
 ```python
 def ensure_interview_time_is_future(scheduled_at: datetime, *, now: datetime) -> None:
@@ -175,7 +175,7 @@ def ensure_interview_has_started(assignment, *, now: datetime) -> None:
 
 For create/update, reject active assignments for the same interviewer whose occupied time window overlaps. For conducted/feedback, reject before `scheduled_at`. Preserve cancellation, ownership, organization, audit, notification, and idempotency behavior.
 
-- [ ] **Step 4: Add recruiter result actions on the real interview page**
+- [x] **Step 4: Add recruiter result actions on the real interview page**
 
 ```ts
 type InterviewDecision = 'next_round' | 'add_interviewer' | 'offer' | 'rejected'
@@ -183,17 +183,17 @@ type InterviewDecision = 'next_round' | 'add_interviewer' | 'offer' | 'rejected'
 
 After feedback exists, expose exactly these next actions: create the next `round_sequence` assignment, add an interviewer to the current round, move the demand pipeline to Offer, or reject with a mandatory reason. “进入 Offer” navigates to `/offers?demand=<id>&candidate=<id>` after the backend move succeeds.
 
-- [ ] **Step 5: Make scheduling controls state-aware**
+- [x] **Step 5: Make scheduling controls state-aware**
 
 Use a browser-local minimum equal to the current minute, show “查看/调整面试” for already scheduled candidates, preview internal conflicts, require cancellation reasons, and show “站内日程已创建，企业微信日历待接入”. Add a recruiter confirmation dialog before marking conducted.
 
-- [ ] **Step 6: Verify GREEN**
+- [x] **Step 6: Verify GREEN**
 
 Run: `backend/.venv/bin/pytest backend/tests/test_interview_management_contract.py backend/tests/test_interview_loop.py backend/tests/test_pipeline_rounds.py -q && node frontend/tests/readdy_mysql_pilot_interview_ui_contract.test.mjs && npm --prefix readdy-frontend run type-check`
 
 Expected: all commands PASS.
 
-- [ ] **Step 7: Commit only Task 3 files**
+- [x] **Step 7: Commit only Task 3 files**
 
 ```bash
 git add backend/tests/test_interview_management_contract.py backend/tests/test_interview_loop.py backend/app/services/interview_management_service.py backend/app/services/interview_workflow_service.py backend/app/services/pipeline_service.py readdy-frontend/src/features/interviews/api.ts readdy-frontend/src/features/interviews/types.ts readdy-frontend/src/pages/interviews/page.tsx readdy-frontend/src/pages/interviews/components/ScheduleInterviewModal.tsx readdy-frontend/src/pages/interviewer/interviews/components/SimpleFeedbackModal.tsx frontend/tests/readdy_mysql_pilot_interview_ui_contract.test.mjs
@@ -211,7 +211,7 @@ git commit -m "feat: close interview result decision flow"
 - Modify: `readdy-frontend/src/pages/jobs/components/DemandCandidateDrawer.tsx`
 - Modify: `frontend/tests/readdy_mysql_pilot_demand_ui_contract.test.mjs`
 
-- [ ] **Step 1: Add failing API and UI contracts**
+- [x] **Step 1: Add failing API and UI contracts**
 
 ```python
 def test_match_preview_marks_unconfigured_job(client, hr_headers, demand_without_skill_tags):
@@ -228,13 +228,13 @@ assert.match(drawerSource, /查看简历/)
 assert.match(drawerSource, /岗位技能尚未配置/)
 ```
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `backend/.venv/bin/pytest backend/tests/test_job_matcher.py -q && node frontend/tests/readdy_mysql_pilot_demand_ui_contract.test.mjs`
 
 Expected: FAIL because match readiness and the full workbench controls do not exist.
 
-- [ ] **Step 3: Return explicit match readiness**
+- [x] **Step 3: Return explicit match readiness**
 
 ```json
 {
@@ -246,21 +246,21 @@ Expected: FAIL because match readiness and the full workbench controls do not ex
 
 Determine readiness only from the persisted JD snapshot/structured skills. Do not label an unknown match as score 0.
 
-- [ ] **Step 4: Implement server-backed filters and pagination in the drawer**
+- [x] **Step 4: Implement server-backed filters and pagination in the drawer**
 
 Send the existing candidate query fields plus `page` and `per_page`; display backend `total`, previous/next controls, city, education, skill, source, flow status, stage, minimum score, actionable-only shortcut, and sort. Preserve demand id for every list, upload, preview, and add action.
 
-- [ ] **Step 5: Separate resume preview from selection**
+- [x] **Step 5: Separate resume preview from selection**
 
 Clicking a card/title opens the shared resume drawer; clicking its checkbox only changes selection. Unavailable candidates remain visible with a reason and a suitable “查看当前流程” action.
 
-- [ ] **Step 6: Verify GREEN**
+- [x] **Step 6: Verify GREEN**
 
 Run: `backend/.venv/bin/pytest backend/tests/test_job_matcher.py backend/tests/test_candidate_search_pagination.py -q && node frontend/tests/readdy_mysql_pilot_demand_ui_contract.test.mjs && npm --prefix readdy-frontend run type-check`
 
 Expected: all commands PASS.
 
-- [ ] **Step 7: Commit only Task 4 files**
+- [x] **Step 7: Commit only Task 4 files**
 
 ```bash
 git add backend/tests/test_job_matcher.py backend/app/api/match.py backend/app/services/match_service.py readdy-frontend/src/features/candidates/api.ts readdy-frontend/src/features/candidates/types.ts readdy-frontend/src/pages/jobs/components/DemandCandidateDrawer.tsx frontend/tests/readdy_mysql_pilot_demand_ui_contract.test.mjs
@@ -278,7 +278,7 @@ git commit -m "feat: add demand candidate workbench filters"
 - Modify: `frontend/tests/candidate_resume_workspace.test.mjs`
 - Modify: `frontend/tests/readdy_mysql_pilot_business_ui_contract.test.mjs`
 
-- [ ] **Step 1: Add failing presentation contracts**
+- [x] **Step 1: Add failing presentation contracts**
 
 ```js
 assert.match(resumeViewSource, /基本信息/)
@@ -292,13 +292,13 @@ for (const pageSource of [candidateDetail, businessDetail, interviewDetail]) {
 }
 ```
 
-- [ ] **Step 2: Run contracts and verify RED**
+- [x] **Step 2: Run contracts and verify RED**
 
 Run: `node frontend/tests/candidate_resume_workspace.test.mjs && node frontend/tests/readdy_mysql_pilot_business_ui_contract.test.mjs`
 
 Expected: FAIL because each page renders raw keys independently.
 
-- [ ] **Step 3: Normalize known resume aliases without changing persisted data**
+- [x] **Step 3: Normalize known resume aliases without changing persisted data**
 
 ```ts
 export type ResumeSection = { title: string; rows: Array<{ label: string; value: ReactNode }> }
@@ -311,17 +311,17 @@ export function buildResumeSections(resume: unknown): ResumeSection[] {
 
 Unknown harmless fields may appear under “其他信息” with a Chinese label map; internal keys such as `extracted_info`, parser metadata, IDs, and raw JSON must never be exposed.
 
-- [ ] **Step 4: Reuse the component in all three roles**
+- [x] **Step 4: Reuse the component in all three roles**
 
 Keep the original resume file link when present. When absent, display “当前没有原版文件，以下为系统解析信息” and continue showing structured content.
 
-- [ ] **Step 5: Verify GREEN**
+- [x] **Step 5: Verify GREEN**
 
 Run: `node frontend/tests/candidate_resume_workspace.test.mjs && node frontend/tests/readdy_mysql_pilot_business_ui_contract.test.mjs && npm --prefix readdy-frontend run type-check`
 
 Expected: all commands PASS.
 
-- [ ] **Step 6: Commit only Task 5 files**
+- [x] **Step 6: Commit only Task 5 files**
 
 ```bash
 git add readdy-frontend/src/components/candidates/StructuredResumeView.tsx readdy-frontend/src/components/candidates/resumePresentation.ts readdy-frontend/src/pages/candidates/components/CandidateDetailDrawer.tsx readdy-frontend/src/pages/interviewer/screening/components/BusinessReviewDetail.tsx readdy-frontend/src/pages/interviewer/interviews/components/InterviewDetailDrawer.tsx frontend/tests/candidate_resume_workspace.test.mjs frontend/tests/readdy_mysql_pilot_business_ui_contract.test.mjs
@@ -340,7 +340,7 @@ git commit -m "feat: unify Chinese resume presentation"
 - Modify: `frontend/tests/readdy_mysql_pilot_candidate_ui_contract.test.mjs`
 - Modify: `frontend/tests/readdy_mysql_pilot_offer_ui_contract.test.mjs`
 
-- [ ] **Step 1: Add failing contracts for status-aware handoff and Offer deep links**
+- [x] **Step 1: Add failing contracts for status-aware handoff and Offer deep links**
 
 ```js
 assert.match(candidateSource, /查看\/调整面试/)
@@ -351,27 +351,27 @@ assert.match(interviewSource, /企业微信.*待接入/)
 
 Add backend assertions that accepted + onboarded reduces the demand gap exactly once, while rejected, withdrawn, and expired Offers do not reduce it.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `backend/.venv/bin/pytest backend/tests/test_offer_lifecycle.py backend/tests/test_demand_bi_isolation.py -q && node frontend/tests/readdy_mysql_pilot_candidate_ui_contract.test.mjs && node frontend/tests/readdy_mysql_pilot_offer_ui_contract.test.mjs`
 
 Expected: at least one new assertion FAILS for a missing handoff/deep link or incorrect HC edge case.
 
-- [ ] **Step 3: Implement status-aware labels and Offer prefill**
+- [x] **Step 3: Implement status-aware labels and Offer prefill**
 
 Candidates with an active assignment show “查看/调整面试”; those approved without an assignment show “安排面试”. The Offer page reads explicit demand/candidate query parameters, opens the draft modal, and preselects only if the backend options authorize the pair.
 
-- [ ] **Step 4: Keep external delivery honest**
+- [x] **Step 4: Keep external delivery honest**
 
 After internal task, notification, or calendar creation, display “站内已创建；企业微信/外部日历待接入”. Never use “已发送”“已同步” for unavailable external integrations.
 
-- [ ] **Step 5: Verify GREEN**
+- [x] **Step 5: Verify GREEN**
 
 Run: `backend/.venv/bin/pytest backend/tests/test_offer_lifecycle.py backend/tests/test_demand_bi_isolation.py -q && node frontend/tests/readdy_mysql_pilot_candidate_ui_contract.test.mjs && node frontend/tests/readdy_mysql_pilot_offer_ui_contract.test.mjs && npm --prefix readdy-frontend run type-check`
 
 Expected: all commands PASS.
 
-- [ ] **Step 6: Commit only Task 6 files**
+- [x] **Step 6: Commit only Task 6 files**
 
 ```bash
 git add backend/tests/test_offer_lifecycle.py backend/tests/test_demand_bi_isolation.py readdy-frontend/src/pages/candidates/page.tsx readdy-frontend/src/pages/offers/page.tsx readdy-frontend/src/pages/offers/components/CreateOfferModal.tsx readdy-frontend/src/pages/interviews/page.tsx frontend/tests/readdy_mysql_pilot_candidate_ui_contract.test.mjs frontend/tests/readdy_mysql_pilot_offer_ui_contract.test.mjs
@@ -387,11 +387,11 @@ git commit -m "feat: clarify recruitment handoffs and offer entry"
 - Modify: `docs/PRODUCT_INTERACTION_GUIDE.md`
 - Modify: `docs/superpowers/plans/2026-07-27-recruitment-full-flow-closure.md`
 
-- [ ] **Step 1: Compare implementation with the nine-stage design**
+- [x] **Step 1: Compare implementation with the nine-stage design**
 
 Record the real route, backend owner, role, persisted record, failure behavior, and external boundary for each stage. Do not document an integration as complete unless it was observed.
 
-- [ ] **Step 2: Update product and handoff documents**
+- [x] **Step 2: Update product and handoff documents**
 
 ```markdown
 | 环节 | 真实入口 | 数据落点 | 外部状态 |
@@ -402,11 +402,11 @@ Record the real route, backend owner, role, persisted record, failure behavior, 
 
 Include the route convergence, stage guard, timing rule, Chinese resume presentation, matching readiness, decision actions, and HC rule.
 
-- [ ] **Step 3: Mark completed plan boxes from actual command evidence**
+- [x] **Step 3: Mark completed plan boxes from actual command evidence**
 
 Only replace `[ ]` with `[x]` for steps whose command or browser outcome was actually observed.
 
-- [ ] **Step 4: Verify docs and commit**
+- [x] **Step 4: Verify docs and commit**
 
 Run: `rg -n "T[B]D|T[O]DO|implement[[:space:]]+later|fill[[:space:]]+in[[:space:]]+details" docs/superpowers/plans/2026-07-27-recruitment-full-flow-closure.md; git diff --check`
 
