@@ -52,6 +52,7 @@ import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewStatus, BusinessReviewTask } from '@/features/businessReviews/types';
 import { useToast } from '@/hooks/useToast';
 import PushToReviewerModal, {
+  canEnterBusinessReview,
   type BusinessReviewerOption,
   type PushDemandOption,
   type PushFormValue,
@@ -770,6 +771,7 @@ export default function CandidatesPage() {
       candidateName: candidate.name_masked,
       currentDemandId: candidate.current_demand_id ?? (demandFilter || null),
       currentStage: candidate.current_stage ? stageLabels[candidate.current_stage] : null,
+      currentStageCode: candidate.current_stage,
     })));
     setPushResults([]);
     setPushInitialReviewerId(reviewerId);
@@ -929,6 +931,8 @@ export default function CandidatesPage() {
     && selectedCandidates.every((candidate) => candidate.is_favorite);
   const selectedAllInPipeline = selectedCandidates.length > 0
     && selectedCandidates.every((candidate) => candidate.current_demand_id);
+  const selectedAllReviewable = selectedCandidates.length > 0
+    && selectedCandidates.every((candidate) => canEnterBusinessReview(candidate.current_stage));
 
   return (
     <div className="space-y-5 px-4 pb-6 pt-3 sm:px-6">
@@ -1238,7 +1242,7 @@ export default function CandidatesPage() {
               <UserPlus size={15} aria-hidden="true" />
               加入招聘流程
             </button>
-            {selectedAllInPipeline && (
+            {selectedAllInPipeline && selectedAllReviewable && (
               <button
                 type="button"
                 onClick={() => openPushModal(selectedCandidates)}
@@ -1557,7 +1561,7 @@ export default function CandidatesPage() {
                           >
                             <Eye size={16} aria-hidden="true" />
                           </button>
-                          {candidate.current_demand_id && (
+                          {candidate.current_demand_id && canEnterBusinessReview(candidate.current_stage) && (
                             <button
                               type="button"
                               onClick={() => openPushModal([candidate])}
@@ -1987,7 +1991,7 @@ export default function CandidatesPage() {
                   <UserPlus size={15} aria-hidden="true" />
                   加入招聘流程
                 </button>
-                {detailCandidate.current_demand_id && (
+                {detailCandidate.current_demand_id && canEnterBusinessReview(detailCandidate.current_stage) && (
                   <button
                     type="button"
                     onClick={() => openPushModal([detailCandidate])}

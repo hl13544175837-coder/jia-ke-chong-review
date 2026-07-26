@@ -23,6 +23,7 @@ from ..models import (
     User,
 )
 from ..time_utils import utc_now
+from .pipeline_service import can_enter_business_review
 
 
 BUSINESS_REVIEW_STATUSES = {"pending", "approved", "rejected", "needs_info"}
@@ -170,6 +171,23 @@ def _validate_creation_scope(*, org_id, demand_id, candidate_id, reviewer_id, ac
         raise BusinessReviewError(
             "候选人当前不在该招聘需求流程中",
             code="candidate_not_in_demand",
+        )
+    latest_stage = db.session.execute(
+        select(PipelineStage)
+        .where(
+            PipelineStage.org_id == org_id,
+            PipelineStage.demand_id == demand_id,
+            PipelineStage.candidate_id == candidate_id,
+        )
+        .order_by(PipelineStage.id.desc())
+        .limit(1)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if not can_enter_business_review(latest_stage.stage if latest_stage else None):
+        raise BusinessReviewError(
+            "候选人已进入后续流程，不能退回业务筛选",
+            code="business_review_stage_conflict",
+            details={"current_stage": latest_stage.stage},
         )
 
     reviewer = db.session.execute(

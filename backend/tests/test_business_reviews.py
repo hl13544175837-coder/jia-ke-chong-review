@@ -236,6 +236,47 @@ def test_duplicate_pending_push_reuses_task_and_side_effects(
     assert [item["id"] for item in mine.get_json()] == [first["id"]]
 
 
+@pytest.mark.parametrize(
+    "later_stage", ["interview", "offer", "onboarded", "rejected", "transferred"]
+)
+def test_business_review_cannot_move_a_later_stage_candidate_backwards(
+    client, make_user, app, later_stage
+):
+    hr_id, hr_token = make_user(
+        f"hr-stage-{later_stage}@example.com", role="recruiter"
+    )
+    reviewer_id, _ = make_user(
+        f"reviewer-stage-{later_stage}@example.com", role="interviewer"
+    )
+    case = _seed_review_case(app, hr_id, suffix=f"STAGE-{later_stage}")
+    with app.app_context():
+        db.session.add(
+            PipelineStage(
+                org_id=1,
+                candidate_id=case["candidate_id"],
+                job_id=case["job_id"],
+                demand_id=case["demand_id"],
+                stage=later_stage,
+                updated_by=hr_id,
+            )
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/api/business-reviews",
+        headers=_auth(hr_token),
+        json={
+            "demand_id": case["demand_id"],
+            "candidate_id": case["candidate_id"],
+            "reviewer_id": reviewer_id,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "business_review_stage_conflict"
+    assert _stage_rows(app, case)[-1] == later_stage
+
+
 def test_task_lists_and_detail_are_scoped_to_owner_and_assigned_reviewer(
     client, make_user, app
 ):

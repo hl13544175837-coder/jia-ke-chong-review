@@ -10,12 +10,24 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
+import type { CandidateStage } from '@/features/candidates/types';
+
+export const BUSINESS_REVIEW_ENTRY_STAGES = new Set<CandidateStage>([
+  'pending',
+  'ai_screen',
+  'business_review',
+]);
+
+export function canEnterBusinessReview(stage?: CandidateStage | null) {
+  return !stage || BUSINESS_REVIEW_ENTRY_STAGES.has(stage);
+}
 
 export interface PushTarget {
   candidateId: number;
   candidateName: string;
   currentDemandId?: number | null;
   currentStage?: string | null;
+  currentStageCode?: CandidateStage | null;
 }
 
 export interface PushDemandOption {
@@ -122,7 +134,13 @@ export default function PushToReviewerModal({
 
   const selectedDemand = demands.find((demand) => demand.id === demandId) ?? null;
   const selectedReviewer = reviewers.find((reviewer) => reviewer.id === reviewerId) ?? null;
-  const canSubmit = Boolean(selectedDemand && selectedReviewer && targets.length > 0);
+  const blockedTargets = targets.filter((target) => !canEnterBusinessReview(target.currentStageCode));
+  const canSubmit = Boolean(
+    selectedDemand
+    && selectedReviewer
+    && targets.length > 0
+    && blockedTargets.length === 0,
+  );
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -176,19 +194,32 @@ export default function PushToReviewerModal({
                 推送候选人
               </div>
               <div className="max-h-36 space-y-2 overflow-y-auto">
-                {targets.map((target) => (
+                {targets.map((target) => {
+                  const blocked = !canEnterBusinessReview(target.currentStageCode);
+                  return (
                   <div
                     key={target.candidateId}
-                    className="flex items-center justify-between rounded-lg border border-background-200 bg-background-50 px-3 py-2.5"
+                    className={`flex items-center justify-between rounded-lg border px-3 py-2.5 ${
+                      blocked ? 'border-red-200 bg-red-50' : 'border-background-200 bg-background-50'
+                    }`}
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground-900">{target.candidateName}</p>
                       <p className="mt-0.5 text-xs text-foreground-500">{target.currentStage || '候选人档案'}</p>
                     </div>
-                    <span className="ml-3 text-xs text-foreground-400">待推送业务筛选</span>
+                    <span className={`ml-3 text-xs ${blocked ? 'text-red-700' : 'text-foreground-400'}`}>
+                      {blocked ? '已进入后续流程，不能退回业务筛选' : '待推送业务筛选'}
+                    </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
+              {blockedTargets.length > 0 && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <AlertCircle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>请移除已进入面试、Offer、入职、淘汰或转入其他需求的候选人。</span>
+                </div>
+              )}
             </section>
 
             <section>
