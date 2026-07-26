@@ -199,6 +199,11 @@ def _register_idempotency(app):
 
     @app.before_request
     def replay_idempotent_write():
+        # Flask normally creates a fresh application context per request. Tests,
+        # scripts, and embedded callers may intentionally keep one context alive,
+        # so request-scoped replay state must still be reset explicitly.
+        g.idempotency_context = None
+        g.idempotency_replayed = False
         if request.method not in write_methods:
             return None
         key = (request.headers.get("Idempotency-Key") or "").strip()

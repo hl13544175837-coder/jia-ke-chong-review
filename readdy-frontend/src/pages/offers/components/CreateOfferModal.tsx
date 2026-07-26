@@ -8,13 +8,15 @@ import type { OfferRecord } from '@/features/offers/types';
 interface Props {
   offer: OfferRecord | null;
   demands: RecruitmentDemand[];
+  initialDemandId?: number | null;
+  initialCandidateId?: number | null;
   onClose: () => void;
   onSaved: (offer: OfferRecord) => void;
 }
 
-export default function CreateOfferModal({ offer, demands, onClose, onSaved }: Props) {
-  const [demandId, setDemandId] = useState(offer ? String(offer.demand_id) : '');
-  const [candidateId, setCandidateId] = useState(offer ? String(offer.candidate_id) : '');
+export default function CreateOfferModal({ offer, demands, initialDemandId, initialCandidateId, onClose, onSaved }: Props) {
+  const [demandId, setDemandId] = useState(offer ? String(offer.demand_id) : initialDemandId ? String(initialDemandId) : '');
+  const [candidateId, setCandidateId] = useState(offer ? String(offer.candidate_id) : initialCandidateId ? String(initialCandidateId) : '');
   const [salaryRange, setSalaryRange] = useState(offer?.salary_range ?? '');
   const [onboardDate, setOnboardDate] = useState(offer?.onboard_date ?? '');
   const [note, setNote] = useState(offer?.note ?? '');
@@ -47,7 +49,12 @@ export default function CreateOfferModal({ offer, demands, onClose, onSaved }: P
       per_page: 100,
     }).then((response) => {
       if (cancelled) return;
-      setCandidates(response.candidates.filter((candidate) => candidate.current_stage === 'offer'));
+      const offerCandidates = response.candidates.filter((candidate) => candidate.current_stage === 'offer');
+      setCandidates(offerCandidates);
+      if (initialCandidateId && !offerCandidates.some((candidate) => candidate.id === initialCandidateId)) {
+        setCandidateId('');
+        setCandidatesError('对应候选人不在该需求的 Offer 阶段，请返回面试结果确认下一步');
+      }
     }).catch((error: unknown) => {
       if (cancelled) return;
       setCandidates([]);
@@ -57,7 +64,7 @@ export default function CreateOfferModal({ offer, demands, onClose, onSaved }: P
     });
 
     return () => { cancelled = true; };
-  }, [candidateReloadKey, demandId, offer]);
+  }, [candidateReloadKey, demandId, initialCandidateId, offer]);
 
   const saveDraft = async () => {
     const selectedDemandId = Number(demandId);

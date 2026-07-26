@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useProductRole } from '@/auth/productRole';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
@@ -33,9 +34,13 @@ function offerUpdatedAt(offer: OfferRecord) {
 }
 
 export default function OffersPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDemandId = Number(searchParams.get('demand')) || null;
+  const requestedCandidateId = Number(searchParams.get('candidate')) || null;
   const { role } = useProductRole();
   const { showToast } = useToast();
   const detailRequest = useRef(0);
+  const handledDeepLink = useRef('');
   const [offers, setOffers] = useState<OfferRecord[]>([]);
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
   const [unmappedTotal, setUnmappedTotal] = useState(0);
@@ -57,6 +62,7 @@ export default function OffersPage() {
   const [detailError, setDetailError] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [editingOffer, setEditingOffer] = useState<OfferRecord | null>(null);
+  const [createPrefill, setCreatePrefill] = useState<{ demandId: number; candidateId: number } | null>(null);
 
   const loadOffers = useCallback(async () => {
     setLoading(true);
@@ -182,6 +188,29 @@ export default function OffersPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!requestedDemandId || !requestedCandidateId || loading || demandsLoading) return;
+    const key = `${requestedDemandId}:${requestedCandidateId}`;
+    if (handledDeepLink.current === key) return;
+    handledDeepLink.current = key;
+    const existing = offers.find((offer) => (
+      offer.demand_id === requestedDemandId && offer.candidate_id === requestedCandidateId
+    ));
+    if (existing) {
+      void openDetail(existing);
+    } else if (approvedDemands.some((demand) => demand.id === requestedDemandId)) {
+      setEditingOffer(null);
+      setCreatePrefill({ demandId: requestedDemandId, candidateId: requestedCandidateId });
+      setShowCreate(true);
+    } else {
+      setDemandsError('对应需求不可创建 Offer，请确认需求仍在招聘中且已审批通过');
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('demand');
+    next.delete('candidate');
+    setSearchParams(next, { replace: true });
+  }, [approvedDemands, demandsLoading, loading, offers, openDetail, requestedCandidateId, requestedDemandId, searchParams, setSearchParams]);
+
   const closeDetail = () => {
     detailRequest.current += 1;
     setSelectedOffer(null);
@@ -208,6 +237,7 @@ export default function OffersPage() {
     setOffers((current) => replaceOffer(current, saved));
     setShowCreate(false);
     setEditingOffer(null);
+    setCreatePrefill(null);
     setSelectedOffer(saved);
     setDetailError('');
     showToast('Offer 草稿已保存');
@@ -216,12 +246,14 @@ export default function OffersPage() {
   const openCreate = () => {
     closeDetail();
     setEditingOffer(null);
+    setCreatePrefill(null);
     setShowCreate(true);
   };
 
   const openEdit = (offer: OfferRecord) => {
     closeDetail();
     setEditingOffer(offer);
+    setCreatePrefill(null);
     setShowCreate(true);
   };
 
@@ -347,7 +379,9 @@ export default function OffersPage() {
         <CreateOfferModal
           offer={editingOffer}
           demands={demands}
-          onClose={() => { setShowCreate(false); setEditingOffer(null); }}
+          initialDemandId={createPrefill?.demandId}
+          initialCandidateId={createPrefill?.candidateId}
+          onClose={() => { setShowCreate(false); setEditingOffer(null); setCreatePrefill(null); }}
           onSaved={handleSaved}
         />
       )}

@@ -51,6 +51,8 @@ import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewStatus, BusinessReviewTask } from '@/features/businessReviews/types';
+import { interviewsApi } from '@/features/interviews/api';
+import type { InterviewManagementRow } from '@/features/interviews/types';
 import { useToast } from '@/hooks/useToast';
 import PushToReviewerModal, {
   type BusinessReviewerOption,
@@ -303,6 +305,8 @@ export default function CandidatesPage() {
   const [reviewTasks, setReviewTasks] = useState<BusinessReviewTask[]>([]);
   const [reviewTasksLoading, setReviewTasksLoading] = useState(true);
   const [reviewTasksError, setReviewTasksError] = useState<string | null>(null);
+  const [interviewRows, setInterviewRows] = useState<InterviewManagementRow[]>([]);
+  const [interviewRowsError, setInterviewRowsError] = useState<string | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [favoriteSaving, setFavoriteSaving] = useState(false);
@@ -451,6 +455,15 @@ export default function CandidatesPage() {
     }
   }, []);
 
+  const loadInterviewRows = useCallback(async () => {
+    setInterviewRowsError(null);
+    try {
+      setInterviewRows(await interviewsApi.listManagementRows());
+    } catch (error) {
+      setInterviewRowsError(errorMessage(error, '面试安排状态加载失败'));
+    }
+  }, []);
+
   useEffect(() => {
     void loadCandidates();
   }, [loadCandidates]);
@@ -460,11 +473,11 @@ export default function CandidatesPage() {
   }, [loadDemands]);
 
   useEffect(() => {
-    void loadReviewTasks();
-    const refreshReviewTasks = () => void loadReviewTasks();
-    window.addEventListener('focus', refreshReviewTasks);
-    return () => window.removeEventListener('focus', refreshReviewTasks);
-  }, [loadReviewTasks]);
+    void Promise.all([loadReviewTasks(), loadInterviewRows()]);
+    const refreshWorkflowFacts = () => void Promise.all([loadReviewTasks(), loadInterviewRows()]);
+    window.addEventListener('focus', refreshWorkflowFacts);
+    return () => window.removeEventListener('focus', refreshWorkflowFacts);
+  }, [loadInterviewRows, loadReviewTasks]);
 
   useEffect(() => () => {
     if (resumePreviewUrl) URL.revokeObjectURL(resumePreviewUrl);
@@ -745,13 +758,22 @@ export default function CandidatesPage() {
 
   const renderReviewAction = (task: BusinessReviewTask) => {
     if (task.status === 'approved') {
+      if (interviewRowsError) {
+        return <span className="text-xs text-amber-700">面试状态暂不可用，请刷新后再操作</span>;
+      }
+      const hasScheduledInterview = interviewRows.some((row) => (
+        row.demand_id === task.demand_id
+        && row.candidate_id === task.candidate_id
+        && row.assignment_id !== null
+        && row.assignment_status !== 'unassigned'
+      ));
       return (
         <button
           type="button"
           onClick={() => navigate(`/interviews?demand=${task.demand_id}&candidate=${task.candidate_id}`)}
           className="rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white hover:bg-primary-600"
         >
-          安排面试
+          {hasScheduledInterview ? '查看/调整面试' : '安排面试'}
         </button>
       );
     }

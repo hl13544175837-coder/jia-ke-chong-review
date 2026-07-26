@@ -12,6 +12,9 @@ assert.match(page, /offersApi\.getOffer/, 'Offer 详情必须读取最新历史�
 assert.match(page, /offersApi\.runAction/, 'Offer 状态推进必须调用真实状态机接口');
 assert.match(page, /demandsApi\.listDemands/, '新建 Offer 必须读取真实招聘需求');
 assert.match(page, /useProductRole/, '审批操作必须根据当前真实角色展示');
+assert.match(page, /useSearchParams/, '面试结果进入 Offer 后必须承接需求和候选人深链');
+assert.match(page, /searchParams\.get\(['"]demand['"]\)/, 'Offer 页必须读取 demand 参数');
+assert.match(page, /searchParams\.get\(['"]candidate['"]\)/, 'Offer 页必须读取 candidate 参数');
 assert.doesNotMatch(page, /@\/mocks\/offers|initialOffers|zhipin-current-role/, 'Offer 页不得使用假数据或旧角色缓存');
 
 const createModal = read('readdy-frontend/src/pages/offers/components/CreateOfferModal.tsx');
@@ -19,6 +22,8 @@ assert.match(createModal, /candidatesApi\.listCandidates/, '候选人必须从�
 assert.match(createModal, /offersApi\.saveDraft/, '保存草稿必须写入真实 Offer 接口');
 assert.match(createModal, /current_stage\s*===\s*['"]offer['"]|stage:\s*['"]offer['"]/, '只能选择当前在 Offer 阶段的候选人');
 assert.match(createModal, /approval_status\s*===\s*['"]approved['"]/, '只能选择已审核通过的招聘需求');
+assert.match(createModal, /initialDemandId/, 'Offer 草稿弹窗必须支持预填需求');
+assert.match(createModal, /initialCandidateId/, 'Offer 草稿弹窗必须支持预填候选人');
 assert.doesNotMatch(createModal, /@\/mocks\/candidates|candidateList/, '新建 Offer 不得使用假候选人');
 
 const drawer = read('readdy-frontend/src/pages/offers/components/OfferDetailDrawer.tsx');

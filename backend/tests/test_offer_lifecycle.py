@@ -161,14 +161,46 @@ def test_offer_lifecycle_is_persisted_audited_and_updates_pipeline(
     assert accepted.status_code == 200
     assert accepted.get_json()["status"] == "accepted"
 
+    accepted_demand = client.get(
+        f"/api/demands/{demand_id}",
+        headers=_auth(recruiter_token),
+    )
+    assert accepted_demand.status_code == 200
+    assert accepted_demand.get_json()["metrics"]["onboarded_count"] == 0
+    assert accepted_demand.get_json()["completion_suggested"] is False
+
     onboarded = client.post(
         f"/api/offers/{offer_id}/actions",
-        headers=_auth(recruiter_token),
+        headers=_auth(recruiter_token, **{"Idempotency-Key": "onboard-offer-1"}),
         json={"action": "onboard", "onboard_date": "2026-08-15"},
     )
     assert onboarded.status_code == 200, onboarded.get_json()
     assert onboarded.get_json()["status"] == "onboarded"
     assert onboarded.get_json()["onboard_date"] == date(2026, 8, 15).isoformat()
+
+    with app.app_context():
+        from app.models import IdempotencyRecord
+
+        assert [row.idempotency_key for row in IdempotencyRecord.query.all()] == [
+            "submit-offer-1",
+            "onboard-offer-1",
+        ]
+
+    replayed_onboard = client.post(
+        f"/api/offers/{offer_id}/actions",
+        headers=_auth(recruiter_token, **{"Idempotency-Key": "onboard-offer-1"}),
+        json={"action": "onboard", "onboard_date": "2026-08-15"},
+    )
+    assert replayed_onboard.status_code == 200
+    assert replayed_onboard.headers["X-Idempotent-Replay"] == "true"
+
+    onboarded_demand = client.get(
+        f"/api/demands/{demand_id}",
+        headers=_auth(recruiter_token),
+    )
+    assert onboarded_demand.status_code == 200
+    assert onboarded_demand.get_json()["metrics"]["onboarded_count"] == 1
+    assert onboarded_demand.get_json()["completion_suggested"] is True
 
     detail = client.get(f"/api/offers/{offer_id}", headers=_auth(recruiter_token))
     assert detail.status_code == 200
