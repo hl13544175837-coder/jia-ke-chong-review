@@ -25,6 +25,9 @@ from .interview_workflow_service import (
     InterviewAssignmentWorkflowError,
     active_assignment_filter,
     assignment_is_cancelled,
+    ensure_interview_has_started,
+    ensure_interview_time_is_future,
+    interview_times_overlap,
     normalize_assignment_datetime,
     normalize_assignment_status,
 )
@@ -236,7 +239,7 @@ def update_interview_assignment(
             code="assignment_not_reschedulable",
         )
 
-    normalized_scheduled_at = normalize_assignment_datetime(scheduled_at)
+    normalized_scheduled_at = ensure_interview_time_is_future(scheduled_at)
     if normalized_scheduled_at is not None:
         possible_conflicts = (
             InterviewAssignment.query.filter_by(
@@ -250,7 +253,7 @@ def update_interview_assignment(
             .all()
         )
         for other in possible_conflicts:
-            if normalize_assignment_datetime(other.scheduled_at) == normalized_scheduled_at:
+            if interview_times_overlap(other.scheduled_at, normalized_scheduled_at):
                 db.session.rollback()
                 raise InterviewAssignmentWorkflowError(
                     "面试官该时间已有面试安排，请改期或更换面试官",
@@ -330,6 +333,7 @@ def mark_interview_conducted(*, assignment):
             "该面试任务当前不能确认已进行",
             code="assignment_not_conductable",
         )
+    ensure_interview_has_started(assignment)
     if InterviewFeedback.query.filter_by(
         org_id=assignment.org_id, assignment_id=assignment.id
     ).first() is not None:

@@ -15,6 +15,7 @@ from ..services.interview_workflow_service import (
     can_manage_interview_context,
     can_read_interview_context,
     create_interview_assignment,
+    ensure_interview_has_started,
     feedback_assignment,
     feedback_satisfaction,
     load_assignment_for_update,
@@ -685,6 +686,10 @@ def submit_feedback():
         g.user_id, g.role, g.org_id, context, round_name
     ):
         return jsonify({"error": "Forbidden"}), 403
+    try:
+        ensure_interview_has_started(assignment)
+    except InterviewAssignmentWorkflowError as exc:
+        return _assignment_workflow_error_response(exc)
 
     existing = InterviewFeedback.query.filter_by(
         org_id=g.org_id,

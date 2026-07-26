@@ -480,7 +480,7 @@ def test_management_rows_keep_primary_result_after_pipeline_advances_and_ignore_
         owner_id=owner_id,
         suffix="RESULT-AFTER-PIPELINE",
         interviewer_id=primary_id,
-        scheduled_at=datetime(2026, 8, 3, 14, 0),
+        scheduled_at=utc_now() - timedelta(hours=1),
         assignment_status="awaiting_feedback",
     )
     with app.app_context():
@@ -494,7 +494,7 @@ def test_management_rows_keep_primary_result_after_pipeline_advances_and_ignore_
             is_primary=False,
             primary_slot=None,
             interviewer_id=assistant_id,
-            scheduled_at=datetime(2026, 8, 3, 14, 0),
+            scheduled_at=utc_now() - timedelta(hours=1),
             status="feedback_submitted",
             created_by=owner_id,
         )
@@ -711,6 +711,169 @@ def test_adjust_assignment_validates_scope_interviewer_conflict_and_state(
     assert blocked_after_completion.status_code == 409
     assert blocked_after_completion.get_json()["code"] == "assignment_not_reschedulable"
     assert conflict["assignment_id"] is not None
+
+
+def test_create_and_update_assignment_reject_past_time(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "past-time-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "past-time-interviewer@example.com", role="interviewer"
+    )
+    unassigned = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="PAST-CREATE",
+    )
+    existing = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="PAST-UPDATE",
+        interviewer_id=interviewer_id,
+        scheduled_at=utc_now() + timedelta(days=1),
+    )
+    past_time = (utc_now() - timedelta(days=1)).isoformat()
+
+    created = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": unassigned["candidate_id"],
+            "demand_id": unassigned["demand_id"],
+            "round": "round_1",
+            "round_sequence": 1,
+            "interviewer_id": interviewer_id,
+            "scheduled_at": past_time,
+            "location": "过去的会议室",
+        },
+    )
+    updated = client.patch(
+        f"/api/interview/assignments/{existing['assignment_id']}",
+        headers=_auth(owner_token),
+        json={"scheduled_at": past_time},
+    )
+
+    assert created.status_code == 400
+    assert updated.status_code == 400
+    assert created.get_json()["code"] == "interview_time_in_past"
+    assert updated.get_json()["code"] == "interview_time_in_past"
+
+
+def test_interviewer_time_slots_cannot_overlap(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "overlap-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "overlap-interviewer@example.com", role="interviewer"
+    )
+    first = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="OVERLAP-FIRST",
+        interviewer_id=interviewer_id,
+        scheduled_at=utc_now() + timedelta(days=2),
+    )
+    second = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="OVERLAP-SECOND",
+        interviewer_id=None,
+    )
+    with app.app_context():
+        first_time = db.session.get(
+            InterviewAssignment, first["assignment_id"]
+        ).scheduled_at
+
+    response = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": second["candidate_id"],
+            "demand_id": second["demand_id"],
+            "round": "round_1",
+            "round_sequence": 1,
+            "interviewer_id": interviewer_id,
+            "scheduled_at": (first_time + timedelta(minutes=30)).isoformat(),
+            "location": "重叠会议室",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "interviewer_schedule_conflict"
+
+
+def test_future_interview_cannot_be_marked_conducted(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "future-conduct-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "future-conduct-interviewer@example.com", role="interviewer"
+    )
+    seeded = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="FUTURE-CONDUCT",
+        interviewer_id=interviewer_id,
+        scheduled_at=utc_now() + timedelta(days=1),
+    )
+
+    response = client.post(
+        f"/api/interview/assignments/{seeded['assignment_id']}/mark-conducted",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "interview_not_started"
+
+
+def test_assignment_cannot_move_a_later_stage_candidate_back_to_interview(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "late-stage-interview-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "late-stage-interviewer@example.com", role="interviewer"
+    )
+
+    for stage in ("offer", "onboarded", "rejected", "transferred"):
+        seeded = _seed_interview_candidate(
+            app,
+            owner_id=owner_id,
+            suffix=f"LATE-{stage}",
+            pipeline_stage=stage,
+        )
+        response = client.post(
+            "/api/interview/assignments",
+            headers=_auth(owner_token),
+            json={
+                "candidate_id": seeded["candidate_id"],
+                "demand_id": seeded["demand_id"],
+                "round": "round_1",
+                "round_sequence": 1,
+                "interviewer_id": interviewer_id,
+                "scheduled_at": (utc_now() + timedelta(days=3)).isoformat(),
+                "location": "不应创建的会议室",
+            },
+        )
+        assert response.status_code == 409
+        assert response.get_json()["code"] == "interview_stage_conflict"
+        with app.app_context():
+            latest = (
+                PipelineStage.query.filter_by(
+                    demand_id=seeded["demand_id"],
+                    candidate_id=seeded["candidate_id"],
+                )
+                .order_by(PipelineStage.id.desc())
+                .first()
+            )
+            assert latest.stage == stage
 
 
 def test_mark_conducted_is_explicit_idempotent_and_never_advances_pipeline(

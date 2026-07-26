@@ -1,7 +1,7 @@
 """Demand-scoped interview context and round-task rules."""
 
 from dataclasses import dataclass
-from datetime import timezone
+from datetime import timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -25,9 +25,11 @@ from .demand_context_service import (
     can_read_demand,
     resolve_demand_context,
 )
+from .pipeline_service import can_enter_interview
 
 
 CANCELLED_ASSIGNMENT_STATUSES = {"cancelled", "canceled"}
+INTERVIEW_SLOT_DURATION = timedelta(hours=1)
 SATISFACTION_VALUES = {"satisfied", "pending", "unsatisfied"}
 
 
@@ -170,6 +172,34 @@ def normalize_assignment_datetime(value):
     if value is None or value.tzinfo is None:
         return value
     return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def ensure_interview_time_is_future(scheduled_at):
+    normalized = normalize_assignment_datetime(scheduled_at)
+    if normalized is not None and normalized <= utc_now():
+        raise InterviewAssignmentWorkflowError(
+            "面试时间必须晚于当前时间",
+            code="interview_time_in_past",
+            status_code=400,
+        )
+    return normalized
+
+
+def ensure_interview_has_started(assignment):
+    scheduled_at = normalize_assignment_datetime(assignment.scheduled_at)
+    if scheduled_at is not None and scheduled_at > utc_now():
+        raise InterviewAssignmentWorkflowError(
+            "面试尚未开始，暂时不能确认或评价",
+            code="interview_not_started",
+        )
+
+
+def interview_times_overlap(first, second):
+    first_time = normalize_assignment_datetime(first)
+    second_time = normalize_assignment_datetime(second)
+    if first_time is None or second_time is None:
+        return False
+    return abs(first_time - second_time) < INTERVIEW_SLOT_DURATION
 
 
 @dataclass
@@ -334,7 +364,7 @@ def create_interview_assignment(
         .filter(active_assignment_filter())
         .all()
     )
-    normalized_scheduled_at = normalize_assignment_datetime(scheduled_at)
+    normalized_scheduled_at = ensure_interview_time_is_future(scheduled_at)
     for item in existing:
         if normalize_assignment_datetime(item.scheduled_at) == normalized_scheduled_at:
             return item, True
@@ -349,12 +379,28 @@ def create_interview_assignment(
             .all()
         )
         for item in interviewer_assignments:
-            if normalize_assignment_datetime(item.scheduled_at) == normalized_scheduled_at:
+            if interview_times_overlap(item.scheduled_at, normalized_scheduled_at):
                 raise InterviewAssignmentWorkflowError(
                     "面试官该时间已有面试安排，请改期或更换面试官",
                     code="interviewer_schedule_conflict",
                     details={"conflict_assignment_id": item.id},
                 )
+
+    latest_stage = (
+        PipelineStage.query.filter_by(
+            org_id=context.demand.org_id,
+            candidate_id=context.candidate.id,
+            demand_id=context.demand_id,
+        )
+        .order_by(PipelineStage.id.desc())
+        .first()
+    )
+    if not can_enter_interview(latest_stage.stage if latest_stage else None):
+        raise InterviewAssignmentWorkflowError(
+            "候选人已进入后续流程，不能退回面试阶段",
+            code="interview_stage_conflict",
+            details={"current_stage": latest_stage.stage},
+        )
 
     assignment = InterviewAssignment(
         org_id=context.demand.org_id,
@@ -373,15 +419,6 @@ def create_interview_assignment(
         created_by=created_by,
     )
     db.session.add(assignment)
-    latest_stage = (
-        PipelineStage.query.filter_by(
-            org_id=context.demand.org_id,
-            candidate_id=context.candidate.id,
-            demand_id=context.demand_id,
-        )
-        .order_by(PipelineStage.id.desc())
-        .first()
-    )
     if latest_stage is None or latest_stage.stage != "interview":
         db.session.add(
             PipelineStage(

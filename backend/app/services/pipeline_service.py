@@ -32,6 +32,7 @@ LEGACY_INTERVIEW_STAGES = {"interview_first", "interview_second", "interview_fin
 PIPELINE_STAGE_ORDER = STAGE_ORDER + ["rejected", "transferred"]
 TERMINAL_STAGES = {"onboarded", "rejected", "transferred"}
 BUSINESS_REVIEW_ENTRY_STAGES = frozenset({"pending", "ai_screen", "business_review"})
+INTERVIEW_ENTRY_STAGES = frozenset({"pending", "ai_screen", "business_review", "interview"})
 WRITABLE_DEMAND_STATUSES = {"pending", "active"}
 OFFER_UNIQUE_CONSTRAINT = "uq_offer_records_org_demand_candidate"
 SQLITE_OFFER_UNIQUE_COLUMNS = (
@@ -78,6 +79,12 @@ def can_enter_business_review(stage):
     """Return whether a demand flow may enter or remain in business review."""
 
     return stage is None or normalize_pipeline_stage(stage) in BUSINESS_REVIEW_ENTRY_STAGES
+
+
+def can_enter_interview(stage):
+    """Return whether a demand flow may enter or remain in interview."""
+
+    return stage is None or normalize_pipeline_stage(stage) in INTERVIEW_ENTRY_STAGES
 
 
 def stage_sort_index(stage):

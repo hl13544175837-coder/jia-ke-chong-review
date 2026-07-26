@@ -58,6 +58,12 @@ function dateTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function canSubmitFeedback(item: InterviewAssignment) {
+  if (!item.scheduled_at) return true;
+  const scheduled = new Date(item.scheduled_at).getTime();
+  return Number.isNaN(scheduled) || scheduled <= Date.now();
+}
+
 function readableValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return '未填写';
   if (Array.isArray(value)) {
@@ -188,6 +194,10 @@ export default function InterviewerInterviewsPage() {
   };
 
   const startFeedback = async (assignment: InterviewAssignment) => {
+    if (!canSubmitFeedback(assignment)) {
+      setFeedbackError('面试尚未开始，暂时不能提交评价');
+      return;
+    }
     if (selected?.id !== assignment.id) await openDetail(assignment);
     setFeedbackError('');
     setFeedbackAssignment(assignment);
@@ -323,10 +333,12 @@ export default function InterviewerInterviewsPage() {
                   <button
                     type="button"
                     onClick={() => void startFeedback(item)}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground-900 px-3 text-sm font-medium text-white hover:bg-foreground-800"
+                    disabled={!canSubmitFeedback(item)}
+                    title={!canSubmitFeedback(item) ? '面试尚未开始，暂时不能提交评价' : undefined}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground-900 px-3 text-sm font-medium text-white hover:bg-foreground-800 disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500"
                   >
                     <MessageSquareText size={15} />
-                    {item.feedback_submitted ? '修改评价' : '填写评价'}
+                    {!canSubmitFeedback(item) ? '面试尚未开始' : item.feedback_submitted ? '修改评价' : '填写评价'}
                   </button>
                 </div>
               );

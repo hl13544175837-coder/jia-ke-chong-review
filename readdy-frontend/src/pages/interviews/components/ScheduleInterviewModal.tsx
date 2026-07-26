@@ -21,11 +21,19 @@ function localDateTime(value: string | null) {
   return value ? value.slice(0, 16) : '';
 }
 
+function currentLocalMinute() {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 interface ScheduleInterviewModalProps {
   row: InterviewManagementRow;
   interviewers: InterviewerOption[];
   saving: boolean;
   error: string;
+  isPrimary?: boolean;
   onClose: () => void;
   onSave: (payload: InterviewAssignmentInput | InterviewAssignmentUpdateInput) => void;
   onCancelAssignment: (reason: string) => void;
@@ -36,6 +44,7 @@ export default function ScheduleInterviewModal({
   interviewers,
   saving,
   error,
+  isPrimary = true,
   onClose,
   onSave,
   onCancelAssignment,
@@ -49,14 +58,18 @@ export default function ScheduleInterviewModal({
   const [note, setNote] = useState(row.note || '');
   const [showCancel, setShowCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [minimumInterviewTime] = useState(currentLocalMinute);
 
   useEffect(() => {
     if (!interviewerId && interviewers.length === 1) setInterviewerId(interviewers[0].id);
   }, [interviewerId, interviewers]);
 
   const canSave = useMemo(
-    () => interviewerId > 0 && Boolean(scheduledAt) && Boolean(location.trim()),
-    [interviewerId, location, scheduledAt],
+    () => interviewerId > 0
+      && Boolean(scheduledAt)
+      && scheduledAt >= minimumInterviewTime
+      && Boolean(location.trim()),
+    [interviewerId, location, minimumInterviewTime, scheduledAt],
   );
 
   const submit = () => {
@@ -73,7 +86,7 @@ export default function ScheduleInterviewModal({
       demand_id: row.demand_id,
       round,
       round_sequence: roundSequence,
-      is_primary: true,
+      is_primary: isPrimary,
     });
   };
 
@@ -117,6 +130,7 @@ export default function ScheduleInterviewModal({
               面试时间 <span className="text-red-500">*</span>
               <input
                 type="datetime-local"
+                min={minimumInterviewTime}
                 value={scheduledAt}
                 onInput={(event) => setScheduledAt(event.currentTarget.value)}
                 onChange={(event) => setScheduledAt(event.target.value)}
@@ -134,6 +148,10 @@ export default function ScheduleInterviewModal({
             给面试官的备注（选填）
             <textarea value={note} onChange={(event) => setNote(event.target.value)} disabled={saving} rows={3} maxLength={1000} placeholder="说明需要重点确认的问题" className="mt-2 w-full resize-none rounded-lg border border-background-300 px-3 py-2 text-sm" />
           </label>
+
+          <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-800">
+            保存后会创建真实站内日程和待办；企业微信日历与外部提醒仍待接入。
+          </div>
 
           {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
@@ -160,7 +178,7 @@ export default function ScheduleInterviewModal({
         </div>
 
         <div className="flex items-center justify-between border-t border-background-200 bg-background-50 px-6 py-4">
-          <span className="inline-flex items-center gap-1.5 text-xs text-foreground-500"><CalendarDays size={14} /> 保存后面试官会收到真实待办</span>
+          <span className="inline-flex items-center gap-1.5 text-xs text-foreground-500"><CalendarDays size={14} /> 保存后面试官会收到站内待办</span>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} disabled={saving} className="rounded-lg border border-background-300 bg-white px-4 py-2 text-sm text-foreground-700">取消</button>
             <button type="button" onClick={submit} disabled={!canSave || saving} className="inline-flex min-w-28 items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white disabled:bg-background-300">

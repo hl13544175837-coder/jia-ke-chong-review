@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 
 from app import db
@@ -9,13 +11,14 @@ from app.models import (
     Job,
     RecruitmentDemand,
 )
+from app.time_utils import utc_now
 
 
 def _auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _seed_assignment(app, owner_id, interviewer_id):
+def _seed_assignment(app, owner_id, interviewer_id, *, scheduled_at=None):
     with app.app_context():
         job = Job(
             org_id=1,
@@ -62,12 +65,39 @@ def _seed_assignment(app, owner_id, interviewer_id):
             is_primary=True,
             primary_slot=1,
             interviewer_id=interviewer_id,
+            scheduled_at=scheduled_at,
             status="awaiting_feedback",
             created_by=owner_id,
         )
         db.session.add(assignment)
         db.session.commit()
         return assignment.id
+
+
+def test_future_interview_cannot_receive_feedback(client, make_user, app):
+    hr_id, _ = make_user("future-feedback-owner@example.com", role="recruiter")
+    interviewer_id, token = make_user(
+        "future-feedback-author@example.com", role="interviewer"
+    )
+    assignment_id = _seed_assignment(
+        app,
+        hr_id,
+        interviewer_id,
+        scheduled_at=utc_now() + timedelta(days=1),
+    )
+
+    response = client.post(
+        "/api/interview/feedback",
+        headers=_auth(token),
+        json={
+            "assignment_id": assignment_id,
+            "satisfaction": "satisfied",
+            "note": "不应提前提交",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "interview_not_started"
 
 
 def test_interviewer_submits_satisfaction_and_note(client, make_user, app):

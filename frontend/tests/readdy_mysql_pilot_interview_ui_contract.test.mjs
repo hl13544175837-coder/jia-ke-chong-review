@@ -31,6 +31,15 @@ for (const label of ['待安排', '已安排', '待反馈', '已完成', '安排
 assert.doesNotMatch(recruiterPage, /@\/mocks\//, '招聘专员面试管理不得使用假任务');
 const scheduleModal = read('readdy-frontend/src/pages/interviews/components/ScheduleInterviewModal.tsx');
 assert.match(scheduleModal, /type="datetime-local"[\s\S]*?onInput=/, '面试时间必须响应浏览器的实时输入事件');
+assert.match(scheduleModal, /min=\{minimumInterviewTime\}/, '面试时间控件必须禁止选择过去时间');
+assert.match(scheduleModal, /企业微信.*待接入/, '排期必须如实说明企业微信外部日历尚未接入');
+assert.match(recruiterPage, /confirmConductedRow/, '招聘专员确认已面试前必须二次确认');
+assert.match(recruiterPage, /pipelineApi\.moveCandidate/, '面试结果必须通过真实流程接口进入 Offer 或淘汰');
+for (const label of ['安排下一轮', '增加面试官', '进入 Offer', '淘汰候选人']) {
+  assert.ok(recruiterPage.includes(label), `面试反馈后的下一步缺少“${label}”`);
+}
+assert.match(page, /canSubmitFeedback/, '面试官页面必须根据面试时间控制评价入口');
+assert.match(page, /面试尚未开始/, '未来面试必须给出不能提前评价的说明');
 assert.match(router, /RecruiterInterviewsPage/, '/interviews 必须切换为真实招聘专员面试工作台');
 assert.match(router, /path:\s*['"]\/interviews['"][\s\S]*?<RecruiterInterviewsPage/, '/interviews 路由必须使用真实工作台');
 
