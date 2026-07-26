@@ -12,27 +12,12 @@ import {
 } from 'lucide-react';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewTask } from '@/features/businessReviews/types';
+import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 
 interface BusinessReviewDetailProps {
   task: BusinessReviewTask;
   onReview?: () => void;
 }
-
-const resumeLabels: Record<string, string> = {
-  name: '姓名',
-  name_masked: '姓名',
-  phone: '联系电话',
-  email: '邮箱',
-  summary: '个人概述',
-  education: '教育经历',
-  education_experience: '教育经历',
-  work_experience: '工作经历',
-  experience: '工作经历',
-  project_experience: '项目经历',
-  projects: '项目经历',
-  skills: '技能',
-  certificates: '证书',
-};
 
 function formatDate(value: string | null) {
   if (!value) return '-';
@@ -46,23 +31,6 @@ function formatDate(value: string | null) {
     minute: '2-digit',
     hour12: false,
   }).format(date);
-}
-
-function readableValue(value: unknown) {
-  if (value === null || value === undefined || value === '') return '未填写';
-  if (typeof value === 'string' || typeof value === 'number') return String(value);
-  if (typeof value === 'boolean') return value ? '是' : '否';
-  if (Array.isArray(value)) {
-    if (value.length === 0) return '未填写';
-    return value
-      .map((item) => (typeof item === 'object' && item !== null ? JSON.stringify(item, null, 2) : String(item)))
-      .join('\n');
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 function actionError(error: unknown) {
@@ -82,7 +50,6 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
     objectUrls.current.clear();
   }, []);
 
-  const resumeEntries = Object.entries(task.candidate.resume_json ?? {});
   const originalResume = task.candidate.original_resume;
   const focusPoints = task.demand.focus_points ?? [];
 
@@ -274,7 +241,7 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
         <div className="mt-3 text-xs text-foreground-500">
           {originalResume.available
             ? `原版文件：${originalResume.filename || '未命名文件'}`
-            : '当前候选人没有可用的原版简历文件'}
+            : '当前没有原版文件，以下为系统解析信息'}
         </div>
         {resumeError && (
           <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
@@ -283,20 +250,7 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
           </div>
         )}
 
-        {resumeEntries.length > 0 ? (
-          <dl className="mt-4 divide-y divide-background-100 border-y border-background-200">
-            {resumeEntries.map(([key, value]) => (
-              <div key={key} className="grid gap-1 py-3 text-sm sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-4">
-                <dt className="text-xs font-medium text-foreground-500">{resumeLabels[key] || key}</dt>
-                <dd className="whitespace-pre-wrap break-words leading-6 text-foreground-700">{readableValue(value)}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <div className="mt-4 border-y border-background-200 py-6 text-center text-sm text-foreground-500">
-            暂无结构化简历信息，可使用原版简历核对。
-          </div>
-        )}
+        <div className="mt-4"><StructuredResumeView resume={task.candidate.resume_json} /></div>
       </section>
     </div>
   );

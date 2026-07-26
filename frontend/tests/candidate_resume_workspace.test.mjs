@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcRoot = join(__dirname, '../src');
+const projectRoot = join(__dirname, '../..');
 
 function readSource(path) {
   return readFileSync(join(srcRoot, path), 'utf8');
@@ -71,3 +72,26 @@ assert.match(structured, /不代表原始简历原文/, 'Structured data should 
 assert.match(matchAnalysis, /aria-expanded/, 'AI match panel should be collapsible');
 assert.match(matchAnalysis, /previewJobMatch/, 'Match analysis should use the existing read-only matching API');
 assert.match(matchAnalysis, /AI 匹配结果仅供辅助/, 'Match result should state its human-review boundary');
+
+const readdyResumeViewPath = join(projectRoot, 'readdy-frontend/src/components/candidates/StructuredResumeView.tsx');
+const readdyPresentationPath = join(projectRoot, 'readdy-frontend/src/components/candidates/resumePresentation.ts');
+assert.ok(existsSync(readdyResumeViewPath), '5190 必须提供共用中文结构化简历组件');
+assert.ok(existsSync(readdyPresentationPath), '5190 必须集中处理简历字段别名和展示顺序');
+
+const readdyResumeView = readFileSync(readdyResumeViewPath, 'utf8');
+const readdyPresentation = readFileSync(readdyPresentationPath, 'utf8');
+for (const label of ['求职目标', '个人概况', '教育经历', '工作经历', '项目经历', '专业技能']) {
+  assert.match(`${readdyResumeView}\n${readdyPresentation}`, new RegExp(label), `共用简历缺少“${label}”`);
+}
+assert.doesNotMatch(readdyResumeView, /JSON\.stringify/, '业务用户简历不能直接序列化 JSON');
+
+for (const relativePath of [
+  'readdy-frontend/src/pages/candidates/page.tsx',
+  'readdy-frontend/src/pages/jobs/components/DemandCandidateDrawer.tsx',
+  'readdy-frontend/src/pages/interviewer/screening/components/BusinessReviewDetail.tsx',
+  'readdy-frontend/src/pages/interviewer/interviews/page.tsx',
+]) {
+  const source = readFileSync(join(projectRoot, relativePath), 'utf8');
+  assert.match(source, /StructuredResumeView/, `${relativePath} 必须使用同一份中文简历组件`);
+  assert.doesNotMatch(source, /Object\.entries\([^)]*resume_json/, `${relativePath} 不能再逐页展示原始简历键名`);
+}

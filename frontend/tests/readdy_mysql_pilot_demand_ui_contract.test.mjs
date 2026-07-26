@@ -53,6 +53,8 @@ assert.match(candidateDrawer, /page:\s*page/, '需求候选人工作区必须请
 assert.match(candidateDrawer, /candidateResponse\.total/, '候选人工作区必须显示真实总数');
 assert.match(candidateDrawer, /candidateResponse\.pages/, '候选人工作区必须提供真实前后分页');
 assert.match(candidateDrawer, /candidatesApi\.getResume/, '勾选前必须能读取完整候选人简历');
+assert.match(candidateDrawer, /businessReviewsApi\.loadResume/, '需求内简历必须能安全预览原版文件');
+assert.match(candidateDrawer, /businessReviewsApi\.downloadResume/, '需求内简历必须能下载原版文件');
 assert.match(candidateDrawer, /查看简历/, '候选人卡片必须分离查看简历和勾选动作');
 assert.match(candidateDrawer, /matchConfigured/, '需求候选人工作区必须区分岗位匹配是否已配置');
 assert.match(candidateDrawer, /岗位技能尚未配置/, '未配置岗位技能时不能把未知匹配展示成 0 分');

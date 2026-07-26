@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { candidatesApi } from '@/features/candidates/api';
 import type { CandidateResumeDetail } from '@/features/candidates/types';
@@ -62,15 +63,6 @@ function canSubmitFeedback(item: InterviewAssignment) {
   if (!item.scheduled_at) return true;
   const scheduled = new Date(item.scheduled_at).getTime();
   return Number.isNaN(scheduled) || scheduled <= Date.now();
-}
-
-function readableValue(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '未填写';
-  if (Array.isArray(value)) {
-    return value.map((item) => typeof item === 'object' ? JSON.stringify(item) : String(item)).join('；');
-  }
-  if (typeof value === 'object') return JSON.stringify(value, null, 2);
-  return String(value);
 }
 
 export default function InterviewerInterviewsPage() {
@@ -418,17 +410,10 @@ export default function InterviewerInterviewsPage() {
                         </div>
                       )}
                     </div>
-                    <dl className="mt-2 divide-y divide-background-100 rounded-md border border-background-200">
-                      {Object.entries(selectedResume?.resume_json || {}).slice(0, 12).map(([key, value]) => (
-                        <div key={key} className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 px-4 py-3 text-sm">
-                          <dt className="text-foreground-500">{key}</dt>
-                          <dd className="whitespace-pre-wrap break-words text-foreground-700">{readableValue(value)}</dd>
-                        </div>
-                      ))}
-                      {Object.keys(selectedResume?.resume_json || {}).length === 0 && (
-                        <div className="px-4 py-5 text-sm text-foreground-500">暂无结构化简历信息</div>
-                      )}
-                    </dl>
+                    {!selectedResume?.original_resume.available && (
+                      <p className="mt-2 rounded-md border border-background-200 bg-background-50 px-3 py-2 text-xs text-foreground-500">当前没有原版文件，以下为系统解析信息</p>
+                    )}
+                    <div className="mt-3"><StructuredResumeView resume={selectedResume?.resume_json || {}} compact /></div>
                   </section>
 
                   <section>
@@ -452,11 +437,12 @@ export default function InterviewerInterviewsPage() {
                       )}
                       <button
                         type="button"
-                        onClick={() => setFeedbackAssignment(selected)}
-                        className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-foreground-900 px-3 py-2 text-sm font-medium text-white"
+                        onClick={() => canSubmitFeedback(selected) && setFeedbackAssignment(selected)}
+                        disabled={!canSubmitFeedback(selected)}
+                        className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-foreground-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500"
                       >
                         <MessageSquareText size={15} />
-                        {selectedFeedback ? '修改评价' : '填写评价'}
+                        {!canSubmitFeedback(selected) ? '面试尚未开始' : selectedFeedback ? '修改评价' : '填写评价'}
                       </button>
                     </div>
                   </section>

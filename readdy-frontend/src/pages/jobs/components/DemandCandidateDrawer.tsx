@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Download,
   Eye,
   FileUp,
   LoaderCircle,
@@ -23,6 +24,8 @@ import {
   X,
 } from 'lucide-react';
 import { candidatesApi } from '@/features/candidates/api';
+import StructuredResumeView from '@/components/candidates/StructuredResumeView';
+import { businessReviewsApi } from '@/features/businessReviews/api';
 import type {
   CandidateListItem,
   CandidateListResponse,
@@ -68,19 +71,6 @@ const stageOptions: Array<{ value: '' | CandidateStage; label: string }> = [
   { value: 'transferred', label: '已转入其他需求' },
 ];
 
-const resumeLabels: Record<string, string> = {
-  extracted_info: '简历解析信息',
-  summary: '个人概况',
-  education: '教育经历',
-  experience: '工作经历',
-  work_experience: '工作经历',
-  projects: '项目经历',
-  project_experience: '项目经历',
-  skills: '专业技能',
-  intent_city: '意向城市',
-  target_position: '目标岗位',
-};
-
 function messageOf(error: unknown, fallback: string) {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
@@ -120,23 +110,6 @@ function resultSummary(result: CandidatePipelineAddResult) {
   return parts.join('，');
 }
 
-function readableResumeValue(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '未填写';
-  if (Array.isArray(value)) {
-    return value.map((item) => (
-      typeof item === 'object' ? Object.entries(item as Record<string, unknown>)
-        .map(([key, nested]) => `${resumeLabels[key] || key}：${readableResumeValue(nested)}`)
-        .join('；') : String(item)
-    )).join('\n');
-  }
-  if (typeof value === 'object') {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([key, nested]) => `${resumeLabels[key] || key}：${readableResumeValue(nested)}`)
-      .join('\n');
-  }
-  return String(value);
-}
-
 export default function DemandCandidateDrawer({ demand, onClose, onChanged, onReadyToPush }: DemandCandidateDrawerProps) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
@@ -169,6 +142,8 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);
   const [resumeLoading, setResumeLoading] = useState(false);
   const [resumeError, setResumeError] = useState('');
+  const [resumeFileAction, setResumeFileAction] = useState<'preview' | 'download' | null>(null);
+  const [resumeFileError, setResumeFileError] = useState('');
 
   const loadCandidates = useCallback(async () => {
     setLoading(true);
@@ -273,6 +248,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
     setResumeCandidate(candidate);
     setResumeDetail(null);
     setResumeError('');
+    setResumeFileError('');
     setResumeLoading(true);
     try {
       setResumeDetail(await candidatesApi.getResume(candidate.id));
@@ -280,6 +256,32 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
       setResumeError(messageOf(error, '完整简历加载失败'));
     } finally {
       setResumeLoading(false);
+    }
+  };
+
+  const openOriginalResume = async (mode: 'preview' | 'download') => {
+    if (!resumeDetail?.original_resume.available || resumeFileAction) return;
+    setResumeFileAction(mode);
+    setResumeFileError('');
+    try {
+      const blob = mode === 'preview'
+        ? await businessReviewsApi.loadResume(resumeDetail.id)
+        : await businessReviewsApi.downloadResume(resumeDetail.id);
+      const url = URL.createObjectURL(blob);
+      if (mode === 'preview') {
+        const previewWindow = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!previewWindow) throw new Error('浏览器阻止了新标签页，请允许弹出窗口后重试');
+      } else {
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = resumeDetail.original_resume.filename || `candidate-${resumeDetail.id}-resume`;
+        anchor.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), mode === 'preview' ? 60_000 : 1_000);
+    } catch (error) {
+      setResumeFileError(messageOf(error, '原版简历读取失败'));
+    } finally {
+      setResumeFileAction(null);
     }
   };
 
@@ -510,9 +512,17 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
               <div className="flex items-start justify-between gap-4"><div><h3 className="text-lg font-bold text-foreground-900">{resumeCandidate.name_masked}</h3><p className="mt-1 text-sm text-foreground-500">完整候选人简历 · 查看不会改变勾选状态</p></div><button type="button" onClick={() => setResumeCandidate(null)} className="rounded-lg p-2 text-foreground-500 hover:bg-background-100"><X size={18} /></button></div>
               {resumeLoading ? <div className="py-20 text-center text-sm text-foreground-500"><LoaderCircle className="mx-auto mb-2 animate-spin" size={20} />加载完整简历中...</div> : resumeError ? <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{resumeError}</div> : resumeDetail ? (
                 <div className="mt-6 space-y-4">
-                  <div className="rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">{resumeDetail.original_resume.available ? `原版文件：${resumeDetail.original_resume.filename || '未命名文件'}` : '当前没有原版文件，以下为系统解析信息'}</div>
-                  {Object.entries(resumeDetail.resume_json).map(([key, value]) => <section key={key} className="border-t border-background-200 pt-4 first:border-t-0"><h4 className="text-sm font-semibold text-foreground-800">{resumeLabels[key] || key}</h4><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground-600">{readableResumeValue(value)}</p></section>)}
-                  {Object.keys(resumeDetail.resume_json).length === 0 && <p className="py-12 text-center text-sm text-foreground-500">暂无结构化简历信息</p>}
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">
+                    <span>{resumeDetail.original_resume.available ? `原版文件：${resumeDetail.original_resume.filename || '未命名文件'}` : '当前没有原版文件，以下为系统解析信息'}</span>
+                    {resumeDetail.original_resume.available && (
+                      <span className="flex gap-2">
+                        <button type="button" onClick={() => void openOriginalResume('preview')} disabled={resumeFileAction !== null} className="inline-flex items-center gap-1 rounded-lg border border-background-300 bg-white px-2.5 py-1.5 text-xs font-medium text-foreground-700 disabled:opacity-50"><Eye size={13} />{resumeFileAction === 'preview' ? '打开中' : '预览原版'}</button>
+                        <button type="button" onClick={() => void openOriginalResume('download')} disabled={resumeFileAction !== null} className="inline-flex items-center gap-1 rounded-lg border border-background-300 bg-white px-2.5 py-1.5 text-xs font-medium text-foreground-700 disabled:opacity-50"><Download size={13} />{resumeFileAction === 'download' ? '下载中' : '下载原版'}</button>
+                      </span>
+                    )}
+                  </div>
+                  {resumeFileError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{resumeFileError}</p>}
+                  <StructuredResumeView resume={resumeDetail.resume_json} />
                 </div>
               ) : null}
             </aside>

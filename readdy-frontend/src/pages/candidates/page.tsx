@@ -35,6 +35,7 @@ import {
   X,
 } from 'lucide-react';
 import { useProductRole } from '@/auth/productRole';
+import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 import { apiRequest } from '@/lib/api';
 import { candidatesApi } from '@/features/candidates/api';
 import type {
@@ -221,47 +222,6 @@ function formatDate(value: string | null | undefined) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(parsed);
-}
-
-function formatResumeKey(key: string) {
-  return key.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function ResumeValue({ value }: { value: unknown }) {
-  if (value === null || value === undefined || value === '') {
-    return <span className="text-sm text-foreground-400">未提取</span>;
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) return <span className="text-sm text-foreground-400">未提取</span>;
-    return (
-      <div className="space-y-2">
-        {value.map((item, index) => (
-          <div key={`${index}-${String(item).slice(0, 20)}`} className="rounded-lg border border-background-200 bg-background-50 px-3 py-2.5">
-            <ResumeValue value={item} />
-          </div>
-        ))}
-      </div>
-    );
-  }
-  if (isRecord(value)) {
-    const entries = Object.entries(value);
-    if (entries.length === 0) return <span className="text-sm text-foreground-400">未提取</span>;
-    return (
-      <dl className="grid grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-2">
-        {entries.map(([key, child]) => (
-          <div key={key} className="min-w-0">
-            <dt className="text-xs text-foreground-400">{formatResumeKey(key)}</dt>
-            <dd className="mt-0.5 break-words text-sm text-foreground-700"><ResumeValue value={child} /></dd>
-          </div>
-        ))}
-      </dl>
-    );
-  }
-  return <span className="whitespace-pre-wrap break-words text-sm text-foreground-700">{String(value)}</span>;
 }
 
 function isBusinessReviewer(item: InterviewerApiItem): item is InterviewerApiItem & { role: 'interviewer' | 'manager' } {
@@ -1963,18 +1923,7 @@ export default function CandidatesPage() {
 
                   <section>
                     <h3 className="mb-3 text-sm font-semibold text-foreground-900">结构化简历</h3>
-                    {Object.keys(resumeDetail.resume_json).length === 0 ? (
-                      <div className="rounded-lg border border-background-200 bg-background-50 px-4 py-4 text-sm text-foreground-500">暂无可展示的结构化内容</div>
-                    ) : (
-                      <div className="space-y-4">
-                        {Object.entries(resumeDetail.resume_json).map(([key, value]) => (
-                          <div key={key} className="border-t border-background-200 pt-4 first:border-t-0 first:pt-0">
-                            <h4 className="mb-2 text-xs font-semibold uppercase text-foreground-500">{formatResumeKey(key)}</h4>
-                            <ResumeValue value={value} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <StructuredResumeView resume={resumeDetail.resume_json} />
                   </section>
                 </div>
               ) : null}
