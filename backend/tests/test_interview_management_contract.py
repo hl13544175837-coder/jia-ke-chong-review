@@ -463,6 +463,65 @@ def test_management_rows_and_assignment_payload_expose_feedback_and_demand_snaps
     assert payload["pipeline_stage"] == "interview"
 
 
+def test_management_rows_translate_simple_interviewer_satisfaction_for_recruiter(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "mgmt-simple-feedback-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "mgmt-simple-feedback-interviewer@example.com",
+        role="interviewer",
+        name="简评面试官",
+    )
+    expected_results = {
+        "satisfied": "passed",
+        "pending": "pending",
+        "unsatisfied": "not_passed",
+    }
+    seeded_by_satisfaction = {
+        satisfaction: _seed_interview_candidate(
+            app,
+            owner_id=owner_id,
+            suffix=f"SIMPLE-{satisfaction}",
+            interviewer_id=interviewer_id,
+            scheduled_at=datetime(2026, 8, 3, 10, 0),
+            assignment_status="completed",
+        )
+        for satisfaction in expected_results
+    }
+    with app.app_context():
+        for satisfaction, seeded in seeded_by_satisfaction.items():
+            db.session.add(
+                InterviewFeedback(
+                    org_id=1,
+                    candidate_id=seeded["candidate_id"],
+                    job_id=seeded["job_id"],
+                    demand_id=seeded["demand_id"],
+                    assignment_id=seeded["assignment_id"],
+                    round="round_1",
+                    interviewer_id=interviewer_id,
+                    passed=None,
+                    evaluation_json={"satisfaction": satisfaction},
+                    note="面试官简单评价",
+                )
+            )
+        db.session.commit()
+
+    response = client.get(
+        "/api/interview/management-rows", headers=_auth(owner_token)
+    )
+
+    assert response.status_code == 200
+    rows_by_candidate = {
+        row["candidate_id"]: row for row in response.get_json()
+    }
+    for satisfaction, seeded in seeded_by_satisfaction.items():
+        assert rows_by_candidate[seeded["candidate_id"]]["feedback_result"] == (
+            expected_results[satisfaction]
+        )
+
+
 def test_management_rows_keep_primary_result_after_pipeline_advances_and_ignore_assistant(
     client, make_user, app
 ):

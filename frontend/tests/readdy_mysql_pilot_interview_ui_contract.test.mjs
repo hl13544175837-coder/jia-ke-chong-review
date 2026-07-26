@@ -38,6 +38,10 @@ assert.match(recruiterPage, /pipelineApi\.moveCandidate/, '面试结果必须通
 for (const label of ['安排下一轮', '增加面试官', '进入 Offer', '淘汰候选人']) {
   assert.ok(recruiterPage.includes(label), `面试反馈后的下一步缺少“${label}”`);
 }
+for (const label of ['满意', '待定', '不满意']) {
+  assert.ok(recruiterPage.includes(label), `招聘专员端必须与面试官端使用一致的“${label}”评价口径`);
+}
+assert.doesNotMatch(recruiterPage, /feedback_result === ['"]passed['"] \? ['"]通过['"]/, '招聘专员端不得把面试官的满意度改写成通过结论');
 assert.match(page, /canSubmitFeedback/, '面试官页面必须根据面试时间控制评价入口');
 assert.match(page, /面试尚未开始/, '未来面试必须给出不能提前评价的说明');
 assert.match(router, /RecruiterInterviewsPage/, '/interviews 必须切换为真实招聘专员面试工作台');

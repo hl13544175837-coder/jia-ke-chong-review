@@ -27,6 +27,7 @@ from .interview_workflow_service import (
     assignment_is_cancelled,
     ensure_interview_has_started,
     ensure_interview_time_is_future,
+    feedback_satisfaction,
     interview_times_overlap,
     normalize_assignment_datetime,
     normalize_assignment_status,
@@ -46,6 +47,13 @@ REMINDER_COOLDOWN = timedelta(minutes=15)
 def feedback_result(feedback):
     if feedback is None:
         return None
+    satisfaction = feedback_satisfaction(feedback)
+    if satisfaction == "satisfied":
+        return "passed"
+    if satisfaction == "unsatisfied":
+        return "not_passed"
+    if satisfaction == "pending":
+        return "pending"
     if feedback.passed is True:
         return "passed"
     if feedback.passed is False:

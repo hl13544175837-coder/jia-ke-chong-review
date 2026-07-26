@@ -352,7 +352,7 @@ export default function RecruiterInterviewsPage() {
               <div><dt className="text-xs text-foreground-400">地点 / 链接</dt><dd className="mt-1 inline-flex items-center gap-1 text-foreground-700"><MapPin size={13} />{selectedRow.location || '待确认'}</dd></div>
             </dl>
             {selectedRow.note && <div className="mt-5 rounded-lg bg-background-50 px-4 py-3"><p className="text-xs text-foreground-400">安排备注</p><p className="mt-1 text-sm text-foreground-700">{selectedRow.note}</p></div>}
-            {selectedRow.feedback_submitted && <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3"><p className="text-sm font-medium text-emerald-800">面试反馈已提交</p><p className="mt-1 text-sm text-emerald-700">结论：{selectedRow.feedback_result === 'passed' ? '通过' : selectedRow.feedback_result === 'not_passed' ? '不通过' : '待定'}{selectedRow.feedback_score !== null ? ` · ${selectedRow.feedback_score} 分` : ''}</p></div>}
+            {selectedRow.feedback_submitted && <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3"><p className="text-sm font-medium text-emerald-800">面试反馈已提交</p><p className="mt-1 text-sm text-emerald-700">面试官评价：{selectedRow.feedback_result === 'passed' ? '满意' : selectedRow.feedback_result === 'not_passed' ? '不满意' : '待定'}{selectedRow.feedback_score !== null ? ` · ${selectedRow.feedback_score} 分` : ''}</p></div>}
 
             {selectedRow.feedback_submitted && selectedRow.pipeline_stage === 'interview' && (
               <section className="mt-5 rounded-lg border border-primary-200 bg-primary-50/40 p-4">
