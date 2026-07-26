@@ -422,13 +422,13 @@ git commit -m "docs: record recruitment full-flow behavior"
 **Files:**
 - Modify only when verification exposes a reproducible defect; add a failing regression test before every such fix.
 
-- [ ] **Step 1: Run all backend tests from a clean test database**
+- [x] **Step 1: Run all backend tests from a clean test database**
 
 Run: `backend/.venv/bin/pytest backend/tests -q`
 
 Expected: all tests PASS with no unexpected warnings.
 
-- [ ] **Step 2: Run all front-end contracts and production checks**
+- [x] **Step 2: Run all front-end contracts and production checks**
 
 Run: `npm --prefix frontend test`
 
@@ -440,26 +440,38 @@ Run: `npm --prefix readdy-frontend run build`
 
 Expected: all runnable checks PASS. If the exact Readdy ZIP parity fixture is still absent, report that single environmental skip separately; it cannot substitute for any functional test.
 
-- [ ] **Step 3: Restart the local stack and verify the recruiter path**
+- [x] **Step 3: Restart the local stack and verify the recruiter path**
 
 Log in with a real recruiter account. Create/select a demand, import or select a candidate in the same-page workbench, inspect the full resume, push business review, receive the result, schedule interviews, make the result decision, create/approve/send/accept an Offer, and confirm onboarding. Refresh after every persisted boundary.
 
-- [ ] **Step 4: Verify the interviewer path**
+- [x] **Step 4: Verify the interviewer path**
 
 Log in with the assigned real interviewer account. Confirm only assigned review/interview tasks are visible; inspect the complete candidate/JD; submit review; confirm future feedback is blocked; submit due feedback; verify the recruiter receives it.
 
-- [ ] **Step 5: Verify the manager/top-product path**
+- [x] **Step 5: Verify the manager/top-product path**
 
 Log in with the real manager account. Confirm organization-scoped dashboard facts, team work visibility, authorized Offer approval, no fake zero/mock facts, and no forbidden controls for unauthorized records.
 
-- [ ] **Step 6: Inspect persistence and reverse paths**
+- [x] **Step 6: Inspect persistence and reverse paths**
 
 Verify task, decision, assignment, feedback, pipeline-event, Offer-event, notification, audit, and HC records. Also verify refresh/relogin, duplicate submit, cancellation with reason, rejection with reason, withdrawn/rejected Offer capacity release, unavailable original file, unconfigured job skills, empty lists, 403, and 409 behavior.
 
-- [ ] **Step 7: Re-run focused regressions after browser fixes**
+- [x] **Step 7: Re-run focused regressions after browser fixes**
 
 Every browser defect first receives a failing automated regression, then a minimal fix, then focused and full reruns.
 
-- [ ] **Step 8: Final issue-by-issue closure audit**
+- [x] **Step 8: Final issue-by-issue closure audit**
 
 Compare actual evidence against all 12 original issues, the three added UX safeguards, the nine image stages, and all three role perspectives. Completion is allowed only when every internal item is proven closed and the only remaining gaps are the explicitly excluded OA/WeCom/SMS/email/candidate-contact integrations.
+
+#### Observed completion evidence — 2026-07-27
+
+- Backend: `576 passed` after the final role-boundary fix; `base_agent/tests` also passed `6/6`.
+- Frontend: every runnable source-contract test passed. `npm --prefix frontend test` stops only at the absent external fixture `/Users/yenns/Documents/新版招聘/references/readdy-export.zip`; rerunning the same suite without that one parity fixture passed. Readdy type-check, lint, and production build all passed.
+- Recruiter browser flow: `hr01` selected candidate 007 directly inside demand `REQ-20260726-D6BC324E25094893`, viewed the resume, sent business review, received the decision, scheduled the interview, received feedback, moved to Offer, recorded delivery/acceptance, and confirmed onboarding.
+- Interviewer browser flow: `interviewer01` received the assigned review and interview, could read the scoped Java JD and full Chinese resume, and submitted an immediately visible “满意” result. Other demand analytics remain forbidden to interviewers.
+- Manager browser flow: `manager01` saw the real pending Offer, approved it, and saw Chinese lifecycle states rather than raw enum values.
+- Persistence: candidate 007 + demand 5 contains an approved business-review task, a completed assignment, persisted satisfaction feedback, Offer events `saved → submitted → approved → sent → accepted → onboarded`, and pipeline stages `pending → business_review → interview → offer → onboarded`.
+- HC: the Java demand moved from `0/1` to `1/1` only after actual onboarding; business review, interview, Offer approval, and Offer acceptance did not consume the vacancy.
+- Browser defects found during acceptance were fixed and regressed: cross-role feedback wording, Offer date inputs, dashboard status localization, China-time conversion, interviewer scoped demand detail, BI permission separation, stale post-onboarding actions, target-position visibility, and structured-resume Chinese field labels.
+- The only remaining boundaries are the explicitly excluded OA, enterprise WeChat, external calendar, email, SMS, and candidate self-service integrations. The UI records offline facts and labels these integrations as pending instead of pretending they were delivered.
