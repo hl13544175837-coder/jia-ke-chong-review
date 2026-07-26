@@ -29,6 +29,8 @@ for (const label of ['待安排', '已安排', '待反馈', '已完成', '安排
   assert.ok(recruiterPage.includes(label), `招聘专员面试工作台缺少“${label}”`);
 }
 assert.doesNotMatch(recruiterPage, /@\/mocks\//, '招聘专员面试管理不得使用假任务');
+const scheduleModal = read('readdy-frontend/src/pages/interviews/components/ScheduleInterviewModal.tsx');
+assert.match(scheduleModal, /type="datetime-local"[\s\S]*?onInput=/, '面试时间必须响应浏览器的实时输入事件');
 assert.match(router, /RecruiterInterviewsPage/, '/interviews 必须切换为真实招聘专员面试工作台');
 assert.match(router, /path:\s*['"]\/interviews['"][\s\S]*?<RecruiterInterviewsPage/, '/interviews 路由必须使用真实工作台');
 

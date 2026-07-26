@@ -115,7 +115,14 @@ export default function ScheduleInterviewModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-medium text-foreground-700">
               面试时间 <span className="text-red-500">*</span>
-              <input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} disabled={saving} className="mt-2 h-10 w-full rounded-lg border border-background-300 px-3 text-sm" />
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                onInput={(event) => setScheduledAt(event.currentTarget.value)}
+                onChange={(event) => setScheduledAt(event.target.value)}
+                disabled={saving}
+                className="mt-2 h-10 w-full rounded-lg border border-background-300 px-3 text-sm"
+              />
             </label>
             <label className="text-sm font-medium text-foreground-700">
               面试地点 / 会议链接 <span className="text-red-500">*</span>
@@ -166,4 +173,3 @@ export default function ScheduleInterviewModal({
     </div>
   );
 }
-
