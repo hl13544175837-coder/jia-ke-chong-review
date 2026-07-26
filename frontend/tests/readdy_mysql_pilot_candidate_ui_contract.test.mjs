@@ -13,6 +13,26 @@ const duplicateModal = read('readdy-frontend/src/pages/candidates/components/Dup
 const candidateApi = read('readdy-frontend/src/features/candidates/api.ts');
 const candidateTypes = read('readdy-frontend/src/features/candidates/types.ts');
 
+for (const field of ['demandId?: number', 'targetStage?: string']) {
+  assert.match(page, new RegExp(field.replace('?', '\\?')), `需求跳转上下文缺少 ${field}`);
+}
+assert.match(
+  page,
+  /useState<number \| ''>\(navState\?\.demandId \?\? ''\)/,
+  '从需求进入候选人页时必须自动选中当前需求',
+);
+assert.match(
+  page,
+  /useState<'' \| CandidateStage>\(candidateStageFromNavigation\(navState\?\.targetStage\)\)/,
+  '从需求阶段数字进入时必须自动带上候选人阶段',
+);
+assert.match(
+  page,
+  /useState<number \| ''>\(navState\?\.demandId \?\? ''\)/,
+  '需求上下文必须同时作为简历上传的默认目标',
+);
+assert.match(page, /当前需求候选人/, '需求上下文页面必须使用清楚的候选人工作区名称');
+
 for (const method of [
   'candidatesApi.listCandidates',
   'candidatesApi.uploadResumes',

@@ -18,6 +18,7 @@ import RequisitionTabs from './components/RequisitionTabs';
 import RequisitionForm from './components/RequisitionForm';
 import RequisitionTable from './components/RequisitionTable';
 import DemandDetailPanel from './components/DemandDetailPanel';
+import DemandCandidateDrawer from './components/DemandCandidateDrawer';
 
 const statusTransitions: Record<string, { advance: { to: string; label: string } | null; rollback: { to: string; label: string } | null }> = {
   pending: { advance: { to: 'closed', label: '关闭需求' }, rollback: null },
@@ -43,6 +44,7 @@ export default function JobsPage() {
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
   const [owners, setOwners] = useState<DemandOwnerOption[]>([]);
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
+  const [candidateDemand, setCandidateDemand] = useState<RecruitmentDemand | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -270,7 +272,7 @@ export default function JobsPage() {
           onStatusChange={handleStatusChange}
           statusTransitions={statusTransitions}
           statusExtraActions={statusExtraActions}
-          onSelectCandidates={(req) => openCandidates(req, 'all')}
+          onSelectCandidates={(req) => setCandidateDemand(req.source)}
           onViewCandidates={(req) => openCandidates(req, 'all')}
           onStageCountClick={(req, stage) => openCandidates(req, stage)}
           searchQuery={searchQuery}
@@ -309,6 +311,14 @@ export default function JobsPage() {
             </section>
           </div>
         </>
+      )}
+
+      {candidateDemand && (
+        <DemandCandidateDrawer
+          demand={candidateDemand}
+          onClose={() => setCandidateDemand(null)}
+          onChanged={() => void loadDemands()}
+        />
       )}
 
       <DemandDetailPanel

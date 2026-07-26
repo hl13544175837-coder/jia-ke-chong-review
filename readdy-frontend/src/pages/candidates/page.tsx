@@ -243,13 +243,27 @@ function belongsToSourceFile(resultFile: string, sourceFile: string) {
 interface CandidateNavigationState {
   fromJobs?: boolean;
   jobTitle?: string;
+  demandId?: number;
+  targetStage?: string;
 }
 
 function isCandidateNavigationState(value: unknown): value is CandidateNavigationState {
   if (typeof value !== 'object' || value === null) return false;
   if ('fromJobs' in value && typeof value.fromJobs !== 'boolean') return false;
   if ('jobTitle' in value && typeof value.jobTitle !== 'string') return false;
+  if (
+    'demandId' in value
+    && value.demandId !== undefined
+    && (!Number.isInteger(value.demandId) || Number(value.demandId) <= 0)
+  ) return false;
+  if ('targetStage' in value && typeof value.targetStage !== 'string') return false;
   return true;
+}
+
+function candidateStageFromNavigation(value: string | undefined): '' | CandidateStage {
+  if (!value || value === 'all') return '';
+  if (value === 'feedback') return 'business_review';
+  return isCandidateStage(value) ? value : '';
 }
 
 export default function CandidatesPage() {
@@ -260,7 +274,7 @@ export default function CandidatesPage() {
   const navState = isCandidateNavigationState(location.state) ? location.state : null;
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [demandFilter, setDemandFilter] = useState<number | ''>('');
+  const [demandFilter, setDemandFilter] = useState<number | ''>(navState?.demandId ?? '');
   const [cityFilter, setCityFilter] = useState('');
   const [educationFilter, setEducationFilter] = useState('');
   const [skillFilter, setSkillFilter] = useState('');
@@ -268,7 +282,7 @@ export default function CandidatesPage() {
   const [parseStatusFilter, setParseStatusFilter] = useState<'' | ParseStatus>('');
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState<PipelineStatusFilter>('');
   const [favoriteFilter, setFavoriteFilter] = useState(false);
-  const [stageFilter, setStageFilter] = useState<'' | CandidateStage>('');
+  const [stageFilter, setStageFilter] = useState<'' | CandidateStage>(candidateStageFromNavigation(navState?.targetStage));
   const [scoreFilter, setScoreFilter] = useState('0');
   const [sortBy, setSortBy] = useState<CandidateSortBy>('created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -295,7 +309,7 @@ export default function CandidatesPage() {
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploadDemandId, setUploadDemandId] = useState<number | ''>('');
+  const [uploadDemandId, setUploadDemandId] = useState<number | ''>(navState?.demandId ?? '');
   const [uploadSourceChannel, setUploadSourceChannel] = useState('');
   const [uploadNote, setUploadNote] = useState('');
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
@@ -788,9 +802,11 @@ export default function CandidatesPage() {
               </button>
             )}
             <div>
-              <h1 className="text-lg font-bold text-foreground-900">简历库</h1>
+              <h1 className="text-lg font-bold text-foreground-900">
+                {navState?.jobTitle ? '当前需求候选人' : '简历库'}
+              </h1>
               <p className="mt-0.5 text-xs text-foreground-500">
-                {navState?.jobTitle ? `来自「${navState.jobTitle}」` : '候选人与业务筛选'}
+                {navState?.jobTitle ? `${navState.jobTitle} · 已自动带入需求和阶段条件` : '候选人与业务筛选'}
               </p>
             </div>
           </div>

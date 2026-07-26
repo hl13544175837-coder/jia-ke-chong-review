@@ -9,6 +9,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 const businessJobs = read('readdy-frontend/src/pages/interviewer/jobs/page.tsx');
 const hrJobs = read('readdy-frontend/src/pages/jobs/page.tsx');
 const detailPanel = read('readdy-frontend/src/pages/jobs/components/DemandDetailPanel.tsx');
+const candidateDrawerPath = 'readdy-frontend/src/pages/jobs/components/DemandCandidateDrawer.tsx';
 
 assert.match(businessJobs, /jobsApi\.listTemplates/, '业务端必须读取真实岗位模板');
 assert.match(businessJobs, /jobsApi\.getTemplate/, '业务端选择模板后必须读取完整 JD');
@@ -28,6 +29,17 @@ assert.match(hrJobs, /demandsApi\.approveDemand/, 'HR 页面必须调用通过�
 assert.match(hrJobs, /demandsApi\.rejectDemand/, 'HR 页面必须调用驳回接口');
 assert.match(hrJobs, /instanceof ApiError[^]*status === 409|status === 409[^]*instanceof ApiError/, 'HR 页面必须处理审核状态冲突');
 assert.doesNotMatch(hrJobs, /@\/mocks\//, 'HR 需求页不得继续读取 mock 数据');
+assert.ok(fs.existsSync(path.join(root, candidateDrawerPath)), '需求页必须提供真实的同页候选人工作区');
+const candidateDrawer = read(candidateDrawerPath);
+assert.match(hrJobs, /DemandCandidateDrawer/, '需求页必须接入同页候选人工作区');
+assert.match(hrJobs, /setCandidateDemand\(req\.source\)/, '“选候选人”必须打开当前需求的工作区');
+assert.match(hrJobs, /candidateDemand &&/, '需求候选人工作区必须由当前需求控制显示');
+for (const method of ['candidatesApi.listCandidates', 'candidatesApi.previewMatches', 'candidatesApi.addToPipeline', 'candidatesApi.uploadResumes']) {
+  assert.match(candidateDrawer, new RegExp(method.replace('.', '\\.')), `需求候选人工作区必须调用 ${method}`);
+}
+assert.match(candidateDrawer, /target_demand_id:\s*demand\.id/, '需求内导入简历必须自动关联当前需求');
+assert.match(candidateDrawer, /onDrop=/, '需求内候选人工作区必须支持拖入简历');
+assert.match(candidateDrawer, /岗位匹配度/, '需求内选人必须展示当前岗位匹配度');
 
 assert.match(detailPanel, /approval_status/, '详情必须展示审批状态');
 assert.match(detailPanel, /submitted_at/, '详情必须展示提交时间');
