@@ -83,6 +83,10 @@ const readdyPresentation = readFileSync(readdyPresentationPath, 'utf8');
 for (const label of ['求职目标', '个人概况', '教育经历', '工作经历', '项目经历', '专业技能']) {
   assert.match(`${readdyResumeView}\n${readdyPresentation}`, new RegExp(label), `共用简历缺少“${label}”`);
 }
+for (const label of ['毕业年份', '职位', '工作年限', '工作内容', '技能类别']) {
+  assert.match(readdyPresentation, new RegExp(label), `共用简历必须把结构化字段翻译成“${label}”`);
+}
+assert.doesNotMatch(readdyPresentation, /title:\s*['"]名称['"]/, '简历中的 title 不得再含糊显示成“名称”');
 assert.doesNotMatch(readdyResumeView, /JSON\.stringify/, '业务用户简历不能直接序列化 JSON');
 
 for (const relativePath of [
