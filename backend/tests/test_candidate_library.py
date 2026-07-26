@@ -65,6 +65,12 @@ def test_candidate_library_list_includes_resume_summary_and_top_tags(client, mak
     assert body[0]["education_summary"] == "复旦大学 · 本科 · 计算机科学"
     assert body[0]["current_stage"] == "offer"
     assert body[0]["current_demand_id"] == demand_id
+    assert body[0]["current_demand"] == {
+        "id": demand_id,
+        "request_no": "REQ-LIBRARY-OFFER",
+        "job_title": "算法工程师",
+    }
+    assert body[0]["latest_demand"] == body[0]["current_demand"]
     assert body[0]["is_favorite"] is False
 
     offer_candidates = client.get(

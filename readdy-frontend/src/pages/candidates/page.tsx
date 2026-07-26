@@ -1288,7 +1288,7 @@ export default function CandidatesPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1320px] border-collapse text-left">
+            <table className="w-full min-w-[1460px] border-collapse text-left">
               <thead className="bg-background-50 text-xs font-medium text-foreground-500">
                 <tr>
                   <th className="w-12 px-4 py-3">
@@ -1399,6 +1399,7 @@ export default function CandidatesPage() {
                       className={filterControlClass}
                     />
                   </CandidateColumnFilterHeader>
+                  <th className="min-w-48 px-3 py-3">目标岗位</th>
                   <CandidateColumnFilterHeader
                     data-ui="candidate-column-filter-stage"
                     label="当前阶段"
@@ -1462,6 +1463,7 @@ export default function CandidatesPage() {
               <tbody className="divide-y divide-background-200">
                 {candidateResponse.candidates.map((candidate) => {
                   const status = parseStatusMeta[candidate.parse_status];
+                  const targetDemand = candidate.current_demand ?? candidate.latest_demand;
                   return (
                     <tr
                       key={candidate.id}
@@ -1510,6 +1512,16 @@ export default function CandidatesPage() {
                       </td>
                       <td className="px-3 py-3.5 text-sm text-foreground-600">
                         {candidate.source?.channel || '—'}
+                      </td>
+                      <td className="max-w-56 px-3 py-3.5">
+                        {targetDemand ? (
+                          <div>
+                            <p className="truncate text-sm font-medium text-foreground-800">{targetDemand.job_title}</p>
+                            <p className="mt-0.5 truncate text-xs text-foreground-400">
+                              {candidate.current_demand ? '当前需求' : '最近需求'} · {targetDemand.request_no || '未编号'}
+                            </p>
+                          </div>
+                        ) : <span className="text-sm text-foreground-400">待匹配岗位</span>}
                       </td>
                       <td className="px-3 py-3.5 text-sm text-foreground-600">
                         {candidate.current_stage ? stageLabels[candidate.current_stage] : '—'}
@@ -1827,6 +1839,17 @@ export default function CandidatesPage() {
                 </div>
               ) : resumeDetail ? (
                 <div className="space-y-6">
+                  {(detailCandidate.current_demand ?? detailCandidate.latest_demand) && (
+                    <section className="rounded-lg border border-background-200 bg-background-50 px-4 py-3">
+                      <p className="text-xs text-foreground-400">目标岗位</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground-900">
+                        {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.job_title}
+                      </p>
+                      <p className="mt-1 text-xs text-foreground-500">
+                        {detailCandidate.current_demand ? '当前需求' : '最近需求'} · {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.request_no || '未编号'}
+                      </p>
+                    </section>
+                  )}
                   {detailReview && (
                     <section className="rounded-lg border border-primary-200 bg-primary-50/40 px-4 py-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

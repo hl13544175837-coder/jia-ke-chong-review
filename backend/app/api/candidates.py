@@ -178,8 +178,27 @@ def _candidate_education_text(candidate):
     return json.dumps(education, ensure_ascii=False).casefold()
 
 
-def _candidate_library_item(candidate, *, stage_context=None, favorite=False):
+def _demand_summary(demand):
+    if demand is None:
+        return None
+    return {
+        "id": demand.id,
+        "request_no": demand.request_no,
+        "job_title": demand.job_title_snapshot
+        or (demand.job.title if demand.job else ""),
+    }
+
+
+def _candidate_library_item(
+    candidate,
+    *,
+    stage_context=None,
+    favorite=False,
+    demands_by_id=None,
+):
     info = _resume_info(candidate)
+    demands_by_id = demands_by_id or {}
+    latest_demand_id = stage_context["demand_id"] if stage_context else None
     tags = sorted(
         [{"tag": t.tag, "score": t.score or 0} for t in candidate.tags if t.tag],
         key=lambda x: (-int(x["score"] or 0), x["tag"]),
@@ -192,7 +211,11 @@ def _candidate_library_item(candidate, *, stage_context=None, favorite=False):
         "owner_hr_id": candidate.owner_hr_id,
         "current_demand_id": candidate.current_demand_id,
         "current_stage": stage_context["stage"] if stage_context else None,
-        "latest_demand_id": stage_context["demand_id"] if stage_context else None,
+        "latest_demand_id": latest_demand_id,
+        "current_demand": _demand_summary(
+            demands_by_id.get(candidate.current_demand_id)
+        ),
+        "latest_demand": _demand_summary(demands_by_id.get(latest_demand_id)),
         "is_favorite": favorite,
         "created_at": candidate.created_at.isoformat(),
         "parse_status": candidate.parse_status,
@@ -262,11 +285,28 @@ def _candidate_favorite_ids(candidates):
 def _candidate_library_payload(candidates, demand_id=None):
     stages = _candidate_stage_context(candidates, demand_id=demand_id)
     favorites = _candidate_favorite_ids(candidates)
+    demand_ids = {
+        candidate.current_demand_id
+        for candidate in candidates
+        if candidate.current_demand_id is not None
+    }
+    demand_ids.update(
+        context["demand_id"]
+        for context in stages.values()
+        if context.get("demand_id") is not None
+    )
+    demands_by_id = {
+        demand.id: demand
+        for demand in visible_demand_query(g.user_id, g.role, g.org_id)
+        .filter(RecruitmentDemand.id.in_(demand_ids or [-1]))
+        .all()
+    }
     return [
         _candidate_library_item(
             candidate,
             stage_context=stages.get(candidate.id),
             favorite=candidate.id in favorites,
+            demands_by_id=demands_by_id,
         )
         for candidate in candidates
     ]

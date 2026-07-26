@@ -23,6 +23,12 @@ export interface CandidateSourceInfo {
   created_at: string | null;
 }
 
+export interface CandidateDemandSummary {
+  id: number;
+  request_no: string;
+  job_title: string;
+}
+
 export interface CandidateListItem {
   id: number;
   name_masked: string;
@@ -31,6 +37,8 @@ export interface CandidateListItem {
   owner_hr_id: number | null;
   current_demand_id?: number | null;
   latest_demand_id?: number | null;
+  current_demand?: CandidateDemandSummary | null;
+  latest_demand?: CandidateDemandSummary | null;
   is_favorite: boolean;
   created_at: string;
   parse_status: ParseStatus;
@@ -125,6 +133,13 @@ export interface CandidatePipelineAddResult {
     code: string;
     error: string;
   }>;
+}
+
+export interface CandidateDemandTransferResult {
+  candidate_id: number;
+  from_demand_id: number;
+  to_demand_id: number;
+  stage: CandidateStage;
 }
 
 export interface CandidateMatchResult {

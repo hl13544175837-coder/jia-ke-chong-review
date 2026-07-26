@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useProductRole } from '@/auth/productRole';
+import { candidatesApi } from '@/features/candidates/api';
 import { demandsApi } from '@/features/demands/api';
 import { toRequisitionRow } from '@/features/demands/adapter';
 import type {
@@ -12,13 +13,19 @@ import type {
   RecruitmentDemandInput,
   RequisitionRow,
 } from '@/features/demands/types';
-import { ApiError } from '@/lib/api';
+import { ApiError, apiRequest } from '@/lib/api';
 import { useToast } from '@/hooks/useToast';
 import RequisitionTabs from './components/RequisitionTabs';
 import RequisitionForm from './components/RequisitionForm';
 import RequisitionTable from './components/RequisitionTable';
 import DemandDetailPanel from './components/DemandDetailPanel';
 import DemandCandidateDrawer from './components/DemandCandidateDrawer';
+import PushToReviewerModal, {
+  type BusinessReviewerOption,
+  type PushFormValue,
+  type PushResultItem,
+  type PushTarget,
+} from '@/pages/candidates/components/PushToReviewerModal';
 
 const statusTransitions: Record<string, { advance: { to: string; label: string } | null; rollback: { to: string; label: string } | null }> = {
   pending: { advance: { to: 'closed', label: '关闭需求' }, rollback: null },
@@ -30,6 +37,23 @@ const statusTransitions: Record<string, { advance: { to: string; label: string }
 };
 
 const statusExtraActions: Record<string, { to: string; label: string; icon: string }[]> = {};
+
+interface InterviewerApiItem {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+}
+
+function isBusinessReviewer(
+  item: InterviewerApiItem,
+): item is InterviewerApiItem & { role: 'interviewer' | 'manager' } {
+  return item.role === 'interviewer' || item.role === 'manager';
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message.trim() ? error.message : fallback;
+}
 
 export default function JobsPage() {
   const { showToast } = useToast();
@@ -54,6 +78,13 @@ export default function JobsPage() {
   const [filters, setFilters] = useState({ department: '', owner: '', city: '', status: '', stage: '' });
   const [sortField, setSortField] = useState('newest');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [pushDemand, setPushDemand] = useState<RecruitmentDemand | null>(null);
+  const [pushTargets, setPushTargets] = useState<PushTarget[] | null>(null);
+  const [pushSubmitting, setPushSubmitting] = useState(false);
+  const [pushResults, setPushResults] = useState<PushResultItem[]>([]);
+  const [reviewers, setReviewers] = useState<BusinessReviewerOption[]>([]);
+  const [reviewersLoading, setReviewersLoading] = useState(false);
+  const [reviewerError, setReviewerError] = useState<string | null>(null);
 
   const loadDemands = useCallback(async () => {
     setLoading(true);
@@ -80,6 +111,24 @@ export default function JobsPage() {
       showToast(error instanceof Error ? error.message : '加载招聘负责人失败');
     }
   }, [role, showToast]);
+
+  const loadReviewers = useCallback(async () => {
+    setReviewersLoading(true);
+    setReviewerError(null);
+    try {
+      const response = await apiRequest<InterviewerApiItem[]>('/interview/interviewers');
+      setReviewers(response.filter(isBusinessReviewer).map((item) => ({
+        id: item.id,
+        name: item.name,
+        email: item.email,
+        role: item.role,
+      })));
+    } catch (error) {
+      setReviewerError(errorMessage(error, '业务筛选人加载失败'));
+    } finally {
+      setReviewersLoading(false);
+    }
+  }, []);
 
   useEffect(() => { void loadDemands(); }, [loadDemands]);
   useEffect(() => { void loadOwners(); }, [loadOwners]);
@@ -241,6 +290,60 @@ export default function JobsPage() {
     navigate('/candidates', { state: { fromJobs: true, demandId: Number(req.id), jobTitle: req.title, targetStage: stage } });
   };
 
+  const prepareBusinessPush = (demand: RecruitmentDemand, targets: PushTarget[]) => {
+    if (targets.length === 0) return;
+    setCandidateDemand(null);
+    setPushDemand(demand);
+    setPushTargets(targets);
+    setPushResults([]);
+    if (reviewers.length === 0 && !reviewersLoading) void loadReviewers();
+  };
+
+  const handlePushToBusiness = async (value: PushFormValue) => {
+    if (!pushTargets || !pushDemand || pushSubmitting) return;
+    setPushSubmitting(true);
+    setPushResults([]);
+    const selectedReviewer = reviewers.find((reviewer) => reviewer.id === value.reviewerId);
+    const results = await Promise.all(pushTargets.map(async (target): Promise<PushResultItem> => {
+      try {
+        const task = await candidatesApi.pushToBusinessReview({
+          demand_id: value.demandId,
+          candidate_id: target.candidateId,
+          reviewer_id: value.reviewerId,
+          hr_note: value.hrNote,
+          due_at: value.dueAt,
+        });
+        const deduplicated = task.deduplicated === true;
+        return {
+          candidateId: target.candidateId,
+          candidateName: target.candidateName,
+          status: deduplicated ? 'deduplicated' : 'created',
+          message: deduplicated
+            ? `已有待处理任务，请确认接收人为 ${task.reviewer_name || selectedReviewer?.name || '所选业务筛选人'}`
+            : `已投递给 ${task.reviewer_name || selectedReviewer?.name || '所选业务筛选人'}`,
+        };
+      } catch (error) {
+        return {
+          candidateId: target.candidateId,
+          candidateName: target.candidateName,
+          status: 'failed',
+          message: errorMessage(error, '推送业务筛选失败'),
+        };
+      }
+    }));
+
+    setPushResults(results);
+    setPushSubmitting(false);
+    const createdCount = results.filter((result) => result.status === 'created').length;
+    const deduplicatedCount = results.filter((result) => result.status === 'deduplicated').length;
+    if (createdCount > 0) {
+      showToast(`已向 ${selectedReviewer?.name || '业务筛选人'} 投递 ${createdCount} 份简历`);
+      await loadDemands();
+    } else if (deduplicatedCount > 0) {
+      showToast('所选候选人已有待处理的业务筛选任务，请核对原接收人');
+    }
+  };
+
   return (
     <div className="space-y-5 p-6" data-ui="real-demand-page">
       {navState?.fromDashboard && (
@@ -318,8 +421,38 @@ export default function JobsPage() {
           demand={candidateDemand}
           onClose={() => setCandidateDemand(null)}
           onChanged={() => void loadDemands()}
+          onReadyToPush={prepareBusinessPush}
         />
       )}
+
+      {pushDemand && pushTargets ? (
+        <PushToReviewerModal
+          targets={pushTargets}
+          demands={[{
+            id: pushDemand.id,
+            jobTitle: pushDemand.job_title,
+            requestNo: pushDemand.request_no,
+            department: pushDemand.requester_department || pushDemand.job_department,
+          }]}
+          reviewers={reviewers}
+          initialDemandId={pushDemand.id}
+          initialReviewerId={pushDemand.default_interviewer_id}
+          demandsLoading={false}
+          demandError={null}
+          reviewersLoading={reviewersLoading}
+          reviewerError={reviewerError}
+          isSubmitting={pushSubmitting}
+          results={pushResults}
+          onRetryDemands={() => void loadDemands()}
+          onRetryReviewers={() => void loadReviewers()}
+          onClose={() => {
+            setPushDemand(null);
+            setPushTargets(null);
+            setPushResults([]);
+          }}
+          onPush={(value) => void handlePushToBusiness(value)}
+        />
+      ) : null}
 
       <DemandDetailPanel
         demand={selectedDemand}

@@ -5,6 +5,7 @@ import type {
   CandidateListQuery,
   CandidateListResponse,
   CandidateDuplicateResponse,
+  CandidateDemandTransferResult,
   CandidateFavoriteResult,
   CandidateMatchPreview,
   CandidateMergeResult,
@@ -56,6 +57,22 @@ export const candidatesApi = {
         candidate_ids: candidateIds,
         reactivate_rejected: Boolean(reason?.trim()),
         reason: reason?.trim() || undefined,
+      },
+    });
+  },
+  transferToDemand(
+    candidateId: number,
+    fromDemandId: number,
+    toDemandId: number,
+    reason: string,
+  ): Promise<CandidateDemandTransferResult> {
+    return apiRequest('/pipeline/transfer', {
+      method: 'POST',
+      body: {
+        candidate_id: candidateId,
+        from_demand_id: fromDemandId,
+        to_demand_id: toDemandId,
+        reason: reason.trim(),
       },
     });
   },

@@ -14,6 +14,11 @@ const candidateApi = read('readdy-frontend/src/features/candidates/api.ts');
 const candidateTypes = read('readdy-frontend/src/features/candidates/types.ts');
 const kanbanPage = read('readdy-frontend/src/pages/kanban/page.tsx');
 
+assert.match(candidateTypes, /current_demand\?:\s*CandidateDemandSummary/, '候选人列表类型必须携带当前目标岗位');
+assert.match(candidateTypes, /latest_demand\?:\s*CandidateDemandSummary/, '候选人列表类型必须携带最近目标岗位');
+assert.match(page, /目标岗位/, '候选人库表格必须直接展示目标岗位');
+assert.match(page, /candidate\.current_demand\s*\?\?\s*candidate\.latest_demand/, '目标岗位必须优先显示当前需求并兼容最近历史需求');
+
 for (const field of ['demandId?: number', 'targetStage?: string']) {
   assert.match(page, new RegExp(field.replace('?', '\\?')), `需求跳转上下文缺少 ${field}`);
 }

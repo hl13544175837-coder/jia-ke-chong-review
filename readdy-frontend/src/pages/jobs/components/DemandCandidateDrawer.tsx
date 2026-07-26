@@ -6,6 +6,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Search,
+  Send,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -17,11 +18,13 @@ import type {
   ResumeUploadResponse,
 } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
+import type { PushTarget } from '@/pages/candidates/components/PushToReviewerModal';
 
 interface DemandCandidateDrawerProps {
   demand: RecruitmentDemand;
   onClose: () => void;
   onChanged: () => void;
+  onReadyToPush: (demand: RecruitmentDemand, targets: PushTarget[]) => void;
 }
 
 const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif|zip)$/i;
@@ -32,11 +35,25 @@ function messageOf(error: unknown, fallback: string) {
 }
 
 function candidateStatus(candidate: CandidateListItem, demandId: number, match?: CandidateMatchResult) {
-  if (candidate.current_demand_id === demandId) return { label: '已在当前需求', selectable: false, tone: 'text-primary-700 bg-primary-50' };
-  if (candidate.current_demand_id) return { label: '其他需求流程中', selectable: false, tone: 'text-amber-700 bg-amber-50' };
-  if (match?.latest_stage === 'rejected') return { label: '当前需求曾淘汰', selectable: true, tone: 'text-red-700 bg-red-50' };
-  if (match?.latest_stage) return { label: '已有当前需求记录', selectable: false, tone: 'text-foreground-600 bg-background-100' };
-  return { label: '可加入', selectable: true, tone: 'text-emerald-700 bg-emerald-50' };
+  if (candidate.current_demand_id === demandId) {
+    const canPush = !match?.latest_stage || ['pending', 'ai_screen', 'business_review'].includes(match.latest_stage);
+    return canPush
+      ? { label: '已在当前需求，可推送', selectable: true, action: 'push', tone: 'text-primary-700 bg-primary-50' }
+      : { label: '已进入后续阶段', selectable: false, action: 'blocked', tone: 'text-foreground-600 bg-background-100' };
+  }
+  if (candidate.current_demand_id) {
+    return {
+      label: candidate.current_demand?.job_title
+        ? `当前岗位：${candidate.current_demand.job_title}`
+        : '其他需求流程中',
+      selectable: true,
+      action: 'transfer',
+      tone: 'text-amber-700 bg-amber-50',
+    };
+  }
+  if (match?.latest_stage === 'rejected') return { label: '当前需求曾淘汰', selectable: true, action: 'add', tone: 'text-red-700 bg-red-50' };
+  if (match?.latest_stage) return { label: '已有当前需求记录', selectable: false, action: 'blocked', tone: 'text-foreground-600 bg-background-100' };
+  return { label: '可加入', selectable: true, action: 'add', tone: 'text-emerald-700 bg-emerald-50' };
 }
 
 function resultSummary(result: CandidatePipelineAddResult) {
@@ -48,7 +65,7 @@ function resultSummary(result: CandidatePipelineAddResult) {
   return parts.join('，');
 }
 
-export default function DemandCandidateDrawer({ demand, onClose, onChanged }: DemandCandidateDrawerProps) {
+export default function DemandCandidateDrawer({ demand, onClose, onChanged, onReadyToPush }: DemandCandidateDrawerProps) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [candidates, setCandidates] = useState<CandidateListItem[]>([]);
@@ -59,6 +76,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged }: De
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [reactivationReason, setReactivationReason] = useState('');
+  const [transferReason, setTransferReason] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadDragOver, setUploadDragOver] = useState(false);
   const [uploadResponse, setUploadResponse] = useState<ResumeUploadResponse | null>(null);
@@ -95,8 +113,13 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged }: De
   }, [loadCandidates]);
 
   const visibleCandidates = useMemo(
-    () => [...candidates].sort((left, right) => (matches.get(right.id)?.score ?? -1) - (matches.get(left.id)?.score ?? -1)),
-    [candidates, matches],
+    () => [...candidates].sort((left, right) => {
+      const leftSelectable = candidateStatus(left, demand.id, matches.get(left.id)).selectable ? 1 : 0;
+      const rightSelectable = candidateStatus(right, demand.id, matches.get(right.id)).selectable ? 1 : 0;
+      return rightSelectable - leftSelectable
+        || (matches.get(right.id)?.score ?? -1) - (matches.get(left.id)?.score ?? -1);
+    }),
+    [candidates, demand.id, matches],
   );
 
   const selectedCandidates = useMemo(
@@ -104,6 +127,13 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged }: De
     [selectedIds, visibleCandidates],
   );
   const needsReactivationReason = selectedCandidates.some((item) => matches.get(item.id)?.latest_stage === 'rejected');
+  const transferCandidates = selectedCandidates.filter(
+    (item) => item.current_demand_id && item.current_demand_id !== demand.id,
+  );
+  const needsTransferReason = transferCandidates.length > 0;
+  const needsPipelineChange = selectedCandidates.some(
+    (item) => item.current_demand_id !== demand.id,
+  );
 
   const toggleCandidate = (candidate: CandidateListItem) => {
     const status = candidateStatus(candidate, demand.id, matches.get(candidate.id));
@@ -117,27 +147,77 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged }: De
     setSaveMessage('');
   };
 
-  const addSelected = async () => {
+  const submitSelected = async (pushAfterSave: boolean) => {
     if (selectedIds.size === 0 || saving) return;
     if (needsReactivationReason && !reactivationReason.trim()) {
       setSaveMessage('重新启用曾淘汰的候选人时，请填写原因。');
       return;
     }
+    if (needsTransferReason && !transferReason.trim()) {
+      setSaveMessage('从其他岗位转入当前需求时，请填写转入原因。');
+      return;
+    }
     setSaving(true);
     setSaveMessage('');
     try {
-      const result = await candidatesApi.addToPipeline(
-        demand.id,
-        Array.from(selectedIds),
-        needsReactivationReason ? reactivationReason.trim() : undefined,
-      );
-      setSaveMessage(resultSummary(result));
+      const readyToPush = new Set<number>();
+      selectedCandidates
+        .filter((item) => item.current_demand_id === demand.id)
+        .forEach((item) => readyToPush.add(item.id));
+
+      for (const candidate of transferCandidates) {
+        await candidatesApi.transferToDemand(
+          candidate.id,
+          candidate.current_demand_id as number,
+          demand.id,
+          transferReason,
+        );
+        readyToPush.add(candidate.id);
+      }
+
+      const addCandidates = selectedCandidates.filter((item) => !item.current_demand_id);
+      let summary = '';
+      if (addCandidates.length > 0) {
+        const result = await candidatesApi.addToPipeline(
+          demand.id,
+          addCandidates.map((item) => item.id),
+          needsReactivationReason ? reactivationReason.trim() : undefined,
+        );
+        const failedIds = new Set(result.failures.map((item) => item.candidate_id));
+        addCandidates
+          .filter((item) => !failedIds.has(item.id))
+          .forEach((item) => readyToPush.add(item.id));
+        summary = resultSummary(result);
+      }
+
+      if (transferCandidates.length > 0) {
+        summary = `${summary ? `${summary}，` : ''}成功转入 ${transferCandidates.length} 位`;
+      }
+      if (readyToPush.size === 0) throw new Error(summary || '所选候选人未能进入当前需求');
+
+      await onChanged();
+      if (pushAfterSave) {
+        onReadyToPush(
+          demand,
+          selectedCandidates
+            .filter((item) => readyToPush.has(item.id))
+            .map((item) => ({
+              candidateId: item.id,
+              candidateName: item.name_masked,
+              currentDemandId: demand.id,
+              currentStage: matches.get(item.id)?.latest_stage || 'pending',
+            })),
+        );
+        return;
+      }
+
+      setSaveMessage(summary || `已处理 ${readyToPush.size} 位候选人`);
       setSelectedIds(new Set());
       setReactivationReason('');
+      setTransferReason('');
       await loadCandidates();
-      onChanged();
     } catch (error) {
-      setSaveMessage(messageOf(error, '加入当前需求失败'));
+      setSaveMessage(messageOf(error, '加入或转入当前需求失败'));
     } finally {
       setSaving(false);
     }
@@ -271,12 +351,28 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged }: De
                   className="mb-2 h-9 w-full rounded-lg border border-amber-300 px-3 text-sm outline-none focus:border-amber-500"
                 />
               )}
-              <div className="flex items-center justify-between gap-3">
+              {needsTransferReason && (
+                <input
+                  value={transferReason}
+                  onChange={(event) => setTransferReason(event.target.value)}
+                  placeholder="请填写从其他岗位转入当前需求的原因"
+                  className="mb-2 h-9 w-full rounded-lg border border-amber-300 px-3 text-sm outline-none focus:border-amber-500"
+                />
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-foreground-500">已选 {selectedIds.size} 位候选人{saveMessage ? ` · ${saveMessage}` : ''}</p>
-                <button type="button" onClick={() => void addSelected()} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-500 px-4 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50">
-                  {saving ? <LoaderCircle className="animate-spin" size={15} /> : <UserPlus size={15} />}
-                  加入当前需求
-                </button>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {needsPipelineChange && (
+                    <button type="button" onClick={() => void submitSelected(false)} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-200 bg-white px-4 text-sm font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50">
+                      {saving ? <LoaderCircle className="animate-spin" size={15} /> : <UserPlus size={15} />}
+                      加入/转入当前需求
+                    </button>
+                  )}
+                  <button type="button" onClick={() => void submitSelected(true)} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-500 px-4 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50">
+                    {saving ? <LoaderCircle className="animate-spin" size={15} /> : <Send size={15} />}
+                    {needsPipelineChange ? '加入/转入并推送业务筛选' : '推送业务筛选'}
+                  </button>
+                </div>
               </div>
             </footer>
           </section>
