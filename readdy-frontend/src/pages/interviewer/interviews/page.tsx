@@ -19,6 +19,7 @@ import type { CandidateResumeDetail } from '@/features/candidates/types';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { interviewsApi } from '@/features/interviews/api';
+import { formatInterviewDateTime, interviewHasStarted } from '@/features/interviews/dateTime';
 import type {
   InterviewAssignment,
   InterviewFeedback,
@@ -49,20 +50,8 @@ function assignmentBucket(item: InterviewAssignment): Exclude<TabKey, 'all'> {
   return 'upcoming';
 }
 
-function dateTime(value: string | null) {
-  if (!value) return '时间待安排';
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
-}
-
 function canSubmitFeedback(item: InterviewAssignment) {
-  if (!item.scheduled_at) return true;
-  const scheduled = new Date(item.scheduled_at).getTime();
-  return Number.isNaN(scheduled) || scheduled <= Date.now();
+  return interviewHasStarted(item.scheduled_at);
 }
 
 export default function InterviewerInterviewsPage() {
@@ -308,7 +297,7 @@ export default function InterviewerInterviewsPage() {
                     </span>
                   </button>
                   <span className="inline-flex min-w-[150px] items-center gap-2 text-xs text-foreground-500">
-                    <Clock3 size={14} /> {dateTime(item.scheduled_at)}
+                    <Clock3 size={14} /> {formatInterviewDateTime(item.scheduled_at)}
                   </span>
                   <span className="inline-flex min-w-[120px] items-center gap-2 text-xs text-foreground-500">
                     <MapPin size={14} /> {item.location || '地点待确认'}

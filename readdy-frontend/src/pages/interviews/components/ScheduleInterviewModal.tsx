@@ -6,6 +6,10 @@ import type {
   InterviewManagementRow,
   InterviewerOption,
 } from '@/features/interviews/types';
+import {
+  interviewDateTimeToLocalInput,
+  localInterviewInputToUtc,
+} from '@/features/interviews/dateTime';
 
 const roundOptions = [
   { value: 'round_1', label: '一面' },
@@ -16,10 +20,6 @@ const roundOptions = [
   { value: 'hr', label: 'HR 面' },
   { value: 'additional', label: '加面' },
 ];
-
-function localDateTime(value: string | null) {
-  return value ? value.slice(0, 16) : '';
-}
 
 function currentLocalMinute() {
   const now = new Date();
@@ -53,7 +53,7 @@ export default function ScheduleInterviewModal({
   const [round, setRound] = useState(row.round || 'round_1');
   const [roundSequence, setRoundSequence] = useState(row.round_sequence || 1);
   const [interviewerId, setInterviewerId] = useState(row.interviewer_id || 0);
-  const [scheduledAt, setScheduledAt] = useState(localDateTime(row.scheduled_at));
+  const [scheduledAt, setScheduledAt] = useState(interviewDateTimeToLocalInput(row.scheduled_at));
   const [location, setLocation] = useState(row.location || '');
   const [note, setNote] = useState(row.note || '');
   const [showCancel, setShowCancel] = useState(false);
@@ -76,7 +76,7 @@ export default function ScheduleInterviewModal({
     if (!canSave) return;
     const editable = {
       interviewer_id: interviewerId,
-      scheduled_at: scheduledAt,
+      scheduled_at: localInterviewInputToUtc(scheduledAt),
       location: location.trim(),
       note: note.trim(),
     };

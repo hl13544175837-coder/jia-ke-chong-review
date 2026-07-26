@@ -19,6 +19,7 @@ assert.match(page, /searchParams\.get\(['"]candidate['"]\)/, '面试官页必须
 
 const recruiterPage = read('readdy-frontend/src/pages/interviews/page.tsx');
 const interviewApi = read('readdy-frontend/src/features/interviews/api.ts');
+const interviewDateTime = read('readdy-frontend/src/features/interviews/dateTime.ts');
 const router = read('readdy-frontend/src/router/config.tsx');
 for (const method of ['listManagementRows', 'listInterviewers', 'createAssignment', 'updateAssignment', 'markConducted', 'remindFeedback', 'cancelAssignment']) {
   assert.match(interviewApi, new RegExp(`${method}\\(`), `招聘专员面试 API 缺少 ${method}`);
@@ -32,6 +33,10 @@ assert.doesNotMatch(recruiterPage, /@\/mocks\//, '招聘专员面试管理不得
 const scheduleModal = read('readdy-frontend/src/pages/interviews/components/ScheduleInterviewModal.tsx');
 assert.match(scheduleModal, /type="datetime-local"[\s\S]*?onInput=/, '面试时间必须响应浏览器的实时输入事件');
 assert.match(scheduleModal, /min=\{minimumInterviewTime\}/, '面试时间控件必须禁止选择过去时间');
+assert.match(scheduleModal, /localInterviewInputToUtc\(scheduledAt\)/, '面试排期必须把浏览器本地时间转换为 UTC 后再保存');
+assert.match(scheduleModal, /interviewDateTimeToLocalInput\(row\.scheduled_at\)/, '编辑排期时必须把 UTC 时间还原为浏览器本地时间');
+assert.match(interviewDateTime, /value\.endsWith\(['"]Z['"]\)/, '后端无时区的面试时间必须明确按 UTC 解析');
+assert.match(interviewDateTime, /date\.toISOString\(\)/, '浏览器本地面试时间必须使用标准 UTC 时间传输');
 assert.match(scheduleModal, /企业微信.*待接入/, '排期必须如实说明企业微信外部日历尚未接入');
 assert.match(recruiterPage, /confirmConductedRow/, '招聘专员确认已面试前必须二次确认');
 assert.match(recruiterPage, /pipelineApi\.moveCandidate/, '面试结果必须通过真实流程接口进入 Offer 或淘汰');
@@ -43,6 +48,7 @@ for (const label of ['满意', '待定', '不满意']) {
 }
 assert.doesNotMatch(recruiterPage, /feedback_result === ['"]passed['"] \? ['"]通过['"]/, '招聘专员端不得把面试官的满意度改写成通过结论');
 assert.match(page, /canSubmitFeedback/, '面试官页面必须根据面试时间控制评价入口');
+assert.match(page, /interviewHasStarted\(item\.scheduled_at\)/, '面试官评价入口必须按统一时区判断是否开场');
 assert.match(page, /面试尚未开始/, '未来面试必须给出不能提前评价的说明');
 assert.match(router, /RecruiterInterviewsPage/, '/interviews 必须切换为真实招聘专员面试工作台');
 assert.match(router, /path:\s*['"]\/interviews['"][\s\S]*?<RecruiterInterviewsPage/, '/interviews 路由必须使用真实工作台');

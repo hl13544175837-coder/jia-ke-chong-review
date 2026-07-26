@@ -8,6 +8,7 @@ import type {
   InterviewManagementRow,
   InterviewerOption,
 } from '@/features/interviews/types';
+import { formatInterviewDateTime, interviewHasStarted } from '@/features/interviews/dateTime';
 import { pipelineApi } from '@/features/pipeline/api';
 import ScheduleInterviewModal from './components/ScheduleInterviewModal';
 
@@ -37,23 +38,8 @@ function statusLabel(status: Exclude<StatusTab, 'all'>) {
   }[status];
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) return '时间待安排';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date);
-}
-
 function canMarkConducted(row: InterviewManagementRow) {
-  if (!row.scheduled_at) return true;
-  const scheduled = new Date(row.scheduled_at).getTime();
-  return Number.isNaN(scheduled) || scheduled <= Date.now();
+  return interviewHasStarted(row.scheduled_at);
 }
 
 function followUpScheduleRow(
@@ -325,7 +311,7 @@ export default function RecruiterInterviewsPage() {
                       <span className="mt-0.5 block truncate text-xs text-foreground-500">{row.job_title} · {row.job_department || '部门未填写'}</span>
                     </span>
                   </button>
-                  <span className="inline-flex min-w-[150px] items-center gap-2 text-xs text-foreground-500"><Clock3 size={14} />{formatDateTime(row.scheduled_at)}</span>
+                  <span className="inline-flex min-w-[150px] items-center gap-2 text-xs text-foreground-500"><Clock3 size={14} />{formatInterviewDateTime(row.scheduled_at)}</span>
                   <span className="inline-flex min-w-[130px] items-center gap-2 text-xs text-foreground-500"><UserRound size={14} />{row.interviewer_name || '面试官待安排'}</span>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${status === 'unassigned' ? 'bg-amber-100 text-amber-700' : status === 'awaiting_feedback' ? 'bg-violet-100 text-violet-700' : status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-primary-100 text-primary-700'}`}>{statusLabel(status)}</span>
                   <div className="flex shrink-0 gap-2">
@@ -348,7 +334,7 @@ export default function RecruiterInterviewsPage() {
             <dl className="mt-6 grid grid-cols-2 gap-4 text-sm">
               <div><dt className="text-xs text-foreground-400">当前状态</dt><dd className="mt-1 font-medium text-foreground-800">{statusLabel(rowStatus(selectedRow))}</dd></div>
               <div><dt className="text-xs text-foreground-400">面试官</dt><dd className="mt-1 font-medium text-foreground-800">{selectedRow.interviewer_name || '待安排'}</dd></div>
-              <div><dt className="text-xs text-foreground-400">面试时间</dt><dd className="mt-1 text-foreground-700">{formatDateTime(selectedRow.scheduled_at)}</dd></div>
+              <div><dt className="text-xs text-foreground-400">面试时间</dt><dd className="mt-1 text-foreground-700">{formatInterviewDateTime(selectedRow.scheduled_at)}</dd></div>
               <div><dt className="text-xs text-foreground-400">地点 / 链接</dt><dd className="mt-1 inline-flex items-center gap-1 text-foreground-700"><MapPin size={13} />{selectedRow.location || '待确认'}</dd></div>
             </dl>
             {selectedRow.note && <div className="mt-5 rounded-lg bg-background-50 px-4 py-3"><p className="text-xs text-foreground-400">安排备注</p><p className="mt-1 text-sm text-foreground-700">{selectedRow.note}</p></div>}
@@ -392,7 +378,7 @@ export default function RecruiterInterviewsPage() {
           <div role="dialog" aria-modal="true" aria-labelledby="confirm-conducted-title" className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
             <h2 id="confirm-conducted-title" className="text-base font-semibold text-foreground-900">确认这场面试已经完成？</h2>
             <p className="mt-2 text-sm leading-6 text-foreground-500">确认后会把任务交给面试官填写评价。请先核对候选人、时间和面试官，避免提前确认。</p>
-            <div className="mt-4 rounded-lg bg-background-50 px-3 py-2 text-sm text-foreground-700">{confirmConductedRow.name_masked} · {formatDateTime(confirmConductedRow.scheduled_at)} · {confirmConductedRow.interviewer_name || '面试官未填写'}</div>
+            <div className="mt-4 rounded-lg bg-background-50 px-3 py-2 text-sm text-foreground-700">{confirmConductedRow.name_masked} · {formatInterviewDateTime(confirmConductedRow.scheduled_at)} · {confirmConductedRow.interviewer_name || '面试官未填写'}</div>
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" onClick={() => setConfirmConductedRow(null)} className="rounded-lg border border-background-300 bg-white px-4 py-2 text-sm text-foreground-700">返回核对</button>
               <button type="button" onClick={() => void runAssignmentAction(confirmConductedRow, 'conducted')} disabled={actionRowId !== null} className="rounded-lg bg-foreground-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">确认已面试</button>

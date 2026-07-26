@@ -4,20 +4,8 @@ import { useCompanyAuth } from '@/auth/companyAuth';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import { interviewsApi } from '@/features/interviews/api';
+import { formatInterviewDateTime } from '@/features/interviews/dateTime';
 import type { InterviewAssignment } from '@/features/interviews/types';
-
-function dateTime(value: string | null) {
-  if (!value) return '时间待安排';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(parsed);
-}
 
 export default function InterviewerDashboardPage() {
   const navigate = useNavigate();
@@ -116,7 +104,7 @@ export default function InterviewerDashboardPage() {
             {[...work.feedback, ...work.upcoming].slice(0, 8).map((item) => (
               <button key={item.id} type="button" onClick={() => navigate(`/interviewer/interviews?demand=${item.demand_id}&candidate=${item.candidate_id}`)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
                 <span className={`flex h-10 w-10 items-center justify-center rounded-lg ${item.status === 'awaiting_feedback' || item.is_overdue ? 'bg-violet-100 text-violet-700' : 'bg-primary-100 text-primary-700'}`}><i className={item.status === 'awaiting_feedback' || item.is_overdue ? 'ri-survey-line' : 'ri-calendar-event-line'} /></span>
-                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-foreground-900">{item.name_masked || `候选人 #${item.candidate_id}`}</span><span className="mt-0.5 block truncate text-xs text-foreground-500">{item.job_title || `岗位 #${item.job_id}`} · {dateTime(item.scheduled_at)}</span></span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-foreground-900">{item.name_masked || `候选人 #${item.candidate_id}`}</span><span className="mt-0.5 block truncate text-xs text-foreground-500">{item.job_title || `岗位 #${item.job_id}`} · {formatInterviewDateTime(item.scheduled_at)}</span></span>
                 <span className="text-xs font-medium text-primary-600">{item.status === 'awaiting_feedback' || item.is_overdue ? '去评价' : '查看'}</span>
               </button>
             ))}

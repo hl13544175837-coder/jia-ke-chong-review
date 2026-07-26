@@ -7,6 +7,7 @@ import { candidatesApi } from '@/features/candidates/api';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { interviewsApi } from '@/features/interviews/api';
+import { formatInterviewDateTime } from '@/features/interviews/dateTime';
 import type { InterviewManagementRow } from '@/features/interviews/types';
 import { offersApi } from '@/features/offers/api';
 import type { OfferRecord, OfferStatus } from '@/features/offers/types';
@@ -44,19 +45,6 @@ function greeting() {
   if (hour < 12) return '上午好';
   if (hour < 18) return '下午好';
   return '晚上好';
-}
-
-function dateTime(value: string | null) {
-  if (!value) return '时间待安排';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(parsed);
 }
 
 export default function DashboardPage() {
@@ -240,7 +228,7 @@ export default function DashboardPage() {
           {summary.scheduledInterviews.slice(0, 6).map((item) => (
             <button key={item.assignment_id} type="button" onClick={() => navigate(`/interviews?demand=${item.demand_id}&candidate=${item.candidate_id}`)} className="rounded-lg border border-background-200 p-3 text-left hover:border-primary-300">
               <p className="text-sm font-medium text-foreground-900">{item.name_masked} · {item.job_title}</p>
-              <p className="mt-1 text-xs text-foreground-500">{dateTime(item.scheduled_at)} · {item.interviewer_name || '面试官待确认'}</p>
+              <p className="mt-1 text-xs text-foreground-500">{formatInterviewDateTime(item.scheduled_at)} · {item.interviewer_name || '面试官待确认'}</p>
             </button>
           ))}
           {!loading && summary.scheduledInterviews.length === 0 && <p className="text-sm text-foreground-500">暂无已排面试</p>}
