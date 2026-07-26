@@ -36,6 +36,8 @@ for (const label of ['记录为已发放', '实际入职日期', '操作历史',
 }
 assert.match(drawer, /status\s*===\s*409|\.status\s*===\s*409/, '409 并发冲突必须单独处理');
 assert.match(drawer, /刷新最新状态/, '并发冲突必须能刷新最新状态');
+assert.match(drawer, /type="date"[^>]*onInput=\{\(event\) => setExpiresAt/, 'Offer 有效期必须响应浏览器实时输入并保存');
+assert.match(drawer, /type="date"[^>]*onInput=\{\(event\) => setActualOnboardDate/, '实际入职日期必须响应浏览器实时输入并保存');
 assert.doesNotMatch(drawer, /邮件已发送|已成功发送邮件/, '页面不得假装邮件已真实发送');
 
 const table = read('readdy-frontend/src/pages/offers/components/OfferTable.tsx');

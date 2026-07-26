@@ -257,13 +257,13 @@ export default function OfferDetailDrawer({
                 {action === 'send' && (
                   <label className="mt-3 block text-xs font-medium text-foreground-600">
                     Offer 有效截止日期（可选，默认 14 天）
-                    <input type="date" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} className="mt-1.5 h-9 w-full rounded-lg border border-background-300 bg-white px-3 text-sm outline-none focus:border-primary-400" />
+                    <input type="date" value={expiresAt} onInput={(event) => setExpiresAt(event.currentTarget.value)} onChange={(event) => setExpiresAt(event.target.value)} className="mt-1.5 h-9 w-full rounded-lg border border-background-300 bg-white px-3 text-sm outline-none focus:border-primary-400" />
                   </label>
                 )}
                 {action === 'onboard' && (
                   <label className="mt-3 block text-xs font-medium text-foreground-600">
                     实际入职日期
-                    <input type="date" value={actualOnboardDate} onChange={(event) => setActualOnboardDate(event.target.value)} className="mt-1.5 h-9 w-full rounded-lg border border-background-300 bg-white px-3 text-sm outline-none focus:border-primary-400" />
+                    <input type="date" value={actualOnboardDate} onInput={(event) => setActualOnboardDate(event.currentTarget.value)} onChange={(event) => setActualOnboardDate(event.target.value)} className="mt-1.5 h-9 w-full rounded-lg border border-background-300 bg-white px-3 text-sm outline-none focus:border-primary-400" />
                   </label>
                 )}
                 <label className="mt-3 block text-xs font-medium text-foreground-600">
