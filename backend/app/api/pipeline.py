@@ -3,7 +3,13 @@ from sqlalchemy import func
 
 from .. import db
 from ..middleware.auth import require_auth, require_role
-from ..models import Candidate, InterviewAssignment, PipelineStage, RecruitmentDemand
+from ..models import (
+    BusinessReviewTask,
+    Candidate,
+    InterviewAssignment,
+    PipelineStage,
+    RecruitmentDemand,
+)
 from ..services.demand_context_service import (
     DemandContextError,
     can_manage_demand,
@@ -72,11 +78,11 @@ def _resolve_demand(*, demand_id=None, job_id=None):
 
 
 def _read_scope(demand):
-    if can_read_demand(g.user_id, g.role, g.org_id, demand):
-        return True, None
     if g.role != "interviewer":
-        return False, None
-    assigned_ids = [
+        return can_read_demand(g.user_id, g.role, g.org_id, demand), None
+    if demand.created_by == g.user_id or demand.default_interviewer_id == g.user_id:
+        return True, None
+    assigned_ids = {
         row[0]
         for row in (
             db.session.query(InterviewAssignment.candidate_id)
@@ -89,14 +95,27 @@ def _read_scope(demand):
             .distinct()
             .all()
         )
-    ]
+    }
+    assigned_ids.update(
+        row[0]
+        for row in (
+            db.session.query(BusinessReviewTask.candidate_id)
+            .filter_by(
+                org_id=g.org_id,
+                reviewer_id=g.user_id,
+                demand_id=demand.id,
+            )
+            .distinct()
+            .all()
+        )
+    )
     if not assigned_ids:
         sibling_count = RecruitmentDemand.query.filter_by(
             org_id=g.org_id,
             job_id=demand.job_id,
         ).count()
         if sibling_count == 1:
-            assigned_ids = [
+            assigned_ids = {
                 row[0]
                 for row in (
                     db.session.query(InterviewAssignment.candidate_id)
@@ -110,8 +129,8 @@ def _read_scope(demand):
                     .distinct()
                     .all()
                 )
-            ]
-    return bool(assigned_ids), assigned_ids
+            }
+    return bool(assigned_ids), sorted(assigned_ids)
 
 
 def _manage_allowed(demand):

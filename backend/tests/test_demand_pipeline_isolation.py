@@ -622,6 +622,24 @@ def test_interviewer_demand_reads_are_limited_to_assigned_candidate(
         )
         db.session.commit()
 
+    assigned_demand = client.get(
+        f"/api/demands/{seeded['first_demand_id']}",
+        headers=_auth(interviewer_token),
+    )
+    sibling_demand = client.get(
+        f"/api/demands/{seeded['second_demand_id']}",
+        headers=_auth(interviewer_token),
+    )
+    assigned_resume = client.get(
+        f"/api/resume/{seeded['first_candidate_id']}",
+        headers=_auth(interviewer_token),
+    )
+
+    assert assigned_demand.status_code == 200
+    assert assigned_demand.get_json()["id"] == seeded["first_demand_id"]
+    assert sibling_demand.status_code == 403
+    assert assigned_resume.status_code == 200
+
     board = client.get(
         f"/api/pipeline/demands/{seeded['first_demand_id']}/board",
         headers=_auth(interviewer_token),

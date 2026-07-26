@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from sqlalchemy import or_, select
 
 from .. import db
-from ..models import RecruitmentDemand, User
+from ..models import BusinessReviewTask, InterviewAssignment, RecruitmentDemand, User
 
 
 # ``open_only`` 用于写入上下文：暂停需求可查看，但不可新增流程、
@@ -36,10 +36,21 @@ def visible_demand_query(user_id, role, org_id):
     if role == "recruiter":
         return query.filter(RecruitmentDemand.owner_hr_id == user_id)
     if role == "interviewer":
+        assigned_demand_ids = select(InterviewAssignment.demand_id).where(
+            InterviewAssignment.org_id == org_id,
+            InterviewAssignment.interviewer_id == user_id,
+            InterviewAssignment.demand_id.isnot(None),
+        )
+        review_demand_ids = select(BusinessReviewTask.demand_id).where(
+            BusinessReviewTask.org_id == org_id,
+            BusinessReviewTask.reviewer_id == user_id,
+        )
         return query.filter(
             or_(
                 RecruitmentDemand.created_by == user_id,
                 RecruitmentDemand.default_interviewer_id == user_id,
+                RecruitmentDemand.id.in_(assigned_demand_ids),
+                RecruitmentDemand.id.in_(review_demand_ids),
             )
         )
     if role in {"manager", "admin"}:
