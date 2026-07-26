@@ -25,6 +25,7 @@ from ..models import (
     VALID_STAGES,
 )
 from ..time_utils import utc_now
+from .headcount_service import build_headcount_state
 
 
 STAGE_ORDER = ["pending", "ai_screen", "business_review", "interview", "offer", "onboarded"]
@@ -216,11 +217,10 @@ def _completion_state(demand):
         .scalar()
         or 0
     )
-    headcount = max(1, int(demand.headcount or 1))
+    state = build_headcount_state(demand, onboarded_count=onboarded_count)
     return {
-        "onboarded_count": onboarded_count,
-        "headcount": headcount,
-        "completion_suggested": onboarded_count >= headcount,
+        **state,
+        "completion_suggested": onboarded_count >= state["headcount"],
         "demand_status": demand.status,
     }
 
@@ -931,6 +931,14 @@ def transition_offer(*, offer_id, org_id, actor_id, action, data, commit=True):
             )
 
         now = utc_now()
+        if action == "accept":
+            capacity = _completion_state(demand)
+            if capacity["remaining_headcount"] <= 0:
+                raise PipelineServiceError(
+                    "该需求名额已被已接受 Offer 或已入职人员占满，请先释放名额或调整 HC",
+                    409,
+                    "demand_headcount_locked",
+                )
         offer.approval_status = next_status
         comment = str(data.get("comment") or "")
         detail = {}

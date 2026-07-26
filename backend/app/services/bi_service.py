@@ -225,6 +225,8 @@ def build_demand_operational_metrics(demand):
     owner = db.session.get(User, demand.owner_hr_id) if demand.owner_hr_id else None
     headcount = max(1, int(demand.headcount or 1))
     onboarded_count = int(funnel.get("onboarded", 0))
+    accepted_offer_count = int(offers["by_status"].get("accepted", 0))
+    locked_headcount = onboarded_count + accepted_offer_count
 
     return {
         "scope": {
@@ -253,7 +255,10 @@ def build_demand_operational_metrics(demand):
         "hc": {
             "headcount": headcount,
             "onboarded_count": onboarded_count,
-            "remaining": max(0, headcount - onboarded_count),
+            "accepted_offer_count": accepted_offer_count,
+            "locked_headcount": locked_headcount,
+            "remaining": max(0, headcount - locked_headcount),
+            "over_headcount": max(0, locked_headcount - headcount),
             "completion_rate": _safe_rate(onboarded_count, headcount),
             "completion_suggested": onboarded_count >= headcount,
         },

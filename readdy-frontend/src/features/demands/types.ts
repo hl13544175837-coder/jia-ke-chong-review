@@ -8,6 +8,10 @@ export interface RecruitmentDemandMetrics {
   interview_count: number;
   offer_count: number;
   onboarded_count: number;
+  accepted_offer_count: number;
+  locked_headcount: number;
+  remaining_headcount: number;
+  over_headcount: number;
   transferred_count: number;
   current_stage_counts: Record<string, number>;
 }
@@ -105,6 +109,9 @@ export interface RequisitionRow {
   ownerId: string;
   headcount: number;
   filled: number;
+  acceptedOffers: number;
+  remainingHeadcount: number;
+  overHeadcount: number;
   deadline: string | null;
   startDate: string | null;
   status: string;

@@ -446,8 +446,11 @@ export default function RequisitionTable({
                       </td>
                       <td className="px-5 py-4 whitespace-nowrap cursor-pointer" onClick={() => onRowClick(req)}>
                         <p className="text-sm text-foreground-800">
-                          {req.filled} / {req.headcount}
+                          已入职 {req.filled} / {req.headcount}
                         </p>
+                        {req.acceptedOffers > 0 && (
+                          <p className="mt-0.5 text-xs text-amber-600">Offer 已接受锁定 {req.acceptedOffers}</p>
+                        )}
                         <p className="text-xs text-foreground-400 mt-0.5">
                           {req.deadline || '未记录日期'}
                         </p>

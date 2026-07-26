@@ -272,7 +272,10 @@ def test_demand_bi_isolates_sibling_facts_and_labels_current_responsibility(
     assert payload["hc"] == {
         "headcount": 2,
         "onboarded_count": 1,
+        "accepted_offer_count": 0,
+        "locked_headcount": 1,
         "remaining": 1,
+        "over_headcount": 0,
         "completion_rate": 50.0,
         "completion_suggested": False,
     }

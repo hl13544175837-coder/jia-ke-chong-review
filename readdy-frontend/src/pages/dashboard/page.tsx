@@ -87,7 +87,7 @@ export default function DashboardPage() {
   const summary = useMemo(() => {
     const activeDemands = facts.demands.filter((item) => item.status === 'active');
     const gap = activeDemands.reduce(
-      (total, item) => total + Math.max(0, item.headcount - item.metrics.onboarded_count),
+      (total, item) => total + item.metrics.remaining_headcount,
       0,
     );
     return {
@@ -203,7 +203,7 @@ export default function DashboardPage() {
               <button key={demand.id} type="button" onClick={() => navigate(`/jobs?demand=${demand.id}`)} className="block w-full px-5 py-4 text-left hover:bg-background-50">
                 <div className="flex items-center justify-between gap-3">
                   <span className="truncate text-sm font-medium text-foreground-900">{demand.job_title}</span>
-                  <span className="whitespace-nowrap text-xs text-foreground-500">HC {demand.metrics.onboarded_count}/{demand.headcount}</span>
+                  <span className="whitespace-nowrap text-xs text-foreground-500">HC {demand.metrics.onboarded_count}/{demand.headcount}{demand.metrics.accepted_offer_count > 0 ? ` · 已锁 ${demand.metrics.accepted_offer_count}` : ''}</span>
                 </div>
                 <p className="mt-1 text-xs text-foreground-500">{demand.request_no} · {demand.job_city} · {demand.owner_hr_name}</p>
                 <p className="mt-2 text-xs text-foreground-400">业务筛选 {demand.metrics.business_review_count} · 面试 {demand.metrics.interview_count} · Offer {demand.metrics.offer_count} · 入职 {demand.metrics.onboarded_count}</p>

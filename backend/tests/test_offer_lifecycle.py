@@ -71,6 +71,49 @@ def _seed_offer_candidate(app, owner_id, *, org_id=1):
         return demand.id, job.id, candidate.id
 
 
+def _add_offer_candidate(app, owner_id, demand_id, *, name):
+    with app.app_context():
+        from app import db
+        from app.models import (
+            Candidate,
+            CandidateDemandFlow,
+            PipelineStage,
+            RecruitmentDemand,
+        )
+
+        demand = db.session.get(RecruitmentDemand, demand_id)
+        candidate = Candidate(
+            org_id=demand.org_id,
+            owner_hr_id=owner_id,
+            current_demand_id=demand.id,
+            name_masked=name,
+            resume_json={},
+        )
+        db.session.add(candidate)
+        db.session.flush()
+        db.session.add(
+            CandidateDemandFlow(
+                org_id=demand.org_id,
+                candidate_id=candidate.id,
+                demand_id=demand.id,
+                owner_hr_id=owner_id,
+                status="active",
+            )
+        )
+        db.session.add(
+            PipelineStage(
+                org_id=demand.org_id,
+                candidate_id=candidate.id,
+                demand_id=demand.id,
+                job_id=demand.job_id,
+                stage="offer",
+                updated_by=owner_id,
+            )
+        )
+        db.session.commit()
+        return candidate.id
+
+
 def test_offer_lifecycle_is_persisted_audited_and_updates_pipeline(
     client,
     make_user,
@@ -230,6 +273,86 @@ def test_offer_lifecycle_is_persisted_audited_and_updates_pipeline(
             "offer.accepted",
             "offer.onboarded",
         ]
+
+
+def test_accepted_offer_locks_headcount_until_released(client, make_user, app):
+    recruiter_id, recruiter_token = make_user(
+        "offer-capacity-owner@example.com",
+        role="recruiter",
+    )
+    _, manager_token = make_user(
+        "offer-capacity-manager@example.com",
+        role="manager",
+    )
+    demand_id, _, first_candidate_id = _seed_offer_candidate(app, recruiter_id)
+    second_candidate_id = _add_offer_candidate(
+        app,
+        recruiter_id,
+        demand_id,
+        name="候选人乙",
+    )
+
+    offer_ids = []
+    for candidate_id in (first_candidate_id, second_candidate_id):
+        created = client.put(
+            f"/api/pipeline/demands/{demand_id}/offer/{candidate_id}",
+            headers=_auth(recruiter_token),
+            json={"salary_range": "30000", "note": "容量保护验收"},
+        )
+        assert created.status_code == 200
+        offer_id = created.get_json()["id"]
+        offer_ids.append(offer_id)
+        assert client.post(
+            f"/api/offers/{offer_id}/actions",
+            headers=_auth(recruiter_token),
+            json={"action": "submit"},
+        ).status_code == 200
+        assert client.post(
+            f"/api/offers/{offer_id}/actions",
+            headers=_auth(manager_token),
+            json={"action": "approve"},
+        ).status_code == 200
+        assert client.post(
+            f"/api/offers/{offer_id}/actions",
+            headers=_auth(recruiter_token),
+            json={"action": "send"},
+        ).status_code == 200
+
+    first_accepted = client.post(
+        f"/api/offers/{offer_ids[0]}/actions",
+        headers=_auth(recruiter_token),
+        json={"action": "accept", "comment": "首位候选人已接受"},
+    )
+    assert first_accepted.status_code == 200
+
+    demand = client.get(
+        f"/api/demands/{demand_id}",
+        headers=_auth(recruiter_token),
+    ).get_json()
+    assert demand["metrics"]["accepted_offer_count"] == 1
+    assert demand["metrics"]["locked_headcount"] == 1
+    assert demand["metrics"]["remaining_headcount"] == 0
+
+    capacity_conflict = client.post(
+        f"/api/offers/{offer_ids[1]}/actions",
+        headers=_auth(recruiter_token),
+        json={"action": "accept", "comment": "第二位候选人也接受"},
+    )
+    assert capacity_conflict.status_code == 409
+    assert capacity_conflict.get_json()["code"] == "demand_headcount_locked"
+
+    released = client.post(
+        f"/api/offers/{offer_ids[0]}/actions",
+        headers=_auth(recruiter_token),
+        json={"action": "withdraw", "comment": "候选人放弃，释放名额"},
+    )
+    assert released.status_code == 200
+    second_accepted = client.post(
+        f"/api/offers/{offer_ids[1]}/actions",
+        headers=_auth(recruiter_token),
+        json={"action": "accept", "comment": "释放后由第二位候选人锁定"},
+    )
+    assert second_accepted.status_code == 200
 
 
 def test_direct_pipeline_onboarding_is_rejected_without_side_effects(client, make_user, app):

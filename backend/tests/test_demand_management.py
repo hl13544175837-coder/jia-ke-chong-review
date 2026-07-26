@@ -541,6 +541,11 @@ def test_demand_metrics_exclude_soft_deleted_candidates(client, make_user, app):
         "interview_count": 0,
         "offer_count": 0,
         "onboarded_count": 0,
+        "accepted_offer_count": 0,
+        "headcount": 1,
+        "locked_headcount": 0,
+        "remaining_headcount": 1,
+        "over_headcount": 0,
         "transferred_count": 0,
         "current_stage_counts": {},
     }

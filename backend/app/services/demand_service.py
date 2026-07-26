@@ -15,6 +15,7 @@ from .. import db
 from ..models import Candidate, Job, PipelineStage, RecruitmentDemand, User
 from ..time_utils import utc_now
 from .demand_context_service import validate_recruiter_owner
+from .headcount_service import build_headcount_state
 
 
 PRIORITIES = {"A", "B", "C"}
@@ -423,14 +424,18 @@ def demand_metrics(demand):
         )
         current_counts[normalized] = current_counts.get(normalized, 0) + count
 
+    headcount_state = build_headcount_state(
+        demand,
+        onboarded_count=current_counts.get("onboarded", 0),
+    )
     return {
         "recommended_count": recommended_count,
         "business_review_count": current_counts.get("business_review", 0),
         "interview_count": current_counts.get("interview", 0),
         "offer_count": current_counts.get("offer", 0),
-        "onboarded_count": current_counts.get("onboarded", 0),
         "transferred_count": current_counts.get("transferred", 0),
         "current_stage_counts": current_counts,
+        **headcount_state,
     }
 
 

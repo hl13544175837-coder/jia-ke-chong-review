@@ -9,6 +9,9 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 const businessJobs = read('readdy-frontend/src/pages/interviewer/jobs/page.tsx');
 const hrJobs = read('readdy-frontend/src/pages/jobs/page.tsx');
 const detailPanel = read('readdy-frontend/src/pages/jobs/components/DemandDetailPanel.tsx');
+const demandTypes = read('readdy-frontend/src/features/demands/types.ts');
+const demandAdapter = read('readdy-frontend/src/features/demands/adapter.ts');
+const requisitionTable = read('readdy-frontend/src/pages/jobs/components/RequisitionTable.tsx');
 const candidateDrawerPath = 'readdy-frontend/src/pages/jobs/components/DemandCandidateDrawer.tsx';
 
 assert.match(businessJobs, /jobsApi\.listTemplates/, '业务端必须读取真实岗位模板');
@@ -70,5 +73,11 @@ assert.match(detailPanel, /review_reason/, '详情必须展示驳回原因');
 assert.match(detailPanel, /通过/, '待审核详情必须提供通过按钮');
 assert.match(detailPanel, /不通过/, '待审核详情必须提供不通过按钮');
 assert.match(detailPanel, /rejectReason\.trim\(\)/, '驳回提交前必须拦截空白理由');
+assert.match(demandTypes, /accepted_offer_count:\s*number/, '需求指标必须承接已接受 Offer 锁定数');
+assert.match(demandTypes, /remaining_headcount:\s*number/, '需求指标必须承接真实剩余名额');
+assert.match(demandAdapter, /名额已锁定，等待入职/, 'Offer 已接受但未入职时必须提示名额已锁定');
+assert.match(demandAdapter, /已超出 HC/, '历史数据超编时必须明确提示，不能静默显示异常数字');
+assert.match(requisitionTable, /Offer 已接受锁定/, '招聘需求列表必须展示 Offer 锁定名额');
+assert.match(detailPanel, /Offer 已接受锁定/, '招聘需求详情必须展示 Offer 锁定名额');
 
 console.log('readdy_mysql_pilot_demand_ui_contract: OK');

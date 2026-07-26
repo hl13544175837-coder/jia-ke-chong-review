@@ -105,7 +105,9 @@ export default function DemandDetailPanel({
                 <Info label="用人部门" value={demand.requester_department || demand.job_department} />
                 <Info label="招聘城市" value={demand.job_city} />
                 <Info label="用人负责人" value={demand.hiring_manager_name || '未填写'} />
-                <Info label="HC" value={`${demand.metrics.onboarded_count} / ${demand.headcount}`} />
+                <Info label="已入职 HC" value={`${demand.metrics.onboarded_count} / ${demand.headcount}`} />
+                <Info label="Offer 已接受锁定" value={`${demand.metrics.accepted_offer_count} 人`} />
+                <Info label="剩余可锁定名额" value={`${demand.metrics.remaining_headcount} 人`} />
                 <Info label="提需求日期" value={demand.requested_at || '未填写'} />
                 <Info label="期望完成日期" value={demand.target_date || '未填写'} />
               </section>
