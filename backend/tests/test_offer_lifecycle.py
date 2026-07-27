@@ -124,11 +124,6 @@ def test_offer_lifecycle_is_persisted_audited_and_updates_pipeline(
         role="recruiter",
         name="招聘李华",
     )
-    _, manager_token = make_user(
-        "offer-manager@example.com",
-        role="manager",
-        name="招聘主管",
-    )
     demand_id, job_id, candidate_id = _seed_offer_candidate(app, recruiter_id)
 
     created = client.put(
@@ -172,20 +167,21 @@ def test_offer_lifecycle_is_persisted_audited_and_updates_pipeline(
     assert replayed.status_code == 200
     assert replayed.headers["X-Idempotent-Replay"] == "true"
 
-    denied = client.post(
+    confirmed = client.post(
         f"/api/offers/{offer_id}/actions",
         headers=_auth(recruiter_token),
-        json={"action": "approve", "comment": "越权审批"},
+        json={"action": "approve", "comment": "薪酬与入职日期已确认"},
     )
-    assert denied.status_code == 403
+    assert confirmed.status_code == 200
+    assert confirmed.get_json()["status"] == "approved"
 
-    approved = client.post(
+    missing_channel = client.post(
         f"/api/offers/{offer_id}/actions",
-        headers=_auth(manager_token),
-        json={"action": "approve", "comment": "预算内，同意"},
+        headers=_auth(recruiter_token),
+        json={"action": "send"},
     )
-    assert approved.status_code == 200
-    assert approved.get_json()["status"] == "approved"
+    assert missing_channel.status_code == 400
+    assert missing_channel.get_json()["code"] == "offer_send_channel_required"
 
     sent = client.post(
         f"/api/offers/{offer_id}/actions",
@@ -315,7 +311,7 @@ def test_accepted_offer_locks_headcount_until_released(client, make_user, app):
         assert client.post(
             f"/api/offers/{offer_id}/actions",
             headers=_auth(recruiter_token),
-            json={"action": "send"},
+            json={"action": "send", "channel": "email"},
         ).status_code == 200
 
     first_accepted = client.post(

@@ -344,7 +344,7 @@ def run_offer_action(offer_id):
         return jsonify({"error": "Forbidden"}), 403
     data = request.get_json() or {}
     action = str(data.get("action") or "").strip().lower()
-    if action in {"approve", "reject"} and g.role not in {"manager", "admin"}:
+    if action == "reject" and g.role not in {"manager", "admin"}:
         return jsonify({"error": "Forbidden"}), 403
     try:
         _, demand = get_offer_by_id(offer_id=offer_id, org_id=g.org_id)

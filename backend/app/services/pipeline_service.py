@@ -930,6 +930,14 @@ def transition_offer(*, offer_id, org_id, actor_id, action, data, commit=True):
                 "invalid_offer_transition",
             )
 
+        send_channel = str(data.get("channel") or "").strip()[:40]
+        if action == "send" and not send_channel:
+            raise PipelineServiceError(
+                "请填写实际发送渠道",
+                400,
+                "offer_send_channel_required",
+            )
+
         now = utc_now()
         if action == "accept":
             capacity = _completion_state(demand)
@@ -963,7 +971,7 @@ def transition_offer(*, offer_id, org_id, actor_id, action, data, commit=True):
         elif action == "send":
             offer.sent_at = now
             offer.expires_at = parse_datetime(data.get("expires_at")) or now + timedelta(days=14)
-            detail["channel"] = str(data.get("channel") or "email")[:40]
+            detail["channel"] = send_channel
         elif action in {"accept", "decline"}:
             offer.responded_at = now
             answer = "accepted" if action == "accept" else "declined"

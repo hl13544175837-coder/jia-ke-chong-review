@@ -487,7 +487,7 @@ def test_onboarded_reaching_hc_suggests_completion_without_closing_demand(
     assert client.post(
         f"/api/offers/{offer_id}/actions",
         headers=_auth(token),
-        json={"action": "send"},
+        json={"action": "send", "channel": "email"},
     ).status_code == 200
     assert client.post(
         f"/api/offers/{offer_id}/actions",
