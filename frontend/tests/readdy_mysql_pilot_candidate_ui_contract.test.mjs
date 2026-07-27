@@ -147,7 +147,7 @@ for (const field of ['demandId: number', 'reviewerId: number', 'hrNote: string',
 }
 assert.match(modal, /disabled=\{!canSubmit \|\| isSubmitting\}/, '推送请求期间必须禁用提交');
 assert.match(modal, /暂无可推送的已审批在招需求/, '无可用需求时必须显示真实空状态');
-assert.match(modal, /加载业务评审人中/, '评审人列表必须有加载状态');
-assert.match(modal, /通过后由招聘专员安排面试/, '推送弹窗必须说清楚下一步责任人');
+assert.match(modal, /加载业务筛选人中/, '业务筛选人列表必须有加载状态');
+assert.match(modal, /通过后由招聘专员安排正式面试/, '推送弹窗必须说清楚下一步责任人');
 
 console.log('readdy_mysql_pilot_candidate_ui_contract: OK');
