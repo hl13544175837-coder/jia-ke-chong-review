@@ -17,7 +17,7 @@ assert.doesNotMatch(dashboard, /@\/mocks|zhipin-current-role/, '正式工作台�
 assert.doesNotMatch(dashboard, /getRecruiterPerformance|performanceStats/, '工作台不能把运营数据做成人员绩效排名');
 
 assert.match(readdyDashboard, /demandsApi\./, '5190 招聘工作台必须读取真实需求数据');
-assert.match(readdyDashboard, /candidatesApi\./, '5190 招聘工作台必须读取真实候选人数据');
+assert.doesNotMatch(readdyDashboard, /candidatesApi\./, '5190 招聘工作台移除候选人总数卡片后不得继续请求无用数据');
 assert.match(readdyDashboard, /interviewsApi\./, '5190 招聘工作台必须读取真实面试数据');
 assert.match(readdyDashboard, /offersApi\./, '5190 招聘工作台必须读取真实 Offer 数据');
 assert.match(readdyDashboard, /数据暂不可用/, '5190 工作台必须区分接口失败和真实零值');
