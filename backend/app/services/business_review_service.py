@@ -1,6 +1,6 @@
 """Business screening task workflow and scoped payloads."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import current_app
 from sqlalchemy import select
@@ -17,6 +17,7 @@ from ..middleware.events import record_event
 from ..models import (
     Candidate,
     CandidateDemandFlow,
+    Event,
     Notification,
     PipelineStage,
     RecruitmentDemand,
@@ -31,6 +32,7 @@ BUSINESS_REVIEW_DECISIONS = {"approved", "rejected", "needs_info"}
 REASON_REQUIRED_DECISIONS = {"rejected", "needs_info"}
 BUSINESS_REVIEWER_ROLES = {"interviewer", "manager"}
 BUSINESS_REVIEW_MANAGER_ROLES = {"manager", "admin"}
+REMINDER_COOLDOWN = timedelta(minutes=15)
 
 ORIGINAL_RESUME_MIME_TYPES = {
     ".pdf": "application/pdf",
@@ -477,6 +479,77 @@ def reassign_business_review(org_id, task_id, actor_id, reviewer_id):
     except Exception:
         db.session.rollback()
         raise
+    return task, False
+
+
+def remind_business_review(org_id, task_id, actor_id):
+    task_model = _business_review_model()
+    task = _task_for_update(task_model, org_id=org_id, task_id=task_id)
+    if task is None:
+        raise BusinessReviewError(
+            "业务筛选任务不存在",
+            code="business_review_not_found",
+            status_code=404,
+        )
+    if task.status != "pending" or task.pending_slot != 1:
+        raise BusinessReviewError(
+            "业务筛选已有结论，无需催办",
+            code="business_review_already_decided",
+        )
+
+    actor = db.session.get(User, actor_id)
+    demand = db.session.get(RecruitmentDemand, task.demand_id)
+    if (
+        actor is None
+        or actor.org_id != org_id
+        or not actor.is_active
+        or actor.role not in {"recruiter", "manager", "admin"}
+        or (
+            actor.role == "recruiter"
+            and (demand is None or demand.owner_hr_id != actor_id)
+        )
+    ):
+        raise BusinessReviewError(
+            "Forbidden", code="forbidden", status_code=403
+        )
+
+    recent = Event.query.filter(
+        Event.org_id == org_id,
+        Event.action == "business_review.reminded",
+        Event.entity_id == task.id,
+        Event.ts >= utc_now() - REMINDER_COOLDOWN,
+    ).first()
+    if recent is not None:
+        db.session.rollback()
+        return task, True
+
+    candidate = db.session.get(Candidate, task.candidate_id)
+    candidate_name = candidate.name_masked if candidate else "候选人"
+    job_title = demand.job_title_snapshot if demand else "招聘需求"
+    db.session.add(
+        Notification(
+            org_id=org_id,
+            user_id=task.reviewer_id,
+            demand_id=task.demand_id,
+            type="business_review_reminder",
+            title="请尽快完成业务筛选",
+            body=f"{candidate_name} · {job_title} 仍在等待你的反馈。",
+            link=f"/interviewer/screening?task={task.id}",
+        )
+    )
+    record_event(
+        "business_review.reminded",
+        entity_id=task.id,
+        entity_type="business_review_task",
+        demand_id=task.demand_id,
+        payload={
+            "task_id": task.id,
+            "candidate_id": task.candidate_id,
+            "reviewer_id": task.reviewer_id,
+        },
+        commit=False,
+    )
+    db.session.commit()
     return task, False
 
 

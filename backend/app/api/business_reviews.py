@@ -10,6 +10,7 @@ from ..services.business_review_service import (
     get_business_review,
     list_business_reviews,
     reassign_business_review,
+    remind_business_review,
 )
 
 
@@ -133,6 +134,21 @@ def reassign_review_task(task_id):
     except BusinessReviewError as error:
         return _error_response(error)
     payload["unchanged"] = unchanged
+    return jsonify(payload)
+
+
+@bp.post("/business-reviews/<int:task_id>/remind")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def remind_review_task(task_id):
+    try:
+        task, deduplicated = remind_business_review(
+            g.org_id, task_id, g.user_id
+        )
+        payload = business_review_payload(task)
+    except BusinessReviewError as error:
+        return _error_response(error)
+    payload["deduplicated"] = deduplicated
     return jsonify(payload)
 
 

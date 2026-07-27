@@ -99,7 +99,8 @@ const summary = buildDashboardSummary(facts, 'recruiter', now);
 assert.deepEqual(summary.todayInterviews.map((item) => item.assignment_id), [101]);
 assert.deepEqual(summary.overdueFeedback.map((item) => item.assignment_id), [103]);
 assert.deepEqual(summary.stageSummary, {
-  screening: 4,
+  hrScreening: 3,
+  aiScreening: 1,
   businessReview: 5,
   interview: 3,
   offer: 1,

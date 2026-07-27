@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useProductRole } from '@/auth/productRole';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
@@ -33,10 +34,17 @@ function offerUpdatedAt(offer: OfferRecord) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+function initialOfferTab(value: string | null): TabKey {
+  return TABS.some((tab) => tab.key === value) ? value as TabKey : 'all';
+}
+
 export default function OffersPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
+  const fromJobs = searchParams.get('from') === 'jobs';
+  const fromDashboard = searchParams.get('from') === 'dashboard';
   const { role } = useProductRole();
   const { showToast } = useToast();
   const detailRequest = useRef(0);
@@ -44,7 +52,7 @@ export default function OffersPage() {
   const [offers, setOffers] = useState<OfferRecord[]>([]);
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
   const [unmappedTotal, setUnmappedTotal] = useState(0);
-  const [activeTab, setActiveTab] = useState<TabKey>('all');
+  const [activeTab, setActiveTab] = useState<TabKey>(() => initialOfferTab(searchParams.get('tab')));
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [identityFilter, setIdentityFilter] = useState('');
@@ -100,12 +108,23 @@ export default function OffersPage() {
   );
 
   const currentTab = TABS.find((tab) => tab.key === activeTab) ?? TABS[0];
+  const scopedOffers = useMemo(
+    () => requestedDemandId ? offers.filter((offer) => (
+      offer.demand_id === requestedDemandId
+      && (!(fromJobs || fromDashboard) || !['declined', 'withdrawn', 'expired', 'onboarded'].includes(offer.status))
+    )) : offers,
+    [fromDashboard, fromJobs, offers, requestedDemandId],
+  );
+  const demandContext = useMemo(
+    () => requestedDemandId ? demands.find((demand) => demand.id === requestedDemandId) ?? null : null,
+    [demands, requestedDemandId],
+  );
   const visibleOffers = useMemo(() => {
     const identityTerm = identityFilter.trim().toLocaleLowerCase('zh-CN');
     const demandTerm = demandFilter.trim().toLocaleLowerCase('zh-CN');
     const compensationTerm = compensationFilter.trim().toLocaleLowerCase('zh-CN');
 
-    return offers
+    return scopedOffers
       .filter((offer) => currentTab.statuses.length === 0 || currentTab.statuses.includes(offer.status))
       .filter((offer) => !statusFilter || offer.status === statusFilter)
       .filter((offer) => !identityTerm || [offer.candidate_name, offer.position]
@@ -124,7 +143,7 @@ export default function OffersPage() {
     demandFilter,
     identityFilter,
     onboardDateFilter,
-    offers,
+    scopedOffers,
     statusFilter,
     updatedOrder,
   ]);
@@ -141,11 +160,11 @@ export default function OffersPage() {
     };
     for (const tab of TABS) {
       nextCounts[tab.key] = tab.statuses.length === 0
-        ? offers.length
-        : offers.filter((offer) => tab.statuses.includes(offer.status)).length;
+        ? scopedOffers.length
+        : scopedOffers.filter((offer) => tab.statuses.includes(offer.status)).length;
     }
     return nextCounts;
-  }, [offers]);
+  }, [scopedOffers]);
 
   const hasColumnFilters = Boolean(
     identityFilter.trim()
@@ -260,9 +279,11 @@ export default function OffersPage() {
   return (
     <div className="space-y-5 p-6" data-ui="real-offer-lifecycle">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground-900">Offer 管理</h1>
+        <div className="flex items-start gap-3">
+          {fromDashboard && !requestedDemandId && <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>}
+          <div><h1 className="text-2xl font-bold text-foreground-900">Offer 管理</h1>
           <p className="mt-1 text-sm text-foreground-500">审批、发放记录、候选人回复与入职确认</p>
+          </div>
         </div>
         <button
           type="button"
@@ -274,6 +295,16 @@ export default function OffersPage() {
           {demandsLoading ? '加载需求中' : '新建 Offer'}
         </button>
       </header>
+
+      {requestedDemandId && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-200 bg-primary-50/60 px-4 py-3" aria-label="当前岗位 Offer">
+          <div className="flex min-w-0 items-center gap-3">
+            {(fromJobs || fromDashboard) && <button type="button" onClick={() => navigate(fromDashboard ? '/dashboard' : '/jobs')} aria-label={fromDashboard ? '返回工作台' : '返回招聘需求'} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary-200 bg-white text-primary-700 hover:bg-primary-50"><ArrowLeft size={17} /></button>}
+            <div className="min-w-0"><p className="text-xs font-semibold text-primary-700">当前岗位 Offer</p><p className="mt-0.5 truncate text-sm font-medium text-foreground-900">{demandContext?.job_title || `招聘需求 #${requestedDemandId}`}</p><p className="mt-0.5 text-xs text-foreground-500">只显示这个岗位的 Offer，共 {scopedOffers.length} 条</p></div>
+          </div>
+          <button type="button" onClick={() => navigate('/offers')} className="text-xs font-medium text-primary-700 hover:underline">查看全部 Offer</button>
+        </section>
+      )}
 
       {demandsError && (
         <section className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

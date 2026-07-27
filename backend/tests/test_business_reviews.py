@@ -469,6 +469,44 @@ def test_task_lists_and_detail_are_scoped_to_owner_and_assigned_reviewer(
     assert "raw_file_path" not in str(payload)
 
 
+def test_owner_can_remind_pending_business_reviewer_without_duplicate_notifications(
+    client, make_user, app
+):
+    hr_id, hr_token = make_user(
+        "hr-review-reminder@example.com", role="recruiter"
+    )
+    reviewer_id, _ = make_user(
+        "review-reminder@example.com", role="interviewer"
+    )
+    case = _seed_review_case(app, hr_id, suffix="REMINDER")
+    task = _push_review(client, hr_token, case, reviewer_id).get_json()
+
+    first = client.post(
+        f"/api/business-reviews/{task['id']}/remind",
+        headers=_auth(hr_token),
+    )
+    second = client.post(
+        f"/api/business-reviews/{task['id']}/remind",
+        headers=_auth(hr_token),
+    )
+
+    assert first.status_code == 200
+    assert first.get_json()["deduplicated"] is False
+    assert second.status_code == 200
+    assert second.get_json()["deduplicated"] is True
+    with app.app_context():
+        assert Notification.query.filter_by(
+            org_id=1,
+            user_id=reviewer_id,
+            demand_id=case["demand_id"],
+            type="business_review_reminder",
+        ).count() == 1
+        assert Event.query.filter_by(
+            action="business_review.reminded",
+            entity_id=task["id"],
+        ).count() == 1
+
+
 def test_recruiter_cannot_push_another_owners_candidate(
     client, make_user, app
 ):

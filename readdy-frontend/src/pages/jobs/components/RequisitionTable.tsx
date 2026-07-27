@@ -7,6 +7,7 @@ import {
   type DemandSortField,
   type DemandWorkspaceFilters,
 } from '../workbench';
+import { canOpenDemandStage, type DemandStageDrilldown } from '../stageDrilldown';
 
 const statusBadgeStyles: Record<string, string> = {
   active: 'bg-primary-100 text-primary-700 border border-primary-200',
@@ -26,7 +27,7 @@ interface RequisitionTableProps {
   statusExtraActions: Record<string, { to: string; label: string; icon: string }[]>;
   onSelectCandidates: (req: RequisitionTableProps['data'][0]) => void;
   onViewCandidates: (req: RequisitionTableProps['data'][0]) => void;
-  onStageCountClick: (req: RequisitionTableProps['data'][0], stage: 'feedback' | 'interview' | 'offer') => void;
+  onStageCountClick: (req: RequisitionTableProps['data'][0], stage: DemandStageDrilldown) => void;
   searchQuery: string;
   onSearchChange: (v: string) => void;
   filters: DemandWorkspaceFilters;
@@ -93,7 +94,7 @@ export default function RequisitionTable({
     { value: '', label: '全部' },
     { value: 'hasAny', label: '有候选人' },
     { value: 'none', label: '无候选人' },
-    { value: 'feedback', label: '业务待反馈' },
+    { value: 'feedback', label: '业务筛选中' },
     { value: 'interview', label: '面试中' },
     { value: 'offer', label: 'Offer中' },
   ], []);
@@ -308,36 +309,42 @@ export default function RequisitionTable({
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-1 justify-center text-xs">
                           <button
+                            type="button"
+                            disabled={!canOpenDemandStage(req.stageFeedback)}
                             onClick={(e) => {
                               e.stopPropagation();
                               onStageCountClick(req, 'feedback');
                             }}
-                            className="flex items-center gap-0.5 px-2 py-1 rounded-md bg-background-100 text-foreground-600 hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer whitespace-nowrap"
-                            title={`查看${req.name}的业务待反馈候选人`}
+                            className="flex items-center gap-0.5 px-2 py-1 rounded-md bg-background-100 text-foreground-600 hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer whitespace-nowrap disabled:cursor-default disabled:text-foreground-400 disabled:hover:bg-background-100"
+                            title={`查看${req.name}的业务筛选候选人`}
                           >
-                            <span className="font-semibold text-accent-600">{req.stageFeedback}</span>
-                            <span className="text-xs">业务待反馈</span>
+                            <span className={`font-semibold ${canOpenDemandStage(req.stageFeedback) ? 'text-accent-600' : 'text-foreground-300'}`}>{req.stageFeedback}</span>
+                            <span className="text-xs">业务筛选中</span>
                           </button>
                           <button
+                            type="button"
+                            disabled={!canOpenDemandStage(req.stageInterview)}
                             onClick={(e) => {
                               e.stopPropagation();
                               onStageCountClick(req, 'interview');
                             }}
-                            className="flex items-center gap-0.5 px-2 py-1 rounded-md bg-background-100 text-foreground-600 hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer whitespace-nowrap"
+                            className="flex items-center gap-0.5 px-2 py-1 rounded-md bg-background-100 text-foreground-600 hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer whitespace-nowrap disabled:cursor-default disabled:text-foreground-400 disabled:hover:bg-background-100"
                             title={`查看${req.name}的面试中候选人`}
                           >
-                            <span className="font-semibold text-primary-600">{req.stageInterview}</span>
+                            <span className={`font-semibold ${canOpenDemandStage(req.stageInterview) ? 'text-primary-600' : 'text-foreground-300'}`}>{req.stageInterview}</span>
                             <span className="text-xs">面试中</span>
                           </button>
                           <button
+                            type="button"
+                            disabled={!canOpenDemandStage(req.stageOffer)}
                             onClick={(e) => {
                               e.stopPropagation();
                               onStageCountClick(req, 'offer');
                             }}
-                            className="flex items-center gap-0.5 px-2 py-1 rounded-md bg-background-100 text-foreground-600 hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer whitespace-nowrap"
+                            className="flex items-center gap-0.5 px-2 py-1 rounded-md bg-background-100 text-foreground-600 hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer whitespace-nowrap disabled:cursor-default disabled:text-foreground-400 disabled:hover:bg-background-100"
                             title={`查看${req.name}的Offer中候选人`}
                           >
-                            <span className="font-semibold text-primary-700">{req.stageOffer}</span>
+                            <span className={`font-semibold ${canOpenDemandStage(req.stageOffer) ? 'text-primary-700' : 'text-foreground-300'}`}>{req.stageOffer}</span>
                             <span className="text-xs">Offer中</span>
                           </button>
                         </div>

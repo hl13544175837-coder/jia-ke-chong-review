@@ -12,8 +12,8 @@ const candidates = read('readdy-frontend/src/pages/candidates/page.tsx');
 const interviews = read('readdy-frontend/src/pages/interviews/page.tsx');
 
 assert.match(dashboard, /navigate\('\/jobs', \{ state: \{ fromDashboard: true, openCreate: true \} \}\)/, '新建需求必须携带直接打开表单的意图');
-assert.match(dashboard, /navigate\('\/candidates', \{ state: \{ openUpload: true \} \}\)/, '导入简历必须携带直接打开上传弹窗的意图');
-assert.match(dashboard, /navigate\('\/interviews\?status=unassigned'\)/, '安排面试必须直达待安排面试');
+assert.match(dashboard, /navigate\('\/candidates', \{ state: \{ fromDashboard: true, openUpload: true \} \}\)/, '导入简历必须打开上传弹窗并保留工作台来源');
+assert.match(dashboard, /navigate\('\/interviews\?status=unassigned&from=dashboard'\)/, '安排面试必须直达待安排面试并保留工作台来源');
 
 assert.match(jobs, /openCreate\?: boolean/, '招聘需求页必须识别新建意图');
 assert.match(jobs, /navState\?\.openCreate/, '招聘需求页收到意图后必须打开表单');

@@ -124,13 +124,14 @@ export function buildDashboardSummary(
   });
   const stageSummary = activeDemands.reduce((total, demand) => {
     const currentStages = demand.metrics.current_stage_counts ?? {};
-    total.screening += (currentStages.pending ?? 0) + (currentStages.ai_screen ?? 0);
+    total.hrScreening += currentStages.pending ?? 0;
+    total.aiScreening += currentStages.ai_screen ?? 0;
     total.businessReview += demand.metrics.business_review_count ?? 0;
     total.interview += demand.metrics.interview_count ?? 0;
     total.offer += demand.metrics.offer_count ?? 0;
     total.onboarding += demand.metrics.accepted_offer_count ?? 0;
     return total;
-  }, { screening: 0, businessReview: 0, interview: 0, offer: 0, onboarding: 0 });
+  }, { hrScreening: 0, aiScreening: 0, businessReview: 0, interview: 0, offer: 0, onboarding: 0 });
   const demandProgress = activeDemands
     .map((demand) => ({
       demand,

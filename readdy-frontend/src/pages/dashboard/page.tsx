@@ -18,6 +18,11 @@ import { offersApi } from '@/features/offers/api';
 import type { OfferStatus } from '@/features/offers/types';
 import { useToast } from '@/hooks/useToast';
 import { buildDashboardSummary, type DashboardFacts, type DemandRiskLevel } from './summary';
+import {
+  canOpenDashboardStage,
+  dashboardStageDrilldown,
+  type DashboardStage,
+} from './stageDrilldown';
 
 const emptyFacts: DashboardFacts = {
   demands: [],
@@ -242,7 +247,7 @@ export default function DashboardPage() {
       tone: 'green' as const,
       urgent: false,
       priority: 60,
-      action: () => navigate(`/offers?demand=${item.demand_id}&candidate=${item.candidate_id}`),
+      action: () => navigate(`/offers?demand=${item.demand_id}&candidate=${item.candidate_id}&from=dashboard`),
     })),
   ].sort((left, right) => right.priority - left.priority), [
     assignedBusinessReviews,
@@ -272,7 +277,10 @@ export default function DashboardPage() {
       owner: item.reviewer_name || '业务负责人未显示',
       startedAt: item.created_at,
       actionLabel: '去跟进',
-      action: () => navigate(`/candidates?demand=${item.demand_id}&candidate=${item.candidate_id}`),
+      action: () => navigate(
+        `/candidates?demand=${item.demand_id}&candidate=${item.candidate_id}`,
+        { state: { fromDashboard: true, demandId: item.demand_id, targetStage: 'business_review' } },
+      ),
     })),
     ...summary.waitingFeedback.map((item) => ({
       key: `waiting-feedback-${item.assignment_id}`,
@@ -289,7 +297,7 @@ export default function DashboardPage() {
       owner: item.status === 'pending' ? (item.approver_name || '审批人未显示') : '候选人',
       startedAt: item.updated_at || item.created_at,
       actionLabel: '去跟进',
-      action: () => navigate(`/offers?demand=${item.demand_id}&candidate=${item.candidate_id}`),
+      action: () => navigate(`/offers?demand=${item.demand_id}&candidate=${item.candidate_id}&from=dashboard`),
     })),
   ], [navigate, remindFeedback, reviewsWaitingForOthers, summary.waitingFeedback, summary.waitingOfferActions]);
 
@@ -308,18 +316,27 @@ export default function DashboardPage() {
 
   const openDemandAction = (item: (typeof summary.demandProgress)[number]) => {
     if (item.nextAction === '管理面试') {
-      navigate(`/interviews?demand=${item.demand.id}`);
+      navigate(`/interviews?demand=${item.demand.id}&from=dashboard`);
       return;
     }
     if (item.nextAction === '推进 Offer') {
-      navigate(`/offers?demand=${item.demand.id}`);
+      navigate(`/offers?demand=${item.demand.id}&from=dashboard`);
       return;
     }
     if (item.nextAction === '跟进反馈') {
-      navigate('/candidates', { state: { demandId: item.demand.id, targetStage: 'feedback' } });
+      navigate('/candidates', { state: { fromDashboard: true, demandId: item.demand.id, targetStage: 'business_review' } });
       return;
     }
     navigate(`/jobs?demand=${item.demand.id}`);
+  };
+
+  const openStage = (stage: DashboardStage) => {
+    const destination = dashboardStageDrilldown(stage);
+    if (destination.kind === 'candidate') {
+      navigate('/candidates', { state: destination.state });
+      return;
+    }
+    navigate(destination.to);
   };
 
   return (
@@ -347,14 +364,14 @@ export default function DashboardPage() {
               </button>
               <button
                 type="button"
-                onClick={() => navigate('/candidates', { state: { openUpload: true } })}
+                onClick={() => navigate('/candidates', { state: { fromDashboard: true, openUpload: true } })}
                 className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
               >
                 <FileUp size={15} aria-hidden="true" />导入简历
               </button>
               <button
                 type="button"
-                onClick={() => navigate('/interviews?status=unassigned')}
+                onClick={() => navigate('/interviews?status=unassigned&from=dashboard')}
                 className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
               >
                 <CalendarDays size={15} aria-hidden="true" />安排面试
@@ -442,13 +459,13 @@ export default function DashboardPage() {
 
           <SectionCard
             title="今日面试"
-            action={<button type="button" onClick={() => navigate('/interviews?status=scheduled')} className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800">查看完整日程<ChevronRight size={13} /></button>}
+            action={<button type="button" onClick={() => navigate('/interviews?status=scheduled&from=dashboard')} className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800">查看完整日程<ChevronRight size={13} /></button>}
           >
             <div className="divide-y divide-background-100">
               {summary.todayInterviews.slice(0, 3).map((item) => {
                 const started = (backendDate(item.scheduled_at)?.getTime() ?? Number.MAX_SAFE_INTEGER) <= Date.now();
                 return (
-                  <button key={item.assignment_id} type="button" onClick={() => navigate(`/interviews?demand=${item.demand_id}&candidate=${item.candidate_id}`)} className="grid min-h-[78px] w-full grid-cols-[50px_12px_minmax(0,1fr)] items-start gap-2 px-4 py-3 text-left transition hover:bg-background-50/70">
+                  <button key={item.assignment_id} type="button" onClick={() => navigate(`/interviews?demand=${item.demand_id}&candidate=${item.candidate_id}&from=dashboard`)} className="grid min-h-[78px] w-full grid-cols-[50px_12px_minmax(0,1fr)] items-start gap-2 px-4 py-3 text-left transition hover:bg-background-50/70">
                     <span className="pt-1 text-sm font-medium text-foreground-700">{clockLabel(item.scheduled_at)}</span>
                     <span className="relative mt-1.5 flex h-full justify-center"><span className="z-10 h-2.5 w-2.5 rounded-full bg-primary-500 ring-4 ring-primary-50" /><span className="absolute bottom-[-18px] top-3 w-px bg-primary-100" /></span>
                     <span className="min-w-0">
@@ -512,13 +529,14 @@ export default function DashboardPage() {
             <SectionCard title="阶段概况">
               <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 px-4 py-3 sm:grid-cols-5 xl:grid-cols-1">
                 {[
-                  ['筛选', summary.stageSummary.screening, 'ri-file-search-line', 'bg-stone-100 text-stone-600'],
-                  ['业务筛选', summary.stageSummary.businessReview, 'ri-user-search-line', 'bg-amber-50 text-amber-700'],
-                  ['面试', summary.stageSummary.interview, 'ri-checkbox-circle-line', 'bg-emerald-50 text-emerald-700'],
-                  ['Offer', summary.stageSummary.offer, 'ri-mail-line', 'bg-primary-50 text-primary-700'],
-                  ['待入职', summary.stageSummary.onboarding, 'ri-user-follow-line', 'bg-emerald-50 text-emerald-800'],
-                ].map(([label, value, icon, tone]) => (
-                  <button key={String(label)} type="button" onClick={() => label === '面试' ? navigate('/interviews') : label === 'Offer' || label === '待入职' ? navigate('/offers') : navigate('/candidates')} className="flex items-center justify-between rounded-lg px-1 py-0.5 text-left hover:bg-background-50">
+                  ['HR 初筛', summary.stageSummary.hrScreening, 'ri-file-search-line', 'bg-stone-100 text-stone-600', 'hr_screening'],
+                  ['AI 筛选', summary.stageSummary.aiScreening, 'ri-robot-2-line', 'bg-sky-50 text-sky-700', 'ai_screening'],
+                  ['业务筛选', summary.stageSummary.businessReview, 'ri-user-search-line', 'bg-amber-50 text-amber-700', 'business_review'],
+                  ['面试', summary.stageSummary.interview, 'ri-checkbox-circle-line', 'bg-emerald-50 text-emerald-700', 'interview'],
+                  ['Offer', summary.stageSummary.offer, 'ri-mail-line', 'bg-primary-50 text-primary-700', 'offer'],
+                  ['待入职', summary.stageSummary.onboarding, 'ri-user-follow-line', 'bg-emerald-50 text-emerald-800', 'onboarding'],
+                ].map(([label, value, icon, tone, stage]) => (
+                  <button key={String(label)} type="button" disabled={!canOpenDashboardStage(Number(value))} onClick={() => openStage(stage as DashboardStage)} className="flex items-center justify-between rounded-lg px-1 py-0.5 text-left hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent">
                     <span className="inline-flex items-center gap-2 text-xs text-foreground-600"><span className={`flex h-7 w-7 items-center justify-center rounded-lg ${tone}`}><i className={String(icon)} /></span>{label}</span>
                     <span className="text-sm font-semibold text-foreground-900">{value} 人</span>
                   </button>

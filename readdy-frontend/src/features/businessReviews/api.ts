@@ -69,6 +69,13 @@ export const businessReviewsApi = {
       body,
     });
   },
+  remindTask(
+    taskId: number,
+  ): Promise<BusinessReviewTask & { deduplicated: boolean }> {
+    return apiRequest(`/business-reviews/${taskId}/remind`, {
+      method: 'POST',
+    });
+  },
   loadResume(candidateId: number): Promise<Blob> {
     return apiBlob(`/resume/${candidateId}/original/preview`);
   },

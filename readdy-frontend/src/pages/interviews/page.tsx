@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, MapPin, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle2, MapPin, RefreshCw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { interviewsApi } from '@/features/interviews/api';
@@ -65,6 +65,8 @@ export default function RecruiterInterviewsPage() {
   const [searchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
+  const fromJobs = searchParams.get('from') === 'jobs';
+  const fromDashboard = searchParams.get('from') === 'dashboard';
   const handledCandidateId = useRef<number | null>(null);
   const [rows, setRows] = useState<InterviewManagementRow[]>([]);
   const [interviewers, setInterviewers] = useState<InterviewerOption[]>([]);
@@ -127,21 +129,35 @@ export default function RecruiterInterviewsPage() {
     else setSelectedRow(row);
   }, [loading, requestedCandidateId, requestedDemandId, rows]);
 
+  const scopedRows = useMemo(
+    () => requestedDemandId
+      ? rows.filter((row) => row.demand_id === requestedDemandId && (!(fromJobs || fromDashboard) || row.pipeline_stage === 'interview'))
+      : rows,
+    [fromDashboard, fromJobs, requestedDemandId, rows],
+  );
+  const demandContext = useMemo(
+    () => requestedDemandId ? rows.find((row) => row.demand_id === requestedDemandId) ?? null : null,
+    [requestedDemandId, rows],
+  );
+  const scopedCandidateCount = useMemo(
+    () => new Set(scopedRows.map((row) => row.candidate_id)).size,
+    [scopedRows],
+  );
   const counts = useMemo<Record<InterviewStatusTab, number>>(() => ({
-    all: rows.length,
-    unassigned: rows.filter((row) => rowStatus(row) === 'unassigned').length,
-    scheduled: rows.filter((row) => rowStatus(row) === 'scheduled').length,
-    awaiting_feedback: rows.filter((row) => rowStatus(row) === 'awaiting_feedback').length,
-    completed: rows.filter((row) => rowStatus(row) === 'completed').length,
-  }), [rows]);
-  const filterOptions = useMemo(() => deriveInterviewFilterOptions(rows), [rows]);
+    all: scopedRows.length,
+    unassigned: scopedRows.filter((row) => rowStatus(row) === 'unassigned').length,
+    scheduled: scopedRows.filter((row) => rowStatus(row) === 'scheduled').length,
+    awaiting_feedback: scopedRows.filter((row) => rowStatus(row) === 'awaiting_feedback').length,
+    completed: scopedRows.filter((row) => rowStatus(row) === 'completed').length,
+  }), [scopedRows]);
+  const filterOptions = useMemo(() => deriveInterviewFilterOptions(scopedRows), [scopedRows]);
   const visibleRows = useMemo(
-    () => filterInterviewRows(rows, activeTab, search, appliedFilters),
-    [activeTab, appliedFilters, rows, search],
+    () => filterInterviewRows(scopedRows, activeTab, search, appliedFilters),
+    [activeTab, appliedFilters, scopedRows, search],
   );
   const draftResultCount = useMemo(
-    () => filterInterviewRows(rows, activeTab, search, draftFilters).length,
-    [activeTab, draftFilters, rows, search],
+    () => filterInterviewRows(scopedRows, activeTab, search, draftFilters).length,
+    [activeTab, draftFilters, scopedRows, search],
   );
 
   const saveSchedule = async (payload: InterviewAssignmentInput | InterviewAssignmentUpdateInput) => {
@@ -258,14 +274,26 @@ export default function RecruiterInterviewsPage() {
   return (
     <div className="space-y-5 p-6" data-ui="real-recruiter-interview-workbench">
       <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-foreground-900">面试管理</h1>
+        <div className="flex items-start gap-3">
+          {fromDashboard && !requestedDemandId && <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>}
+          <div><h1 className="text-xl font-bold text-foreground-900">面试管理</h1>
           <p className="mt-1 text-sm text-foreground-500">从安排面试到收回反馈，都在这里处理</p>
+          </div>
         </div>
         <button type="button" onClick={() => void loadWorkbench()} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-300 bg-white px-3 text-sm text-foreground-600 disabled:opacity-50">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> 刷新
         </button>
       </header>
+
+      {requestedDemandId && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-200 bg-primary-50/60 px-4 py-3" aria-label="当前岗位面试">
+          <div className="flex min-w-0 items-center gap-3">
+            {(fromJobs || fromDashboard) && <button type="button" onClick={() => navigate(fromDashboard ? '/dashboard' : '/jobs')} aria-label={fromDashboard ? '返回工作台' : '返回招聘需求'} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary-200 bg-white text-primary-700 hover:bg-primary-50"><ArrowLeft size={17} /></button>}
+            <div className="min-w-0"><p className="text-xs font-semibold text-primary-700">当前岗位面试</p><p className="mt-0.5 truncate text-sm font-medium text-foreground-900">{demandContext?.job_title || `招聘需求 #${requestedDemandId}`}</p><p className="mt-0.5 text-xs text-foreground-500">只显示这个岗位：{scopedCandidateCount} 位候选人 · {scopedRows.length} 条面试任务</p></div>
+          </div>
+          <button type="button" onClick={() => navigate('/interviews')} className="text-xs font-medium text-primary-700 hover:underline">查看全部面试</button>
+        </section>
+      )}
 
       {successMessage && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">

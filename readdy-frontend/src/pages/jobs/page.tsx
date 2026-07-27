@@ -22,6 +22,7 @@ import RequisitionForm from './components/RequisitionForm';
 import RequisitionTable from './components/RequisitionTable';
 import DemandDetailPanel from './components/DemandDetailPanel';
 import DemandCandidateDrawer from './components/DemandCandidateDrawer';
+import DemandBusinessReviewDrawer from './components/DemandBusinessReviewDrawer';
 import PushToReviewerModal, {
   type BusinessReviewerOption,
   type PushFormValue,
@@ -35,6 +36,7 @@ import {
   type DemandWorkspaceFilters,
   type DemandWorkspaceTab,
 } from './workbench';
+import { demandStageDrilldown, type DemandStageDrilldown } from './stageDrilldown';
 
 const statusTransitions: Record<string, { advance: { to: string; label: string } | null; rollback: { to: string; label: string } | null }> = {
   pending: { advance: { to: 'closed', label: '关闭需求' }, rollback: null },
@@ -95,6 +97,7 @@ export default function JobsPage() {
   const [owners, setOwners] = useState<DemandOwnerOption[]>([]);
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
   const [candidateDemand, setCandidateDemand] = useState<RecruitmentDemand | null>(null);
+  const [businessReviewDemand, setBusinessReviewDemand] = useState<RecruitmentDemand | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -307,6 +310,15 @@ export default function JobsPage() {
     navigate('/candidates', { state: { fromJobs: true, demandId: Number(req.id), jobTitle: req.title, targetStage: stage } });
   };
 
+  const openStageProgress = (req: RequisitionRow, stage: DemandStageDrilldown) => {
+    const target = demandStageDrilldown(stage, Number(req.id));
+    if (target.kind === 'drawer') {
+      setBusinessReviewDemand(req.source);
+      return;
+    }
+    navigate(target.to);
+  };
+
   const prepareBusinessPush = (demand: RecruitmentDemand, targets: PushTarget[], task?: BusinessReviewTask) => {
     if (targets.length === 0) return;
     setCandidateDemand(null);
@@ -424,7 +436,7 @@ export default function JobsPage() {
           statusExtraActions={statusExtraActions}
           onSelectCandidates={(req) => setCandidateDemand(req.source)}
           onViewCandidates={(req) => openCandidates(req, 'all')}
-          onStageCountClick={(req, stage) => openCandidates(req, stage)}
+          onStageCountClick={openStageProgress}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           filters={filters}
@@ -470,6 +482,39 @@ export default function JobsPage() {
           onClose={() => setCandidateDemand(null)}
           onChanged={() => void loadDemands()}
           onReadyToPush={prepareBusinessPush}
+        />
+      )}
+
+      {businessReviewDemand && (
+        <DemandBusinessReviewDrawer
+          demand={businessReviewDemand}
+          onClose={() => setBusinessReviewDemand(null)}
+          onOpenCandidate={(candidateId) => {
+            const demand = businessReviewDemand;
+            setBusinessReviewDemand(null);
+            navigate(`/candidates?demand=${demand.id}&candidate=${candidateId}`, {
+              state: {
+                fromJobs: true,
+                demandId: demand.id,
+                jobTitle: demand.job_title,
+                targetStage: 'feedback',
+              },
+            });
+          }}
+          onPush={(candidate) => prepareBusinessPush(businessReviewDemand, [{
+            candidateId: candidate.id,
+            candidateName: candidate.name_masked,
+            currentDemandId: businessReviewDemand.id,
+            currentStage: '业务筛选',
+            currentStageCode: 'business_review',
+          }])}
+          onReassign={(task) => prepareBusinessPush(businessReviewDemand, [{
+            candidateId: task.candidate_id,
+            candidateName: task.candidate.name_masked,
+            currentDemandId: businessReviewDemand.id,
+            currentStage: '业务筛选',
+            currentStageCode: 'business_review',
+          }], task)}
         />
       )}
 

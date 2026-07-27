@@ -237,6 +237,7 @@ function belongsToSourceFile(resultFile: string, sourceFile: string) {
 
 interface CandidateNavigationState {
   fromJobs?: boolean;
+  fromDashboard?: boolean;
   jobTitle?: string;
   demandId?: number;
   targetStage?: string;
@@ -246,6 +247,7 @@ interface CandidateNavigationState {
 function isCandidateNavigationState(value: unknown): value is CandidateNavigationState {
   if (typeof value !== 'object' || value === null) return false;
   if ('fromJobs' in value && typeof value.fromJobs !== 'boolean') return false;
+  if ('fromDashboard' in value && typeof value.fromDashboard !== 'boolean') return false;
   if ('jobTitle' in value && typeof value.jobTitle !== 'string') return false;
   if (
     'demandId' in value
@@ -276,6 +278,11 @@ export default function CandidatesPage() {
     : requestedDemandId
       ? { demandId: requestedDemandId }
       : null;
+  const workflowSourceQuery = navState?.fromDashboard
+    ? '&from=dashboard'
+    : navState?.fromJobs
+      ? '&from=jobs'
+      : '';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [demandFilter, setDemandFilter] = useState<number | ''>(navState?.demandId ?? '');
@@ -795,7 +802,7 @@ export default function CandidatesPage() {
         return (
           <button
             type="button"
-            onClick={() => navigate(`/offers?demand=${task.demand_id}&candidate=${task.candidate_id}`)}
+            onClick={() => navigate(`/offers?demand=${task.demand_id}&candidate=${task.candidate_id}${workflowSourceQuery}`)}
             className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
           >
             查看 Offer
@@ -823,7 +830,7 @@ export default function CandidatesPage() {
       return (
         <button
           type="button"
-          onClick={() => navigate(`/interviews?demand=${task.demand_id}&candidate=${task.candidate_id}`)}
+          onClick={() => navigate(`/interviews?demand=${task.demand_id}&candidate=${task.candidate_id}${workflowSourceQuery}`)}
           className="rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white hover:bg-primary-600"
         >
           {hasScheduledInterview ? '查看/调整面试' : '安排面试'}
@@ -1047,7 +1054,7 @@ export default function CandidatesPage() {
       );
     }
     if (action.kind === 'schedule_interview' && demandId) {
-      return <button type="button" aria-label="安排正式面试" onClick={() => navigate(`/interviews?demand=${demandId}&candidate=${candidate.id}`)} className={primaryClass}>{action.label}</button>;
+      return <button type="button" aria-label="安排正式面试" onClick={() => navigate(`/interviews?demand=${demandId}&candidate=${candidate.id}${workflowSourceQuery}`)} className={primaryClass}>{action.label}</button>;
     }
     if (action.kind === 'needs_info' && latestTask) {
       return <button type="button" onClick={() => repeatBusinessReview(latestTask)} className={primaryClass}>{action.label}</button>;
@@ -1056,10 +1063,10 @@ export default function CandidatesPage() {
       return <button type="button" onClick={() => navigate(`/kanban?demand=${demandId}&candidate=${candidate.id}&target=rejected`)} className={secondaryClass}>{action.label}</button>;
     }
     if (action.kind === 'later_stage' && demandId && candidate.current_stage === 'interview') {
-      return <button type="button" onClick={() => navigate(`/interviews?demand=${demandId}&candidate=${candidate.id}`)} className={secondaryClass}>{action.label}</button>;
+      return <button type="button" onClick={() => navigate(`/interviews?demand=${demandId}&candidate=${candidate.id}${workflowSourceQuery}`)} className={secondaryClass}>{action.label}</button>;
     }
     if (action.kind === 'later_stage' && demandId && candidate.current_stage === 'offer') {
-      return <button type="button" onClick={() => navigate(`/offers?demand=${demandId}&candidate=${candidate.id}`)} className={secondaryClass}>{action.label}</button>;
+      return <button type="button" onClick={() => navigate(`/offers?demand=${demandId}&candidate=${candidate.id}${workflowSourceQuery}`)} className={secondaryClass}>{action.label}</button>;
     }
     return <span className="text-xs font-medium text-foreground-500">{action.label}</span>;
   };
@@ -1069,13 +1076,13 @@ export default function CandidatesPage() {
       <header className="flex flex-col gap-3 border-b border-background-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            {navState?.fromJobs && (
+            {(navState?.fromJobs || navState?.fromDashboard) && (
               <button
                 type="button"
-                onClick={() => navigate('/jobs')}
+                onClick={() => navigate(navState.fromDashboard ? '/dashboard' : '/jobs')}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-500 transition-colors hover:bg-background-100 hover:text-foreground-800"
-                aria-label="返回招聘管理"
-                title="返回招聘管理"
+                aria-label={navState.fromDashboard ? '返回工作台' : '返回招聘需求'}
+                title={navState.fromDashboard ? '返回工作台' : '返回招聘需求'}
               >
                 <ArrowLeft size={18} aria-hidden="true" />
               </button>
