@@ -61,7 +61,7 @@ import PushToReviewerModal, {
   type PushResultItem,
   type PushTarget,
 } from './components/PushToReviewerModal';
-import { canEnterBusinessReview } from '@/features/businessReviews/stages';
+import { canEnterBusinessReview, isActionableBusinessReviewResult } from '@/features/businessReviews/stages';
 import AddToPipelineModal from './components/AddToPipelineModal';
 import DuplicateCandidatesModal from './components/DuplicateCandidatesModal';
 
@@ -662,9 +662,15 @@ export default function CandidatesPage() {
   )) ?? null, [requestedCandidateId, requestedDemandId, reviewTasks]);
 
   const visibleReviewResults = useMemo(() => {
-    if (focusedReview) return [focusedReview];
+    if (focusedReview && isActionableBusinessReviewResult(
+      focusedReview.status,
+      focusedReview.candidate.current_stage,
+    )) return [focusedReview];
     return reviewTasks
-      .filter((task) => task.status !== 'pending' && (!demandFilter || task.demand_id === demandFilter))
+      .filter((task) => (
+        isActionableBusinessReviewResult(task.status, task.candidate.current_stage)
+        && (!demandFilter || task.demand_id === demandFilter)
+      ))
       .slice(0, 5);
   }, [demandFilter, focusedReview, reviewTasks]);
 
@@ -995,14 +1001,14 @@ export default function CandidatesPage() {
       </header>
 
       {(visibleReviewResults.length > 0 || (requestedCandidateId && reviewTasksError)) && (
-        <section className="rounded-lg border border-primary-200 bg-primary-50/40 px-4 py-4" aria-label="业务筛选结果">
+        <section className="rounded-lg border border-primary-200 bg-primary-50/40 px-4 py-4" aria-label="待处理的业务筛选反馈">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-foreground-900">业务筛选结果</h2>
-              <p className="mt-0.5 text-xs text-foreground-500">业务负责人只给结论，最终推进由招聘专员确认</p>
+              <h2 className="text-sm font-semibold text-foreground-900">待处理的业务筛选反馈</h2>
+              <p className="mt-0.5 text-xs text-foreground-500">这里只显示等待招聘专员继续推进的结果；已进入后续流程的结果可在候选人详情中查看</p>
             </div>
             <button type="button" onClick={() => void loadReviewTasks()} className="text-xs font-medium text-primary-700 hover:text-primary-800">
-              刷新结果
+              刷新待办
             </button>
           </div>
           {reviewTasksError ? (
