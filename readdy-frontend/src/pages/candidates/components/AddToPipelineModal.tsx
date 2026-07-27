@@ -6,6 +6,7 @@ import {
   LoaderCircle,
   RefreshCw,
   RotateCcw,
+  Send,
   X,
 } from 'lucide-react';
 import { candidatesApi } from '@/features/candidates/api';
@@ -26,7 +27,7 @@ interface Props {
   result: CandidatePipelineAddResult | null;
   onRetryDemands: () => void;
   onClose: () => void;
-  onAdd: (demandId: number, reason: string) => void;
+  onAdd: (demandId: number, reason: string, pushAfterAdd: boolean) => void;
 }
 
 function errorMessage(error: unknown) {
@@ -246,15 +247,25 @@ export default function AddToPipelineModal({
             {result ? '完成' : '取消'}
           </button>
           {(!result || needsRetryReason) && (
-            <button
-              type="button"
-              onClick={() => onAdd(demandId, reason.trim())}
-              disabled={!canSubmit || submitting}
-              className="inline-flex min-w-32 items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-background-300 disabled:text-foreground-500"
-            >
-              {submitting && <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />}
-              {submitting ? '正在加入' : '确认加入流程'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => onAdd(demandId, reason.trim(), false)}
+                disabled={!canSubmit || submitting}
+                className="inline-flex min-w-32 items-center justify-center gap-2 rounded-lg border border-primary-200 bg-white px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                仅加入当前需求
+              </button>
+              <button
+                type="button"
+                onClick={() => onAdd(demandId, reason.trim(), true)}
+                disabled={!canSubmit || submitting}
+                className="inline-flex min-w-44 items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-background-300 disabled:text-foreground-500"
+              >
+                {submitting ? <LoaderCircle className="animate-spin" size={16} aria-hidden="true" /> : <Send size={16} aria-hidden="true" />}
+                {submitting ? '正在加入' : '加入当前需求并推送业务筛选'}
+              </button>
+            </>
           )}
         </footer>
       </div>

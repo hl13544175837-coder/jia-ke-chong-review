@@ -3,6 +3,8 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useProductRole } from '@/auth/productRole';
 import { candidatesApi } from '@/features/candidates/api';
+import { businessReviewsApi } from '@/features/businessReviews/api';
+import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import { demandsApi } from '@/features/demands/api';
 import { toRequisitionRow } from '@/features/demands/adapter';
 import type {
@@ -101,6 +103,7 @@ export default function JobsPage() {
   const [pushTargets, setPushTargets] = useState<PushTarget[] | null>(null);
   const [pushSubmitting, setPushSubmitting] = useState(false);
   const [pushResults, setPushResults] = useState<PushResultItem[]>([]);
+  const [pushReviewTask, setPushReviewTask] = useState<BusinessReviewTask | null>(null);
   const [reviewers, setReviewers] = useState<BusinessReviewerOption[]>([]);
   const [reviewersLoading, setReviewersLoading] = useState(false);
   const [reviewerError, setReviewerError] = useState<string | null>(null);
@@ -293,12 +296,13 @@ export default function JobsPage() {
     navigate('/candidates', { state: { fromJobs: true, demandId: Number(req.id), jobTitle: req.title, targetStage: stage } });
   };
 
-  const prepareBusinessPush = (demand: RecruitmentDemand, targets: PushTarget[]) => {
+  const prepareBusinessPush = (demand: RecruitmentDemand, targets: PushTarget[], task?: BusinessReviewTask) => {
     if (targets.length === 0) return;
     setCandidateDemand(null);
     setPushDemand(demand);
     setPushTargets(targets);
     setPushResults([]);
+    setPushReviewTask(task ?? null);
     if (reviewers.length === 0 && !reviewersLoading) void loadReviewers();
   };
 
@@ -307,6 +311,29 @@ export default function JobsPage() {
     setPushSubmitting(true);
     setPushResults([]);
     const selectedReviewer = reviewers.find((reviewer) => reviewer.id === value.reviewerId);
+    if (pushReviewTask) {
+      const target = pushTargets[0];
+      try {
+        const task = await businessReviewsApi.reassignTask(pushReviewTask.id, value.reviewerId);
+        setPushResults([{
+          candidateId: target.candidateId,
+          candidateName: target.candidateName,
+          status: 'created',
+          message: task.unchanged ? '接收人没有变化' : `已改派给 ${task.reviewer_name || selectedReviewer?.name || '新业务筛选人'}`,
+        }]);
+        showToast(task.unchanged ? '业务筛选人没有变化' : `已改派给 ${task.reviewer_name || selectedReviewer?.name || '新业务筛选人'}`);
+      } catch (error) {
+        setPushResults([{
+          candidateId: target.candidateId,
+          candidateName: target.candidateName,
+          status: 'failed',
+          message: errorMessage(error, '改派业务筛选人失败'),
+        }]);
+      } finally {
+        setPushSubmitting(false);
+      }
+      return;
+    }
     const results = await Promise.all(pushTargets.map(async (target): Promise<PushResultItem> => {
       try {
         const task = await candidatesApi.pushToBusinessReview({
@@ -437,6 +464,8 @@ export default function JobsPage() {
 
       {pushDemand && pushTargets ? (
         <PushToReviewerModal
+          mode={pushReviewTask ? 'reassign' : 'create'}
+          currentReviewerName={pushReviewTask?.reviewer_name}
           targets={pushTargets}
           demands={[{
             id: pushDemand.id,
@@ -446,7 +475,7 @@ export default function JobsPage() {
           }]}
           reviewers={reviewers}
           initialDemandId={pushDemand.id}
-          initialReviewerId={pushDemand.default_interviewer_id}
+          initialReviewerId={pushReviewTask?.reviewer_id ?? pushDemand.default_interviewer_id}
           demandsLoading={false}
           demandError={null}
           reviewersLoading={reviewersLoading}
@@ -459,6 +488,7 @@ export default function JobsPage() {
             setPushDemand(null);
             setPushTargets(null);
             setPushResults([]);
+            setPushReviewTask(null);
           }}
           onPush={(value) => void handlePushToBusiness(value)}
         />

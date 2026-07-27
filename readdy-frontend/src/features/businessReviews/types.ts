@@ -69,3 +69,7 @@ export interface BusinessReviewDecisionInput {
   decision: Exclude<BusinessReviewStatus, 'pending'>;
   note: string;
 }
+
+export interface ReassignBusinessReviewInput {
+  reviewer_id: number;
+}

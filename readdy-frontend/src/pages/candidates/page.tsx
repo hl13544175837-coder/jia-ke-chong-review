@@ -50,6 +50,7 @@ import type {
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { businessReviewsApi } from '@/features/businessReviews/api';
+import { candidateBusinessAction } from '@/features/businessReviews/actions';
 import type { BusinessReviewStatus, BusinessReviewTask } from '@/features/businessReviews/types';
 import { interviewsApi } from '@/features/interviews/api';
 import type { InterviewManagementRow } from '@/features/interviews/types';
@@ -339,6 +340,7 @@ export default function CandidatesPage() {
   const [pushSubmitting, setPushSubmitting] = useState(false);
   const [pushResults, setPushResults] = useState<PushResultItem[]>([]);
   const [pushInitialReviewerId, setPushInitialReviewerId] = useState<number | null>(null);
+  const [reassignTask, setReassignTask] = useState<BusinessReviewTask | null>(null);
   const handledCandidateQuery = useRef<number | null>(null);
   const deferredSearch = useDeferredValue(searchQuery.trim());
   const deferredSkill = useDeferredValue(skillFilter.trim());
@@ -754,6 +756,23 @@ export default function CandidatesPage() {
     })));
     setPushResults([]);
     setPushInitialReviewerId(reviewerId);
+    setReassignTask(null);
+    if (reviewers.length === 0 && !reviewersLoading) void loadReviewers();
+  };
+
+  const openReassignModal = (task: BusinessReviewTask) => {
+    const candidate = candidateFromReviewTask(task);
+    setDemandFilter(task.demand_id);
+    setPushTargets([{
+      candidateId: candidate.id,
+      candidateName: candidate.name_masked,
+      currentDemandId: task.demand_id,
+      currentStage: stageLabels[candidate.current_stage || 'business_review'],
+      currentStageCode: candidate.current_stage || 'business_review',
+    }]);
+    setPushResults([]);
+    setPushInitialReviewerId(task.reviewer_id);
+    setReassignTask(task);
     if (reviewers.length === 0 && !reviewersLoading) void loadReviewers();
   };
 
@@ -848,7 +867,7 @@ export default function CandidatesPage() {
     setPipelineResult(null);
   };
 
-  const handleAddToPipeline = async (demandId: number, reason: string) => {
+  const handleAddToPipeline = async (demandId: number, reason: string, pushAfterAdd: boolean) => {
     if (!pipelineTargets || pipelineSubmitting) return;
     setPipelineSubmitting(true);
     try {
@@ -861,6 +880,22 @@ export default function CandidatesPage() {
       setSelectedIds(new Set());
       await loadCandidates();
       showToast(`已加入 ${result.added} 位，重新启用 ${result.reactivated} 位候选人`);
+      const successfulCount = result.added + result.reactivated;
+      if (pushAfterAdd && successfulCount > 0) {
+        const failedIds = new Set(result.failures.map((item) => item.candidate_id));
+        const successful = pipelineTargets
+          .filter((candidate) => !failedIds.has(candidate.id))
+          .slice(0, successfulCount)
+          .map((candidate) => ({
+            ...candidate,
+            current_demand_id: demandId,
+            current_stage: 'pending' as const,
+          }));
+        setPipelineTargets(null);
+        setPipelineResult(null);
+        setDemandFilter(demandId);
+        openPushModal(successful);
+      }
     } catch (error) {
       showToast(errorMessage(error, '加入招聘流程失败'));
     } finally {
@@ -890,6 +925,32 @@ export default function CandidatesPage() {
     setPushSubmitting(true);
     setPushResults([]);
     const results: PushResultItem[] = [];
+
+    if (reassignTask) {
+      const target = pushTargets[0];
+      try {
+        const task = await businessReviewsApi.reassignTask(reassignTask.id, value.reviewerId);
+        results.push({
+          candidateId: target.candidateId,
+          candidateName: target.candidateName,
+          status: 'created',
+          message: task.unchanged ? '接收人没有变化' : `已改派给 ${task.reviewer_name || '新业务筛选人'}`,
+        });
+        await loadReviewTasks();
+        showToast(task.unchanged ? '业务筛选人没有变化' : `已改派给 ${task.reviewer_name || '新业务筛选人'}`);
+      } catch (error) {
+        results.push({
+          candidateId: target.candidateId,
+          candidateName: target.candidateName,
+          status: 'failed',
+          message: errorMessage(error, '改派失败'),
+        });
+      } finally {
+        setPushResults(results);
+        setPushSubmitting(false);
+      }
+      return;
+    }
 
     for (const target of pushTargets) {
       try {
@@ -941,6 +1002,59 @@ export default function CandidatesPage() {
     && selectedCandidates.every((candidate) => candidate.current_demand_id);
   const selectedAllReviewable = selectedCandidates.length > 0
     && selectedCandidates.every((candidate) => canEnterBusinessReview(candidate.current_stage));
+
+  const renderCandidateBusinessAction = (candidate: CandidateListItem, compact = false) => {
+    const demandId = candidate.current_demand_id;
+    const candidateTasks = reviewTasks.filter((task) => (
+      task.candidate_id === candidate.id
+      && (!demandId || task.demand_id === demandId)
+    ));
+    const pendingTask = candidateTasks.find((task) => task.status === 'pending') ?? null;
+    const latestTask = candidateTasks[0] ?? null;
+    const action = candidateBusinessAction({
+      currentDemandId: demandId,
+      currentStage: candidate.current_stage,
+      pendingTask,
+      latestTask,
+    });
+    const primaryClass = compact
+      ? 'inline-flex min-h-8 items-center justify-center rounded-lg bg-primary-500 px-2.5 text-xs font-medium text-white hover:bg-primary-600'
+      : 'inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600';
+    const secondaryClass = compact
+      ? 'inline-flex min-h-8 items-center justify-center rounded-lg border border-primary-200 bg-white px-2.5 text-xs font-medium text-primary-700 hover:bg-primary-50'
+      : 'inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-white px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50';
+
+    if (action.kind === 'join_and_push') {
+      return <button type="button" onClick={() => openPipelineModal([candidate])} className={primaryClass}><UserPlus size={14} aria-hidden="true" />{action.label}</button>;
+    }
+    if (action.kind === 'push') {
+      return <button type="button" onClick={() => openPushModal([candidate])} className={primaryClass}><Send size={14} aria-hidden="true" />{action.label}</button>;
+    }
+    if (action.kind === 'waiting' && pendingTask) {
+      return (
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <span className="text-xs font-medium text-amber-700">{action.label}</span>
+          <button type="button" onClick={() => openReassignModal(pendingTask)} className={secondaryClass}>改派筛选人</button>
+        </div>
+      );
+    }
+    if (action.kind === 'schedule_interview' && demandId) {
+      return <button type="button" aria-label="安排正式面试" onClick={() => navigate(`/interviews?demand=${demandId}&candidate=${candidate.id}`)} className={primaryClass}>{action.label}</button>;
+    }
+    if (action.kind === 'needs_info' && latestTask) {
+      return <button type="button" onClick={() => repeatBusinessReview(latestTask)} className={primaryClass}>{action.label}</button>;
+    }
+    if (action.kind === 'rejected' && demandId) {
+      return <button type="button" onClick={() => navigate(`/kanban?demand=${demandId}&candidate=${candidate.id}&target=rejected`)} className={secondaryClass}>{action.label}</button>;
+    }
+    if (action.kind === 'later_stage' && demandId && candidate.current_stage === 'interview') {
+      return <button type="button" onClick={() => navigate(`/interviews?demand=${demandId}&candidate=${candidate.id}`)} className={secondaryClass}>{action.label}</button>;
+    }
+    if (action.kind === 'later_stage' && demandId && candidate.current_stage === 'offer') {
+      return <button type="button" onClick={() => navigate(`/offers?demand=${demandId}&candidate=${candidate.id}`)} className={secondaryClass}>{action.label}</button>;
+    }
+    return <span className="text-xs font-medium text-foreground-500">{action.label}</span>;
+  };
 
   return (
     <div className="space-y-5 px-4 pb-6 pt-3 sm:px-6">
@@ -1242,14 +1356,16 @@ export default function CandidatesPage() {
               <Star size={15} fill={selectedAllFavorite ? 'currentColor' : 'none'} aria-hidden="true" />
               {selectedAllFavorite ? '取消收藏' : '批量收藏'}
             </button>
-            <button
-              type="button"
-              onClick={() => openPipelineModal(selectedCandidates)}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600"
-            >
-              <UserPlus size={15} aria-hidden="true" />
-              加入招聘流程
-            </button>
+            {!selectedAllInPipeline && (
+              <button
+                type="button"
+                onClick={() => openPipelineModal(selectedCandidates)}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600"
+              >
+                <UserPlus size={15} aria-hidden="true" />
+                加入需求并继续业务筛选
+              </button>
+            )}
             {selectedAllInPipeline && selectedAllReviewable && (
               <button
                 type="button"
@@ -1553,15 +1669,6 @@ export default function CandidatesPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => openPipelineModal([candidate])}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700"
-                            aria-label={`将 ${candidate.name_masked} 加入招聘流程`}
-                            title="加入招聘流程"
-                          >
-                            <UserPlus size={16} aria-hidden="true" />
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => openCandidateDetail(candidate)}
                             className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-500 transition-colors hover:bg-background-100 hover:text-foreground-800"
                             aria-label={`查看 ${candidate.name_masked} 简历`}
@@ -1569,17 +1676,7 @@ export default function CandidatesPage() {
                           >
                             <Eye size={16} aria-hidden="true" />
                           </button>
-                          {candidate.current_demand_id && canEnterBusinessReview(candidate.current_stage) && (
-                            <button
-                              type="button"
-                              onClick={() => openPushModal([candidate])}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700"
-                              aria-label={`推送 ${candidate.name_masked} 进行业务筛选`}
-                              title="推送业务筛选"
-                            >
-                              <Send size={16} aria-hidden="true" />
-                            </button>
-                          )}
+                          {renderCandidateBusinessAction(candidate, true)}
                         </div>
                       </td>
                     </tr>
@@ -1980,24 +2077,7 @@ export default function CandidatesPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-background-200 bg-background-50 px-5 py-4 sm:px-6">
               <button type="button" onClick={closeCandidateDetail} className="rounded-lg border border-background-300 bg-white px-4 py-2 text-sm font-medium text-foreground-700 hover:bg-background-100">关闭</button>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => openPipelineModal([detailCandidate])}
-                  className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-white px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
-                >
-                  <UserPlus size={15} aria-hidden="true" />
-                  加入招聘流程
-                </button>
-                {detailCandidate.current_demand_id && canEnterBusinessReview(detailCandidate.current_stage) && (
-                  <button
-                    type="button"
-                    onClick={() => openPushModal([detailCandidate])}
-                    className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600"
-                  >
-                    <Send size={15} aria-hidden="true" />
-                    推送业务筛选
-                  </button>
-                )}
+                {renderCandidateBusinessAction(detailCandidate)}
               </div>
             </div>
           </aside>
@@ -2006,6 +2086,8 @@ export default function CandidatesPage() {
 
       {pushTargets && (
         <PushToReviewerModal
+          mode={reassignTask ? 'reassign' : 'create'}
+          currentReviewerName={reassignTask?.reviewer_name}
           targets={pushTargets}
           demands={pushDemandOptions}
           reviewers={reviewers}
@@ -2019,7 +2101,7 @@ export default function CandidatesPage() {
           results={pushResults}
           onRetryDemands={() => void loadDemands()}
           onRetryReviewers={() => void loadReviewers()}
-          onClose={() => { setPushTargets(null); setPushResults([]); setPushInitialReviewerId(null); }}
+          onClose={() => { setPushTargets(null); setPushResults([]); setPushInitialReviewerId(null); setReassignTask(null); }}
           onPush={(value) => void handlePushToBusiness(value)}
         />
       )}
@@ -2035,7 +2117,7 @@ export default function CandidatesPage() {
           result={pipelineResult}
           onRetryDemands={() => void loadDemands()}
           onClose={() => { setPipelineTargets(null); setPipelineResult(null); }}
-          onAdd={(demandId, reason) => void handleAddToPipeline(demandId, reason)}
+          onAdd={(demandId, reason, pushAfterAdd) => void handleAddToPipeline(demandId, reason, pushAfterAdd)}
         />
       )}
 

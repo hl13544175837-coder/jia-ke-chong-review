@@ -26,6 +26,8 @@ import {
 import { candidatesApi } from '@/features/candidates/api';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 import { businessReviewsApi } from '@/features/businessReviews/api';
+import { candidateBusinessAction } from '@/features/businessReviews/actions';
+import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import type {
   CandidateListItem,
   CandidateListResponse,
@@ -43,7 +45,7 @@ interface DemandCandidateDrawerProps {
   demand: RecruitmentDemand;
   onClose: () => void;
   onChanged: () => void;
-  onReadyToPush: (demand: RecruitmentDemand, targets: PushTarget[]) => void;
+  onReadyToPush: (demand: RecruitmentDemand, targets: PushTarget[], task?: BusinessReviewTask) => void;
 }
 
 type OperationFilter = 'all' | 'actionable' | 'pushable';
@@ -84,12 +86,28 @@ function messageOf(error: unknown, fallback: string) {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
-function candidateStatus(candidate: CandidateListItem, demandId: number, match?: CandidateMatchResult) {
+function candidateStatus(
+  candidate: CandidateListItem,
+  demandId: number,
+  match?: CandidateMatchResult,
+  tasks: BusinessReviewTask[] = [],
+) {
   if (candidate.current_demand_id === demandId) {
-    const canPush = !match?.latest_stage || ['pending', 'ai_screen', 'business_review'].includes(match.latest_stage);
-    return canPush
-      ? { label: '已在当前需求，可推送', selectable: true, action: 'push' as const, tone: 'text-primary-700 bg-primary-50' }
-      : { label: '已进入后续阶段', selectable: false, action: 'blocked' as const, tone: 'text-foreground-600 bg-background-100' };
+    const demandTasks = tasks.filter((task) => task.candidate_id === candidate.id && task.demand_id === demandId);
+    const pendingTask = demandTasks.find((task) => task.status === 'pending') ?? null;
+    const action = candidateBusinessAction({
+      currentDemandId: demandId,
+      currentStage: match?.latest_stage || candidate.current_stage,
+      pendingTask,
+      latestTask: demandTasks[0] ?? null,
+    });
+    if (action.kind === 'waiting') {
+      return { label: action.label, selectable: true, action: 'reassign' as const, task: pendingTask, tone: 'text-amber-700 bg-amber-50' };
+    }
+    if (action.kind === 'push' || action.kind === 'needs_info') {
+      return { label: action.label, selectable: true, action: 'push' as const, task: null, tone: 'text-primary-700 bg-primary-50' };
+    }
+    return { label: action.label, selectable: false, action: 'blocked' as const, task: null, tone: 'text-foreground-600 bg-background-100' };
   }
   if (candidate.current_demand_id) {
     return {
@@ -154,6 +172,8 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   const [resumeError, setResumeError] = useState('');
   const [resumeFileAction, setResumeFileAction] = useState<'preview' | 'download' | null>(null);
   const [resumeFileError, setResumeFileError] = useState('');
+  const [reviewTasks, setReviewTasks] = useState<BusinessReviewTask[]>([]);
+  const [reviewTasksError, setReviewTasksError] = useState('');
 
   const loadCandidates = useCallback(async () => {
     setLoading(true);
@@ -201,6 +221,13 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
     void loadCandidates();
   }, [loadCandidates]);
 
+  useEffect(() => {
+    setReviewTasksError('');
+    void businessReviewsApi.listForHr()
+      .then((response) => setReviewTasks(response.items))
+      .catch((error: unknown) => setReviewTasksError(messageOf(error, '业务筛选状态加载失败')));
+  }, [demand.id]);
+
   const changeFilter = (change: () => void) => {
     change();
     setPage(1);
@@ -222,16 +249,16 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   };
 
   const visibleCandidates = useMemo(() => candidateResponse.candidates.filter((candidate) => {
-    const status = candidateStatus(candidate, demand.id, matches.get(candidate.id));
+    const status = candidateStatus(candidate, demand.id, matches.get(candidate.id), reviewTasks);
     if (operationFilter === 'actionable' && !status.selectable) return false;
     if (operationFilter === 'pushable' && status.action !== 'push') return false;
     return true;
   }).sort((left, right) => {
     if (operationFilter !== 'all') return 0;
-    const leftSelectable = candidateStatus(left, demand.id, matches.get(left.id)).selectable ? 1 : 0;
-    const rightSelectable = candidateStatus(right, demand.id, matches.get(right.id)).selectable ? 1 : 0;
+    const leftSelectable = candidateStatus(left, demand.id, matches.get(left.id), reviewTasks).selectable ? 1 : 0;
+    const rightSelectable = candidateStatus(right, demand.id, matches.get(right.id), reviewTasks).selectable ? 1 : 0;
     return rightSelectable - leftSelectable;
-  }), [candidateResponse.candidates, demand.id, matches, operationFilter]);
+  }), [candidateResponse.candidates, demand.id, matches, operationFilter, reviewTasks]);
 
   const selectedCandidates = useMemo(
     () => candidateResponse.candidates.filter((item) => selectedIds.has(item.id)),
@@ -243,9 +270,16 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   );
   const needsTransferReason = transferCandidates.length > 0;
   const needsPipelineChange = selectedCandidates.some((item) => item.current_demand_id !== demand.id);
+  const selectedPendingTask = selectedCandidates.length === 1
+    ? reviewTasks.find((task) => (
+        task.candidate_id === selectedCandidates[0].id
+        && task.demand_id === demand.id
+        && task.status === 'pending'
+      )) ?? null
+    : null;
 
   const toggleCandidate = (candidate: CandidateListItem) => {
-    const status = candidateStatus(candidate, demand.id, matches.get(candidate.id));
+    const status = candidateStatus(candidate, demand.id, matches.get(candidate.id), reviewTasks);
     if (!status.selectable) return;
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -459,7 +493,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
                 <div className="space-y-2">
                   {visibleCandidates.map((candidate) => {
                     const match = matches.get(candidate.id);
-                    const status = candidateStatus(candidate, demand.id, match);
+                    const status = candidateStatus(candidate, demand.id, match, reviewTasks);
                     const selected = selectedIds.has(candidate.id);
                     return (
                       <article key={candidate.id} className={`grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-3 ${selected ? 'border-primary-400 bg-primary-50' : 'border-background-200 bg-white'}`}>
@@ -491,13 +525,27 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
             </div>
 
             <footer className="border-t border-background-200 px-5 py-3">
+              {reviewTasksError && <p className="mb-2 text-xs text-red-700">{reviewTasksError}</p>}
               {needsReactivationReason && <input value={reactivationReason} onChange={(event) => setReactivationReason(event.target.value)} placeholder="请填写重新启用曾淘汰候选人的原因" className="mb-2 h-9 w-full rounded-lg border border-amber-300 px-3 text-sm" />}
               {needsTransferReason && <input value={transferReason} onChange={(event) => setTransferReason(event.target.value)} placeholder="请填写从其他岗位转入当前需求的原因" className="mb-2 h-9 w-full rounded-lg border border-amber-300 px-3 text-sm" />}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-foreground-500">本页已选 {selectedIds.size} 位{saveMessage ? ` · ${saveMessage}` : ''}</p>
                 <div className="flex flex-wrap gap-2">
-                  {needsPipelineChange && <button type="button" onClick={() => void submitSelected(false)} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-200 bg-white px-4 text-sm font-medium text-primary-700 disabled:opacity-50">{saving ? <LoaderCircle className="animate-spin" size={15} /> : <UserPlus size={15} />}加入/转入当前需求</button>}
-                  <button type="button" onClick={() => void submitSelected(true)} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-500 px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? <LoaderCircle className="animate-spin" size={15} /> : <Send size={15} />}{needsPipelineChange ? '加入/转入并推送业务筛选' : '推送业务筛选'}</button>
+                  {selectedPendingTask ? (
+                    <>
+                      <span className="inline-flex h-9 items-center text-sm font-medium text-amber-700">等待「{selectedPendingTask.reviewer_name || '业务筛选人'}」反馈</span>
+                      <button
+                        type="button"
+                        onClick={() => onReadyToPush(demand, selectedCandidates.map((item) => ({ candidateId: item.id, candidateName: item.name_masked, currentDemandId: demand.id, currentStage: '业务筛选', currentStageCode: 'business_review' })), selectedPendingTask)}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-200 bg-white px-4 text-sm font-medium text-primary-700 hover:bg-primary-50"
+                      >改派筛选人</button>
+                    </>
+                  ) : (
+                    <>
+                      {needsPipelineChange && <button type="button" onClick={() => void submitSelected(false)} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-200 bg-white px-4 text-sm font-medium text-primary-700 disabled:opacity-50">{saving ? <LoaderCircle className="animate-spin" size={15} /> : <UserPlus size={15} />}仅加入/转入当前需求</button>}
+                      <button type="button" onClick={() => void submitSelected(true)} disabled={selectedIds.size === 0 || saving} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-500 px-4 text-sm font-medium text-white disabled:opacity-50">{saving ? <LoaderCircle className="animate-spin" size={15} /> : <Send size={15} />}{needsPipelineChange ? '加入/转入并推送业务筛选' : '推送业务筛选'}</button>
+                    </>
+                  )}
                 </div>
               </div>
             </footer>

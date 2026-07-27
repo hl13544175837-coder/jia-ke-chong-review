@@ -5,6 +5,7 @@ import type {
   BusinessReviewStatus,
   BusinessReviewTask,
   CreateBusinessReviewInput,
+  ReassignBusinessReviewInput,
 } from './types';
 
 function statusQuery(status?: BusinessReviewStatus) {
@@ -56,6 +57,16 @@ export const businessReviewsApi = {
       method: 'POST',
       body: payload,
       idempotencyKey,
+    });
+  },
+  reassignTask(
+    taskId: number,
+    reviewerId: number,
+  ): Promise<BusinessReviewTask & { unchanged?: boolean }> {
+    const body: ReassignBusinessReviewInput = { reviewer_id: reviewerId };
+    return apiRequest(`/business-reviews/${taskId}/reviewer`, {
+      method: 'PATCH',
+      body,
     });
   },
   loadResume(candidateId: number): Promise<Blob> {

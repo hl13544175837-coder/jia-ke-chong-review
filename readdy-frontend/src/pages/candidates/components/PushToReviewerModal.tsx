@@ -50,6 +50,8 @@ export interface PushResultItem {
 }
 
 interface PushToReviewerModalProps {
+  mode?: 'create' | 'reassign';
+  currentReviewerName?: string | null;
   targets: PushTarget[];
   demands: PushDemandOption[];
   reviewers: BusinessReviewerOption[];
@@ -77,6 +79,8 @@ function tomorrowDate() {
 }
 
 export default function PushToReviewerModal({
+  mode = 'create',
+  currentReviewerName,
   targets,
   demands,
   reviewers,
@@ -130,7 +134,8 @@ export default function PushToReviewerModal({
     selectedDemand
     && selectedReviewer
     && targets.length > 0
-    && blockedTargets.length === 0,
+    && blockedTargets.length === 0
+    && (mode === 'create' || reviewerId !== initialReviewerId),
   );
 
   const handleSubmit = () => {
@@ -162,8 +167,14 @@ export default function PushToReviewerModal({
       >
         <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div>
-            <h2 id="push-review-title" className="text-lg font-bold text-foreground-900">推送业务负责人筛选</h2>
-            <p className="mt-1 text-sm text-foreground-500">通过后由招聘专员安排面试，每位候选人会生成一条待办</p>
+            <h2 id="push-review-title" className="text-lg font-bold text-foreground-900">
+              {mode === 'reassign' ? '改派业务筛选人' : '推送业务筛选'}
+            </h2>
+            <p className="mt-1 text-sm text-foreground-500">
+              {mode === 'reassign'
+                ? `当前接收人：${currentReviewerName || '业务筛选人'}`
+                : '通过后由招聘专员安排正式面试，每位候选人会生成一条待办'}
+            </p>
           </div>
           <button
             type="button"
@@ -240,7 +251,7 @@ export default function PushToReviewerModal({
                   id="push-demand"
                   value={demandId || ''}
                   onChange={(event) => setDemandId(Number(event.target.value))}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || mode === 'reassign'}
                   className="w-full rounded-lg border border-background-300 bg-white px-3 py-2.5 text-sm text-foreground-900 outline-none transition-colors focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
                 >
                   <option value="">请选择候选人所在需求</option>
@@ -256,12 +267,12 @@ export default function PushToReviewerModal({
             <section>
               <p className="mb-2 flex items-center gap-2 text-xs font-medium text-foreground-600">
                 <UserRound size={14} aria-hidden="true" />
-                业务评审人 <span className="text-red-500">*</span>
+                业务筛选人 <span className="text-red-500">*</span>
               </p>
               {reviewersLoading ? (
                 <div className="flex items-center gap-2 rounded-lg border border-background-200 px-3 py-3 text-sm text-foreground-500">
                   <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />
-                  加载业务评审人中
+                  加载业务筛选人中
                 </div>
               ) : reviewerError ? (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
@@ -273,7 +284,7 @@ export default function PushToReviewerModal({
                 </div>
               ) : reviewers.length === 0 ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-                  暂无启用的业务评审人
+                  暂无启用的业务筛选人
                 </div>
               ) : (
                 <div className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
@@ -393,7 +404,11 @@ export default function PushToReviewerModal({
             ) : (
               <Send size={16} aria-hidden="true" />
             )}
-            {isSubmitting ? '正在推送' : results.some((result) => result.status === 'failed') ? '重试推送' : '确认推送'}
+            {isSubmitting
+              ? mode === 'reassign' ? '正在改派' : '正在推送'
+              : mode === 'reassign'
+                ? '确认改派'
+                : results.some((result) => result.status === 'failed') ? '重试推送' : '确认推送'}
           </button>
         </div>
       </div>
