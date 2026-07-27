@@ -412,7 +412,75 @@ def seed():
         )
         add_tags(c10, [("Python", 4), ("SQL", 5), ("Pandas", 5), ("Numpy", 4), ("Power BI", 4), ("数据可视化", 4), ("Tableau", 3)])
 
-        all_candidates = [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10]
+        # Candidate 11-15 — recruiter interview workbench acceptance scenarios.
+        # These are persisted in the local database so scheduling, reminders,
+        # feedback and refresh behavior can be tested without falling back to UI mocks.
+        c11 = make_candidate(
+            hr1.id, "验收候选人-待安排", "iv***11@example.com", "136****0011",
+            {
+                "name": "验收候选人-待安排",
+                "education": [{"school": "上海大学", "degree": "本科", "major": "软件工程", "year": 2020}],
+                "experience": [{"company": "本地验收企业", "title": "Python工程师", "years": 3, "desc": "Flask、SQLAlchemy、Redis"}],
+                "skills": ["Python", "Flask", "SQLAlchemy", "Redis"],
+                "summary": "本地真实面试流程验收数据：等待招聘专员安排面试",
+            },
+            4,
+        )
+        add_tags(c11, [("Python", 4), ("Flask", 4), ("SQLAlchemy", 3), ("Redis", 3)])
+
+        c12 = make_candidate(
+            hr1.id, "验收候选人-已安排", "iv***12@example.com", "136****0012",
+            {
+                "name": "验收候选人-已安排",
+                "education": [{"school": "华东理工大学", "degree": "本科", "major": "计算机科学", "year": 2019}],
+                "experience": [{"company": "本地验收企业", "title": "后端工程师", "years": 4, "desc": "Python、Docker、系统设计"}],
+                "skills": ["Python", "Docker", "系统设计"],
+                "summary": "本地真实面试流程验收数据：面试已经安排",
+            },
+            3,
+        )
+        add_tags(c12, [("Python", 4), ("Docker", 3), ("系统设计", 4)])
+
+        c13 = make_candidate(
+            hr1.id, "验收候选人-待反馈", "iv***13@example.com", "136****0013",
+            {
+                "name": "验收候选人-待反馈",
+                "education": [{"school": "北京邮电大学", "degree": "硕士", "major": "人工智能", "year": 2021}],
+                "experience": [{"company": "本地验收企业", "title": "算法工程师", "years": 3, "desc": "PyTorch、NLP、Transformers"}],
+                "skills": ["Python", "PyTorch", "NLP", "Transformers"],
+                "summary": "本地真实面试流程验收数据：面试已进行并等待反馈",
+            },
+            2,
+        )
+        add_tags(c13, [("Python", 5), ("PyTorch", 4), ("NLP", 4), ("Transformers", 4)])
+
+        c14 = make_candidate(
+            hr1.id, "验收候选人-已完成", "iv***14@example.com", "136****0014",
+            {
+                "name": "验收候选人-已完成",
+                "education": [{"school": "同济大学", "degree": "硕士", "major": "计算机技术", "year": 2020}],
+                "experience": [{"company": "本地验收企业", "title": "高级后端工程师", "years": 5, "desc": "Python、Redis、Celery、系统设计"}],
+                "skills": ["Python", "Redis", "Celery", "系统设计"],
+                "summary": "本地真实面试流程验收数据：面试反馈已经提交",
+            },
+            1,
+        )
+        add_tags(c14, [("Python", 5), ("Redis", 4), ("Celery", 4), ("系统设计", 4)])
+
+        c15 = make_candidate(
+            hr1.id, "验收候选人-待确认", "iv***15@example.com", "136****0015",
+            {
+                "name": "验收候选人-待确认",
+                "education": [{"school": "东南大学", "degree": "本科", "major": "软件工程", "year": 2020}],
+                "experience": [{"company": "本地验收企业", "title": "Python后端工程师", "years": 4, "desc": "FastAPI、Redis、Docker、系统设计"}],
+                "skills": ["Python", "FastAPI", "Redis", "Docker", "系统设计"],
+                "summary": "本地真实面试流程验收数据：面试时间已到，等待招聘专员确认已面试",
+            },
+            1,
+        )
+        add_tags(c15, [("Python", 5), ("FastAPI", 4), ("Redis", 4), ("Docker", 3), ("系统设计", 4)])
+
+        all_candidates = [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15]
         db.session.flush()
 
         # ── 5. DEMAND-SCOPED FLOWS + PIPELINE STAGES ─────────────────────────
@@ -464,6 +532,22 @@ def seed():
             (c10, job4, "ai_screen",  hr1.id, 4),
             (c10, job4, "interview",  hr1.id, 2),
             (c10, job4, "offer",      manager.id, 1),
+
+            (c11, job1, "pending",    hr1.id, 4),
+            (c11, job1, "ai_screen",  hr1.id, 3),
+            (c11, job1, "interview",  hr1.id, 2),
+
+            (c12, job1, "pending",    hr1.id, 3),
+            (c12, job1, "interview",  hr1.id, 1),
+
+            (c13, job3, "pending",    hr1.id, 2),
+            (c13, job3, "interview",  hr1.id, 1),
+
+            (c14, job3, "pending",    hr1.id, 2),
+            (c14, job3, "interview",  hr1.id, 1),
+
+            (c15, job1, "pending",    hr1.id, 2),
+            (c15, job1, "interview",  hr1.id, 1),
         ]
 
         latest_by_candidate = {}
@@ -598,6 +682,101 @@ def seed():
             status="scheduled",
             created_by=hr2.id,
             created_at=_dt(1),
+        ))
+
+        scheduled_assignment = InterviewAssignment(
+            org_id=1,
+            candidate_id=c12.id,
+            job_id=job1.id,
+            demand_id=demands_by_job_id[job1.id].id,
+            round="round_1",
+            round_sequence=1,
+            is_primary=True,
+            primary_slot=1,
+            interviewer_id=ivr.id,
+            scheduled_at=_dt(-2),
+            location="本地验收会议室 A",
+            note="本地真实验收数据：已安排，可测试改期和取消",
+            status="scheduled",
+            created_by=hr1.id,
+            created_at=_dt(1),
+        )
+        awaiting_feedback_assignment = InterviewAssignment(
+            org_id=1,
+            candidate_id=c13.id,
+            job_id=job3.id,
+            demand_id=demands_by_job_id[job3.id].id,
+            round="round_1",
+            round_sequence=1,
+            is_primary=True,
+            primary_slot=1,
+            interviewer_id=ivr.id,
+            scheduled_at=_dt(hours_ago=4),
+            location="本地验收会议室 B",
+            note="本地真实验收数据：待反馈，可测试催反馈",
+            status="awaiting_feedback",
+            created_by=hr1.id,
+            created_at=_dt(1),
+        )
+        completed_assignment = InterviewAssignment(
+            org_id=1,
+            candidate_id=c14.id,
+            job_id=job3.id,
+            demand_id=demands_by_job_id[job3.id].id,
+            round="round_1",
+            round_sequence=1,
+            is_primary=True,
+            primary_slot=1,
+            interviewer_id=ivr.id,
+            scheduled_at=_dt(days_ago=2),
+            location="本地验收会议室 C",
+            note="本地真实验收数据：已提交反馈",
+            status="feedback_submitted",
+            created_by=hr1.id,
+            created_at=_dt(3),
+        )
+        started_assignment = InterviewAssignment(
+            org_id=1,
+            candidate_id=c15.id,
+            job_id=job1.id,
+            demand_id=demands_by_job_id[job1.id].id,
+            round="round_1",
+            round_sequence=1,
+            is_primary=True,
+            primary_slot=1,
+            interviewer_id=ivr.id,
+            scheduled_at=_dt(hours_ago=2),
+            location="本地验收会议室 D",
+            note="本地真实验收数据：面试时间已到，可测试确认已面试",
+            status="scheduled",
+            created_by=hr1.id,
+            created_at=_dt(1),
+        )
+        db.session.add_all([
+            scheduled_assignment,
+            awaiting_feedback_assignment,
+            completed_assignment,
+            started_assignment,
+        ])
+        db.session.flush()
+        db.session.add(InterviewFeedback(
+            org_id=1,
+            candidate_id=c14.id,
+            job_id=job3.id,
+            demand_id=demands_by_job_id[job3.id].id,
+            assignment_id=completed_assignment.id,
+            round="round_1",
+            interviewer_id=ivr.id,
+            score=5,
+            passed=True,
+            strengths="专业基础扎实，表达清晰",
+            concerns="暂无明显风险",
+            reason_tags=["专业匹配", "建议推进"],
+            evaluation_json={"satisfaction": "satisfied"},
+            note="本地真实验收反馈：建议进入下一轮",
+            created_at=_dt(1),
+            updated_by=ivr.id,
+            updated_at=_dt(1),
         ))
         # ── 6.1 OFFER LIFECYCLES ─────────────────────────────────────────────
         # Keep the seeded offer records aligned with the demand-scoped pipeline:
