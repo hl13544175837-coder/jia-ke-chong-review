@@ -378,6 +378,108 @@ def get_business_review(org_id, task_id, user_id, role):
     return task
 
 
+def reassign_business_review(org_id, task_id, actor_id, reviewer_id):
+    task_model = _business_review_model()
+    task = _task_for_update(task_model, org_id=org_id, task_id=task_id)
+    if task is None:
+        raise BusinessReviewError(
+            "业务筛选任务不存在",
+            code="business_review_not_found",
+            status_code=404,
+        )
+    if task.status != "pending" or task.pending_slot != 1:
+        raise BusinessReviewError(
+            "业务筛选任务已经处理，不能改派",
+            code="business_review_already_decided",
+        )
+
+    actor = db.session.get(User, actor_id)
+    demand = db.session.get(RecruitmentDemand, task.demand_id)
+    if (
+        actor is None
+        or actor.org_id != org_id
+        or not actor.is_active
+        or actor.role not in {"recruiter", "manager", "admin"}
+        or (
+            actor.role == "recruiter"
+            and (demand is None or demand.owner_hr_id != actor_id)
+        )
+    ):
+        raise BusinessReviewError(
+            "Forbidden", code="forbidden", status_code=403
+        )
+
+    reviewer = db.session.execute(
+        select(User)
+        .where(User.id == reviewer_id, User.org_id == org_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if (
+        reviewer is None
+        or not reviewer.is_active
+        or reviewer.role not in BUSINESS_REVIEWER_ROLES
+    ):
+        raise BusinessReviewError(
+            "业务筛选人不存在、未启用或角色不正确",
+            code="invalid_business_reviewer",
+            status_code=400,
+        )
+    if reviewer.id == task.reviewer_id:
+        return task, True
+
+    old_reviewer_id = task.reviewer_id
+    task.reviewer_id = reviewer.id
+    candidate = db.session.get(Candidate, task.candidate_id)
+    candidate_name = candidate.name_masked if candidate else "候选人"
+    job_title = (
+        demand.job_title_snapshot or (demand.job.title if demand.job else "招聘需求")
+        if demand
+        else "招聘需求"
+    )
+    link = f"/interviewer/screening?task={task.id}"
+    db.session.add_all(
+        [
+            Notification(
+                org_id=org_id,
+                user_id=old_reviewer_id,
+                demand_id=task.demand_id,
+                type="business_review_reassigned_away",
+                title="业务筛选任务已改派",
+                body=f"{candidate_name} · {job_title} 已改派给其他业务筛选人",
+                link="/interviewer/screening",
+            ),
+            Notification(
+                org_id=org_id,
+                user_id=reviewer.id,
+                demand_id=task.demand_id,
+                type="business_review_reassigned",
+                title="新的业务筛选任务",
+                body=f"{candidate_name} · {job_title}",
+                link=link,
+            ),
+        ]
+    )
+    try:
+        record_event(
+            "business_review.reassigned",
+            entity_id=task.id,
+            entity_type="business_review_task",
+            demand_id=task.demand_id,
+            payload={
+                "task_id": task.id,
+                "candidate_id": task.candidate_id,
+                "old_reviewer_id": old_reviewer_id,
+                "new_reviewer_id": reviewer.id,
+            },
+            commit=False,
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return task, False
+
+
 def decide_business_review(org_id, task_id, actor_id, decision, note):
     task_model = _business_review_model()
     decision = str(decision or "").strip().lower()

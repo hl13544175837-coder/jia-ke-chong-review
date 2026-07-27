@@ -2,6 +2,7 @@ import pytest
 
 from app import db
 from app.models import (
+    BusinessReviewTask,
     Candidate,
     CandidateDemandFlow,
     Event,
@@ -234,6 +235,95 @@ def test_duplicate_pending_push_reuses_task_and_side_effects(
     mine = client.get("/api/business-reviews/mine", headers=_auth(reviewer_token))
     assert mine.status_code == 200
     assert [item["id"] for item in mine.get_json()] == [first["id"]]
+
+
+def test_owner_can_explicitly_reassign_one_pending_review_without_creating_a_duplicate(
+    client, make_user, app
+):
+    hr_id, hr_token = make_user("hr-reassign-review@example.com", role="recruiter")
+    reviewer_a_id, reviewer_a_token = make_user(
+        "business-review-a@example.com", role="interviewer", name="业务筛选人A"
+    )
+    reviewer_b_id, reviewer_b_token = make_user(
+        "business-review-b@example.com", role="interviewer", name="业务筛选人B"
+    )
+    case = _seed_review_case(app, hr_id, suffix="REASSIGN")
+    task = _push_review(client, hr_token, case, reviewer_a_id).get_json()
+
+    response = client.patch(
+        f"/api/business-reviews/{task['id']}/reviewer",
+        headers=_auth(hr_token),
+        json={"reviewer_id": reviewer_b_id},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["id"] == task["id"]
+    assert payload["reviewer_id"] == reviewer_b_id
+    assert payload["reviewer_name"] == "业务筛选人B"
+    assert payload["unchanged"] is False
+
+    old_mine = client.get(
+        "/api/business-reviews/mine", headers=_auth(reviewer_a_token)
+    )
+    new_mine = client.get(
+        "/api/business-reviews/mine", headers=_auth(reviewer_b_token)
+    )
+    assert old_mine.get_json() == []
+    assert [item["id"] for item in new_mine.get_json()] == [task["id"]]
+
+    with app.app_context():
+        assert BusinessReviewTask.query.filter_by(
+            demand_id=case["demand_id"],
+            candidate_id=case["candidate_id"],
+            status="pending",
+        ).count() == 1
+        event = Event.query.filter_by(
+            action="business_review.reassigned", entity_id=task["id"]
+        ).one()
+        assert event.payload["old_reviewer_id"] == reviewer_a_id
+        assert event.payload["new_reviewer_id"] == reviewer_b_id
+        old_notice = Notification.query.filter_by(
+            user_id=reviewer_a_id,
+            demand_id=case["demand_id"],
+            type="business_review_reassigned_away",
+        ).one()
+        new_notice = Notification.query.filter_by(
+            user_id=reviewer_b_id,
+            demand_id=case["demand_id"],
+            type="business_review_reassigned",
+        ).one()
+        assert old_notice.user_id == reviewer_a_id
+        assert new_notice.link == f"/interviewer/screening?task={task['id']}"
+
+
+def test_invalid_reassignment_keeps_the_original_pending_reviewer(
+    client, make_user, app
+):
+    hr_id, hr_token = make_user("hr-invalid-reassign@example.com", role="recruiter")
+    reviewer_id, _ = make_user(
+        "business-original@example.com", role="interviewer"
+    )
+    inactive_id, _ = make_user(
+        "business-inactive@example.com", role="interviewer", is_active=False
+    )
+    case = _seed_review_case(app, hr_id, suffix="INVALID-REASSIGN")
+    task = _push_review(client, hr_token, case, reviewer_id).get_json()
+
+    response = client.patch(
+        f"/api/business-reviews/{task['id']}/reviewer",
+        headers=_auth(hr_token),
+        json={"reviewer_id": inactive_id},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "invalid_business_reviewer"
+    with app.app_context():
+        saved = db.session.get(BusinessReviewTask, task["id"])
+        assert saved.reviewer_id == reviewer_id
+        assert Event.query.filter_by(
+            action="business_review.reassigned", entity_id=task["id"]
+        ).count() == 0
 
 
 def test_review_payload_exposes_latest_demand_stage_after_handoff(

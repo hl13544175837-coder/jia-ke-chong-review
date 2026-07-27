@@ -9,6 +9,7 @@ from ..services.business_review_service import (
     decide_business_review,
     get_business_review,
     list_business_reviews,
+    reassign_business_review,
 )
 
 
@@ -107,6 +108,31 @@ def get_review_task(task_id):
         payload = business_review_payload(task)
     except BusinessReviewError as error:
         return _error_response(error)
+    return jsonify(payload)
+
+
+@bp.patch("/business-reviews/<int:task_id>/reviewer")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def reassign_review_task(task_id):
+    reviewer_id = _positive_int(
+        request.get_json(silent=True) or {}, "reviewer_id"
+    )
+    if reviewer_id is None:
+        return jsonify(
+            {
+                "error": "reviewer_id 必须是正整数",
+                "code": "invalid_business_reviewer",
+            }
+        ), 400
+    try:
+        task, unchanged = reassign_business_review(
+            g.org_id, task_id, g.user_id, reviewer_id
+        )
+        payload = business_review_payload(task)
+    except BusinessReviewError as error:
+        return _error_response(error)
+    payload["unchanged"] = unchanged
     return jsonify(payload)
 
 
