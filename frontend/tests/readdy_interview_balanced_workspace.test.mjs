@@ -48,6 +48,7 @@ for (const label of ['候选人 / 应聘岗位', '轮次', '面试安排', '面�
 for (const action of ['安排面试', '调整安排', '确认已面试', '催反馈', '查看反馈']) {
   assert.ok(table.includes(action), `平衡表格缺少“${action}”操作`);
 }
+assert.match(table, /statusLabelForRow/, '过去的已安排面试必须单独显示为待确认已面试');
 assert.match(table, /更多操作/, '低频操作必须收进更多菜单');
 assert.doesNotMatch(table, /@\/mocks\//, '平衡表格不得依赖 Mock 数据');
 

@@ -392,11 +392,13 @@ Offer 状态顺序为 `draft → pending → approved → sent → accepted → 
 | `POST` | `/interview/start` | recruiter/manager/admin + Demand 权限 | 在显式/唯一解析的 Demand 上下文生成 AI 面试题；面试官禁止 |
 | `POST` | `/interview/submit` | recruiter/manager/admin + Demand 权限 | 提交回答、保存 AI 评分与建议，不回写流程 |
 | `GET` | `/interview/<interview_id>` | 登录 | AI 面试报告详情 |
-| `POST` | `/interview/feedback` | 登录且有 Demand/assignment 权限 | 提交具体 assignment 反馈；同 assignment 重复返回已有反馈，数据库唯一索引为并发最终防线；任何反馈都不推进流程 |
+| `POST` | `/interview/feedback` | 登录且有 Demand/assignment 权限 | 当前简单评价必须在 HR 将 assignment 确认为 `awaiting_feedback` 后提交，提前提交返回 `409 interview_not_confirmed`；同 assignment 重复返回已有反馈，数据库唯一索引为并发最终防线；任何反馈都不推进流程 |
 | `GET` | `/interview/feedback` | 登录 | 查询反馈，返回原因分类 |
 | `GET` | `/interviews` | 登录 | 面试记录列表，按角色过滤 |
 | `GET` | `/interview/interviewers` | 登录 | 返回启用中的面试官/经理/管理员选项，包含姓名、email 和角色供可搜索选择 |
 | `POST` | `/interview/assignments` | recruiter/manager/admin + Demand 权限 | 创建主/辅安排；重复返回已有记录；同轮第二个有效 primary 或时间冲突稳定 409，数据库唯一索引兜底 |
+| `POST` | `/interview/assignments/<assignment_id>/mark-conducted` | recruiter/manager/admin + Demand 管理权 | 面试开始后确认真实发生，将状态从 `scheduled` 原子改为 `awaiting_feedback` 并通知具体面试官；重复调用幂等 |
+| `POST` | `/interview/assignments/<assignment_id>/remind-feedback` | recruiter/manager/admin + Demand 管理权 | 只允许催办 `awaiting_feedback` 且尚未提交的任务；15 分钟内同任务去重 |
 | `PATCH` | `/interview/assignments/<assignment_id>/cancel` | recruiter/manager/admin + Demand 管理权 | `reason` 必填；只取消未反馈任务，规范状态为 `cancelled`、释放 `primary_slot` 并允许重排；已有反馈返回稳定 409 |
 
 ### 7.7 BI / Admin / Agent（当前代码候选）

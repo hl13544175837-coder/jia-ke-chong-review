@@ -2,7 +2,7 @@ import { CheckCircle2, Clock3, MoreHorizontal, UserRound } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { InterviewManagementRow } from '@/features/interviews/types';
 import { formatInterviewDateTime, interviewHasStarted } from '@/features/interviews/dateTime';
-import { rowStatus, statusLabel } from '../workbench';
+import { rowStatus, statusLabelForRow } from '../workbench';
 
 interface InterviewManagementTableProps {
   rows: InterviewManagementRow[];
@@ -115,7 +115,7 @@ export default function InterviewManagementTable({
                 <td className="px-3 py-3 text-xs text-foreground-600">{roundLabel(row)}</td>
                 <td className="px-3 py-3"><span className="inline-flex items-center gap-1.5 text-xs text-foreground-600"><Clock3 size={13} className="text-foreground-400" />{formatInterviewDateTime(row.scheduled_at)}</span></td>
                 <td className="px-3 py-3"><span className="inline-flex items-center gap-1.5 text-xs text-foreground-600"><UserRound size={13} className="text-foreground-400" />{row.interviewer_name || '面试官待安排'}</span></td>
-                <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset ${statusTone(row)}`}>{statusLabel(status)}</span></td>
+                <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset ${statusTone(row)}`}>{statusLabelForRow(row)}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
                     <RowActions row={row} actionRowId={actionRowId} onOpenDetails={onOpenDetails} onSchedule={onSchedule} onConfirmConducted={onConfirmConducted} onRemind={onRemind} />

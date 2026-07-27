@@ -46,19 +46,50 @@ function assignmentBucket(item: InterviewAssignment): Exclude<TabKey, 'all'> {
   if (item.feedback_submitted || ['completed', 'feedback_submitted'].includes(item.status)) {
     return 'completed';
   }
-  if (item.status === 'awaiting_feedback' || item.is_overdue) return 'feedback';
+  if (item.status === 'awaiting_feedback') return 'feedback';
   return 'upcoming';
 }
 
 function canSubmitFeedback(item: InterviewAssignment) {
-  return interviewHasStarted(item.scheduled_at);
+  return Boolean(item.feedback_submitted) || (
+    item.status === 'awaiting_feedback'
+    && interviewHasStarted(item.scheduled_at)
+  );
+}
+
+function feedbackActionLabel(item: InterviewAssignment) {
+  if (item.feedback_submitted) return '修改评价';
+  if (!interviewHasStarted(item.scheduled_at)) return '面试尚未开始';
+  if (item.status !== 'awaiting_feedback') return '等待招聘专员确认';
+  return '填写评价';
+}
+
+function latestCandidateAssignment(
+  assignments: InterviewAssignment[],
+  candidateId: number,
+  demandId: number | null,
+  assignmentId: number | null,
+) {
+  const matches = assignments.filter((item) => (
+    item.candidate_id === candidateId
+    && (!demandId || item.demand_id === demandId)
+  ));
+  if (assignmentId) {
+    const exact = matches.find((item) => item.id === assignmentId);
+    if (exact) return exact;
+  }
+  return matches.sort((left, right) => (
+    (right.round_sequence || 0) - (left.round_sequence || 0)
+    || right.id - left.id
+  ))[0] ?? null;
 }
 
 export default function InterviewerInterviewsPage() {
   const [searchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
-  const handledCandidateId = useRef<number | null>(null);
+  const requestedAssignmentId = Number(searchParams.get('assignment')) || null;
+  const handledDeepLink = useRef('');
   const [assignments, setAssignments] = useState<InterviewAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -142,15 +173,18 @@ export default function InterviewerInterviewsPage() {
   }, []);
 
   useEffect(() => {
-    if (loading || !requestedCandidateId || handledCandidateId.current === requestedCandidateId) return;
-    const assignment = assignments.find((item) => (
-      item.candidate_id === requestedCandidateId
-      && (!requestedDemandId || item.demand_id === requestedDemandId)
-    ));
+    const deepLinkKey = `${requestedCandidateId || ''}:${requestedAssignmentId || ''}`;
+    if (loading || !requestedCandidateId || handledDeepLink.current === deepLinkKey) return;
+    const assignment = latestCandidateAssignment(
+      assignments,
+      requestedCandidateId,
+      requestedDemandId,
+      requestedAssignmentId,
+    );
     if (!assignment) return;
-    handledCandidateId.current = requestedCandidateId;
+    handledDeepLink.current = deepLinkKey;
     void openDetail(assignment);
-  }, [assignments, loading, openDetail, requestedCandidateId, requestedDemandId]);
+  }, [assignments, loading, openDetail, requestedAssignmentId, requestedCandidateId, requestedDemandId]);
 
   const openOriginalResume = async (download: boolean) => {
     if (!selected) return;
@@ -176,7 +210,11 @@ export default function InterviewerInterviewsPage() {
 
   const startFeedback = async (assignment: InterviewAssignment) => {
     if (!canSubmitFeedback(assignment)) {
-      setFeedbackError('面试尚未开始，暂时不能提交评价');
+      setFeedbackError(
+        interviewHasStarted(assignment.scheduled_at)
+          ? '请等待招聘专员确认面试已经完成'
+          : '面试尚未开始，暂时不能提交评价',
+      );
       return;
     }
     if (selected?.id !== assignment.id) await openDetail(assignment);
@@ -277,6 +315,7 @@ export default function InterviewerInterviewsPage() {
           <div className="divide-y divide-background-100">
             {filtered.map((item) => {
               const bucket = assignmentBucket(item);
+              const actionLabel = feedbackActionLabel(item);
               return (
                 <div key={item.id} className="flex flex-wrap items-center gap-4 px-5 py-4 hover:bg-background-50/70">
                   <button
@@ -309,17 +348,17 @@ export default function InterviewerInterviewsPage() {
                         ? 'bg-emerald-100 text-emerald-700'
                         : 'bg-primary-100 text-primary-700'
                   }`}>
-                    {bucket === 'feedback' ? '待反馈' : bucket === 'completed' ? '已完成' : '待面试'}
+                    {bucket === 'feedback' ? '待反馈' : bucket === 'completed' ? '已完成' : interviewHasStarted(item.scheduled_at) ? '等待确认' : '待面试'}
                   </span>
                   <button
                     type="button"
                     onClick={() => void startFeedback(item)}
                     disabled={!canSubmitFeedback(item)}
-                    title={!canSubmitFeedback(item) ? '面试尚未开始，暂时不能提交评价' : undefined}
+                    title={!canSubmitFeedback(item) ? actionLabel : undefined}
                     className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground-900 px-3 text-sm font-medium text-white hover:bg-foreground-800 disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500"
                   >
                     <MessageSquareText size={15} />
-                    {!canSubmitFeedback(item) ? '面试尚未开始' : item.feedback_submitted ? '修改评价' : '填写评价'}
+                    {actionLabel}
                   </button>
                 </div>
               );
@@ -431,7 +470,7 @@ export default function InterviewerInterviewsPage() {
                         className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-foreground-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500"
                       >
                         <MessageSquareText size={15} />
-                        {!canSubmitFeedback(selected) ? '面试尚未开始' : selectedFeedback ? '修改评价' : '填写评价'}
+                        {selectedFeedback ? '修改评价' : feedbackActionLabel(selected)}
                       </button>
                     </div>
                   </section>

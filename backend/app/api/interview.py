@@ -20,6 +20,7 @@ from ..services.interview_workflow_service import (
     feedback_satisfaction,
     load_assignment_for_update,
     normalize_assignment_datetime,
+    normalize_assignment_status,
     normalize_simple_feedback,
     resolve_interview_context,
     update_interview_feedback,
@@ -281,6 +282,7 @@ def _assignment_payload(item):
         )
     is_overdue = bool(
         assignment_active
+        and normalize_assignment_status(item.status) == "awaiting_feedback"
         and scheduled_at
         and scheduled_at < utc_now()
         and not feedback_submitted
@@ -686,11 +688,6 @@ def submit_feedback():
         g.user_id, g.role, g.org_id, context, round_name
     ):
         return jsonify({"error": "Forbidden"}), 403
-    try:
-        ensure_interview_has_started(assignment)
-    except InterviewAssignmentWorkflowError as exc:
-        return _assignment_workflow_error_response(exc)
-
     existing = InterviewFeedback.query.filter_by(
         org_id=g.org_id,
         assignment_id=assignment.id,
@@ -702,6 +699,19 @@ def submit_feedback():
             deduplicated=True,
             round_completed=completed,
         )), 200
+
+    if (
+        simple_feedback is not None
+        and normalize_assignment_status(assignment.status) != "awaiting_feedback"
+    ):
+        return jsonify({
+            "error": "请等待招聘专员确认面试已完成后再提交评价",
+            "code": "interview_not_confirmed",
+        }), 409
+    try:
+        ensure_interview_has_started(assignment)
+    except InterviewAssignmentWorkflowError as exc:
+        return _assignment_workflow_error_response(exc)
 
     evaluation = _sanitize_evaluation(data.get("evaluation"))
     note = data.get("note")
@@ -738,6 +748,7 @@ def submit_feedback():
                 link=(
                     f"/interviews?demand={context.demand_id}"
                     f"&candidate={context.candidate.id}"
+                    f"&assignment={assignment.id}"
                 ),
             ))
     assignment_id = assignment.id

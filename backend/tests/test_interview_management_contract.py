@@ -7,6 +7,7 @@ from app.models import (
     BusinessReviewTask,
     Candidate,
     CandidateDemandFlow,
+    CandidateDisposition,
     Event,
     InterviewAssignment,
     InterviewFeedback,
@@ -213,6 +214,8 @@ def test_management_rows_include_unassigned_and_enforce_role_demand_and_org_scop
         "feedback_score": None,
         "feedback_passed": None,
         "feedback_result": None,
+        "disposition_reason": "",
+        "enter_talent_pool": None,
     }
 
 
@@ -290,6 +293,7 @@ def test_approved_business_review_is_ready_to_schedule_and_notifies_interviewer_
         assert notice.link == (
             f"/interviewer/interviews?demand={seeded['demand_id']}"
             f"&candidate={seeded['candidate_id']}"
+            f"&assignment={created.get_json()['id']}"
         )
 
 
@@ -611,6 +615,70 @@ def test_management_rows_keep_primary_result_after_pipeline_advances_and_ignore_
     assert row["is_primary"] is True
     assert row["pipeline_stage"] == "offer"
     assert row["feedback_result"] == "passed"
+
+
+def test_rejected_candidate_keeps_interview_history_and_disposition_reason(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "mgmt-rejected-history-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "mgmt-rejected-history-interviewer@example.com", role="interviewer"
+    )
+    seeded = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="REJECTED-HISTORY",
+        interviewer_id=interviewer_id,
+        scheduled_at=utc_now() - timedelta(hours=2),
+        assignment_status="completed",
+    )
+    with app.app_context():
+        flow = CandidateDemandFlow.query.filter_by(
+            candidate_id=seeded["candidate_id"],
+            demand_id=seeded["demand_id"],
+        ).one()
+        flow.status = "rejected"
+        flow.ended_at = utc_now()
+        candidate = db.session.get(Candidate, seeded["candidate_id"])
+        candidate.current_demand_id = None
+        db.session.add(
+            PipelineStage(
+                org_id=1,
+                candidate_id=seeded["candidate_id"],
+                job_id=seeded["job_id"],
+                demand_id=seeded["demand_id"],
+                stage="rejected",
+                updated_by=owner_id,
+                note="面试后岗位匹配不足",
+            )
+        )
+        db.session.add(
+            CandidateDisposition(
+                org_id=1,
+                candidate_id=seeded["candidate_id"],
+                job_id=seeded["job_id"],
+                demand_id=seeded["demand_id"],
+                reason="系统设计深度未达到岗位要求",
+                enter_talent_pool=True,
+                created_by=owner_id,
+            )
+        )
+        db.session.commit()
+
+    response = client.get(
+        "/api/interview/management-rows", headers=_auth(owner_token)
+    )
+
+    assert response.status_code == 200
+    row = next(
+        item for item in response.get_json()
+        if item["candidate_id"] == seeded["candidate_id"]
+    )
+    assert row["pipeline_stage"] == "rejected"
+    assert row["disposition_reason"] == "系统设计深度未达到岗位要求"
+    assert row["enter_talent_pool"] is True
 
 
 def test_management_rows_return_cancelled_interview_candidate_as_unassigned(
@@ -1004,6 +1072,78 @@ def test_mark_conducted_is_explicit_idempotent_and_never_advances_pipeline(
             ).all()
         ]
         assert after_stage_ids == before_stage_ids
+
+
+def test_simple_feedback_waits_for_recruiter_to_confirm_interview_was_conducted(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "feedback-confirm-owner@example.com", role="recruiter"
+    )
+    interviewer_id, interviewer_token = make_user(
+        "feedback-confirm-interviewer@example.com", role="interviewer"
+    )
+    seeded = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="FEEDBACK-CONFIRM",
+        interviewer_id=interviewer_id,
+        scheduled_at=utc_now() - timedelta(hours=1),
+        assignment_status="scheduled",
+    )
+    payload = {
+        "assignment_id": seeded["assignment_id"],
+        "satisfaction": "satisfied",
+        "note": "先确认面试真实发生，再提交评价",
+    }
+
+    too_early = client.post(
+        "/api/interview/feedback",
+        headers=_auth(interviewer_token),
+        json=payload,
+    )
+
+    assert too_early.status_code == 409
+    assert too_early.get_json()["code"] == "interview_not_confirmed"
+    assert client.post(
+        f"/api/interview/assignments/{seeded['assignment_id']}/mark-conducted",
+        headers=_auth(owner_token),
+    ).status_code == 200
+
+    accepted = client.post(
+        "/api/interview/feedback",
+        headers=_auth(interviewer_token),
+        json=payload,
+    )
+    assert accepted.status_code == 201
+
+
+def test_past_scheduled_assignment_is_not_reported_as_overdue_feedback(
+    client, make_user, app
+):
+    owner_id, _ = make_user(
+        "past-scheduled-owner@example.com", role="recruiter"
+    )
+    interviewer_id, interviewer_token = make_user(
+        "past-scheduled-interviewer@example.com", role="interviewer"
+    )
+    seeded = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="PAST-SCHEDULED",
+        interviewer_id=interviewer_id,
+        scheduled_at=utc_now() - timedelta(hours=1),
+        assignment_status="scheduled",
+    )
+
+    response = client.get(
+        f"/api/interview/assignments?candidate_id={seeded['candidate_id']}",
+        headers=_auth(interviewer_token),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()[0]["status"] == "scheduled"
+    assert response.get_json()[0]["is_overdue"] is False
 
 
 def test_feedback_reminder_requires_awaiting_feedback_has_short_rate_limit_and_org_scope(

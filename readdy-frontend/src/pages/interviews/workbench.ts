@@ -1,4 +1,5 @@
 import type { InterviewManagementRow } from '@/features/interviews/types';
+import { interviewHasStarted } from '@/features/interviews/dateTime';
 
 export type InterviewStatusTab = 'all' | 'unassigned' | 'scheduled' | 'awaiting_feedback' | 'completed';
 export type InterviewViewMode = 'list' | 'calendar';
@@ -45,6 +46,12 @@ export function statusLabel(status: Exclude<InterviewStatusTab, 'all'>) {
     awaiting_feedback: '待反馈',
     completed: '已完成',
   }[status];
+}
+
+export function statusLabelForRow(row: InterviewManagementRow) {
+  const status = rowStatus(row);
+  if (status === 'scheduled' && interviewHasStarted(row.scheduled_at)) return '待确认已面试';
+  return statusLabel(status);
 }
 
 export function interviewLocalDateKey(value: string | null) {

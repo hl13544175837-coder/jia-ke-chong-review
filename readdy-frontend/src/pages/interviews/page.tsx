@@ -20,7 +20,7 @@ import {
   emptyInterviewFilters,
   filterInterviewRows,
   rowStatus,
-  statusLabel,
+  statusLabelForRow,
   type InterviewStatusTab,
   type InterviewViewMode,
 } from './workbench';
@@ -50,6 +50,8 @@ function followUpScheduleRow(
     feedback_score: null,
     feedback_passed: null,
     feedback_result: null,
+    disposition_reason: '',
+    enter_talent_pool: null,
   };
 }
 
@@ -60,14 +62,35 @@ function initialInterviewTab(value: string | null): InterviewStatusTab {
   return 'all';
 }
 
+function latestCandidateManagementRow(
+  rows: InterviewManagementRow[],
+  candidateId: number,
+  demandId: number | null,
+  assignmentId: number | null,
+) {
+  const matches = rows.filter((item) => (
+    item.candidate_id === candidateId
+    && (!demandId || item.demand_id === demandId)
+  ));
+  if (assignmentId) {
+    const exact = matches.find((item) => item.assignment_id === assignmentId);
+    if (exact) return exact;
+  }
+  return matches.sort((left, right) => (
+    (right.round_sequence || 0) - (left.round_sequence || 0)
+    || (right.assignment_id || 0) - (left.assignment_id || 0)
+  ))[0] ?? null;
+}
+
 export default function RecruiterInterviewsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
+  const requestedAssignmentId = Number(searchParams.get('assignment')) || null;
   const fromJobs = searchParams.get('from') === 'jobs';
   const fromDashboard = searchParams.get('from') === 'dashboard';
-  const handledCandidateId = useRef<number | null>(null);
+  const handledDeepLink = useRef('');
   const [rows, setRows] = useState<InterviewManagementRow[]>([]);
   const [interviewers, setInterviewers] = useState<InterviewerOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,19 +138,22 @@ export default function RecruiterInterviewsPage() {
   }, [loadWorkbench]);
 
   useEffect(() => {
-    if (!requestedCandidateId || loading || handledCandidateId.current === requestedCandidateId) return;
-    const row = rows.find((item) => (
-      item.candidate_id === requestedCandidateId
-      && (!requestedDemandId || item.demand_id === requestedDemandId)
-    ));
+    const deepLinkKey = `${requestedCandidateId || ''}:${requestedAssignmentId || ''}`;
+    if (!requestedCandidateId || loading || handledDeepLink.current === deepLinkKey) return;
+    const row = latestCandidateManagementRow(
+      rows,
+      requestedCandidateId,
+      requestedDemandId,
+      requestedAssignmentId,
+    );
     if (!row) return;
-    handledCandidateId.current = requestedCandidateId;
+    handledDeepLink.current = deepLinkKey;
     if (rowStatus(row) === 'unassigned') {
       setScheduleIsPrimary(true);
       setScheduleRow(row);
     }
     else setSelectedRow(row);
-  }, [loading, requestedCandidateId, requestedDemandId, rows]);
+  }, [loading, requestedAssignmentId, requestedCandidateId, requestedDemandId, rows]);
 
   const scopedRows = useMemo(
     () => requestedDemandId
@@ -363,7 +389,7 @@ export default function RecruiterInterviewsPage() {
           <aside className="h-full w-full max-w-[520px] overflow-y-auto bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-bold text-foreground-900">{selectedRow.name_masked}</h2><p className="mt-1 text-sm text-foreground-500">{selectedRow.job_title}</p></div><button type="button" onClick={() => setSelectedRow(null)} className="rounded-lg p-2 text-foreground-400 hover:bg-background-100"><X size={18} /></button></div>
             <dl className="mt-6 grid grid-cols-2 gap-4 text-sm">
-              <div><dt className="text-xs text-foreground-400">当前状态</dt><dd className="mt-1 font-medium text-foreground-800">{statusLabel(rowStatus(selectedRow))}</dd></div>
+              <div><dt className="text-xs text-foreground-400">当前状态</dt><dd className="mt-1 font-medium text-foreground-800">{statusLabelForRow(selectedRow)}</dd></div>
               <div><dt className="text-xs text-foreground-400">面试官</dt><dd className="mt-1 font-medium text-foreground-800">{selectedRow.interviewer_name || '待安排'}</dd></div>
               <div><dt className="text-xs text-foreground-400">面试时间</dt><dd className="mt-1 text-foreground-700">{formatInterviewDateTime(selectedRow.scheduled_at)}</dd></div>
               <div><dt className="text-xs text-foreground-400">地点 / 链接</dt><dd className="mt-1 inline-flex items-center gap-1 text-foreground-700"><MapPin size={13} />{selectedRow.location || '待确认'}</dd></div>
@@ -398,6 +424,8 @@ export default function RecruiterInterviewsPage() {
             {selectedRow.feedback_submitted && selectedRow.pipeline_stage !== 'interview' && (
               <div className="mt-5 rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">
                 该候选人已进入“{selectedRow.pipeline_stage === 'offer' ? 'Offer' : selectedRow.pipeline_stage === 'rejected' ? '已淘汰' : selectedRow.pipeline_stage}”阶段，不再重复显示面试决策。
+                {selectedRow.pipeline_stage === 'offer' && <button type="button" onClick={() => navigate(`/offers?demand=${selectedRow.demand_id}&candidate=${selectedRow.candidate_id}`)} className="ml-2 font-medium text-primary-700 hover:underline">查看 Offer</button>}
+                {selectedRow.pipeline_stage === 'rejected' && <p className="mt-2 text-xs text-foreground-500">淘汰原因：{selectedRow.disposition_reason || '未填写'} · {selectedRow.enter_talent_pool ? '已进入公司人才库' : '不进入公司人才库'}</p>}
               </div>
             )}
           </aside>
