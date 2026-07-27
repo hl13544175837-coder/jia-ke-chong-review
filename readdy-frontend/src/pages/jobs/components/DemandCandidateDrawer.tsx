@@ -33,6 +33,7 @@ import type {
   CandidatePipelineAddResult,
   CandidateResumeDetail,
   CandidateStage,
+  ParseStatus,
   ResumeUploadResponse,
 } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
@@ -69,6 +70,14 @@ const stageOptions: Array<{ value: '' | CandidateStage; label: string }> = [
   { value: 'onboarded', label: '已入职' },
   { value: 'rejected', label: '已淘汰' },
   { value: 'transferred', label: '已转入其他需求' },
+];
+
+const parseStatusOptions: Array<{ value: '' | ParseStatus; label: string }> = [
+  { value: '', label: '全部解析状态' },
+  { value: 'pending', label: '待解析' },
+  { value: 'processing', label: '解析中' },
+  { value: 'ok', label: '已解析' },
+  { value: 'failed', label: '解析失败' },
 ];
 
 function messageOf(error: unknown, fallback: string) {
@@ -117,6 +126,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   const [education, setEducation] = useState('');
   const [skill, setSkill] = useState('');
   const [sourceChannel, setSourceChannel] = useState('');
+  const [parseStatus, setParseStatus] = useState<'' | ParseStatus>('');
   const [stage, setStage] = useState<'' | CandidateStage>('');
   const [minScore, setMinScore] = useState('');
   const [pipelineStatus, setPipelineStatus] = useState<'' | 'in_pipeline' | 'not_in_pipeline'>('');
@@ -158,6 +168,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
         education: education.trim() || undefined,
         skill: skill.trim() || undefined,
         source_channel: sourceChannel.trim() || undefined,
+        parse_status: parseStatus || undefined,
         stage: stage || undefined,
         min_score: minScore ? Number(minScore) : undefined,
         pipeline_status: pipelineStatus || undefined,
@@ -184,7 +195,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
     } finally {
       setLoading(false);
     }
-  }, [city, demand.id, education, minScore, page, pipelineStatus, search, skill, sort, sourceChannel, stage]);
+  }, [city, demand.id, education, minScore, page, parseStatus, pipelineStatus, search, skill, sort, sourceChannel, stage]);
 
   useEffect(() => {
     void loadCandidates();
@@ -201,6 +212,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
     setEducation('');
     setSkill('');
     setSourceChannel('');
+    setParseStatus('');
     setStage('');
     setMinScore('');
     setPipelineStatus('');
@@ -409,18 +421,17 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
                 </label>
                 <button type="button" onClick={() => void loadCandidates()} disabled={loading} className="flex h-9 items-center gap-2 rounded-lg border border-background-300 px-3 text-sm text-foreground-600 disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} />刷新</button>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
-                <input value={city} onChange={(event) => changeFilter(() => setCity(event.target.value))} placeholder="意向城市" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
-                <input value={education} onChange={(event) => changeFilter(() => setEducation(event.target.value))} placeholder="学历，如 本科" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
-                <input value={skill} onChange={(event) => changeFilter(() => setSkill(event.target.value))} placeholder="技能关键词" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
-                <input value={sourceChannel} onChange={(event) => changeFilter(() => setSourceChannel(event.target.value))} placeholder="来源渠道" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
+              <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-5">
+                <input value={city} onChange={(event) => changeFilter(() => setCity(event.target.value))} placeholder="全部城市或输入城市" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
+                <input value={education} onChange={(event) => changeFilter(() => setEducation(event.target.value))} placeholder="全部学历或输入学历" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
+                <input value={skill} onChange={(event) => changeFilter(() => setSkill(event.target.value))} placeholder="如 Java、Python" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
+                <input value={sourceChannel} onChange={(event) => changeFilter(() => setSourceChannel(event.target.value))} placeholder="全部来源或输入渠道" className="h-9 rounded-lg border border-background-300 px-3 text-xs" />
+                <select value={parseStatus} onChange={(event) => changeFilter(() => setParseStatus(event.target.value as '' | ParseStatus))} aria-label="解析状态" className="h-9 rounded-lg border border-background-300 bg-white px-2 text-xs">{parseStatusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
                 <select value={stage} onChange={(event) => changeFilter(() => setStage(event.target.value as '' | CandidateStage))} className="h-9 rounded-lg border border-background-300 bg-white px-2 text-xs">{stageOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
                 <select value={pipelineStatus} onChange={(event) => changeFilter(() => setPipelineStatus(event.target.value as '' | 'in_pipeline' | 'not_in_pipeline'))} className="h-9 rounded-lg border border-background-300 bg-white px-2 text-xs"><option value="">全部流程状态</option><option value="in_pipeline">招聘流程中</option><option value="not_in_pipeline">人才库可用</option></select>
                 <select value={operationFilter} onChange={(event) => setOperationFilter(event.target.value as OperationFilter)} className="h-9 rounded-lg border border-background-300 bg-white px-2 text-xs"><option value="all">全部可见候选人</option><option value="actionable">本页只看可加入/转入</option><option value="pushable">本页只看当前需求可推送</option></select>
-                <div className="flex gap-2">
-                  <select value={minScore} onChange={(event) => changeFilter(() => setMinScore(event.target.value))} className="h-9 min-w-0 flex-1 rounded-lg border border-background-300 bg-white px-2 text-xs"><option value="">全部技能分</option><option value="3">技能分 ≥ 3</option><option value="4">技能分 ≥ 4</option><option value="5">技能分 = 5</option></select>
-                  <select value={sort} onChange={(event) => changeFilter(() => setSort(event.target.value as SortOption))} className="h-9 min-w-0 flex-1 rounded-lg border border-background-300 bg-white px-2 text-xs"><option value="created_desc">最近入库</option><option value="created_asc">最早入库</option><option value="name_asc">姓名排序</option></select>
-                </div>
+                <select value={minScore} onChange={(event) => changeFilter(() => setMinScore(event.target.value))} aria-label="最低技能分" className="h-9 rounded-lg border border-background-300 bg-white px-2 text-xs"><option value="">全部技能分</option><option value="3">技能分 ≥ 3</option><option value="4">技能分 ≥ 4</option><option value="5">技能分 = 5</option></select>
+                <select value={sort} onChange={(event) => changeFilter(() => setSort(event.target.value as SortOption))} aria-label="排序方式" className="h-9 rounded-lg border border-background-300 bg-white px-2 text-xs"><option value="created_desc">最近入库</option><option value="created_asc">最早入库</option><option value="name_asc">姓名排序</option></select>
               </div>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <p className="inline-flex items-center gap-1.5 text-[11px] text-foreground-400"><SlidersHorizontal size={13} />共 {candidateResponse.total} 位，当前第 {candidateResponse.page}/{candidateResponse.pages} 页</p>

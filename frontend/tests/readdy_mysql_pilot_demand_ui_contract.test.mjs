@@ -49,9 +49,12 @@ assert.match(candidateDrawer, /岗位匹配度/, '需求内选人必须展示当
 assert.match(candidateDrawer, /转入当前需求/, '其他需求中的候选人必须能在当前页明确转入');
 assert.match(candidateDrawer, /推送业务筛选/, '已在当前需求的候选人必须能在当前页继续推送');
 assert.match(candidateDrawer, /onReadyToPush/, '需求候选人工作区必须把已选候选人交给真实业务筛选流程');
-for (const filter of ['city', 'education', 'skill', 'source_channel', 'stage', 'min_score', 'pipeline_status', 'sort_by']) {
+for (const filter of ['city', 'education', 'skill', 'source_channel', 'parse_status', 'stage', 'min_score', 'pipeline_status', 'sort_by']) {
   assert.match(candidateDrawer, new RegExp(filter), `需求候选人工作区缺少 ${filter} 真实筛选`);
 }
+assert.match(candidateDrawer, /解析状态/, '需求候选人工作区必须提供简历解析状态筛选');
+assert.match(candidateDrawer, /全部解析状态/, '解析状态筛选必须提供全部状态');
+assert.match(candidateDrawer, /parseStatus/, '解析状态筛选必须传给真实候选人接口');
 assert.match(candidateDrawer, /page:\s*page/, '需求候选人工作区必须请求当前页而不是固定第一页');
 assert.match(candidateDrawer, /candidateResponse\.total/, '候选人工作区必须显示真实总数');
 assert.match(candidateDrawer, /candidateResponse\.pages/, '候选人工作区必须提供真实前后分页');
