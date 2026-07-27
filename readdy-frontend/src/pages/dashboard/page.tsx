@@ -28,6 +28,8 @@ const offerStatusLabels: Record<OfferStatus, string> = {
   onboarded: '已入职',
 };
 
+type DashboardPanel = 'headcount' | 'tasks' | 'waiting' | 'interviews';
+
 function greeting() {
   const hour = new Date().getHours();
   if (hour < 12) return '上午好';
@@ -41,6 +43,7 @@ export default function DashboardPage() {
   const [facts, setFacts] = useState<DashboardFacts>(emptyFacts);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
+  const [expandedPanel, setExpandedPanel] = useState<DashboardPanel | null>(null);
 
   const loadFacts = useCallback(async () => {
     setLoading(true);
@@ -79,12 +82,53 @@ export default function DashboardPage() {
     () => summary.pendingReviews.filter((item) => item.reviewer_id !== userId),
     [summary.pendingReviews, userId],
   );
+  const myTaskCount = summary.myTaskCount + assignedBusinessReviews.length;
+  const waitingOthersCount = Math.max(0, summary.waitingOthersCount - assignedBusinessReviews.length);
 
-  const cards = [
-    { label: '剩余 HC', value: summary.gap, note: `${summary.activeDemands.length} 个生效需求`, icon: 'ri-briefcase-line' },
-    { label: '我的待办', value: summary.myTaskCount + assignedBusinessReviews.length, note: '需要你推进或确认', icon: 'ri-checkbox-circle-line' },
-    { label: '等待他人处理', value: Math.max(0, summary.waitingOthersCount - assignedBusinessReviews.length), note: '业务反馈、面试评价或外部回复', icon: 'ri-time-line' },
-    { label: '近期面试', value: summary.scheduledInterviews.length, note: '已创建站内日程', icon: 'ri-calendar-event-line' },
+  const togglePanel = (panel: DashboardPanel) => {
+    setExpandedPanel((current) => (current === panel ? null : panel));
+  };
+
+  const cards: Array<{
+    panel: DashboardPanel;
+    controls: string;
+    label: string;
+    value: number;
+    note: string;
+    icon: string;
+  }> = [
+    {
+      panel: 'headcount',
+      controls: 'dashboard-headcount-panel',
+      label: '剩余 HC',
+      value: summary.gap,
+      note: `${summary.activeDemands.length} 个生效需求`,
+      icon: 'ri-briefcase-line',
+    },
+    {
+      panel: 'tasks',
+      controls: 'dashboard-tasks-panel',
+      label: '我的待办',
+      value: myTaskCount,
+      note: '需要你推进或确认',
+      icon: 'ri-checkbox-circle-line',
+    },
+    {
+      panel: 'waiting',
+      controls: 'dashboard-waiting-panel',
+      label: '等待他人处理',
+      value: waitingOthersCount,
+      note: '业务反馈、面试评价或外部回复',
+      icon: 'ri-time-line',
+    },
+    {
+      panel: 'interviews',
+      controls: 'dashboard-interviews-panel',
+      label: '近期面试',
+      value: summary.scheduledInterviews.length,
+      note: '已创建站内日程',
+      icon: 'ri-calendar-event-line',
+    },
   ];
 
   return (
@@ -116,22 +160,35 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map((card) => (
-          <div
+          <button
             key={card.label}
-            className="rounded-xl border border-background-200 bg-white p-4"
+            type="button"
+            aria-expanded={expandedPanel === card.panel}
+            aria-controls={card.controls}
+            onClick={() => togglePanel(card.panel)}
+            className={`rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${
+              expandedPanel === card.panel
+                ? 'border-primary-300 bg-primary-50/60'
+                : 'border-background-200 bg-white hover:border-primary-200 hover:bg-background-50'
+            }`}
           >
             <div className="flex items-center justify-between">
               <span className="text-sm text-foreground-500">{card.label}</span>
-              <i className={`${card.icon} text-lg text-primary-600`} />
+              <span className="flex items-center gap-2 text-primary-600">
+                <i className={`${card.icon} text-lg`} />
+                <i className={expandedPanel === card.panel ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'} />
+              </span>
             </div>
             <p className="mt-2 text-2xl font-bold text-foreground-900">{loading ? '—' : card.value}</p>
             <p className="mt-1 text-xs text-foreground-400">{card.note}</p>
-          </div>
+          </button>
         ))}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <section className="overflow-hidden rounded-xl border border-background-200 bg-white">
+      {(expandedPanel === 'tasks' || expandedPanel === 'waiting') && (
+        <div className="grid gap-5">
+          {expandedPanel === 'tasks' && (
+            <section id="dashboard-tasks-panel" className="overflow-hidden rounded-xl border border-background-200 bg-white">
           <div className="border-b border-background-100 px-5 py-4">
             <div>
               <h2 className="text-sm font-semibold text-foreground-900">我的待办</h2>
@@ -174,13 +231,15 @@ export default function DashboardPage() {
                 <i className="ri-arrow-right-s-line text-foreground-400" />
               </button>
             ))}
-            {!loading && summary.myTaskCount + assignedBusinessReviews.length === 0 && (
+            {!loading && myTaskCount === 0 && (
               <div className="px-5 py-12 text-center text-sm text-foreground-500">当前没有需要你处理的待办</div>
             )}
           </div>
-        </section>
+            </section>
+          )}
 
-        <section className="overflow-hidden rounded-xl border border-background-200 bg-white">
+          {expandedPanel === 'waiting' && (
+            <section id="dashboard-waiting-panel" className="overflow-hidden rounded-xl border border-background-200 bg-white">
           <div className="border-b border-background-100 px-5 py-4">
             <div>
               <h2 className="text-sm font-semibold text-foreground-900">等待他人处理</h2>
@@ -209,14 +268,17 @@ export default function DashboardPage() {
                 <i className="ri-arrow-right-s-line text-foreground-400" />
               </button>
             ))}
-            {!loading && summary.waitingOthersCount === 0 && (
+            {!loading && waitingOthersCount === 0 && (
               <div className="px-5 py-12 text-center text-sm text-foreground-500">当前没有正在等待他人处理的事项</div>
             )}
           </div>
-        </section>
-      </div>
+            </section>
+          )}
+        </div>
+      )}
 
-      <section className="overflow-hidden rounded-xl border border-background-200 bg-white">
+      {expandedPanel === 'headcount' && (
+        <section id="dashboard-headcount-panel" className="overflow-hidden rounded-xl border border-background-200 bg-white">
         <div className="border-b border-background-100 px-5 py-4">
           <h2 className="text-sm font-semibold text-foreground-900">生效需求进展</h2>
           <p className="mt-0.5 text-xs text-foreground-500">按需求查看 HC、业务筛选、面试、Offer 与入职进度</p>
@@ -236,9 +298,11 @@ export default function DashboardPage() {
             <div className="px-5 py-12 text-sm text-foreground-500">暂无生效需求，请先在需求审核中创建或审批需求</div>
           )}
         </div>
-      </section>
+        </section>
+      )}
 
-      <section className="rounded-xl border border-background-200 bg-white p-5">
+      {expandedPanel === 'interviews' && (
+        <section id="dashboard-interviews-panel" className="rounded-xl border border-background-200 bg-white p-5">
         <div>
           <h2 className="text-sm font-semibold text-foreground-900">近期已排面试</h2>
           <p className="mt-0.5 text-xs text-foreground-500">站内日程是真实数据；企业微信和外部日历仍待接入</p>
@@ -252,7 +316,8 @@ export default function DashboardPage() {
           ))}
           {!loading && summary.scheduledInterviews.length === 0 && <p className="text-sm text-foreground-500">暂无已排面试</p>}
         </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }
