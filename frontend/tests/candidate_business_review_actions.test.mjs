@@ -15,6 +15,8 @@ const types = read('readdy-frontend/src/features/businessReviews/types.ts');
 const candidatePage = read('readdy-frontend/src/pages/candidates/page.tsx');
 const demandDrawer = read('readdy-frontend/src/pages/jobs/components/DemandCandidateDrawer.tsx');
 const pushModal = read('readdy-frontend/src/pages/candidates/components/PushToReviewerModal.tsx');
+const router = read('readdy-frontend/src/router/config.tsx');
+const dashboard = read('readdy-frontend/src/pages/dashboard/page.tsx');
 
 assert.match(actions, /export function candidateBusinessAction/, '必须由共享函数决定候选人下一步');
 for (const phrase of [
@@ -49,5 +51,14 @@ assert.match(pushModal, /mode\?:\s*'create'\s*\|\s*'reassign'/, '推送弹窗必
 assert.match(pushModal, /当前接收人/, '改派弹窗必须展示当前接收人');
 assert.match(pushModal, /改派业务筛选人/, '改派弹窗必须使用明确标题和按钮');
 assert.doesNotMatch(pushModal, /推送给面试官/, '业务筛选不得称为推送给面试官');
+
+assert.match(
+  router,
+  /path:\s*'\/interviewer\/screening'[\s\S]*allow=\{businessReviewerRoles\}/,
+  '所有可被选择的业务筛选角色都必须能打开处理页面',
+);
+assert.match(dashboard, /userId/, '经理工作台必须识别分配给当前账号的业务筛选');
+assert.match(dashboard, /assignedBusinessReviews/, '经理自己的业务筛选必须进入“我的待办”');
+assert.match(dashboard, /\/interviewer\/screening\?task=/, '经理必须能从工作台直接处理业务筛选');
 
 console.log('candidate_business_review_actions: OK');

@@ -37,7 +37,7 @@ function greeting() {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { name, role } = useCompanyAuth();
+  const { name, role, userId } = useCompanyAuth();
   const [facts, setFacts] = useState<DashboardFacts>(emptyFacts);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
@@ -71,11 +71,19 @@ export default function DashboardPage() {
   }, [loadFacts]);
 
   const summary = useMemo(() => buildDashboardSummary(facts, role), [facts, role]);
+  const assignedBusinessReviews = useMemo(
+    () => summary.pendingReviews.filter((item) => item.reviewer_id === userId),
+    [summary.pendingReviews, userId],
+  );
+  const reviewsWaitingForOthers = useMemo(
+    () => summary.pendingReviews.filter((item) => item.reviewer_id !== userId),
+    [summary.pendingReviews, userId],
+  );
 
   const cards = [
     { label: '剩余 HC', value: summary.gap, note: `${summary.activeDemands.length} 个生效需求`, icon: 'ri-briefcase-line' },
-    { label: '我的待办', value: summary.myTaskCount, note: '需要你推进或确认', icon: 'ri-checkbox-circle-line' },
-    { label: '等待他人处理', value: summary.waitingOthersCount, note: '业务反馈、面试评价或外部回复', icon: 'ri-time-line' },
+    { label: '我的待办', value: summary.myTaskCount + assignedBusinessReviews.length, note: '需要你推进或确认', icon: 'ri-checkbox-circle-line' },
+    { label: '等待他人处理', value: Math.max(0, summary.waitingOthersCount - assignedBusinessReviews.length), note: '业务反馈、面试评价或外部回复', icon: 'ri-time-line' },
     { label: '近期面试', value: summary.scheduledInterviews.length, note: '已创建站内日程', icon: 'ri-calendar-event-line' },
   ];
 
@@ -152,6 +160,13 @@ export default function DashboardPage() {
                 <i className="ri-arrow-right-s-line text-foreground-400" />
               </button>
             ))}
+            {assignedBusinessReviews.map((item) => (
+              <button key={`assigned-review-${item.id}`} type="button" onClick={() => navigate(`/interviewer/screening?task=${item.id}`)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><i className="ri-file-search-line" /></span>
+                <span className="flex-1"><span className="block text-sm font-medium text-foreground-900">{item.candidate.name_masked} 需要你业务筛选</span><span className="mt-0.5 block text-xs text-foreground-500">{item.demand.job_title} · 查看简历后给出结论</span></span>
+                <i className="ri-arrow-right-s-line text-foreground-400" />
+              </button>
+            ))}
             {summary.myOfferActions.slice(0, 3).map((item) => (
               <button key={`offer-${item.id}`} type="button" onClick={() => navigate('/offers')} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700"><i className="ri-mail-send-line" /></span>
@@ -159,7 +174,7 @@ export default function DashboardPage() {
                 <i className="ri-arrow-right-s-line text-foreground-400" />
               </button>
             ))}
-            {!loading && summary.myTaskCount === 0 && (
+            {!loading && summary.myTaskCount + assignedBusinessReviews.length === 0 && (
               <div className="px-5 py-12 text-center text-sm text-foreground-500">当前没有需要你处理的待办</div>
             )}
           </div>
@@ -173,7 +188,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="divide-y divide-background-100">
-            {summary.pendingReviews.slice(0, 3).map((item) => (
+            {reviewsWaitingForOthers.slice(0, 3).map((item) => (
               <button key={`review-${item.id}`} type="button" onClick={() => navigate(`/candidates?demand=${item.demand_id}&candidate=${item.candidate_id}`)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-100 text-sky-700"><i className="ri-file-search-line" /></span>
                 <span className="flex-1"><span className="block text-sm font-medium text-foreground-900">{item.candidate.name_masked} 等待业务筛选</span><span className="mt-0.5 block text-xs text-foreground-500">{item.demand.job_title} · {item.reviewer_name || '业务负责人未显示'}</span></span>

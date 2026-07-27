@@ -62,7 +62,6 @@ for (const routePath of ['/jobs', '/candidates', '/talent-map', '/kanban', '/int
 for (const routePath of [
   '/interviewer/dashboard',
   '/interviewer/jobs',
-  '/interviewer/screening',
   '/interviewer/interviews',
 ]) {
   assert.match(
@@ -71,6 +70,11 @@ for (const routePath of [
     `${routePath} 必须允许业务角色访问`,
   );
 }
+assert.match(
+  routes,
+  /path: '\/interviewer\/screening'[\s\S]{0,180}allow=\{businessReviewerRoles\}/,
+  '业务筛选页必须允许面试官、招聘经理和管理员处理分配给自己的任务',
+);
 assert.doesNotMatch(routes, /path: '\/interviewer\/candidates'/, '业务角色不应再有冗余候选人进展路由');
 
 assert.match(productRole, /export function RequireCompanyRole/, '角色守卫必须统一处理越权跳转');

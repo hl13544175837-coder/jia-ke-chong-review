@@ -35,6 +35,7 @@ const hrRoles: ProductRole[] = ['recruiter', 'manager', 'admin'];
 const managerRoles: ProductRole[] = ['manager', 'admin'];
 const adminRoles: ProductRole[] = ['admin'];
 const interviewerRoles: ProductRole[] = ['interviewer'];
+const businessReviewerRoles: ProductRole[] = ['interviewer', 'manager', 'admin'];
 const directorRoles: ProductRole[] = ['hr_director'];
 
 const routes: RouteObject[] = [
@@ -123,7 +124,7 @@ const routes: RouteObject[] = [
       },
       {
         path: '/interviewer/screening',
-        element: <RequireCompanyRole allow={interviewerRoles}><InterviewerScreeningPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={businessReviewerRoles}><InterviewerScreeningPage /></RequireCompanyRole>,
       },
       {
         path: '/director/cockpit',
