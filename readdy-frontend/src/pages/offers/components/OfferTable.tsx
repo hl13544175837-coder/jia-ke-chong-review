@@ -39,7 +39,7 @@ function displayDate(offer: OfferRecord) {
 export default function OfferTable({ offers, onOpen, onPrimaryAction }: Props) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1040px] table-fixed text-left text-sm">
+      <table className="w-full min-w-[920px] table-fixed text-left text-sm">
         <colgroup>
           <col className="w-[25%]" />
           <col className="w-[16%]" />

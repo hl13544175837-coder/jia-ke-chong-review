@@ -90,11 +90,14 @@ for (const copy of ['今日待办', '草稿', '待确认', '待发放', '待回�
 for (const filter of ['招聘需求', '负责人', '风险', '紧急优先']) {
   assert.match(page, new RegExp(filter), `Offer 页面缺少“${filter}”筛选`);
 }
+assert.match(page, /md:grid-cols-2/, '中等宽度下筛选区必须分成两列，避免挤出页面');
+assert.match(page, /xl:grid-cols-3/, '常见桌面宽度下筛选区最多使用三列');
 
 const table = source('readdy-frontend/src/pages/offers/components/OfferTable.tsx');
 const detail = source('readdy-frontend/src/pages/offers/components/OfferDetailDrawer.tsx');
 const createModal = source('readdy-frontend/src/pages/offers/components/CreateOfferModal.tsx');
 const offerSurface = `${page}\n${table}\n${detail}\n${createModal}\n${workbenchSource}`;
+assert.doesNotMatch(table, /min-w-\[1040px\]/, 'Offer 表格不应在常见桌面宽度下强制横向滚动');
 for (const copy of ['继续编辑', '确认 Offer', '登记发放', '登记候选人回复', '确认入职', '查看记录']) {
   assert.match(offerSurface, new RegExp(copy), `Offer 操作缺少“${copy}”`);
 }

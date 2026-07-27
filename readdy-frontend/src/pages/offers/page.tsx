@@ -335,7 +335,7 @@ export default function OffersPage() {
         </div>
 
         <form
-          className="grid gap-2 border-b border-background-200 bg-background-50 p-4 md:grid-cols-[minmax(260px,1fr)_220px_160px_150px_160px_auto]"
+          className="grid gap-2 border-b border-background-200 bg-background-50 p-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[minmax(260px,1fr)_220px_160px_150px_160px_auto]"
           onSubmit={(event) => { event.preventDefault(); setSearch(searchInput.trim()); }}
         >
           <label className="relative flex-1">
