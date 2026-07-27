@@ -1542,7 +1542,7 @@ export default function CandidatesPage() {
                       className={filterControlClass}
                     />
                   </CandidateColumnFilterHeader>
-                  <th className="min-w-48 px-3 py-3">目标岗位</th>
+                  <th className="min-w-48 px-3 py-3">求职目标 / 当前需求</th>
                   <CandidateColumnFilterHeader
                     data-ui="candidate-column-filter-stage"
                     label="当前阶段"
@@ -1657,14 +1657,14 @@ export default function CandidatesPage() {
                         {candidate.source?.channel || '—'}
                       </td>
                       <td className="max-w-56 px-3 py-3.5">
-                        {targetDemand ? (
+                        {candidate.desired_position || targetDemand ? (
                           <div>
-                            <p className="truncate text-sm font-medium text-foreground-800">{targetDemand.job_title}</p>
-                            <p className="mt-0.5 truncate text-xs text-foreground-400">
-                              {candidate.current_demand ? '当前需求' : '最近需求'} · {targetDemand.request_no || '未编号'}
-                            </p>
+                            <p className="truncate text-sm font-medium text-foreground-800">{candidate.desired_position || '求职目标待补充'}</p>
+                            {targetDemand && <p className="mt-0.5 truncate text-xs text-foreground-400">
+                              {candidate.current_demand ? '当前需求' : '最近需求'} · {targetDemand.job_title} · {targetDemand.request_no || '未编号'}
+                            </p>}
                           </div>
-                        ) : <span className="text-sm text-foreground-400">待匹配岗位</span>}
+                        ) : <span className="text-sm text-foreground-400">求职目标待补充</span>}
                       </td>
                       <td className="px-3 py-3.5 text-sm text-foreground-600">
                         {candidate.current_stage ? stageLabels[candidate.current_stage] : '—'}
@@ -1963,15 +1963,15 @@ export default function CandidatesPage() {
                 </div>
               ) : resumeDetail ? (
                 <div className="space-y-6">
-                  {(detailCandidate.current_demand ?? detailCandidate.latest_demand) && (
+                  {(detailCandidate.desired_position || detailCandidate.current_demand || detailCandidate.latest_demand) && (
                     <section className="rounded-lg border border-background-200 bg-background-50 px-4 py-3">
-                      <p className="text-xs text-foreground-400">目标岗位</p>
+                      <p className="text-xs text-foreground-400">简历求职目标</p>
                       <p className="mt-1 text-sm font-semibold text-foreground-900">
-                        {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.job_title}
+                        {detailCandidate.desired_position || '待补充'}
                       </p>
-                      <p className="mt-1 text-xs text-foreground-500">
-                        {detailCandidate.current_demand ? '当前需求' : '最近需求'} · {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.request_no || '未编号'}
-                      </p>
+                      {(detailCandidate.current_demand ?? detailCandidate.latest_demand) && <p className="mt-1 text-xs text-foreground-500">
+                        {detailCandidate.current_demand ? '当前需求' : '最近需求'} · {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.job_title} · {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.request_no || '未编号'}
+                      </p>}
                     </section>
                   )}
                   {detailReview && (

@@ -49,6 +49,7 @@ export interface CandidateListItem {
   top_tags?: CandidateTag[];
   max_score?: number;
   intent_city?: string;
+  desired_position?: string;
   latest_experience?: {
     company: string;
     position: string;

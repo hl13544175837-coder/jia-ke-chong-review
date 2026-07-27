@@ -19,7 +19,7 @@ from ..models import (
     PipelineStage,
 )
 from ..time_utils import utc_now
-from .pipeline_service import PipelineServiceError, move_candidate
+from .pipeline_service import PipelineServiceError, demand_completion_state, move_candidate
 
 
 PROFILE_SCALAR_FIELDS = (
@@ -28,6 +28,10 @@ PROFILE_SCALAR_FIELDS = (
     "phone",
     "summary",
     "intent_city",
+    "target_position",
+    "desired_position",
+    "target_role",
+    "job_intention",
     "additional_info",
 )
 PROFILE_LIST_FIELDS = (
@@ -386,6 +390,12 @@ def add_candidates_to_demand(
     reason="",
 ):
     reason = str(reason or "").strip()[:240]
+    if demand_completion_state(demand)["remaining_headcount"] <= 0:
+        raise CandidateLibraryError(
+            "该需求 HC 已满，请先确认完成需求或调整 HC",
+            409,
+            "demand_headcount_reached",
+        )
     result = {
         "demand_id": demand.id,
         "job_id": demand.job_id,

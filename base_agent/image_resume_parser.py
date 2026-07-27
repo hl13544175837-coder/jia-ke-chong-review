@@ -37,6 +37,7 @@ _PROFILE_SCALAR_LIMITS = {
     "phone": 30,
     "summary": 2000,
     "intent_city": 80,
+    "target_position": 120,
     "additional_info": 4000,
 }
 _PROFILE_LIST_FIELDS = {
@@ -476,7 +477,7 @@ def _resume_extraction_prompt() -> str:
     return (
         "请识别这份图片简历并输出以下 JSON 结构："
         '{"extracted_info":{"name":"","email":"","phone":"","summary":"",'
-        '"intent_city":"","education":[{"school":"","degree":"","major":"","year":""}],'
+        '"intent_city":"","target_position":"","education":[{"school":"","degree":"","major":"","year":""}],'
         '"experience":[{"company":"","position":"","duration":"","description":""}],'
         '"projects":[{"name":"","role":"","duration":"","description":""}],'
         '"certifications":[{"name":"","issuer":"","date":""}],'
@@ -491,7 +492,7 @@ def _resume_document_page_prompt(page_num: int, total_pages: int) -> str:
     return (
         f"这是多页文档简历的第 {page_num}/{total_pages} 页。"
         "请提取本页中可见的简历信息，输出 JSON："
-        '{"name":"","email":"","phone":"","summary":"",'
+        '{"name":"","email":"","phone":"","summary":"","target_position":"",'
         '"education":[{"school":"","degree":"","major":"","year":""}],'
         '"experience":[{"company":"","position":"","duration":"","description":""}],'
         '"projects":[{"name":"","role":"","duration":"","description":""}],'
@@ -513,7 +514,7 @@ def _has_any_value(info: dict) -> bool:
 def _merge_page_results(pages: list[dict]) -> dict:
     merged: dict = {
         "name": "", "email": "", "phone": "", "summary": "",
-        "intent_city": "", "additional_info": "",
+        "intent_city": "", "target_position": "", "additional_info": "",
         "education": [],
         "experience": [],
         "projects": [],
@@ -521,7 +522,7 @@ def _merge_page_results(pages: list[dict]) -> dict:
         "languages": [],
     }
     for page in pages:
-        for key in ("name", "email", "phone", "summary", "intent_city"):
+        for key in ("name", "email", "phone", "summary", "intent_city", "target_position"):
             if not merged.get(key) and isinstance(page.get(key), str) and page[key].strip():
                 merged[key] = page[key]
         if not merged.get("additional_info") or isinstance(page.get("additional_info"), str):

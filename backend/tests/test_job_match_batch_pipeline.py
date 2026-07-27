@@ -280,6 +280,7 @@ def test_talent_pool_candidates_can_preview_match_join_and_reactivate(
             request_no="REQ-TALENT-POOL-REUSE",
             status="active",
             approval_status="approved",
+            headcount=3,
         )
         other_demand = RecruitmentDemand(
             job_id=job.id,

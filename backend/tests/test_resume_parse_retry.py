@@ -28,6 +28,7 @@ def test_image_resume_uses_base64_vision_and_normalizes_result(tmp_path):
                                 '{"extracted_info":{"name":"候选人图",'
                                 '"email":"image@example.com","phone":"13800000000",'
                                 '"summary":"后端工程师","intent_city":"杭州",'
+                                '"target_position":"高级Python后端工程师",'
                                 '"education":[],"experience":[],"projects":[],'
                                 '"certifications":[],"languages":[],"additional_info":""},'
                                 '"skills":[{"skill_name":"Python","score":5,'
@@ -64,6 +65,7 @@ def test_image_resume_uses_base64_vision_and_normalizes_result(tmp_path):
 
     assert result.extracted_info["name"] == "候选人图"
     assert result.extracted_info["intent_city"] == "杭州"
+    assert result.extracted_info["target_position"] == "高级Python后端工程师"
     assert result.skills[0]["skill_name"] == "Python"
     assert result.skills[0]["score"] == 5
     content = http_client.request_json["messages"][1]["content"]

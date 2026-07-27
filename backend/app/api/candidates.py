@@ -105,6 +105,16 @@ CITY_LABEL_PATTERN = re.compile(
     rf"(?:意向城市|目标城市|期望城市|求职城市|工作城市|希望城市|投递城市|城市)"
     rf"\s*[：:：]?\s*({'|'.join(COMMON_CITIES)})市?"
 )
+POSITION_FIELD_KEYS = {
+    "target_position",
+    "desired_position",
+    "target_role",
+    "job_intention",
+    "求职目标",
+    "目标岗位",
+    "意向岗位",
+    "求职意向",
+}
 
 
 def _resume_info(candidate):
@@ -163,6 +173,17 @@ def _candidate_intent_city(candidate):
     raw_text = json.dumps(resume, ensure_ascii=False)
     match = CITY_LABEL_PATTERN.search(raw_text)
     return _normalize_city_value(match.group(1)) if match else ""
+
+
+def _candidate_desired_position(info):
+    for key in POSITION_FIELD_KEYS:
+        value = info.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:120]
+    for key, value in _walk_resume_values(info):
+        if key in POSITION_FIELD_KEYS and isinstance(value, str) and value.strip():
+            return value.strip()[:120]
+    return ""
 
 
 def _latest_experience(info):
@@ -224,6 +245,7 @@ def _candidate_library_item(
         "top_tags": tags[:6],
         "max_score": tags[0]["score"] if tags else 0,
         "intent_city": _candidate_intent_city(candidate),
+        "desired_position": _candidate_desired_position(info),
         "latest_experience": _latest_experience(info),
         "education_summary": _education_summary(info),
         "source": _candidate_source_payload(candidate),
@@ -738,15 +760,18 @@ def add_candidates_to_pipeline():
         .filter(Candidate.id.in_(candidate_ids))
         .all()
     }
-    result = add_candidates_to_demand(
-        demand=demand,
-        candidate_ids=candidate_ids,
-        visible_candidate_ids=visible_ids,
-        org_id=g.org_id,
-        actor_id=g.user_id,
-        reactivate_rejected=data.get("reactivate_rejected") is True,
-        reason=data.get("reason"),
-    )
+    try:
+        result = add_candidates_to_demand(
+            demand=demand,
+            candidate_ids=candidate_ids,
+            visible_candidate_ids=visible_ids,
+            org_id=g.org_id,
+            actor_id=g.user_id,
+            reactivate_rejected=data.get("reactivate_rejected") is True,
+            reason=data.get("reason"),
+        )
+    except CandidateLibraryError as error:
+        return jsonify({"error": error.message, "code": error.code}), error.status_code
     record_event(
         "pipeline.batch_add",
         entity_id=demand.id,

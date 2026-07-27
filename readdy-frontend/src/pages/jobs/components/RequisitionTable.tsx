@@ -267,7 +267,8 @@ export default function RequisitionTable({
                 {data.map((req) => {
                   const transitions = statusTransitions[req.statusCode];
                   const extras = statusExtraActions[req.statusCode] || [];
-                  const canSelectCandidates = req.statusCode === 'active' && req.source.approval_status === 'approved';
+                  const canSelectCandidates = req.statusCode === 'active' && req.source.approval_status === 'approved' && req.remainingHeadcount > 0;
+                  const headcountReached = req.statusCode === 'active' && req.source.approval_status === 'approved' && req.remainingHeadcount <= 0;
                   const isClosedOrCompleted = ['filled', 'cancelled', 'closed'].includes(req.statusCode);
                   const hasActions = transitions && (transitions.advance || transitions.rollback || extras.length > 0);
                   const prio = priorityConfig[req.priority] || priorityConfig['普通'];
@@ -369,6 +370,17 @@ export default function RequisitionTable({
                             >
                               <i className="ri-user-add-line text-sm"></i>
                               选候选人
+                            </button>
+                          )}
+                          {headcountReached && (
+                            <button
+                              type="button"
+                              disabled
+                              title="该需求 HC 已满，请确认完成需求或在需求详情调整 HC"
+                              className="flex cursor-not-allowed items-center gap-1 whitespace-nowrap rounded-md bg-background-100 px-2.5 py-1.5 text-xs font-medium text-foreground-400"
+                            >
+                              <i className="ri-user-add-line text-sm"></i>
+                              HC已满
                             </button>
                           )}
                           {isClosedOrCompleted && (

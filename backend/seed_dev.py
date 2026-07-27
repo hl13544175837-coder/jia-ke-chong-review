@@ -481,6 +481,29 @@ def seed():
         add_tags(c15, [("Python", 5), ("FastAPI", 4), ("Redis", 4), ("Docker", 3), ("系统设计", 4)])
 
         all_candidates = [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15]
+        target_positions = {
+            c1.id: "高级Python后端工程师",
+            c2.id: "前端开发工程师",
+            c3.id: "AI算法工程师",
+            c4.id: "数据分析师",
+            c5.id: "高级Python后端工程师",
+            c6.id: "前端开发工程师",
+            c7.id: "AI算法工程师",
+            c8.id: "高级Python后端工程师",
+            c9.id: "全栈开发工程师",
+            c10.id: "数据分析师",
+            c11.id: "高级Python后端工程师",
+            c12.id: "高级Python后端工程师",
+            c13.id: "AI算法工程师",
+            c14.id: "高级Python后端工程师",
+            c15.id: "高级Python后端工程师",
+        }
+        for candidate in all_candidates:
+            resume = dict(candidate.resume_json or {})
+            extracted = dict(resume.get("extracted_info") or {})
+            extracted["target_position"] = target_positions[candidate.id]
+            resume["extracted_info"] = extracted
+            candidate.resume_json = resume
         db.session.flush()
 
         # ── 5. DEMAND-SCOPED FLOWS + PIPELINE STAGES ─────────────────────────

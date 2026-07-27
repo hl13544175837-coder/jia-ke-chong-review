@@ -143,6 +143,7 @@ class ResumeBatchService:
             "phone": 30,
             "summary": 2000,
             "intent_city": 80,
+            "target_position": 120,
             "additional_info": 4000,
         }
         list_fields = {
