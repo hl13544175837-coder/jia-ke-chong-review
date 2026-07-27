@@ -51,4 +51,13 @@ for (const action of ['安排面试', '调整安排', '确认已面试', '催反
 assert.match(table, /更多操作/, '低频操作必须收进更多菜单');
 assert.doesNotMatch(table, /@\/mocks\//, '平衡表格不得依赖 Mock 数据');
 
+const calendarPath = path.join(root, 'readdy-frontend/src/pages/interviews/components/InterviewManagementCalendar.tsx');
+assert.ok(existsSync(calendarPath), '面试管理必须提供真实日历视图');
+const calendar = read('readdy-frontend/src/pages/interviews/components/InterviewManagementCalendar.tsx');
+assert.match(calendar, /InterviewManagementRow/, '日历必须消费真实管理行');
+assert.match(calendar, /待安排/, '日历必须保留未排期任务入口');
+assert.match(calendar, /今天/, '日历必须支持回到今天');
+assert.match(calendar, /onOpenDetails/, '日历任务必须打开同一详情');
+assert.doesNotMatch(calendar, /@\/mocks\//, '日历不得重新接入旧 Mock 数据');
+
 console.log('readdy_interview_balanced_workspace: OK');
