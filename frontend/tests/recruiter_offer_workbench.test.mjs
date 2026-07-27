@@ -79,4 +79,29 @@ assert.deepEqual(
   [4, 2, 5, 3, 1],
 );
 
+const page = source('readdy-frontend/src/pages/offers/page.tsx');
+const workbenchSource = source('readdy-frontend/src/pages/offers/workbench.ts');
+assert.match(page, /Offer 工作台/);
+assert.match(page, /今日提醒/);
+assert.match(page, /filterAndSortOffers/);
+for (const copy of ['今日待办', '草稿', '待确认', '待发放', '待回复', '待入职', '历史记录']) {
+  assert.match(`${page}\n${workbenchSource}`, new RegExp(copy), `Offer 页面缺少“${copy}”`);
+}
+for (const filter of ['招聘需求', '负责人', '风险', '紧急优先']) {
+  assert.match(page, new RegExp(filter), `Offer 页面缺少“${filter}”筛选`);
+}
+
+const table = source('readdy-frontend/src/pages/offers/components/OfferTable.tsx');
+const detail = source('readdy-frontend/src/pages/offers/components/OfferDetailDrawer.tsx');
+const createModal = source('readdy-frontend/src/pages/offers/components/CreateOfferModal.tsx');
+const offerSurface = `${page}\n${table}\n${detail}\n${createModal}\n${workbenchSource}`;
+for (const copy of ['继续编辑', '确认 Offer', '登记发放', '登记候选人回复', '确认入职', '查看记录']) {
+  assert.match(offerSurface, new RegExp(copy), `Offer 操作缺少“${copy}”`);
+}
+for (const stale of ['提交审批', '待审批', '审批通过', '审批人']) {
+  assert.doesNotMatch(offerSurface, new RegExp(stale), `Offer 页面仍残留旧文案“${stale}”`);
+}
+for (const channel of ['企业微信', '邮件', '线下', '其他']) assert.match(detail, new RegExp(channel));
+assert.match(detail, /仅登记发送结果/);
+
 console.log('recruiter_offer_workbench: OK');

@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ProductRole } from '@/auth/productRoleModel';
 import type { OfferAction, OfferActionInput, OfferRecord, OfferStatus } from '@/features/offers/types';
 import { ApiError } from '@/lib/api';
+import { offerRisk, offerWaitingLabel } from '../workbench';
 
 interface Props {
   offer: OfferRecord;
+  initialAction: OfferAction | null;
   role: ProductRole | null;
   loading: boolean;
   loadError: string;
@@ -16,7 +18,7 @@ interface Props {
 
 const STATUS_META: Record<OfferStatus, { label: string; className: string }> = {
   draft: { label: '草稿', className: 'bg-background-200 text-foreground-700' },
-  pending: { label: '待审批', className: 'bg-amber-50 text-amber-700' },
+  pending: { label: '待确认', className: 'bg-amber-50 text-amber-700' },
   approved: { label: '待发放', className: 'bg-blue-50 text-blue-700' },
   sent: { label: '等待回复', className: 'bg-cyan-50 text-cyan-700' },
   accepted: { label: '待入职', className: 'bg-emerald-50 text-emerald-700' },
@@ -27,10 +29,10 @@ const STATUS_META: Record<OfferStatus, { label: string; className: string }> = {
 };
 
 const ACTION_META: Record<OfferAction, { label: string; danger?: boolean }> = {
-  submit: { label: '提交审批' },
-  approve: { label: '审批通过' },
-  reject: { label: '审批拒绝', danger: true },
-  send: { label: '记录为已发放' },
+  submit: { label: '提交确认' },
+  approve: { label: '确认无误' },
+  reject: { label: '终止并退回', danger: true },
+  send: { label: '登记发放' },
   accept: { label: '记录候选人接受' },
   decline: { label: '记录候选人拒绝', danger: true },
   withdraw: { label: '撤回 Offer', danger: true },
@@ -43,10 +45,10 @@ const ACTION_META: Record<OfferAction, { label: string; danger?: boolean }> = {
 const HISTORY_LABELS: Record<string, string> = {
   created: '创建草稿',
   saved: '保存草稿',
-  submitted: '提交审批',
-  approved: '审批通过',
-  rejected: '审批拒绝',
-  sent: '记录为已发放',
+  submitted: '提交确认',
+  approved: '确认无误',
+  rejected: '终止并退回',
+  sent: '登记发放',
   accepted: '候选人接受',
   declined: '候选人拒绝',
   withdrawn: '撤回 Offer',
@@ -70,9 +72,10 @@ function formatTime(value: string | null) {
 }
 
 function availableActions(status: OfferStatus, role: ProductRole | null): OfferAction[] {
-  const canApprove = role === 'manager' || role === 'admin' || role === 'hr_director';
   if (status === 'draft') return ['submit'];
-  if (status === 'pending') return canApprove ? ['approve', 'reject', 'withdraw'] : ['withdraw'];
+  if (status === 'pending') return role === 'manager' || role === 'admin' || role === 'hr_director'
+    ? ['approve', 'reject', 'withdraw']
+    : ['approve', 'withdraw'];
   if (status === 'approved') return ['send', 'withdraw'];
   if (status === 'sent') return ['accept', 'decline', 'withdraw', 'expire', 'resend', 'follow_up'];
   if (status === 'accepted') return ['onboard', 'withdraw', 'follow_up'];
@@ -81,6 +84,7 @@ function availableActions(status: OfferStatus, role: ProductRole | null): OfferA
 
 export default function OfferDetailDrawer({
   offer,
+  initialAction,
   role,
   loading,
   loadError,
@@ -92,6 +96,7 @@ export default function OfferDetailDrawer({
   const [action, setAction] = useState<OfferAction | null>(null);
   const [comment, setComment] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
+  const [sendChannel, setSendChannel] = useState('');
   const [actualOnboardDate, setActualOnboardDate] = useState(offer.onboard_date ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -101,11 +106,22 @@ export default function OfferDetailDrawer({
   const actions = useMemo(() => availableActions(offer.status, role), [offer.status, role]);
   const status = STATUS_META[offer.status];
   const needsReason = action === 'reject' || action === 'decline' || action === 'withdraw';
+  const risk = offerRisk(offer);
+
+  useEffect(() => {
+    setAction(initialAction);
+    setComment('');
+    setExpiresAt('');
+    setSendChannel('');
+    setActionError('');
+    setConflict(false);
+  }, [initialAction, offer.id]);
 
   const selectAction = (nextAction: OfferAction) => {
     setAction(nextAction);
     setComment('');
     setExpiresAt('');
+    setSendChannel('');
     setActualOnboardDate(offer.onboard_date ?? '');
     setActionError('');
     setConflict(false);
@@ -121,9 +137,14 @@ export default function OfferDetailDrawer({
       setActionError('请选择实际入职日期');
       return;
     }
+    if (action === 'send' && !sendChannel) {
+      setActionError('请选择实际发送渠道');
+      return;
+    }
 
     const payload: OfferActionInput = { action, comment: comment.trim() };
     if (action === 'send' && expiresAt) payload.expires_at = `${expiresAt}T23:59:59`;
+    if (action === 'send') payload.channel = sendChannel;
     if (action === 'onboard') payload.onboard_date = actualOnboardDate;
 
     setSubmitting(true);
@@ -197,13 +218,18 @@ export default function OfferDetailDrawer({
           )}
 
           <section>
+            <div className="mb-5 grid gap-3 rounded-xl border border-primary-100 bg-primary-50/50 p-4 sm:grid-cols-3">
+              <div><p className="text-xs text-foreground-400">当前节点</p><p className="mt-1 text-sm font-semibold text-foreground-800">{status.label}</p></div>
+              <div><p className="text-xs text-foreground-400">等待时长</p><p className="mt-1 text-sm font-semibold text-foreground-800">{offerWaitingLabel(offer)}</p></div>
+              <div><p className="text-xs text-foreground-400">当前提醒</p><p className={`mt-1 text-sm font-semibold ${risk.level === 'high' ? 'text-red-700' : risk.level === 'medium' ? 'text-amber-700' : 'text-emerald-700'}`}>{risk.label}</p></div>
+            </div>
             <h3 className="text-sm font-semibold text-foreground-900">基本信息</h3>
             <dl className="mt-3 grid gap-x-6 gap-y-4 border-y border-background-200 py-4 sm:grid-cols-2">
               <div><dt className="text-xs text-foreground-400">岗位</dt><dd className="mt-1 text-sm font-medium text-foreground-800">{offer.position || '—'}</dd></div>
               <div><dt className="text-xs text-foreground-400">部门</dt><dd className="mt-1 text-sm text-foreground-700">{offer.department || '—'}</dd></div>
               <div><dt className="text-xs text-foreground-400">薪酬方案</dt><dd className="mt-1 text-sm font-medium text-foreground-800">{offer.salary_range || '—'}</dd></div>
               <div><dt className="text-xs text-foreground-400">预计 / 实际入职</dt><dd className="mt-1 text-sm text-foreground-700">{offer.onboard_date || '—'}</dd></div>
-              <div><dt className="text-xs text-foreground-400">审批人</dt><dd className="mt-1 text-sm text-foreground-700">{offer.approver_name || '提交后自动分配'}</dd></div>
+              <div><dt className="text-xs text-foreground-400">确认人</dt><dd className="mt-1 text-sm text-foreground-700">{offer.approver_name || '尚未确认'}</dd></div>
               <div><dt className="text-xs text-foreground-400">最近更新</dt><dd className="mt-1 text-sm text-foreground-700">{formatTime(offer.updated_at || offer.created_at)}</dd></div>
             </dl>
             <div className="mt-4">
@@ -255,10 +281,21 @@ export default function OfferDetailDrawer({
                 </div>
 
                 {action === 'send' && (
-                  <label className="mt-3 block text-xs font-medium text-foreground-600">
-                    Offer 有效截止日期（可选，默认 14 天）
-                    <input type="date" value={expiresAt} onInput={(event) => setExpiresAt(event.currentTarget.value)} onChange={(event) => setExpiresAt(event.target.value)} className="mt-1.5 h-9 w-full rounded-lg border border-background-300 bg-white px-3 text-sm outline-none focus:border-primary-400" />
-                  </label>
+                  <div className="mt-3 space-y-3">
+                    <label className="block text-xs font-medium text-foreground-600">实际发送渠道
+                      <select value={sendChannel} onChange={(event) => { setSendChannel(event.target.value); setActionError(''); }} className="mt-1.5 h-9 w-full rounded-lg border border-background-300 bg-white px-3 text-sm outline-none focus:border-primary-400">
+                        <option value="">请选择发送渠道</option>
+                        <option value="enterprise_wechat">企业微信</option>
+                        <option value="email">邮件</option>
+                        <option value="offline">线下</option>
+                        <option value="other">其他</option>
+                      </select>
+                    </label>
+                    <label className="block text-xs font-medium text-foreground-600">Offer 有效截止日期（可选，默认 14 天）
+                      <input type="date" value={expiresAt} onInput={(event) => setExpiresAt(event.currentTarget.value)} onChange={(event) => setExpiresAt(event.target.value)} className="mt-1.5 h-9 w-full rounded-lg border border-background-300 bg-white px-3 text-sm outline-none focus:border-primary-400" />
+                    </label>
+                    <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">仅登记发送结果和时间，当前未自动调用企业微信或邮件接口。</p>
+                  </div>
                 )}
                 {action === 'onboard' && (
                   <label className="mt-3 block text-xs font-medium text-foreground-600">
@@ -294,7 +331,7 @@ export default function OfferDetailDrawer({
                   <button
                     type="button"
                     onClick={() => void submitAction()}
-                    disabled={submitting || (needsReason && !comment.trim()) || (action === 'onboard' && !actualOnboardDate)}
+                    disabled={submitting || (needsReason && !comment.trim()) || (action === 'onboard' && !actualOnboardDate) || (action === 'send' && !sendChannel)}
                     className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${ACTION_META[action].danger ? 'bg-red-500 hover:bg-red-600' : 'bg-primary-500 hover:bg-primary-600'}`}
                   >
                     {submitting && <i className="ri-loader-4-line animate-spin" aria-hidden="true"></i>}

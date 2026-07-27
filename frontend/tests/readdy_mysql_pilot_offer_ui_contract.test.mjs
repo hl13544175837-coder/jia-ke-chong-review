@@ -31,7 +31,7 @@ const drawer = read('readdy-frontend/src/pages/offers/components/OfferDetailDraw
 for (const action of ['submit', 'approve', 'reject', 'send', 'accept', 'decline', 'withdraw', 'expire', 'onboard']) {
   assert.match(drawer, new RegExp(`['"]${action}['"]`), `Offer 详情缺少 ${action} 状态操作`);
 }
-for (const label of ['记录为已发放', '实际入职日期', '操作历史', '版本']) {
+for (const label of ['登记发放', '实际入职日期', '操作历史', '版本']) {
   assert.ok(drawer.includes(label), `Offer 详情缺少“${label}”`);
 }
 assert.match(drawer, /status\s*===\s*409|\.status\s*===\s*409/, '409 并发冲突必须单独处理');
@@ -43,15 +43,11 @@ assert.doesNotMatch(drawer, /邮件已发送|已成功发送邮件/, '页面不�
 const table = read('readdy-frontend/src/pages/offers/components/OfferTable.tsx');
 assert.match(table, /OfferRecord/, 'Offer 表格必须使用真实 Offer 数据类型');
 assert.doesNotMatch(table, /@\/mocks\/offers/, 'Offer 表格不得使用假数据类型');
-for (const column of ['identity', 'demand', 'compensation', 'status', 'updated']) {
-  assert.match(
-    table,
-    new RegExp(`data-ui="offer-column-filter-${column}"`),
-    `5190 Offer 表头 ${column} 必须可展开筛选`,
-  );
+for (const filter of ['按招聘需求筛选', '按负责人筛选', '按风险筛选', 'Offer 排序']) {
+  assert.match(page, new RegExp(filter), `Offer 工作台缺少“${filter}”`);
 }
-assert.match(page, /resetOfferFilters/, 'Offer 列筛选必须支持一键重置');
-assert.match(page, /statusFilter/, 'Offer 列筛选必须支持精确状态');
-assert.match(page, /updatedOrder/, 'Offer 列筛选必须支持更新时间排序');
+assert.match(page, /resetOfferFilters/, 'Offer 集中筛选必须支持一键重置');
+assert.match(page, /riskFilter/, 'Offer 工作台必须支持风险筛选');
+assert.match(page, /setOrder/, 'Offer 工作台必须支持优先级排序');
 
 console.log('readdy_mysql_pilot_offer_ui_contract: OK');

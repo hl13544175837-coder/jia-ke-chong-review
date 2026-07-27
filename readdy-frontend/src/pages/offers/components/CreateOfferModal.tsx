@@ -104,7 +104,7 @@ export default function CreateOfferModal({ offer, demands, initialDemandId, init
         <header className="flex items-start justify-between border-b border-background-200 px-5 py-4">
           <div>
             <h2 id="offer-form-title" className="text-base font-semibold text-foreground-900">{offer ? '编辑 Offer 草稿' : '新建 Offer 草稿'}</h2>
-            <p className="mt-1 text-xs text-foreground-500">保存后仍需提交审批，不会直接发放。</p>
+            <p className="mt-1 text-xs text-foreground-500">保存为草稿，确认薪酬与入职日期后再登记发放。</p>
           </div>
           <button type="button" onClick={onClose} disabled={saving} aria-label="关闭" className="h-8 w-8 rounded-lg text-foreground-500 hover:bg-background-100 disabled:opacity-50">
             <i className="ri-close-line text-lg" aria-hidden="true"></i>

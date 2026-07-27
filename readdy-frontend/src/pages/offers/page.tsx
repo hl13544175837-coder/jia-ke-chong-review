@@ -5,23 +5,20 @@ import { useProductRole } from '@/auth/productRole';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { offersApi } from '@/features/offers/api';
-import type { OfferActionInput, OfferRecord, OfferStatus } from '@/features/offers/types';
+import type { OfferAction, OfferActionInput, OfferRecord } from '@/features/offers/types';
 import { useToast } from '@/hooks/useToast';
 import CreateOfferModal from './components/CreateOfferModal';
 import OfferDetailDrawer from './components/OfferDetailDrawer';
 import OfferTable from './components/OfferTable';
-
-type TabKey = 'all' | 'draft' | 'pending' | 'delivery' | 'reply' | 'onboard' | 'closed';
-
-const TABS: Array<{ key: TabKey; label: string; statuses: OfferStatus[] }> = [
-  { key: 'all', label: '全部', statuses: [] },
-  { key: 'draft', label: '待提交', statuses: ['draft'] },
-  { key: 'pending', label: '审批中', statuses: ['pending'] },
-  { key: 'delivery', label: '待发放', statuses: ['approved'] },
-  { key: 'reply', label: '待回复', statuses: ['sent'] },
-  { key: 'onboard', label: '待入职', statuses: ['accepted'] },
-  { key: 'closed', label: '已结束', statuses: ['declined', 'withdrawn', 'expired', 'onboarded'] },
-];
+import {
+  buildOfferTabCounts,
+  filterAndSortOffers,
+  OFFER_WORKBENCH_TABS,
+  offerRisk,
+  type OfferOrder,
+  type OfferRiskLevel,
+  type OfferWorkbenchTab,
+} from './workbench';
 
 function replaceOffer(items: OfferRecord[], next: OfferRecord) {
   const index = items.findIndex((item) => item.id === next.id);
@@ -29,13 +26,13 @@ function replaceOffer(items: OfferRecord[], next: OfferRecord) {
   return items.map((item) => item.id === next.id ? next : item);
 }
 
-function offerUpdatedAt(offer: OfferRecord) {
-  const parsed = Date.parse(offer.updated_at || offer.created_at || '');
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function initialOfferTab(value: string | null): TabKey {
-  return TABS.some((tab) => tab.key === value) ? value as TabKey : 'all';
+function initialOfferTab(value: string | null): OfferWorkbenchTab {
+  if (OFFER_WORKBENCH_TABS.some((tab) => tab.key === value)) return value as OfferWorkbenchTab;
+  if (value === 'delivery') return 'approved';
+  if (value === 'reply') return 'sent';
+  if (value === 'onboard') return 'accepted';
+  if (value === 'closed') return 'history';
+  return 'today';
 }
 
 export default function OffersPage() {
@@ -52,20 +49,19 @@ export default function OffersPage() {
   const [offers, setOffers] = useState<OfferRecord[]>([]);
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
   const [unmappedTotal, setUnmappedTotal] = useState(0);
-  const [activeTab, setActiveTab] = useState<TabKey>(() => initialOfferTab(searchParams.get('tab')));
+  const [activeTab, setActiveTab] = useState<OfferWorkbenchTab>(() => initialOfferTab(searchParams.get('tab')));
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [identityFilter, setIdentityFilter] = useState('');
   const [demandFilter, setDemandFilter] = useState('');
-  const [compensationFilter, setCompensationFilter] = useState('');
-  const [onboardDateFilter, setOnboardDateFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | OfferStatus>('');
-  const [updatedOrder, setUpdatedOrder] = useState<'asc' | 'desc'>('desc');
+  const [ownerFilter, setOwnerFilter] = useState('');
+  const [riskFilter, setRiskFilter] = useState<'' | OfferRiskLevel>('');
+  const [order, setOrder] = useState<OfferOrder>('urgent');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [demandsLoading, setDemandsLoading] = useState(true);
   const [demandsError, setDemandsError] = useState('');
   const [selectedOffer, setSelectedOffer] = useState<OfferRecord | null>(null);
+  const [requestedAction, setRequestedAction] = useState<OfferAction | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -107,7 +103,6 @@ export default function OffersPage() {
     [demands],
   );
 
-  const currentTab = TABS.find((tab) => tab.key === activeTab) ?? TABS[0];
   const scopedOffers = useMemo(
     () => requestedDemandId ? offers.filter((offer) => (
       offer.demand_id === requestedDemandId
@@ -119,74 +114,50 @@ export default function OffersPage() {
     () => requestedDemandId ? demands.find((demand) => demand.id === requestedDemandId) ?? null : null,
     [demands, requestedDemandId],
   );
-  const visibleOffers = useMemo(() => {
-    const identityTerm = identityFilter.trim().toLocaleLowerCase('zh-CN');
-    const demandTerm = demandFilter.trim().toLocaleLowerCase('zh-CN');
-    const compensationTerm = compensationFilter.trim().toLocaleLowerCase('zh-CN');
+  const counts = useMemo(() => buildOfferTabCounts(scopedOffers), [scopedOffers]);
+  const visibleOffers = useMemo(() => filterAndSortOffers({
+    items: scopedOffers,
+    tab: activeTab,
+    search,
+    demand: demandFilter,
+    owner: ownerFilter,
+    risk: riskFilter,
+    order,
+  }), [activeTab, demandFilter, order, ownerFilter, riskFilter, scopedOffers, search]);
+  const demandOptions = useMemo(() => Array.from(new Map(
+    scopedOffers.map((offer) => [offer.request_no, `${offer.position} · ${offer.request_no}`]),
+  ).entries()).filter(([value]) => Boolean(value)), [scopedOffers]);
+  const ownerOptions = useMemo(() => Array.from(new Set(
+    scopedOffers.map((offer) => offer.created_by_name).filter(Boolean),
+  )).sort((left, right) => left.localeCompare(right, 'zh-CN')), [scopedOffers]);
+  const highRiskCount = useMemo(
+    () => scopedOffers.filter((offer) => offerRisk(offer).level === 'high' && offer.status !== 'expired').length,
+    [scopedOffers],
+  );
 
-    return scopedOffers
-      .filter((offer) => currentTab.statuses.length === 0 || currentTab.statuses.includes(offer.status))
-      .filter((offer) => !statusFilter || offer.status === statusFilter)
-      .filter((offer) => !identityTerm || [offer.candidate_name, offer.position]
-        .some((value) => value.toLocaleLowerCase('zh-CN').includes(identityTerm)))
-      .filter((offer) => !demandTerm || [offer.request_no, offer.department]
-        .some((value) => value.toLocaleLowerCase('zh-CN').includes(demandTerm)))
-      .filter((offer) => !compensationTerm || offer.salary_range
-        .toLocaleLowerCase('zh-CN').includes(compensationTerm))
-      .filter((offer) => !onboardDateFilter || offer.onboard_date === onboardDateFilter)
-      .sort((left, right) => updatedOrder === 'asc'
-        ? offerUpdatedAt(left) - offerUpdatedAt(right)
-        : offerUpdatedAt(right) - offerUpdatedAt(left));
-  }, [
-    compensationFilter,
-    currentTab.statuses,
-    demandFilter,
-    identityFilter,
-    onboardDateFilter,
-    scopedOffers,
-    statusFilter,
-    updatedOrder,
-  ]);
-
-  const counts = useMemo<Record<TabKey, number>>(() => {
-    const nextCounts: Record<TabKey, number> = {
-      all: 0,
-      draft: 0,
-      pending: 0,
-      delivery: 0,
-      reply: 0,
-      onboard: 0,
-      closed: 0,
-    };
-    for (const tab of TABS) {
-      nextCounts[tab.key] = tab.statuses.length === 0
-        ? scopedOffers.length
-        : scopedOffers.filter((offer) => tab.statuses.includes(offer.status)).length;
-    }
-    return nextCounts;
-  }, [scopedOffers]);
-
-  const hasColumnFilters = Boolean(
-    identityFilter.trim()
+  const hasFilters = Boolean(
+    search
     || demandFilter.trim()
-    || compensationFilter.trim()
-    || onboardDateFilter
-    || statusFilter
-    || updatedOrder !== 'desc',
+    || ownerFilter.trim()
+    || riskFilter
+    || order !== 'urgent',
   );
 
   const resetOfferFilters = () => {
-    setIdentityFilter('');
+    setSearchInput('');
+    setSearch('');
     setDemandFilter('');
-    setCompensationFilter('');
-    setOnboardDateFilter('');
-    setStatusFilter('');
-    setUpdatedOrder('desc');
+    setOwnerFilter('');
+    setRiskFilter('');
+    setOrder('urgent');
   };
 
-  const selectTab = (tab: TabKey) => {
+  const selectTab = (tab: OfferWorkbenchTab) => {
     setActiveTab(tab);
-    setStatusFilter('');
+    const next = new URLSearchParams(searchParams);
+    if (tab === 'today') next.delete('tab');
+    else next.set('tab', tab);
+    setSearchParams(next, { replace: true });
   };
 
   const openDetail = useCallback(async (summary: OfferRecord) => {
@@ -222,7 +193,7 @@ export default function OffersPage() {
       setCreatePrefill({ demandId: requestedDemandId, candidateId: requestedCandidateId });
       setShowCreate(true);
     } else {
-      setDemandsError('对应需求不可创建 Offer，请确认需求仍在招聘中且已审批通过');
+      setDemandsError('对应需求不可创建 Offer，请确认需求仍在招聘中且已审核通过');
     }
     const next = new URLSearchParams(searchParams);
     next.delete('demand');
@@ -235,6 +206,7 @@ export default function OffersPage() {
     setSelectedOffer(null);
     setDetailLoading(false);
     setDetailError('');
+    setRequestedAction(null);
   };
 
   const refreshSelected = async () => {
@@ -276,13 +248,28 @@ export default function OffersPage() {
     setShowCreate(true);
   };
 
+  const openPrimaryAction = (offer: OfferRecord) => {
+    if (offer.status === 'draft') {
+      openEdit(offer);
+      return;
+    }
+    const actionByStatus: Partial<Record<OfferRecord['status'], OfferAction>> = {
+      pending: 'approve',
+      approved: 'send',
+      sent: 'accept',
+      accepted: 'onboard',
+    };
+    setRequestedAction(actionByStatus[offer.status] ?? null);
+    void openDetail(offer);
+  };
+
   return (
     <div className="space-y-5 p-6" data-ui="real-offer-lifecycle">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           {fromDashboard && !requestedDemandId && <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>}
-          <div><h1 className="text-2xl font-bold text-foreground-900">Offer 管理</h1>
-          <p className="mt-1 text-sm text-foreground-500">审批、发放记录、候选人回复与入职确认</p>
+          <div><h1 className="text-2xl font-bold text-foreground-900">Offer 工作台</h1>
+          <p className="mt-1 text-sm text-foreground-500">确认方案、登记发放、跟进回复和确认入职</p>
           </div>
         </div>
         <button
@@ -323,9 +310,18 @@ export default function OffersPage() {
         </section>
       )}
 
+      {(highRiskCount > 0 || counts.pending > 0 || counts.approved > 0) && (
+        <section className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3" aria-label="今日提醒">
+          <span className="text-sm font-semibold text-amber-800">今日提醒</span>
+          {highRiskCount > 0 && <button type="button" onClick={() => { setRiskFilter('high'); selectTab('today'); }} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-red-700">{highRiskCount} 项已超时或即将到期</button>}
+          {counts.pending > 0 && <button type="button" onClick={() => selectTab('pending')} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-amber-800">{counts.pending} 份待确认</button>}
+          {counts.approved > 0 && <button type="button" onClick={() => selectTab('approved')} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-blue-700">{counts.approved} 份待发放</button>}
+        </section>
+      )}
+
       <section className="overflow-hidden rounded-lg border border-background-200 bg-white">
         <div className="flex overflow-x-auto border-b border-background-200 px-3">
-          {TABS.map((tab) => (
+          {OFFER_WORKBENCH_TABS.map((tab) => (
             <button
               key={tab.key}
               type="button"
@@ -339,7 +335,7 @@ export default function OffersPage() {
         </div>
 
         <form
-          className="flex flex-col gap-2 border-b border-background-200 bg-background-50 p-4 sm:flex-row"
+          className="grid gap-2 border-b border-background-200 bg-background-50 p-4 md:grid-cols-[minmax(260px,1fr)_220px_160px_150px_160px_auto]"
           onSubmit={(event) => { event.preventDefault(); setSearch(searchInput.trim()); }}
         >
           <label className="relative flex-1">
@@ -352,22 +348,14 @@ export default function OffersPage() {
               className="h-10 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-primary-400"
             />
           </label>
-          <button type="submit" className="h-10 rounded-lg border border-background-300 bg-white px-4 text-sm font-medium text-foreground-700 hover:bg-background-100">搜索</button>
-          {(search || searchInput) && (
-            <button
-              type="button"
-              onClick={() => { setSearchInput(''); setSearch(''); }}
-              className="h-10 rounded-lg px-3 text-sm text-foreground-500 hover:bg-background-100"
-            >清除</button>
-          )}
-          {hasColumnFilters && (
-            <button
-              type="button"
-              onClick={resetOfferFilters}
-              className="h-10 rounded-lg px-3 text-sm text-foreground-500 hover:bg-background-100"
-            >重置列筛选</button>
-          )}
+          <select aria-label="按招聘需求筛选" value={demandFilter} onChange={(event) => setDemandFilter(event.target.value)} className="h-10 rounded-lg border border-background-300 bg-white px-3 text-sm text-foreground-700"><option value="">全部招聘需求</option>{demandOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+          <select aria-label="按负责人筛选" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className="h-10 rounded-lg border border-background-300 bg-white px-3 text-sm text-foreground-700"><option value="">全部负责人</option>{ownerOptions.map((owner) => <option key={owner} value={owner}>{owner}</option>)}</select>
+          <select aria-label="按风险筛选" value={riskFilter} onChange={(event) => setRiskFilter(event.target.value as '' | OfferRiskLevel)} className="h-10 rounded-lg border border-background-300 bg-white px-3 text-sm text-foreground-700"><option value="">全部风险</option><option value="high">高风险</option><option value="medium">需关注</option><option value="low">正常</option></select>
+          <select aria-label="Offer 排序" value={order} onChange={(event) => setOrder(event.target.value as OfferOrder)} className="h-10 rounded-lg border border-background-300 bg-white px-3 text-sm text-foreground-700"><option value="urgent">紧急优先</option><option value="updated">最近更新</option><option value="onboard">预计入职日</option></select>
+          <button type="submit" className="h-10 rounded-lg border border-primary-200 bg-white px-4 text-sm font-medium text-primary-700 hover:bg-primary-50">搜索</button>
         </form>
+
+        {hasFilters && <div className="flex flex-wrap items-center gap-2 border-b border-background-100 px-4 py-2.5 text-xs text-foreground-500"><span>已筛选</span>{search && <button type="button" onClick={() => { setSearch(''); setSearchInput(''); }} className="rounded-full bg-background-100 px-2.5 py-1">搜索：{search} ×</button>}{demandFilter && <button type="button" onClick={() => setDemandFilter('')} className="rounded-full bg-background-100 px-2.5 py-1">需求：{demandFilter} ×</button>}{ownerFilter && <button type="button" onClick={() => setOwnerFilter('')} className="rounded-full bg-background-100 px-2.5 py-1">负责人：{ownerFilter} ×</button>}{riskFilter && <button type="button" onClick={() => setRiskFilter('')} className="rounded-full bg-background-100 px-2.5 py-1">风险：{riskFilter} ×</button>}<button type="button" onClick={resetOfferFilters} className="font-medium text-primary-700">清空全部</button></div>}
 
         {loading ? (
           <div className="py-16 text-center text-sm text-foreground-500"><i className="ri-loader-4-line mr-2 animate-spin"></i>正在加载 Offer...</div>
@@ -376,32 +364,17 @@ export default function OffersPage() {
             <p className="text-sm text-red-600">{loadError}</p>
             <button type="button" onClick={() => void loadOffers()} className="mt-3 rounded-lg border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50">重新加载</button>
           </div>
-        ) : visibleOffers.length === 0 && !hasColumnFilters ? (
+        ) : visibleOffers.length === 0 ? (
           <div className="py-16 text-center">
             <i className="ri-file-list-3-line text-3xl text-foreground-300" aria-hidden="true"></i>
-            <p className="mt-3 text-sm font-medium text-foreground-700">暂无符合条件的 Offer</p>
-            <p className="mt-1 text-xs text-foreground-400">候选人进入 Offer 阶段后，可以创建真实草稿。</p>
+            <p className="mt-3 text-sm font-medium text-foreground-700">{activeTab === 'today' ? '今天没有需要处理的 Offer' : '当前范围没有符合条件的 Offer'}</p>
+            <p className="mt-1 text-xs text-foreground-400">{activeTab === 'history' ? '已入职、拒绝、撤回和过期记录会统一归档在这里。' : '可切换状态或清除筛选查看其他记录。'}</p>
           </div>
         ) : (
           <OfferTable
             offers={visibleOffers}
-            identityFilter={identityFilter}
-            demandFilter={demandFilter}
-            compensationFilter={compensationFilter}
-            onboardDateFilter={onboardDateFilter}
-            statusFilter={statusFilter}
-            updatedOrder={updatedOrder}
-            onOpen={(offer) => void openDetail(offer)}
-            onEdit={openEdit}
-            onIdentityFilterChange={setIdentityFilter}
-            onDemandFilterChange={setDemandFilter}
-            onCompensationFilterChange={setCompensationFilter}
-            onOnboardDateFilterChange={setOnboardDateFilter}
-            onStatusFilterChange={(nextStatus) => {
-              setStatusFilter(nextStatus);
-              if (nextStatus) setActiveTab('all');
-            }}
-            onUpdatedOrderChange={setUpdatedOrder}
+            onOpen={(offer) => { setRequestedAction(null); void openDetail(offer); }}
+            onPrimaryAction={openPrimaryAction}
           />
         )}
       </section>
@@ -420,6 +393,7 @@ export default function OffersPage() {
       {selectedOffer && (
         <OfferDetailDrawer
           offer={selectedOffer}
+          initialAction={requestedAction}
           role={role}
           loading={detailLoading}
           loadError={detailError}
