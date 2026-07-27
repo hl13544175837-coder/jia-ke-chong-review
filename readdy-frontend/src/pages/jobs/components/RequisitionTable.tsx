@@ -266,7 +266,7 @@ export default function RequisitionTable({
                 {data.map((req) => {
                   const transitions = statusTransitions[req.statusCode];
                   const extras = statusExtraActions[req.statusCode] || [];
-                  const canSelectCandidates = req.statusCode === 'pending' || req.statusCode === 'active';
+                  const canSelectCandidates = req.statusCode === 'active' && req.source.approval_status === 'approved';
                   const isClosedOrCompleted = ['filled', 'cancelled', 'closed'].includes(req.statusCode);
                   const hasActions = transitions && (transitions.advance || transitions.rollback || extras.length > 0);
                   const prio = priorityConfig[req.priority] || priorityConfig['普通'];

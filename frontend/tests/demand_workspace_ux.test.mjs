@@ -96,5 +96,15 @@ assert.match(table, /移除.*筛选|removeFilter/);
 assert.match(table, /\['stage', '阶段', filters\.stage\s*\?/, '未选择阶段时不能显示“阶段：全部”的假筛选标签');
 assert.match(table, /排序：/);
 assert.doesNotMatch(table, /statusOptions|headerFilterOpen === 'status'/, '表头不得保留重复状态筛选');
+assert.match(
+  table,
+  /const canSelectCandidates = req\.statusCode === 'active'\s*&&\s*req\.source\.approval_status === 'approved'/,
+  '选候选人只允许已通过审核且正在招聘的需求',
+);
+assert.doesNotMatch(
+  table,
+  /canSelectCandidates\s*=\s*[^;]*statusCode === 'pending'/,
+  '待审核需求不得显示选候选人入口',
+);
 
 console.log('demand_workspace_ux: OK');
