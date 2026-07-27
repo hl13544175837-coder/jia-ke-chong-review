@@ -315,6 +315,18 @@ def close_demand(demand_id):
     else:
         demand.closed_at = utc_now()
         demand.closed_by = g.user_id
+    if status == "closed":
+        active_flows = CandidateDemandFlow.query.filter_by(
+            org_id=g.org_id,
+            demand_id=demand.id,
+            status="active",
+        ).all()
+        for flow in active_flows:
+            flow.status = "completed"
+            flow.ended_at = demand.closed_at
+            candidate = db.session.get(Candidate, flow.candidate_id)
+            if candidate is not None and candidate.current_demand_id == demand.id:
+                candidate.current_demand_id = None
     try:
         record_event(
             "demand.closed",
