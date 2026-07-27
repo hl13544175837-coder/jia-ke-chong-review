@@ -26,6 +26,13 @@ import PushToReviewerModal, {
   type PushResultItem,
   type PushTarget,
 } from '@/pages/candidates/components/PushToReviewerModal';
+import {
+  filterAndSortRequisitions,
+  type DemandSortDirection,
+  type DemandSortField,
+  type DemandWorkspaceFilters,
+  type DemandWorkspaceTab,
+} from './workbench';
 
 const statusTransitions: Record<string, { advance: { to: string; label: string } | null; rollback: { to: string; label: string } | null }> = {
   pending: { advance: { to: 'closed', label: '关闭需求' }, rollback: null },
@@ -55,6 +62,16 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
+function initialWorkspaceTab(value: string | undefined): DemandWorkspaceTab {
+  if (value === 'pending') return 'pendingApproval';
+  if (['paused', 'closed', 'cancelled', 'ended'].includes(value ?? '')) return 'stopped';
+  if (value === 'rejected') return 'all';
+  if (['all', 'active', 'pendingApproval', 'filled', 'stopped'].includes(value ?? '')) {
+    return value as DemandWorkspaceTab;
+  }
+  return 'all';
+}
+
 export default function JobsPage() {
   const { showToast } = useToast();
   const { userId } = useCompanyAuth();
@@ -64,7 +81,7 @@ export default function JobsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const navState = location.state as { fromDashboard?: boolean; openTitle?: string; tab?: string } | null;
-  const [activeTab, setActiveTab] = useState(navState?.tab || 'all');
+  const [activeTab, setActiveTab] = useState<DemandWorkspaceTab>(() => initialWorkspaceTab(navState?.tab));
   const [formOpen, setFormOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
@@ -77,9 +94,9 @@ export default function JobsPage() {
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
   const [detailSaving, setDetailSaving] = useState(false);
   const [detailError, setDetailError] = useState('');
-  const [filters, setFilters] = useState({ department: '', owner: '', city: '', status: '', stage: '' });
-  const [sortField, setSortField] = useState('newest');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [filters, setFilters] = useState<DemandWorkspaceFilters>({ department: '', owner: '', city: '', stage: '' });
+  const [sortField, setSortField] = useState<DemandSortField>('newest');
+  const [sortDirection, setSortDirection] = useState<DemandSortDirection>('desc');
   const [pushDemand, setPushDemand] = useState<RecruitmentDemand | null>(null);
   const [pushTargets, setPushTargets] = useState<PushTarget[] | null>(null);
   const [pushSubmitting, setPushSubmitting] = useState(false);
@@ -153,38 +170,13 @@ export default function JobsPage() {
     setSearchParams(next, { replace: true });
   }, [demands, requestedDemandId, searchParams, setSearchParams]);
 
-  const filteredData = useMemo(() => {
-    let data = [...requisitions];
-    if (activeTab !== 'all') data = data.filter((item) => item.statusCode === activeTab);
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      data = data.filter((item) => [item.id, item.name, item.title, item.owner, item.source.request_no]
-        .some((value) => value.toLowerCase().includes(query)));
-    }
-    if (filters.department) data = data.filter((item) => item.department === filters.department);
-    if (filters.owner) data = data.filter((item) => item.owner === filters.owner);
-    if (filters.city) data = data.filter((item) => item.city === filters.city);
-    if (filters.status) data = data.filter((item) => item.statusCode === filters.status);
-    if (filters.stage === 'hasAny') data = data.filter((item) => item.stageAll > 0);
-    if (filters.stage === 'none') data = data.filter((item) => item.stageAll === 0);
-    if (filters.stage === 'feedback') data = data.filter((item) => item.stageFeedback > 0);
-    if (filters.stage === 'interview') data = data.filter((item) => item.stageInterview > 0);
-    if (filters.stage === 'offer') data = data.filter((item) => item.stageOffer > 0);
-
-    data.sort((a, b) => {
-      const direction = sortDirection === 'asc' ? 1 : -1;
-      if (sortField === 'deadline') {
-        return ((a.deadline ? new Date(a.deadline).getTime() : Infinity) - (b.deadline ? new Date(b.deadline).getTime() : Infinity)) * direction;
-      }
-      if (sortField === 'priority') {
-        const rank: Record<string, number> = { '紧急': 3, '高': 2, '普通': 1 };
-        return ((rank[b.priority] || 0) - (rank[a.priority] || 0)) * direction;
-      }
-      if (sortField === 'name') return a.name.localeCompare(b.name, 'zh-CN') * direction;
-      return (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) * direction;
-    });
-    return data;
-  }, [activeTab, filters, requisitions, searchQuery, sortDirection, sortField]);
+  const filteredData = useMemo(() => filterAndSortRequisitions(requisitions, {
+    activeTab,
+    searchQuery,
+    filters,
+    sortField,
+    sortDirection,
+  }), [activeTab, filters, requisitions, searchQuery, sortDirection, sortField]);
 
   const handleCreate = async (payload: RecruitmentDemandInput) => {
     if (submitting) return;
@@ -363,12 +355,17 @@ export default function JobsPage() {
         </button>
       )}
 
-      <div className="flex items-center justify-between gap-4">
-        <RequisitionTabs activeTab={activeTab} onTabChange={setActiveTab} />
-        <button onClick={() => { setCreateErrors({}); setFormOpen(true); }} className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-primary-600">
-          <i className="ri-add-line text-base"></i>招聘需求
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground-900">招聘需求</h1>
+          <p className="mt-1 text-sm text-foreground-500">审核需求、寻找候选人并跟进每个岗位的招聘进度</p>
+        </div>
+        <button type="button" onClick={() => { setCreateErrors({}); setFormOpen(true); }} className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-primary-600">
+          <i className="ri-add-line text-base"></i>新建招聘需求
         </button>
       </div>
+
+      <RequisitionTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
       {loading ? (
         <div className="rounded-lg border border-background-200 bg-white py-16 text-center text-sm text-foreground-500">
@@ -382,6 +379,7 @@ export default function JobsPage() {
       ) : (
         <RequisitionTable
           data={filteredData}
+          optionSource={requisitions}
           onRowClick={(req) => { void openDemand(req); }}
           onStatusChange={handleStatusChange}
           statusTransitions={statusTransitions}
@@ -393,9 +391,10 @@ export default function JobsPage() {
           onSearchChange={setSearchQuery}
           filters={filters}
           onFilterChange={(key, value) => setFilters((current) => ({ ...current, [key]: value }))}
+          onClearFilters={() => setFilters({ department: '', owner: '', city: '', stage: '' })}
           sortField={sortField}
           sortDirection={sortDirection}
-          onSortChange={(field) => {
+          onSortChange={(field: DemandSortField) => {
             if (sortField === field) setSortDirection((current) => current === 'asc' ? 'desc' : 'asc');
             else { setSortField(field); setSortDirection(field === 'deadline' ? 'asc' : 'desc'); }
           }}

@@ -34,19 +34,24 @@ assert.deepEqual(
 );
 
 const hrNavigation = arrayBlock(layout, 'hrNavItems');
+assert.deepEqual(
+  pathsIn(hrNavigation),
+  ['/dashboard', '/jobs', '/candidates', '/interviews', '/offers', '/talent-map'],
+  '人才地图必须放在招聘专员侧栏最底部，即 Offer 后面',
+);
 for (const [routePath, label] of [
   ['/jobs', '需求审核'],
   ['/candidates', '候选人'],
+  ['/talent-map', '人才地图'],
   ['/interviews', '面试管理'],
   ['/offers', 'Offer'],
 ]) {
   assert.match(hrNavigation, new RegExp(`path: '${routePath.replace('/', '\\/')}'.*label: '${label}'`), `HR 导航缺少${label}`);
 }
 assert.doesNotMatch(hrNavigation, /path: '\/kanban'.*label: '进度'/, 'HR 导航不应重复显示招聘进度');
-assert.doesNotMatch(hrNavigation, /talent-map/, 'HR 试点导航不应显示人才地图');
 
 assert.match(routes, /const hrRoles: ProductRole\[\] = \['recruiter', 'manager', 'admin'\]/, 'HR、主管和管理员必须共享试点管理路由');
-for (const routePath of ['/jobs', '/candidates', '/kanban', '/interviews', '/offers']) {
+for (const routePath of ['/jobs', '/candidates', '/talent-map', '/kanban', '/interviews', '/offers']) {
   assert.match(
     routes,
     new RegExp(`path: '${routePath.replace('/', '\\/')}'[\\s\\S]{0,160}allow=\\{hrRoles\\}`),

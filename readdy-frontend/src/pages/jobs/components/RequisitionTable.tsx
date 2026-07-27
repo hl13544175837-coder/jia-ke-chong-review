@@ -1,5 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { RequisitionRow } from '@/features/demands/types';
+import {
+  buildDemandFilterOptions,
+  demandStatusLabel,
+  type DemandSortDirection,
+  type DemandSortField,
+  type DemandWorkspaceFilters,
+} from '../workbench';
 
 const statusBadgeStyles: Record<string, string> = {
   active: 'bg-primary-100 text-primary-700 border border-primary-200',
@@ -12,6 +19,7 @@ const statusBadgeStyles: Record<string, string> = {
 
 interface RequisitionTableProps {
   data: RequisitionRow[];
+  optionSource: RequisitionRow[];
   onRowClick: (req: RequisitionTableProps['data'][0]) => void;
   onStatusChange: (id: string, newStatusCode: string, reason: string) => Promise<void>;
   statusTransitions: Record<string, { advance: { to: string; label: string } | null; rollback: { to: string; label: string } | null }>;
@@ -21,11 +29,12 @@ interface RequisitionTableProps {
   onStageCountClick: (req: RequisitionTableProps['data'][0], stage: 'feedback' | 'interview' | 'offer') => void;
   searchQuery: string;
   onSearchChange: (v: string) => void;
-  filters: { department: string; owner: string; city: string; status: string; stage: string };
-  onFilterChange: (key: string, value: string) => void;
-  sortField: string;
-  sortDirection: 'asc' | 'desc';
-  onSortChange: (field: string) => void;
+  filters: DemandWorkspaceFilters;
+  onFilterChange: (key: keyof DemandWorkspaceFilters, value: string) => void;
+  onClearFilters: () => void;
+  sortField: DemandSortField;
+  sortDirection: DemandSortDirection;
+  onSortChange: (field: DemandSortField) => void;
 }
 
 const statusLabelMap: Record<string, string> = {
@@ -37,9 +46,10 @@ const statusLabelMap: Record<string, string> = {
   closed: '已关闭',
 };
 
-const sortModes = [
+const sortModes: Array<{ value: DemandSortField; label: string }> = [
   { value: 'newest', label: '最新发布' },
   { value: 'priority', label: '优先级' },
+  { value: 'deadline', label: '截止日期' },
 ];
 
 // priority display config
@@ -51,6 +61,7 @@ const priorityConfig: Record<string, { label: string; className: string }> = {
 
 export default function RequisitionTable({
   data,
+  optionSource,
   onRowClick,
   onStatusChange,
   statusTransitions,
@@ -62,6 +73,7 @@ export default function RequisitionTable({
   onSearchChange,
   filters,
   onFilterChange,
+  onClearFilters,
   sortField,
   sortDirection,
   onSortChange,
@@ -71,47 +83,11 @@ export default function RequisitionTable({
   const [confirmReason, setConfirmReason] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
-  const [headerFilterOpen, setHeaderFilterOpen] = useState<'department' | 'owner' | 'status' | 'stage' | null>(null);
+  const [toolbarPanel, setToolbarPanel] = useState<'filters' | 'sort' | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const deptFilterRef = useRef<HTMLDivElement | null>(null);
-  const ownerFilterRef = useRef<HTMLDivElement | null>(null);
-  const statusFilterRef = useRef<HTMLDivElement | null>(null);
-  const stageFilterRef = useRef<HTMLDivElement | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
 
-  // 从当前表格数据动态推导筛选选项，更真实
-  const deptOptions = useMemo(() => {
-    const unique = Array.from(new Set(data.map((r) => r.department)));
-    return [
-      { value: '', label: '全部部门' },
-      ...unique.map((d) => ({ value: d, label: d })),
-    ];
-  }, [data]);
-
-  const cityOptions = useMemo(() => {
-    const unique = Array.from(new Set(data.map((r) => r.city)));
-    return [
-      { value: '', label: '全部城市' },
-      ...unique.map((c) => ({ value: c, label: c })),
-    ];
-  }, [data]);
-
-  const ownerOptions = useMemo(() => {
-    const unique = Array.from(new Set(data.map((r) => r.owner)));
-    return [
-      { value: '', label: '全部负责人' },
-      ...unique.map((o) => ({ value: o, label: o })),
-    ];
-  }, [data]);
-
-  const statusOptions = useMemo(() => [
-    { value: '', label: '全部状态' },
-    { value: 'active', label: '招聘中' },
-    { value: 'pending', label: '需求待确认' },
-    { value: 'paused', label: '已暂停' },
-    { value: 'filled', label: '已完成' },
-    { value: 'cancelled', label: '已取消' },
-    { value: 'closed', label: '已关闭' },
-  ], []);
+  const filterOptions = useMemo(() => buildDemandFilterOptions(optionSource), [optionSource]);
 
   const stageOptions = useMemo(() => [
     { value: '', label: '全部' },
@@ -134,22 +110,13 @@ export default function RequisitionTable({
   }, [openMenuId]);
 
   useEffect(() => {
-    if (!headerFilterOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      let targetRef: { current: HTMLDivElement | null } | null = null;
-      if (headerFilterOpen === 'department') targetRef = deptFilterRef;
-      else if (headerFilterOpen === 'owner') targetRef = ownerFilterRef;
-      else if (headerFilterOpen === 'status') targetRef = statusFilterRef;
-      else if (headerFilterOpen === 'stage') targetRef = stageFilterRef;
-      if (targetRef?.current && !targetRef.current.contains(e.target as Node)) {
-        setHeaderFilterOpen(null);
-      }
+    if (!toolbarPanel) return;
+    const handleClick = (event: MouseEvent) => {
+      if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) setToolbarPanel(null);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [headerFilterOpen]);
-
-  const isDeadlineSortActive = sortField === 'deadline';
+  }, [toolbarPanel]);
 
   const renderSortArrow = (active: boolean) => {
     if (!active) return null;
@@ -159,23 +126,118 @@ export default function RequisitionTable({
     return <i className="ri-arrow-down-s-line ml-1 text-xs text-primary-500"></i>;
   };
 
+  const activeFilterEntries = ([
+    ['department', '部门', filters.department],
+    ['city', '城市', filters.city],
+    ['owner', '负责人', filters.owner],
+    ['stage', '阶段', filters.stage ? stageOptions.find((option) => option.value === filters.stage)?.label || filters.stage : ''],
+  ] as Array<[keyof DemandWorkspaceFilters, string, string]>).filter(([, , value]) => Boolean(value));
+
+  const removeFilter = (key: keyof DemandWorkspaceFilters) => onFilterChange(key, '');
+  const activeSortLabel = sortModes.find((mode) => mode.value === sortField)?.label || '最新发布';
+  const sortDirectionLabel = sortDirection === 'desc' ? '降序' : '升序';
+
   return (
     <>
-      <div className="bg-white rounded-xl border border-background-200 overflow-hidden">
-        {/* Toolbar: search + filters */}
-        <div className="px-5 py-3 border-b border-background-100 flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
+      <div className="overflow-hidden rounded-xl border border-background-200 bg-white">
+        <div ref={toolbarRef} className="flex flex-wrap items-center gap-3 border-b border-background-100 px-5 py-3">
+          <div className="relative min-w-[260px] flex-1">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <i className="ri-search-line text-foreground-400 text-sm"></i>
             </div>
             <input
               type="text"
-              placeholder="搜索需求编号、职位或负责人"
+              placeholder="搜索需求编号、职位、负责人、部门或城市"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-50 transition-all"
             />
           </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <span className="whitespace-nowrap text-xs text-foreground-400">{data.length} 条</span>
+            <button
+              type="button"
+              aria-expanded={toolbarPanel === 'filters'}
+              onClick={() => setToolbarPanel((current) => current === 'filters' ? null : 'filters')}
+              className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${
+                activeFilterEntries.length > 0
+                  ? 'border-primary-200 bg-primary-50 text-primary-700'
+                  : 'border-background-200 bg-white text-foreground-600 hover:bg-background-50'
+              }`}
+            >
+              <i className="ri-filter-3-line"></i>
+              筛选
+              {activeFilterEntries.length > 0 && <span className="rounded-full bg-primary-500 px-1.5 text-[10px] text-white">{activeFilterEntries.length}</span>}
+            </button>
+            <button
+              type="button"
+              aria-expanded={toolbarPanel === 'sort'}
+              onClick={() => setToolbarPanel((current) => current === 'sort' ? null : 'sort')}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-background-200 bg-white px-3 text-sm font-medium text-foreground-600 transition-colors hover:bg-background-50"
+            >
+              <i className="ri-sort-desc"></i>
+              排序：{activeSortLabel}
+              <span className="text-xs text-primary-600">{sortDirectionLabel}</span>
+            </button>
+          </div>
+
+          {toolbarPanel === 'filters' && (
+            <div className="grid w-full grid-cols-1 gap-3 rounded-xl border border-primary-100 bg-primary-50/40 p-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="招聘需求筛选面板">
+              <select aria-label="按部门筛选" value={filters.department} onChange={(event) => onFilterChange('department', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
+                <option value="">全部部门</option>
+                {filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <select aria-label="按城市筛选" value={filters.city} onChange={(event) => onFilterChange('city', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
+                <option value="">全部城市</option>
+                {filterOptions.cities.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <select aria-label="按负责人筛选" value={filters.owner} onChange={(event) => onFilterChange('owner', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
+                <option value="">全部负责人</option>
+                {filterOptions.owners.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <select aria-label="按候选人阶段筛选" value={filters.stage} onChange={(event) => onFilterChange('stage', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
+                {stageOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <button type="button" onClick={onClearFilters} disabled={activeFilterEntries.length === 0} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm font-medium text-foreground-600 transition-colors hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40">
+                <i className="ri-refresh-line mr-1"></i>清空筛选
+              </button>
+            </div>
+          )}
+
+          {toolbarPanel === 'sort' && (
+            <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-background-200 bg-background-50 p-3" aria-label="招聘需求排序面板">
+              <span className="mr-1 text-xs font-medium text-foreground-500">选择排序；再次点击当前项可切换方向</span>
+              {sortModes.map((mode) => (
+                <button
+                  type="button"
+                  key={mode.value}
+                  aria-pressed={sortField === mode.value}
+                  onClick={() => onSortChange(mode.value)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${sortField === mode.value ? 'bg-primary-500 text-white' : 'bg-white text-foreground-600 hover:bg-background-100'}`}
+                >
+                  {mode.label}{sortField === mode.value && renderSortArrow(true)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeFilterEntries.length > 0 && (
+            <div className="flex w-full flex-wrap items-center gap-2 border-t border-background-100 pt-3" aria-label="当前筛选条件">
+              <span className="text-xs text-foreground-400">当前筛选</span>
+              {activeFilterEntries.map(([key, label, value]) => (
+                <button
+                  type="button"
+                  key={key}
+                  aria-label={`移除${label}筛选`}
+                  onClick={() => removeFilter(key)}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 hover:bg-primary-100"
+                >
+                  {label}：{value}<i className="ri-close-line"></i>
+                </button>
+              ))}
+              <button type="button" onClick={onClearFilters} className="ml-1 text-xs font-medium text-foreground-500 underline-offset-2 hover:text-primary-700 hover:underline">清空筛选</button>
+            </div>
+          )}
         </div>
 
         {/* Table */}
@@ -191,225 +253,13 @@ export default function RequisitionTable({
             <table className="w-full">
               <thead>
                 <tr className="border-b border-background-200">
-                  {/* 需求 / 职位 — sortable by newest / priority / name */}
-                  <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500 whitespace-nowrap">
-                    <div className="flex flex-col gap-1.5">
-                      <span>需求 / 职位</span>
-                      <div className="flex items-center gap-0.5">
-                        {sortModes.map((mode) => (
-                          <button
-                            key={mode.value}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSortChange(mode.value);
-                            }}
-                            className={`px-2 py-0.5 text-[11px] font-medium rounded-full transition-colors cursor-pointer whitespace-nowrap ${
-                              sortField === mode.value
-                                ? 'bg-primary-500 text-white'
-                                : 'bg-background-100 text-foreground-500 hover:bg-background-200'
-                            }`}
-                          >
-                            {mode.label}
-                            {sortField === mode.value && renderSortArrow(true)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </th>
-                  {/* 部门与城市 */}
-                  <th className="text-left px-5 py-3 text-xs font-medium whitespace-nowrap relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setHeaderFilterOpen(headerFilterOpen === 'department' ? null : 'department');
-                      }}
-                      className={`flex items-center gap-1 transition-colors cursor-pointer ${
-                        (filters.department || filters.city) ? 'text-primary-600' : 'text-foreground-500 hover:text-foreground-700'
-                      }`}
-                    >
-                      部门与城市
-                      <i className={`${(filters.department || filters.city) ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'} text-sm ${(filters.department || filters.city) ? 'text-primary-500' : 'text-foreground-400'}`}></i>
-                    </button>
-                    {headerFilterOpen === 'department' && (
-                      <div
-                        ref={deptFilterRef}
-                        className="absolute left-0 top-full mt-1 bg-white border border-background-200 rounded-lg shadow-lg z-30 py-1 min-w-[160px] max-h-72 overflow-y-auto flex flex-col"
-                      >
-                        <div className="px-3 py-1.5 text-[11px] font-semibold text-foreground-400 uppercase tracking-wider">
-                          部门
-                        </div>
-                        {deptOptions.map((d) => (
-                          <button
-                            key={`dept-${d.value}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onFilterChange('department', d.value);
-                              setHeaderFilterOpen(null);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${
-                              filters.department === d.value
-                                ? 'bg-primary-50 text-primary-700 font-medium'
-                                : 'text-foreground-600 hover:bg-background-50'
-                            }`}
-                          >
-                            {d.label}
-                          </button>
-                        ))}
-                        <div className="border-t border-background-100 my-1"></div>
-                        <div className="px-3 py-1.5 text-[11px] font-semibold text-foreground-400 uppercase tracking-wider">
-                          城市
-                        </div>
-                        {cityOptions.map((c) => (
-                          <button
-                            key={`city-${c.value}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onFilterChange('city', c.value);
-                              setHeaderFilterOpen(null);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${
-                              filters.city === c.value
-                                ? 'bg-primary-50 text-primary-700 font-medium'
-                                : 'text-foreground-600 hover:bg-background-50'
-                            }`}
-                          >
-                            {c.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </th>
-                  {/* 负责人 */}
-                  <th className="text-left px-5 py-3 text-xs font-medium whitespace-nowrap relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setHeaderFilterOpen(headerFilterOpen === 'owner' ? null : 'owner');
-                      }}
-                      className={`flex items-center gap-1 transition-colors cursor-pointer ${
-                        filters.owner ? 'text-primary-600' : 'text-foreground-500 hover:text-foreground-700'
-                      }`}
-                    >
-                      负责人
-                      <i className={`${filters.owner ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'} text-sm ${filters.owner ? 'text-primary-500' : 'text-foreground-400'}`}></i>
-                    </button>
-                    {headerFilterOpen === 'owner' && (
-                      <div
-                        ref={ownerFilterRef}
-                        className="absolute left-0 top-full mt-1 bg-white border border-background-200 rounded-lg shadow-lg z-30 py-1 min-w-[120px] flex flex-col"
-                      >
-                        {ownerOptions.map((o) => (
-                          <button
-                            key={o.value}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onFilterChange('owner', o.value);
-                              setHeaderFilterOpen(null);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${
-                              filters.owner === o.value
-                                ? 'bg-primary-50 text-primary-700 font-medium'
-                                : 'text-foreground-600 hover:bg-background-50'
-                            }`}
-                          >
-                            {o.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </th>
-                  {/* HC / 截止日期 — sortable by deadline */}
-                  <th
-                    className="text-left px-5 py-3 text-xs font-medium whitespace-nowrap cursor-pointer select-none group"
-                    onClick={() => onSortChange('deadline')}
-                  >
-                    <span className={`transition-colors ${isDeadlineSortActive ? 'text-primary-600' : 'text-foreground-500 group-hover:text-foreground-700'}`}>
-                      HC / 截止日期
-                    </span>
-                    {isDeadlineSortActive && renderSortArrow(true)}
-                  </th>
-                  {/* 阶段进度 */}
-                  <th className="text-center px-5 py-3 text-xs font-medium whitespace-nowrap relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setHeaderFilterOpen(headerFilterOpen === 'stage' ? null : 'stage');
-                      }}
-                      className={`flex items-center gap-1 transition-colors cursor-pointer mx-auto ${
-                        filters.stage ? 'text-primary-600' : 'text-foreground-500 hover:text-foreground-700'
-                      }`}
-                    >
-                      阶段进度
-                      <i className={`${filters.stage ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'} text-sm ${filters.stage ? 'text-primary-500' : 'text-foreground-400'}`}></i>
-                    </button>
-                    {headerFilterOpen === 'stage' && (
-                      <div
-                        ref={stageFilterRef}
-                        className="absolute left-1/2 -translate-x-1/2 top-full mt-1 bg-white border border-background-200 rounded-lg shadow-lg z-30 py-1 min-w-[140px] flex flex-col"
-                      >
-                        {stageOptions.map((s) => (
-                          <button
-                            key={s.value}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onFilterChange('stage', s.value);
-                              setHeaderFilterOpen(null);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${
-                              filters.stage === s.value
-                                ? 'bg-primary-50 text-primary-700 font-medium'
-                                : 'text-foreground-600 hover:bg-background-50'
-                            }`}
-                          >
-                            {s.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </th>
-                  {/* 状态 */}
-                  <th className="text-left px-5 py-3 text-xs font-medium whitespace-nowrap relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setHeaderFilterOpen(headerFilterOpen === 'status' ? null : 'status');
-                      }}
-                      className={`flex items-center gap-1 transition-colors cursor-pointer ${
-                        filters.status ? 'text-primary-600' : 'text-foreground-500 hover:text-foreground-700'
-                      }`}
-                    >
-                      状态
-                      <i className={`${filters.status ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'} text-sm ${filters.status ? 'text-primary-500' : 'text-foreground-400'}`}></i>
-                    </button>
-                    {headerFilterOpen === 'status' && (
-                      <div
-                        ref={statusFilterRef}
-                        className="absolute left-0 top-full mt-1 bg-white border border-background-200 rounded-lg shadow-lg z-30 py-1 min-w-[140px] flex flex-col"
-                      >
-                        {statusOptions.map((s) => (
-                          <button
-                            key={s.value}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onFilterChange('status', s.value);
-                              setHeaderFilterOpen(null);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${
-                              filters.status === s.value
-                                ? 'bg-primary-50 text-primary-700 font-medium'
-                                : 'text-foreground-600 hover:bg-background-50'
-                            }`}
-                          >
-                            {s.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </th>
-                  {/* 操作 */}
-                  <th className="text-center px-3 py-3 text-xs font-medium text-foreground-500 whitespace-nowrap">
-                    操作
-                  </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">需求 / 职位</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">部门 / 城市</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">负责人</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">HC / 截止日期</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-center text-xs font-medium text-foreground-500">阶段进度</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">状态</th>
+                  <th className="whitespace-nowrap px-3 py-3 text-center text-xs font-medium text-foreground-500">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-background-100">
@@ -494,7 +344,7 @@ export default function RequisitionTable({
                       </td>
                       <td className="px-5 py-4 cursor-pointer" onClick={() => onRowClick(req)}>
                         <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap ${statusBadgeStyles[req.statusCode] || ''}`}>
-                          {req.status}
+                          {demandStatusLabel(req)}
                         </span>
                         {req.statusNote && (
                           <p className="text-xs text-foreground-400 mt-1">{req.statusNote}</p>

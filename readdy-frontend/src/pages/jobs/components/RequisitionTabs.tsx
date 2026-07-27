@@ -1,22 +1,26 @@
-const statusTabs = [
-  { key: 'all', label: '全部需求' },
+import type { DemandWorkspaceTab } from '../workbench';
+
+const statusTabs: Array<{ key: DemandWorkspaceTab; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'pendingApproval', label: '待审核' },
   { key: 'active', label: '招聘中' },
-  { key: 'pending', label: '待确认' },
-  { key: 'paused', label: '已暂停' },
   { key: 'filled', label: '已完成' },
-  { key: 'closed', label: '已关闭' },
+  { key: 'stopped', label: '已停止' },
 ];
 
 interface RequisitionTabsProps {
-  activeTab: string;
-  onTabChange: (key: string) => void;
+  activeTab: DemandWorkspaceTab;
+  onTabChange: (key: DemandWorkspaceTab) => void;
 }
 
 export default function RequisitionTabs({ activeTab, onTabChange }: RequisitionTabsProps) {
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="招聘需求状态">
       {statusTabs.map((tab) => (
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === tab.key}
           key={tab.key}
           onClick={() => onTabChange(tab.key)}
           className={`

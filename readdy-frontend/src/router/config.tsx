@@ -79,7 +79,7 @@ const routes: RouteObject[] = [
       },
       {
         path: '/talent-map',
-        element: <RequireCompanyRole allow={managerRoles}><TalentMapPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={hrRoles}><TalentMapPage /></RequireCompanyRole>,
       },
       {
         path: '/kanban',
