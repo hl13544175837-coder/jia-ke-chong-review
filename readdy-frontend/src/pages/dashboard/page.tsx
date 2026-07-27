@@ -1,13 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  AlertTriangle,
+  CalendarDays,
+  ChevronDown,
+  ChevronRight,
+  CirclePlus,
+  Clock3,
+  FileUp,
+  RefreshCw,
+} from 'lucide-react';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { demandsApi } from '@/features/demands/api';
 import { interviewsApi } from '@/features/interviews/api';
-import { formatInterviewDateTime } from '@/features/interviews/dateTime';
 import { offersApi } from '@/features/offers/api';
 import type { OfferStatus } from '@/features/offers/types';
-import { buildDashboardSummary, type DashboardFacts } from './summary';
+import { useToast } from '@/hooks/useToast';
+import { buildDashboardSummary, type DashboardFacts, type DemandRiskLevel } from './summary';
 
 const emptyFacts: DashboardFacts = {
   demands: [],
@@ -17,18 +27,54 @@ const emptyFacts: DashboardFacts = {
 };
 
 const offerStatusLabels: Record<OfferStatus, string> = {
-  draft: '草稿',
-  pending: '待审批',
+  draft: '草稿待提交',
+  pending: '等待主管审批',
   approved: '待发放',
-  sent: '待回复',
-  accepted: '待入职',
+  sent: '等待候选人回复',
+  accepted: '待确认入职',
   declined: '已拒绝',
   withdrawn: '已撤回',
   expired: '已过期',
   onboarded: '已入职',
 };
 
-type DashboardPanel = 'headcount' | 'tasks' | 'waiting' | 'interviews';
+type TaskTone = 'amber' | 'green' | 'red' | 'blue';
+
+interface DashboardTaskItem {
+  key: string;
+  tag: string;
+  title: string;
+  detail: string;
+  time: string;
+  actionLabel: string;
+  tone: TaskTone;
+  urgent: boolean;
+  priority: number;
+  action: () => void;
+}
+
+interface WaitingItem {
+  key: string;
+  title: string;
+  owner: string;
+  startedAt: string | null;
+  actionLabel: string;
+  action: () => void | Promise<void>;
+  assignmentId?: number | null;
+}
+
+const taskToneClasses: Record<TaskTone, { icon: string; badge: string }> = {
+  amber: { icon: 'bg-amber-50 text-amber-700', badge: 'bg-amber-50 text-amber-700' },
+  green: { icon: 'bg-emerald-50 text-emerald-700', badge: 'bg-emerald-50 text-emerald-700' },
+  red: { icon: 'bg-red-50 text-red-700', badge: 'bg-red-50 text-red-700' },
+  blue: { icon: 'bg-sky-50 text-sky-700', badge: 'bg-sky-50 text-sky-700' },
+};
+
+const riskClasses: Record<DemandRiskLevel, string> = {
+  high: 'bg-red-50 text-red-700',
+  medium: 'bg-amber-50 text-amber-700',
+  low: 'bg-emerald-50 text-emerald-700',
+};
 
 function greeting() {
   const hour = new Date().getHours();
@@ -37,13 +83,77 @@ function greeting() {
   return '晚上好';
 }
 
+function currentMonthLabel() {
+  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(new Date());
+}
+
+function backendDate(value: string | null | undefined) {
+  if (!value) return null;
+  const hasExplicitZone = value.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(value);
+  const parsed = new Date(hasExplicitZone ? value : `${value}Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function clockLabel(value: string | null) {
+  const parsed = backendDate(value);
+  if (!parsed) return '待定';
+  return new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(parsed);
+}
+
+function shortDateLabel(value: string | null | undefined) {
+  if (!value) return '时间待定';
+  const parsed = value.length === 10 ? new Date(`${value}T00:00:00`) : backendDate(value);
+  if (!parsed || Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(parsed);
+}
+
+function waitingDuration(value: string | null) {
+  const parsed = backendDate(value);
+  if (!parsed) return '待确认';
+  const days = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 86_400_000));
+  if (days === 0) return '今天';
+  return `${days} 天`;
+}
+
+function SectionCard({
+  title,
+  meta,
+  action,
+  children,
+  className = '',
+}: {
+  title: string;
+  meta?: ReactNode;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`overflow-hidden rounded-xl border border-background-200 bg-white shadow-[0_8px_28px_rgba(44,62,52,0.035)] ${className}`}>
+      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-background-100 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="text-sm font-semibold text-foreground-900">{title}</h2>
+          {meta}
+        </div>
+        {action}
+      </header>
+      {children}
+    </section>
+  );
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const { name, role, userId } = useCompanyAuth();
   const [facts, setFacts] = useState<DashboardFacts>(emptyFacts);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
-  const [expandedPanel, setExpandedPanel] = useState<DashboardPanel | null>(null);
+  const [remindingAssignmentId, setRemindingAssignmentId] = useState<number | null>(null);
 
   const loadFacts = useCallback(async () => {
     setLoading(true);
@@ -82,242 +192,384 @@ export default function DashboardPage() {
     () => summary.pendingReviews.filter((item) => item.reviewer_id !== userId),
     [summary.pendingReviews, userId],
   );
-  const myTaskCount = summary.myTaskCount + assignedBusinessReviews.length;
-  const waitingOthersCount = Math.max(0, summary.waitingOthersCount - assignedBusinessReviews.length);
 
-  const togglePanel = (panel: DashboardPanel) => {
-    setExpandedPanel((current) => (current === panel ? null : panel));
+  const taskItems = useMemo<DashboardTaskItem[]>(() => [
+    ...summary.pendingApprovals.map((demand) => ({
+      key: `approval-${demand.id}`,
+      tag: '待审核',
+      title: `${demand.job_title} · ${demand.job_city || '城市未填写'}`,
+      detail: '新增招聘需求等待审核确认',
+      time: demand.target_date ? `截止 ${shortDateLabel(demand.target_date)}` : '截止日期待定',
+      actionLabel: '去审核',
+      tone: 'amber' as const,
+      urgent: true,
+      priority: 100,
+      action: () => navigate('/jobs', { state: { fromDashboard: true, tab: 'pendingApproval', openTitle: demand.request_no } }),
+    })),
+    ...summary.completionDemands.map((demand) => ({
+      key: `completion-${demand.id}`,
+      tag: demand.metrics.over_headcount > 0 ? '超出 HC' : 'HC 已达成',
+      title: `${demand.job_title} · ${demand.job_city || '城市未填写'}`,
+      detail: demand.metrics.over_headcount > 0
+        ? `已超出 HC ${demand.metrics.over_headcount} 人，请核对历史记录`
+        : '招聘目标已达成，等待确认是否结束需求',
+      time: demand.target_date ? `截止 ${shortDateLabel(demand.target_date)}` : '日期待定',
+      actionLabel: '核对需求',
+      tone: (demand.metrics.over_headcount > 0 ? 'red' : 'green') as TaskTone,
+      urgent: demand.metrics.over_headcount > 0,
+      priority: demand.metrics.over_headcount > 0 ? 95 : 70,
+      action: () => navigate(`/jobs?demand=${demand.id}`),
+    })),
+    ...assignedBusinessReviews.map((item) => ({
+      key: `review-${item.id}`,
+      tag: '待业务筛选',
+      title: `${item.candidate.name_masked} · ${item.demand.job_title}`,
+      detail: '请查看完整简历并给出业务筛选结论',
+      time: item.due_at ? `截止 ${shortDateLabel(item.due_at)}` : '截止日期待定',
+      actionLabel: '去筛选',
+      tone: 'blue' as const,
+      urgent: false,
+      priority: 80,
+      action: () => navigate(`/interviewer/screening?task=${item.id}`),
+    })),
+    ...summary.myOfferActions.map((item) => ({
+      key: `offer-${item.id}`,
+      tag: '待处理 Offer',
+      title: `${item.candidate_name} · ${item.position}`,
+      detail: offerStatusLabels[item.status],
+      time: item.onboard_date ? `预计入职 ${shortDateLabel(item.onboard_date)}` : '时间待确认',
+      actionLabel: '处理 Offer',
+      tone: 'green' as const,
+      urgent: false,
+      priority: 60,
+      action: () => navigate(`/offers?demand=${item.demand_id}&candidate=${item.candidate_id}`),
+    })),
+  ].sort((left, right) => right.priority - left.priority), [
+    assignedBusinessReviews,
+    navigate,
+    summary.completionDemands,
+    summary.myOfferActions,
+    summary.pendingApprovals,
+  ]);
+
+  const remindFeedback = useCallback(async (assignmentId: number) => {
+    if (remindingAssignmentId) return;
+    setRemindingAssignmentId(assignmentId);
+    try {
+      const result = await interviewsApi.remindFeedback(assignmentId);
+      showToast(result.deduplicated ? '15 分钟内已经提醒过，不再重复打扰' : '已提醒面试官提交反馈');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '提醒失败，请稍后重试');
+    } finally {
+      setRemindingAssignmentId(null);
+    }
+  }, [remindingAssignmentId, showToast]);
+
+  const waitingItems = useMemo<WaitingItem[]>(() => [
+    ...reviewsWaitingForOthers.map((item) => ({
+      key: `waiting-review-${item.id}`,
+      title: `${item.candidate.name_masked} · 业务筛选`,
+      owner: item.reviewer_name || '业务负责人未显示',
+      startedAt: item.created_at,
+      actionLabel: '去跟进',
+      action: () => navigate(`/candidates?demand=${item.demand_id}&candidate=${item.candidate_id}`),
+    })),
+    ...summary.waitingFeedback.map((item) => ({
+      key: `waiting-feedback-${item.assignment_id}`,
+      title: `${item.name_masked} · 面试反馈`,
+      owner: item.interviewer_name || '面试官未显示',
+      startedAt: item.scheduled_at,
+      actionLabel: '催反馈',
+      assignmentId: item.assignment_id,
+      action: () => item.assignment_id ? remindFeedback(item.assignment_id) : undefined,
+    })),
+    ...summary.waitingOfferActions.map((item) => ({
+      key: `waiting-offer-${item.id}`,
+      title: `${item.candidate_name} · ${offerStatusLabels[item.status]}`,
+      owner: item.status === 'pending' ? (item.approver_name || '审批人未显示') : '候选人',
+      startedAt: item.updated_at || item.created_at,
+      actionLabel: '去跟进',
+      action: () => navigate(`/offers?demand=${item.demand_id}&candidate=${item.candidate_id}`),
+    })),
+  ], [navigate, remindFeedback, reviewsWaitingForOthers, summary.waitingFeedback, summary.waitingOfferActions]);
+
+  const attentionItems = [
+    summary.pendingApprovals.length > 0 ? `${summary.pendingApprovals.length} 个需求待审核` : '',
+    summary.overdueFeedback.length > 0 ? `${summary.overdueFeedback.length} 份面试反馈逾期` : '',
+    summary.demandProgress.filter((item) => item.demand.metrics.over_headcount > 0).length > 0
+      ? `${summary.demandProgress.filter((item) => item.demand.metrics.over_headcount > 0).length} 个岗位超出 HC`
+      : '',
+  ].filter(Boolean);
+
+  const urgentTaskCount = taskItems.filter((item) => item.urgent).length;
+  const activeOfferCount = facts.offers.filter((item) => !['declined', 'withdrawn', 'expired', 'onboarded'].includes(item.status)).length;
+  const onboardedCount = summary.activeDemands.reduce((total, item) => total + item.metrics.onboarded_count, 0);
+  const completedInterviewCount = facts.interviews.filter((item) => item.feedback_submitted).length;
+
+  const openDemandAction = (item: (typeof summary.demandProgress)[number]) => {
+    if (item.nextAction === '管理面试') {
+      navigate(`/interviews?demand=${item.demand.id}`);
+      return;
+    }
+    if (item.nextAction === '推进 Offer') {
+      navigate(`/offers?demand=${item.demand.id}`);
+      return;
+    }
+    if (item.nextAction === '跟进反馈') {
+      navigate('/candidates', { state: { demandId: item.demand.id, targetStage: 'feedback' } });
+      return;
+    }
+    navigate(`/jobs?demand=${item.demand.id}`);
   };
 
-  const cards: Array<{
-    panel: DashboardPanel;
-    controls: string;
-    label: string;
-    value: number;
-    note: string;
-    icon: string;
-  }> = [
-    {
-      panel: 'headcount',
-      controls: 'dashboard-headcount-panel',
-      label: '剩余 HC',
-      value: summary.gap,
-      note: `${summary.activeDemands.length} 个生效需求`,
-      icon: 'ri-briefcase-line',
-    },
-    {
-      panel: 'tasks',
-      controls: 'dashboard-tasks-panel',
-      label: '我的待办',
-      value: myTaskCount,
-      note: '需要你推进或确认',
-      icon: 'ri-checkbox-circle-line',
-    },
-    {
-      panel: 'waiting',
-      controls: 'dashboard-waiting-panel',
-      label: '等待他人处理',
-      value: waitingOthersCount,
-      note: '业务反馈、面试评价或外部回复',
-      icon: 'ri-time-line',
-    },
-    {
-      panel: 'interviews',
-      controls: 'dashboard-interviews-panel',
-      label: '近期面试',
-      value: summary.scheduledInterviews.length,
-      note: '已创建站内日程',
-      icon: 'ri-calendar-event-line',
-    },
-  ];
-
   return (
-    <div className="space-y-5 p-6" data-ui="real-recruitment-dashboard">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-foreground-900">工作台</h1>
-          <p className="mt-1 text-sm text-foreground-500">
-            {greeting()}，{name || (role === 'manager' ? '招聘经理' : '招聘专员')}。这里展示当前账号可见的真实招聘数据。
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void loadFacts()}
-          disabled={loading}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-60"
-        >
-          <i className={`ri-refresh-line ${loading ? 'animate-spin' : ''}`} />
-          刷新
-        </button>
-      </div>
-
-      {errors.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <p className="font-medium">部分数据暂不可用</p>
-          <p className="mt-1 text-xs">{errors.join('、')}，页面保留上次成功结果，请刷新重试。</p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {cards.map((card) => (
-          <button
-            key={card.label}
-            type="button"
-            aria-expanded={expandedPanel === card.panel}
-            aria-controls={card.controls}
-            onClick={() => togglePanel(card.panel)}
-            className={`rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${
-              expandedPanel === card.panel
-                ? 'border-primary-300 bg-primary-50/60'
-                : 'border-background-200 bg-white hover:border-primary-200 hover:bg-background-50'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-foreground-500">{card.label}</span>
-              <span className="flex items-center gap-2 text-primary-600">
-                <i className={`${card.icon} text-lg`} />
-                <i className={expandedPanel === card.panel ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'} />
+    <div className="min-h-full bg-[#faf9f7] px-4 pb-8 pt-5 sm:px-6" data-ui="real-recruitment-dashboard">
+      <div className="mx-auto max-w-[1540px] space-y-4">
+        <header>
+          <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-end 2xl:justify-between">
+            <div>
+              <h1 className="text-xl font-bold text-foreground-900">工作台</h1>
+              <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground-900">
+                {greeting()}，{name || (role === 'manager' ? '招聘经理' : '招聘专员')}。
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-600">
+                <CalendarDays size={15} aria-hidden="true" />
+                {currentMonthLabel()}
               </span>
+              <button
+                type="button"
+                onClick={() => navigate('/jobs', { state: { fromDashboard: true, openCreate: true } })}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-600 px-3.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+              >
+                <CirclePlus size={15} aria-hidden="true" />新建需求
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/candidates', { state: { openUpload: true } })}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+              >
+                <FileUp size={15} aria-hidden="true" />导入简历
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/interviews?status=unassigned')}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+              >
+                <CalendarDays size={15} aria-hidden="true" />安排面试
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadFacts()}
+                disabled={loading}
+                aria-label="刷新工作台"
+                title="刷新工作台"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-500 transition hover:bg-background-50 disabled:opacity-50"
+              >
+                <RefreshCw size={15} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
+              </button>
             </div>
-            <p className="mt-2 text-2xl font-bold text-foreground-900">{loading ? '—' : card.value}</p>
-            <p className="mt-1 text-xs text-foreground-400">{card.note}</p>
-          </button>
-        ))}
-      </div>
+          </div>
+        </header>
 
-      {(expandedPanel === 'tasks' || expandedPanel === 'waiting') && (
-        <div className="grid gap-5">
-          {expandedPanel === 'tasks' && (
-            <section id="dashboard-tasks-panel" className="overflow-hidden rounded-xl border border-background-200 bg-white">
-          <div className="border-b border-background-100 px-5 py-4">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground-900">我的待办</h2>
-              <p className="mt-0.5 text-xs text-foreground-500">只放当前需要你亲自推进或确认的事项</p>
-            </div>
+        {errors.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <p className="font-medium">部分数据暂不可用</p>
+            <p className="mt-1 text-xs">{errors.join('、')}，页面保留上次成功结果，请刷新重试。</p>
           </div>
-          <div className="divide-y divide-background-100">
-            {summary.pendingApprovals.length > 0 && (
-              <button type="button" onClick={() => navigate('/jobs')} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><i className="ri-shield-check-line" /></span>
-                <span className="flex-1"><span className="block text-sm font-medium text-foreground-900">{summary.pendingApprovals.length} 个需求待你审核</span><span className="mt-0.5 block text-xs text-foreground-500">审核通过后才能正式进入招聘流程</span></span>
-                <i className="ri-arrow-right-s-line text-foreground-400" />
-              </button>
-            )}
-            {summary.completionDemands.slice(0, 3).map((demand) => (
-              <button key={`completion-${demand.id}`} type="button" onClick={() => navigate(`/jobs?demand=${demand.id}`)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-100 text-orange-700"><i className="ri-flag-line" /></span>
-                <span className="flex-1">
-                  <span className="block text-sm font-medium text-foreground-900">
-                    {demand.metrics.over_headcount > 0
-                      ? `${demand.job_title} 已超出 HC ${demand.metrics.over_headcount} 人`
-                      : `${demand.job_title} HC 已达成`}
-                  </span>
-                  <span className="mt-0.5 block text-xs text-foreground-500">请核对入职记录，并确认是否完成或调整需求</span>
-                </span>
-                <i className="ri-arrow-right-s-line text-foreground-400" />
-              </button>
-            ))}
-            {assignedBusinessReviews.map((item) => (
-              <button key={`assigned-review-${item.id}`} type="button" onClick={() => navigate(`/interviewer/screening?task=${item.id}`)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><i className="ri-file-search-line" /></span>
-                <span className="flex-1"><span className="block text-sm font-medium text-foreground-900">{item.candidate.name_masked} 需要你业务筛选</span><span className="mt-0.5 block text-xs text-foreground-500">{item.demand.job_title} · 查看简历后给出结论</span></span>
-                <i className="ri-arrow-right-s-line text-foreground-400" />
-              </button>
-            ))}
-            {summary.myOfferActions.slice(0, 3).map((item) => (
-              <button key={`offer-${item.id}`} type="button" onClick={() => navigate('/offers')} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700"><i className="ri-mail-send-line" /></span>
-                <span className="flex-1"><span className="block text-sm font-medium text-foreground-900">{item.candidate_name} 的 Offer 需要你处理</span><span className="mt-0.5 block text-xs text-foreground-500">{item.position} · 当前状态 {offerStatusLabels[item.status]}</span></span>
-                <i className="ri-arrow-right-s-line text-foreground-400" />
-              </button>
-            ))}
-            {!loading && myTaskCount === 0 && (
-              <div className="px-5 py-12 text-center text-sm text-foreground-500">当前没有需要你处理的待办</div>
-            )}
-          </div>
-            </section>
-          )}
+        )}
 
-          {expandedPanel === 'waiting' && (
-            <section id="dashboard-waiting-panel" className="overflow-hidden rounded-xl border border-background-200 bg-white">
-          <div className="border-b border-background-100 px-5 py-4">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground-900">等待他人处理</h2>
-              <p className="mt-0.5 text-xs text-foreground-500">这些事项已经交出去，当前重点是跟进而不是重复操作</p>
-            </div>
-          </div>
-          <div className="divide-y divide-background-100">
-            {reviewsWaitingForOthers.slice(0, 3).map((item) => (
-              <button key={`review-${item.id}`} type="button" onClick={() => navigate(`/candidates?demand=${item.demand_id}&candidate=${item.candidate_id}`)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-100 text-sky-700"><i className="ri-file-search-line" /></span>
-                <span className="flex-1"><span className="block text-sm font-medium text-foreground-900">{item.candidate.name_masked} 等待业务筛选</span><span className="mt-0.5 block text-xs text-foreground-500">{item.demand.job_title} · {item.reviewer_name || '业务负责人未显示'}</span></span>
-                <i className="ri-arrow-right-s-line text-foreground-400" />
-              </button>
+        {attentionItems.length > 0 && (
+          <aside className="flex flex-wrap items-center gap-2 rounded-xl border border-background-200 bg-white px-4 py-2.5" aria-label="需要关注">
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700">
+              <AlertTriangle size={15} aria-hidden="true" />需要关注
+            </span>
+            {attentionItems.map((item, index) => (
+              <span key={item} className={`rounded-full px-2.5 py-1 text-xs font-medium ${index === 1 ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                {item}
+              </span>
             ))}
-            {summary.waitingFeedback.slice(0, 3).map((item) => (
-              <button key={`feedback-${item.assignment_id}`} type="button" onClick={() => navigate(`/interviews?demand=${item.demand_id}&candidate=${item.candidate_id}`)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-700"><i className="ri-survey-line" /></span>
-                <span className="flex-1"><span className="block text-sm font-medium text-foreground-900">{item.name_masked} 等待面试反馈</span><span className="mt-0.5 block text-xs text-foreground-500">{item.job_title} · {item.interviewer_name || '面试官未填写'}</span></span>
-                <i className="ri-arrow-right-s-line text-foreground-400" />
-              </button>
-            ))}
-            {summary.waitingOfferActions.slice(0, 3).map((item) => (
-              <button key={`waiting-offer-${item.id}`} type="button" onClick={() => navigate('/offers')} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700"><i className="ri-hourglass-line" /></span>
-                <span className="flex-1"><span className="block text-sm font-medium text-foreground-900">{item.candidate_name} 的 Offer {item.status === 'pending' ? '等待主管审批' : item.status === 'sent' ? '等待候选人回复' : '等待招聘专员推进'}</span><span className="mt-0.5 block text-xs text-foreground-500">{item.position} · 当前状态 {offerStatusLabels[item.status]}</span></span>
-                <i className="ri-arrow-right-s-line text-foreground-400" />
-              </button>
-            ))}
-            {!loading && waitingOthersCount === 0 && (
-              <div className="px-5 py-12 text-center text-sm text-foreground-500">当前没有正在等待他人处理的事项</div>
+          </aside>
+        )}
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(320px,0.95fr)]">
+          <SectionCard
+            title="待处理事项"
+            meta={(
+              <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700">
+                {taskItems.length} 项{urgentTaskCount > 0 ? ` · ${urgentTaskCount} 项紧急` : ''}
+              </span>
             )}
-          </div>
-            </section>
-          )}
+          >
+            <div className="divide-y divide-background-100">
+              {taskItems.slice(0, 4).map((item) => {
+                const tone = taskToneClasses[item.tone];
+                return (
+                  <article key={item.key} className="grid min-h-[66px] grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition hover:bg-background-50/70">
+                    <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tone.icon}`} aria-hidden="true">
+                      <i className={item.tone === 'red' ? 'ri-error-warning-line' : item.tone === 'amber' ? 'ri-file-list-3-line' : item.tone === 'blue' ? 'ri-user-search-line' : 'ri-checkbox-circle-line'} />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded px-2 py-0.5 text-[11px] font-medium ${tone.badge}`}>{item.tag}</span>
+                        <p className="truncate text-sm font-semibold text-foreground-900">{item.title}</p>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground-500">
+                        <span>{item.detail}</span>
+                        <span>{item.time}</span>
+                      </div>
+                    </div>
+                    <button type="button" onClick={item.action} className="inline-flex h-8 items-center gap-1 rounded-lg border border-primary-300 bg-white px-3 text-xs font-medium text-primary-700 transition hover:bg-primary-50">
+                      {item.actionLabel}<ChevronRight size={13} aria-hidden="true" />
+                    </button>
+                  </article>
+                );
+              })}
+              {!loading && taskItems.length === 0 && (
+                <div className="px-5 py-12 text-center text-sm text-foreground-500">当前没有需要你处理的事项</div>
+              )}
+              {loading && taskItems.length === 0 && (
+                <div className="px-5 py-12 text-center text-sm text-foreground-500">正在加载待处理事项...</div>
+              )}
+            </div>
+            {taskItems.length > 4 && (
+              <button type="button" onClick={() => navigate('/jobs')} className="flex w-full items-center justify-center gap-1 border-t border-background-100 py-2.5 text-xs font-medium text-foreground-600 hover:bg-background-50 hover:text-primary-700">
+                查看全部 {taskItems.length} 项<ChevronRight size={13} aria-hidden="true" />
+              </button>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="今日面试"
+            action={<button type="button" onClick={() => navigate('/interviews?status=scheduled')} className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800">查看完整日程<ChevronRight size={13} /></button>}
+          >
+            <div className="divide-y divide-background-100">
+              {summary.todayInterviews.slice(0, 3).map((item) => {
+                const started = (backendDate(item.scheduled_at)?.getTime() ?? Number.MAX_SAFE_INTEGER) <= Date.now();
+                return (
+                  <button key={item.assignment_id} type="button" onClick={() => navigate(`/interviews?demand=${item.demand_id}&candidate=${item.candidate_id}`)} className="grid min-h-[78px] w-full grid-cols-[50px_12px_minmax(0,1fr)] items-start gap-2 px-4 py-3 text-left transition hover:bg-background-50/70">
+                    <span className="pt-1 text-sm font-medium text-foreground-700">{clockLabel(item.scheduled_at)}</span>
+                    <span className="relative mt-1.5 flex h-full justify-center"><span className="z-10 h-2.5 w-2.5 rounded-full bg-primary-500 ring-4 ring-primary-50" /><span className="absolute bottom-[-18px] top-3 w-px bg-primary-100" /></span>
+                    <span className="min-w-0">
+                      <span className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold text-foreground-900">{item.name_masked}</span><span className={`text-xs font-medium ${started ? 'text-primary-700' : 'text-amber-600'}`}>{started ? '已开始' : '待开始'}</span></span>
+                      <span className="mt-1 block truncate text-xs text-foreground-500">{item.job_title} · {item.job_city || '城市未填写'}</span>
+                      <span className="mt-0.5 block truncate text-xs text-foreground-400">面试官：{item.interviewer_name || '待确认'}</span>
+                    </span>
+                  </button>
+                );
+              })}
+              {!loading && summary.todayInterviews.length === 0 && (
+                <div className="px-5 py-12 text-center text-sm text-foreground-500">今天暂无已安排面试</div>
+              )}
+              {loading && summary.todayInterviews.length === 0 && (
+                <div className="px-5 py-12 text-center text-sm text-foreground-500">正在加载今日面试...</div>
+              )}
+            </div>
+          </SectionCard>
         </div>
-      )}
 
-      {expandedPanel === 'headcount' && (
-        <section id="dashboard-headcount-panel" className="overflow-hidden rounded-xl border border-background-200 bg-white">
-        <div className="border-b border-background-100 px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground-900">生效需求进展</h2>
-          <p className="mt-0.5 text-xs text-foreground-500">按需求查看 HC、业务筛选、面试、Offer 与入职进度</p>
-        </div>
-        <div className="grid divide-y divide-background-100 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-3">
-          {summary.activeDemands.slice(0, 6).map((demand) => (
-            <button key={demand.id} type="button" onClick={() => navigate(`/jobs?demand=${demand.id}`)} className="block px-5 py-4 text-left hover:bg-background-50">
-              <div className="flex items-center justify-between gap-3">
-                <span className="truncate text-sm font-medium text-foreground-900">{demand.job_title}</span>
-                <span className="whitespace-nowrap text-xs text-foreground-500">HC {demand.metrics.onboarded_count}/{demand.headcount}{demand.metrics.accepted_offer_count > 0 ? ` · 已锁 ${demand.metrics.accepted_offer_count}` : ''}</span>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(320px,0.95fr)]">
+          <SectionCard
+            title="我的岗位进展"
+            action={<button type="button" onClick={() => navigate('/jobs')} className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800">查看全部岗位<ChevronRight size={13} /></button>}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px]">
+                <thead className="bg-background-50/60 text-left text-[11px] font-medium text-foreground-400">
+                  <tr>
+                    <th className="px-4 py-2.5">岗位名称</th>
+                    <th className="px-3 py-2.5 text-center">HC</th>
+                    <th className="px-3 py-2.5 text-center">业务筛选</th>
+                    <th className="px-3 py-2.5 text-center">面试</th>
+                    <th className="px-3 py-2.5 text-center">Offer</th>
+                    <th className="px-3 py-2.5 text-center">已入职</th>
+                    <th className="px-3 py-2.5 text-center">风险</th>
+                    <th className="px-4 py-2.5 text-right">下一步</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-background-100">
+                  {summary.demandProgress.slice(0, 5).map((item) => (
+                    <tr key={item.demand.id} className="h-[52px] hover:bg-background-50/70">
+                      <td className="px-4 py-2.5"><button type="button" onClick={() => navigate(`/jobs?demand=${item.demand.id}`)} className="max-w-[220px] truncate text-left text-sm font-semibold text-foreground-900 hover:text-primary-700">{item.demand.job_title}</button><p className="mt-0.5 text-[11px] text-foreground-400">{item.demand.job_department} · {item.demand.job_city}</p></td>
+                      <td className="px-3 py-2.5 text-center text-sm font-medium text-foreground-800">{item.demand.metrics.onboarded_count}/{item.demand.headcount}</td>
+                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.business_review_count}</td>
+                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.interview_count}</td>
+                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.offer_count}</td>
+                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.onboarded_count}</td>
+                      <td className="px-3 py-2.5 text-center"><span className={`inline-flex whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium ${riskClasses[item.risk.level]}`}>{item.risk.label}</span></td>
+                      <td className="px-4 py-2.5 text-right"><button type="button" onClick={() => openDemandAction(item)} className="h-8 whitespace-nowrap rounded-lg border border-primary-300 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50">{item.nextAction}</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!loading && summary.demandProgress.length === 0 && <div className="px-5 py-12 text-center text-sm text-foreground-500">暂无生效招聘需求</div>}
+              {loading && summary.demandProgress.length === 0 && <div className="px-5 py-12 text-center text-sm text-foreground-500">正在加载岗位进展...</div>}
+            </div>
+          </SectionCard>
+
+          <div className="grid gap-4">
+            <SectionCard title="阶段概况">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 px-4 py-3 sm:grid-cols-5 xl:grid-cols-1">
+                {[
+                  ['筛选', summary.stageSummary.screening, 'ri-file-search-line', 'bg-stone-100 text-stone-600'],
+                  ['业务筛选', summary.stageSummary.businessReview, 'ri-user-search-line', 'bg-amber-50 text-amber-700'],
+                  ['面试', summary.stageSummary.interview, 'ri-checkbox-circle-line', 'bg-emerald-50 text-emerald-700'],
+                  ['Offer', summary.stageSummary.offer, 'ri-mail-line', 'bg-primary-50 text-primary-700'],
+                  ['待入职', summary.stageSummary.onboarding, 'ri-user-follow-line', 'bg-emerald-50 text-emerald-800'],
+                ].map(([label, value, icon, tone]) => (
+                  <button key={String(label)} type="button" onClick={() => label === '面试' ? navigate('/interviews') : label === 'Offer' || label === '待入职' ? navigate('/offers') : navigate('/candidates')} className="flex items-center justify-between rounded-lg px-1 py-0.5 text-left hover:bg-background-50">
+                    <span className="inline-flex items-center gap-2 text-xs text-foreground-600"><span className={`flex h-7 w-7 items-center justify-center rounded-lg ${tone}`}><i className={String(icon)} /></span>{label}</span>
+                    <span className="text-sm font-semibold text-foreground-900">{value} 人</span>
+                  </button>
+                ))}
               </div>
-              <p className="mt-1 text-xs text-foreground-500">{demand.request_no} · {demand.job_city} · {demand.owner_hr_name}</p>
-              <p className="mt-2 text-xs text-foreground-400">业务筛选 {demand.metrics.business_review_count} · 面试 {demand.metrics.interview_count} · Offer {demand.metrics.offer_count} · 入职 {demand.metrics.onboarded_count}</p>
-            </button>
-          ))}
-          {!loading && summary.activeDemands.length === 0 && (
-            <div className="px-5 py-12 text-sm text-foreground-500">暂无生效需求，请先在需求审核中创建或审批需求</div>
-          )}
-        </div>
-        </section>
-      )}
+            </SectionCard>
 
-      {expandedPanel === 'interviews' && (
-        <section id="dashboard-interviews-panel" className="rounded-xl border border-background-200 bg-white p-5">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground-900">近期已排面试</h2>
-          <p className="mt-0.5 text-xs text-foreground-500">站内日程是真实数据；企业微信和外部日历仍待接入</p>
+            <SectionCard title="等待他人">
+              <div className="divide-y divide-background-100">
+                {waitingItems.slice(0, 3).map((item) => (
+                  <div key={item.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5">
+                    <div className="min-w-0"><p className="truncate text-xs font-medium text-foreground-800">{item.title}</p><p className="mt-1 truncate text-[11px] text-foreground-400">{item.owner} · 已等待 <span className={waitingDuration(item.startedAt).includes('天') ? 'text-red-600' : ''}>{waitingDuration(item.startedAt)}</span></p></div>
+                    <button type="button" disabled={Boolean(item.assignmentId && remindingAssignmentId === item.assignmentId)} onClick={() => void item.action()} className="h-7 rounded-md border border-primary-300 bg-white px-2.5 text-[11px] font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50">{item.assignmentId && remindingAssignmentId === item.assignmentId ? '提醒中' : item.actionLabel}</button>
+                  </div>
+                ))}
+                {!loading && waitingItems.length === 0 && <div className="px-5 py-8 text-center text-sm text-foreground-500">当前没有等待他人处理的事项</div>}
+                {loading && waitingItems.length === 0 && <div className="px-5 py-8 text-center text-sm text-foreground-500">正在加载协同事项...</div>}
+              </div>
+            </SectionCard>
+          </div>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {summary.scheduledInterviews.slice(0, 6).map((item) => (
-            <button key={item.assignment_id} type="button" onClick={() => navigate(`/interviews?demand=${item.demand_id}&candidate=${item.candidate_id}`)} className="rounded-lg border border-background-200 p-3 text-left hover:border-primary-300">
-              <p className="text-sm font-medium text-foreground-900">{item.name_masked} · {item.job_title}</p>
-              <p className="mt-1 text-xs text-foreground-500">{formatInterviewDateTime(item.scheduled_at)} · {item.interviewer_name || '面试官待确认'}</p>
-            </button>
-          ))}
-          {!loading && summary.scheduledInterviews.length === 0 && <p className="text-sm text-foreground-500">暂无已排面试</p>}
-        </div>
-        </section>
-      )}
+
+        <details data-ui="dashboard-data-overview" className="group rounded-xl border border-background-200 bg-white">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-foreground-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">
+            数据概览<ChevronDown size={16} className="text-foreground-400 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="grid gap-3 border-t border-background-100 px-4 py-4 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              ['生效需求', summary.activeDemands.length],
+              ['剩余 HC', summary.gap],
+              ['已排面试', summary.scheduledInterviews.length],
+              ['流程中 Offer', activeOfferCount],
+              ['累计已入职', onboardedCount],
+            ].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-background-50 px-3 py-3"><p className="text-xs text-foreground-500">{label}</p><p className="mt-1 text-xl font-semibold text-foreground-900">{value}</p></div>)}
+          </div>
+        </details>
+
+        <details data-ui="dashboard-performance-overview" className="group rounded-xl border border-background-200 bg-white">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-foreground-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">
+            招聘业绩统计<ChevronDown size={16} className="text-foreground-400 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-t border-background-100 px-4 py-4">
+            <p className="mb-3 text-xs text-foreground-500">这里只展示当前可见招聘流程结果，用于工作复盘，不作为个人绩效排名。</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border border-background-100 px-3 py-3"><p className="text-xs text-foreground-500">已完成面试评价</p><p className="mt-1 text-xl font-semibold text-foreground-900">{completedInterviewCount}</p></div>
+              <div className="rounded-lg border border-background-100 px-3 py-3"><p className="text-xs text-foreground-500">已接受及入职 Offer</p><p className="mt-1 text-xl font-semibold text-foreground-900">{facts.offers.filter((item) => ['accepted', 'onboarded'].includes(item.status)).length}</p></div>
+              <div className="rounded-lg border border-background-100 px-3 py-3"><p className="text-xs text-foreground-500">已入职人数</p><p className="mt-1 text-xl font-semibold text-foreground-900">{onboardedCount}</p></div>
+            </div>
+          </div>
+        </details>
+      </div>
     </div>
   );
 }

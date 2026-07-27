@@ -9,39 +9,31 @@ const page = fs.readFileSync(
   'utf8',
 );
 
-assert.match(
-  page,
-  /type DashboardPanel = 'headcount' \| 'tasks' \| 'waiting' \| 'interviews'/,
-  '工作台应明确四个可展开板块',
-);
-assert.match(
-  page,
-  /useState<DashboardPanel \| null>\(null\)/,
-  '四个明细板块进入页面时必须默认收起',
-);
-assert.match(
-  page,
-  /current === panel \? null : panel/,
-  '点击同一卡片应收起，点击其他卡片应切换为单开状态',
-);
-assert.match(page, /aria-expanded=\{expandedPanel === card\.panel\}/, '概览卡必须向读屏器说明展开状态');
-assert.match(page, /aria-controls=\{card\.controls\}/, '概览卡必须关联自己控制的明细区域');
-
-for (const [panel, regionId] of [
-  ['headcount', 'dashboard-headcount-panel'],
-  ['tasks', 'dashboard-tasks-panel'],
-  ['waiting', 'dashboard-waiting-panel'],
-  ['interviews', 'dashboard-interviews-panel'],
+for (const label of [
+  '需要关注',
+  '待处理事项',
+  '今日面试',
+  '我的岗位进展',
+  '阶段概况',
+  '等待他人',
+  '数据概览',
+  '招聘业绩统计',
 ]) {
-  assert.match(
-    page,
-    new RegExp(`expandedPanel === '${panel}'`),
-    `${panel} 卡片应独立控制自己的明细`,
-  );
-  assert.match(page, new RegExp(`id="${regionId}"`), `${panel} 明细区必须有稳定 ID`);
+  assert.match(page, new RegExp(label), `平衡型工作台缺少“${label}”`);
 }
 
-assert.match(page, /ri-arrow-up-s-line/, '展开卡片应显示收起箭头');
-assert.match(page, /ri-arrow-down-s-line/, '收起卡片应显示展开箭头');
+for (const action of ['新建需求', '导入简历', '安排面试']) {
+  assert.match(page, new RegExp(action), `工作台缺少快捷操作“${action}”`);
+}
+
+assert.match(page, /summary\.todayInterviews\.slice\(0, 3\)/, '今日面试最多展示三条真实日程');
+assert.match(page, /taskItems\.slice\(0, 4\)/, '待处理事项首屏最多展示四条');
+assert.match(page, /summary\.demandProgress\.slice\(0, 5\)/, '岗位进展首屏最多展示五个重点岗位');
+assert.match(page, /interviewsApi\.remindFeedback/, '面试催反馈必须调用真实提醒接口');
+assert.match(page, /<details[^>]*data-ui="dashboard-data-overview"/, '数据概览应默认使用可折叠区域');
+assert.match(page, /<details[^>]*data-ui="dashboard-performance-overview"/, '招聘业绩统计应默认使用可折叠区域');
+assert.match(page, /2xl:flex-row/, '顶部快捷操作只能在主内容宽度充足时与问候语并排');
+assert.doesNotMatch(page, /\{item\}\s*\{item\}/, '关注提醒不得重复显示同一段文字');
+assert.doesNotMatch(page, /type DashboardPanel|const cards =|cards\.map/, '不得保留四张大卡片工作台');
 
 console.log('dashboard_summary_card_disclosure: OK');

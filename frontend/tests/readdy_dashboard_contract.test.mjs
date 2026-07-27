@@ -21,7 +21,7 @@ assert.doesNotMatch(readdyDashboard, /candidatesApi\./, '5190 招聘工作台移
 assert.match(readdyDashboard, /interviewsApi\./, '5190 招聘工作台必须读取真实面试数据');
 assert.match(readdyDashboard, /offersApi\./, '5190 招聘工作台必须读取真实 Offer 数据');
 assert.match(readdyDashboard, /数据暂不可用/, '5190 工作台必须区分接口失败和真实零值');
-for (const label of ['草稿', '待审批', '待发放', '待回复', '待入职']) {
+for (const label of ['草稿待提交', '等待主管审批', '待发放', '等待候选人回复', '待确认入职']) {
   assert.ok(readdyDashboard.includes(label), `5190 工作台必须用中文展示 Offer 状态“${label}”`);
 }
 assert.doesNotMatch(readdyDashboard, /当前状态 \{item\.status\}/, '5190 工作台不得向用户展示 Offer 内部状态代码');

@@ -53,6 +53,13 @@ function followUpScheduleRow(
   };
 }
 
+function initialInterviewTab(value: string | null): InterviewStatusTab {
+  if (value === 'unassigned' || value === 'scheduled' || value === 'awaiting_feedback' || value === 'completed') {
+    return value;
+  }
+  return 'all';
+}
+
 export default function RecruiterInterviewsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -63,7 +70,7 @@ export default function RecruiterInterviewsPage() {
   const [interviewers, setInterviewers] = useState<InterviewerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [activeTab, setActiveTab] = useState<InterviewStatusTab>('all');
+  const [activeTab, setActiveTab] = useState<InterviewStatusTab>(() => initialInterviewTab(searchParams.get('status')));
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<InterviewViewMode>('list');
   const [filtersOpen, setFiltersOpen] = useState(false);

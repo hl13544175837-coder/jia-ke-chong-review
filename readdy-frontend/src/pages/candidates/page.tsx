@@ -240,6 +240,7 @@ interface CandidateNavigationState {
   jobTitle?: string;
   demandId?: number;
   targetStage?: string;
+  openUpload?: boolean;
 }
 
 function isCandidateNavigationState(value: unknown): value is CandidateNavigationState {
@@ -252,6 +253,7 @@ function isCandidateNavigationState(value: unknown): value is CandidateNavigatio
     && (!Number.isInteger(value.demandId) || Number(value.demandId) <= 0)
   ) return false;
   if ('targetStage' in value && typeof value.targetStage !== 'string') return false;
+  if ('openUpload' in value && typeof value.openUpload !== 'boolean') return false;
   return true;
 }
 
@@ -316,7 +318,7 @@ export default function CandidatesPage() {
   const [pipelineResult, setPipelineResult] = useState<CandidatePipelineAddResult | null>(null);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
-  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(Boolean(navState?.openUpload));
   const [uploadDemandId, setUploadDemandId] = useState<number | ''>(navState?.demandId ?? '');
   const [uploadSourceChannel, setUploadSourceChannel] = useState('');
   const [uploadNote, setUploadNote] = useState('');
@@ -326,6 +328,12 @@ export default function CandidatesPage() {
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [uploadDragOver, setUploadDragOver] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!navState?.openUpload) return;
+    setUploadOpen(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, navState?.openUpload, navigate]);
 
   const [detailCandidate, setDetailCandidate] = useState<CandidateListItem | null>(null);
   const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);

@@ -82,9 +82,14 @@ export default function JobsPage() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
-  const navState = location.state as { fromDashboard?: boolean; openTitle?: string; tab?: string } | null;
+  const navState = location.state as {
+    fromDashboard?: boolean;
+    openTitle?: string;
+    openCreate?: boolean;
+    tab?: string;
+  } | null;
   const [activeTab, setActiveTab] = useState<DemandWorkspaceTab>(() => initialWorkspaceTab(navState?.tab));
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(Boolean(navState?.openCreate));
   const [searchQuery, setSearchQuery] = useState('');
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
   const [owners, setOwners] = useState<DemandOwnerOption[]>([]);
@@ -154,6 +159,12 @@ export default function JobsPage() {
 
   useEffect(() => { void loadDemands(); }, [loadDemands]);
   useEffect(() => { void loadOwners(); }, [loadOwners]);
+
+  useEffect(() => {
+    if (!navState?.openCreate) return;
+    setFormOpen(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, navState?.openCreate, navigate]);
 
   const requisitions = useMemo(() => demands.map(toRequisitionRow), [demands]);
 

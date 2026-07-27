@@ -62,14 +62,14 @@ const page = fs.readFileSync(
   path.join(root, 'readdy-frontend/src/pages/dashboard/page.tsx'),
   'utf8',
 );
-for (const label of ['剩余 HC', '我的待办', '等待他人处理', '近期面试']) {
+for (const label of ['待处理事项', '今日面试', '我的岗位进展', '阶段概况', '等待他人']) {
   assert.match(page, new RegExp(label), `工作台缺少“${label}”`);
 }
-for (const duplicate of ['现在最该处理', '候选人档案', '查看全部', '进入面试管理']) {
+for (const duplicate of ['现在最该处理', '候选人档案', '进入面试管理']) {
   assert.doesNotMatch(page, new RegExp(duplicate), `工作台仍保留重复内容“${duplicate}”`);
 }
 assert.doesNotMatch(page, /candidatesApi\./, '移除候选人总数卡片后不得继续请求无用数据');
-assert.match(page, /当前没有需要你处理的待办/, '我的待办必须使用准确空态');
-assert.match(page, /当前没有正在等待他人处理的事项/, '等待他人必须使用准确空态');
+assert.match(page, /当前没有需要你处理的事项/, '待处理事项必须使用准确空态');
+assert.match(page, /当前没有等待他人处理的事项/, '等待他人必须使用准确空态');
 
 console.log('recruiter_dashboard_priority: OK');
