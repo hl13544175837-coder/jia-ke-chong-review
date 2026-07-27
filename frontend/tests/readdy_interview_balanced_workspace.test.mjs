@@ -60,4 +60,19 @@ assert.match(calendar, /今天/, '日历必须支持回到今天');
 assert.match(calendar, /onOpenDetails/, '日历任务必须打开同一详情');
 assert.doesNotMatch(calendar, /@\/mocks\//, '日历不得重新接入旧 Mock 数据');
 
+const page = read('readdy-frontend/src/pages/interviews/page.tsx');
+for (const component of [
+  'InterviewWorkbenchToolbar',
+  'InterviewFilterPopover',
+  'InterviewManagementTable',
+  'InterviewManagementCalendar',
+  'filterInterviewRows',
+]) {
+  assert.match(page, new RegExp(component), `面试管理页面尚未接入 ${component}`);
+}
+assert.match(page, /viewMode === ['"]list['"]/, '面试管理必须默认使用列表并支持切换日历');
+assert.match(page, /draftFilters/, '筛选浮层必须使用暂存条件，取消时不能污染结果');
+assert.match(page, /appliedFilters/, '面试管理必须区分已应用筛选');
+assert.doesNotMatch(page, /@\/mocks\//, '真实面试管理页面不得使用 Mock 数据');
+
 console.log('readdy_interview_balanced_workspace: OK');

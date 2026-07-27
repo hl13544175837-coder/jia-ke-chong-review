@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, Clock3, MapPin, RefreshCw, Search, UserRound, X } from 'lucide-react';
+import { CalendarDays, CheckCircle2, MapPin, RefreshCw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { interviewsApi } from '@/features/interviews/api';
@@ -8,39 +8,22 @@ import type {
   InterviewManagementRow,
   InterviewerOption,
 } from '@/features/interviews/types';
-import { formatInterviewDateTime, interviewHasStarted } from '@/features/interviews/dateTime';
+import { formatInterviewDateTime } from '@/features/interviews/dateTime';
 import { pipelineApi } from '@/features/pipeline/api';
+import InterviewFilterPopover from './components/InterviewFilterPopover';
+import InterviewManagementCalendar from './components/InterviewManagementCalendar';
+import InterviewManagementTable from './components/InterviewManagementTable';
+import InterviewWorkbenchToolbar from './components/InterviewWorkbenchToolbar';
 import ScheduleInterviewModal from './components/ScheduleInterviewModal';
-
-type StatusTab = 'all' | 'unassigned' | 'scheduled' | 'awaiting_feedback' | 'completed';
-
-const tabs: Array<{ key: StatusTab; label: string }> = [
-  { key: 'all', label: '全部' },
-  { key: 'unassigned', label: '待安排' },
-  { key: 'scheduled', label: '已安排' },
-  { key: 'awaiting_feedback', label: '待反馈' },
-  { key: 'completed', label: '已完成' },
-];
-
-function rowStatus(row: InterviewManagementRow): Exclude<StatusTab, 'all'> {
-  if (row.feedback_submitted || ['completed', 'feedback_submitted'].includes(row.assignment_status)) return 'completed';
-  if (row.assignment_status === 'awaiting_feedback') return 'awaiting_feedback';
-  if (!row.assignment_id || row.assignment_status === 'unassigned') return 'unassigned';
-  return 'scheduled';
-}
-
-function statusLabel(status: Exclude<StatusTab, 'all'>) {
-  return {
-    unassigned: '待安排',
-    scheduled: '已安排',
-    awaiting_feedback: '待反馈',
-    completed: '已完成',
-  }[status];
-}
-
-function canMarkConducted(row: InterviewManagementRow) {
-  return interviewHasStarted(row.scheduled_at);
-}
+import {
+  deriveInterviewFilterOptions,
+  emptyInterviewFilters,
+  filterInterviewRows,
+  rowStatus,
+  statusLabel,
+  type InterviewStatusTab,
+  type InterviewViewMode,
+} from './workbench';
 
 function followUpScheduleRow(
   row: InterviewManagementRow,
@@ -80,8 +63,12 @@ export default function RecruiterInterviewsPage() {
   const [interviewers, setInterviewers] = useState<InterviewerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [activeTab, setActiveTab] = useState<StatusTab>('all');
+  const [activeTab, setActiveTab] = useState<InterviewStatusTab>('all');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<InterviewViewMode>('list');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [appliedFilters, setAppliedFilters] = useState(emptyInterviewFilters);
+  const [draftFilters, setDraftFilters] = useState(emptyInterviewFilters);
   const [scheduleRow, setScheduleRow] = useState<InterviewManagementRow | null>(null);
   const [scheduleIsPrimary, setScheduleIsPrimary] = useState(true);
   const [selectedRow, setSelectedRow] = useState<InterviewManagementRow | null>(null);
@@ -133,19 +120,22 @@ export default function RecruiterInterviewsPage() {
     else setSelectedRow(row);
   }, [loading, requestedCandidateId, requestedDemandId, rows]);
 
-  const counts = useMemo(() => tabs.reduce<Record<StatusTab, number>>((result, tab) => {
-    result[tab.key] = tab.key === 'all' ? rows.length : rows.filter((row) => rowStatus(row) === tab.key).length;
-    return result;
-  }, { all: 0, unassigned: 0, scheduled: 0, awaiting_feedback: 0, completed: 0 }), [rows]);
-
-  const visibleRows = useMemo(() => rows.filter((row) => {
-    if (activeTab !== 'all' && rowStatus(row) !== activeTab) return false;
-    const query = search.trim().toLowerCase();
-    if (!query) return true;
-    return [row.name_masked, row.job_title, row.job_department, row.interviewer_name]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query));
-  }), [activeTab, rows, search]);
+  const counts = useMemo<Record<InterviewStatusTab, number>>(() => ({
+    all: rows.length,
+    unassigned: rows.filter((row) => rowStatus(row) === 'unassigned').length,
+    scheduled: rows.filter((row) => rowStatus(row) === 'scheduled').length,
+    awaiting_feedback: rows.filter((row) => rowStatus(row) === 'awaiting_feedback').length,
+    completed: rows.filter((row) => rowStatus(row) === 'completed').length,
+  }), [rows]);
+  const filterOptions = useMemo(() => deriveInterviewFilterOptions(rows), [rows]);
+  const visibleRows = useMemo(
+    () => filterInterviewRows(rows, activeTab, search, appliedFilters),
+    [activeTab, appliedFilters, rows, search],
+  );
+  const draftResultCount = useMemo(
+    () => filterInterviewRows(rows, activeTab, search, draftFilters).length,
+    [activeTab, draftFilters, rows, search],
+  );
 
   const saveSchedule = async (payload: InterviewAssignmentInput | InterviewAssignmentUpdateInput) => {
     if (!scheduleRow) return;
@@ -278,53 +268,59 @@ export default function RecruiterInterviewsPage() {
       )}
       {actionError && !scheduleRow && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{actionError}</div>}
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-background-200 pb-3">
-        {tabs.map((tab) => (
-          <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)} className={`rounded-lg px-3 py-2 text-sm font-medium ${activeTab === tab.key ? 'bg-primary-500 text-white' : 'text-foreground-600 hover:bg-background-100'}`}>
-            {tab.label} <span className="ml-1 text-xs opacity-80">{counts[tab.key]}</span>
-          </button>
-        ))}
-        <label className="relative ml-auto min-w-[240px] flex-1 sm:max-w-sm">
-          <Search size={15} className="pointer-events-none absolute left-3 top-2.5 text-foreground-400" />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索候选人、岗位或面试官" className="h-9 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-sm" />
-        </label>
-      </div>
+      <InterviewWorkbenchToolbar
+        activeTab={activeTab}
+        counts={counts}
+        search={search}
+        filters={appliedFilters}
+        resultCount={visibleRows.length}
+        viewMode={viewMode}
+        filtersOpen={filtersOpen}
+        onTabChange={setActiveTab}
+        onSearchChange={setSearch}
+        onToggleFilters={() => {
+          if (!filtersOpen) setDraftFilters(appliedFilters);
+          setFiltersOpen((open) => !open);
+        }}
+        onCloseFilters={() => setFiltersOpen(false)}
+        onViewModeChange={setViewMode}
+        filterPopover={filtersOpen ? (
+          <InterviewFilterPopover
+            filters={draftFilters}
+            options={filterOptions}
+            resultCount={draftResultCount}
+            onChange={setDraftFilters}
+            onReset={() => setDraftFilters(emptyInterviewFilters)}
+            onCancel={() => setFiltersOpen(false)}
+            onApply={() => {
+              setAppliedFilters(draftFilters);
+              setFiltersOpen(false);
+            }}
+          />
+        ) : null}
+      />
 
       {loading ? (
         <div className="rounded-lg border border-background-200 bg-white py-20 text-center text-sm text-foreground-500"><RefreshCw className="mx-auto mb-2 animate-spin" size={18} />正在加载面试工作台...</div>
       ) : loadError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-10 text-center"><p className="text-sm text-red-700">{loadError}</p><button type="button" onClick={() => void loadWorkbench()} className="mt-3 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm text-red-700">重新加载</button></div>
       ) : visibleRows.length === 0 ? (
-        <div className="rounded-lg border border-background-200 bg-white py-20 text-center"><CalendarDays className="mx-auto mb-3 text-foreground-300" size={30} /><p className="text-sm font-medium text-foreground-600">暂无符合条件的面试任务</p></div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-background-200 bg-white">
-          <div className="divide-y divide-background-100">
-            {visibleRows.map((row) => {
-              const status = rowStatus(row);
-              const busy = actionRowId === row.assignment_id;
-              return (
-                <article key={`${row.demand_id}-${row.candidate_id}-${row.assignment_id || 'new'}`} className="flex flex-wrap items-center gap-4 px-5 py-4 hover:bg-background-50/70">
-                  <button type="button" onClick={() => setSelectedRow(row)} className="flex min-w-[250px] flex-1 items-center gap-3 text-left">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-sm font-bold text-primary-700">{row.name_masked.slice(0, 1)}</span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-foreground-900">{row.name_masked}</span>
-                      <span className="mt-0.5 block truncate text-xs text-foreground-500">{row.job_title} · {row.job_department || '部门未填写'}</span>
-                    </span>
-                  </button>
-                  <span className="inline-flex min-w-[150px] items-center gap-2 text-xs text-foreground-500"><Clock3 size={14} />{formatInterviewDateTime(row.scheduled_at)}</span>
-                  <span className="inline-flex min-w-[130px] items-center gap-2 text-xs text-foreground-500"><UserRound size={14} />{row.interviewer_name || '面试官待安排'}</span>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${status === 'unassigned' ? 'bg-amber-100 text-amber-700' : status === 'awaiting_feedback' ? 'bg-violet-100 text-violet-700' : status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-primary-100 text-primary-700'}`}>{statusLabel(status)}</span>
-                  <div className="flex shrink-0 gap-2">
-                    {status === 'unassigned' && <button type="button" onClick={() => openSchedule(row)} className="rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white">安排面试</button>}
-                    {status === 'scheduled' && <><button type="button" onClick={() => openSchedule(row)} className="rounded-lg border border-background-300 bg-white px-3 py-2 text-sm text-foreground-700">调整安排</button><button type="button" onClick={() => setConfirmConductedRow(row)} disabled={busy || !canMarkConducted(row)} title={!canMarkConducted(row) ? '面试尚未开始，不能提前确认' : undefined} className="rounded-lg bg-foreground-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500">{canMarkConducted(row) ? '确认已面试' : '面试未开始'}</button></>}
-                    {status === 'awaiting_feedback' && <button type="button" onClick={() => void runAssignmentAction(row, 'remind')} disabled={busy} className="rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">催反馈</button>}
-                    {status === 'completed' && <button type="button" onClick={() => setSelectedRow(row)} className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700">查看反馈</button>}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+        <div className="rounded-xl border border-background-200 bg-white py-16 text-center">
+          <CalendarDays className="mx-auto text-foreground-300" size={28} />
+          <p className="mt-3 text-sm font-medium text-foreground-700">没有符合当前条件的面试任务</p>
+          <button type="button" onClick={() => { setSearch(''); setActiveTab('all'); setAppliedFilters(emptyInterviewFilters); }} className="mt-3 text-sm font-medium text-primary-600 hover:text-primary-700">重置筛选</button>
         </div>
+      ) : viewMode === 'list' ? (
+        <InterviewManagementTable
+          rows={visibleRows}
+          actionRowId={actionRowId}
+          onOpenDetails={setSelectedRow}
+          onSchedule={openSchedule}
+          onConfirmConducted={setConfirmConductedRow}
+          onRemind={(row) => void runAssignmentAction(row, 'remind')}
+        />
+      ) : (
+        <InterviewManagementCalendar rows={visibleRows} onOpenDetails={setSelectedRow} onSchedule={openSchedule} />
       )}
 
       {selectedRow && (

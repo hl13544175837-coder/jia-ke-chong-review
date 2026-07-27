@@ -18,6 +18,9 @@ assert.match(page, /useSearchParams/, '面试官必须承接通知中的面试�
 assert.match(page, /searchParams\.get\(['"]candidate['"]\)/, '面试官页必须定位到对应候选人');
 
 const recruiterPage = read('readdy-frontend/src/pages/interviews/page.tsx');
+const recruiterTable = read('readdy-frontend/src/pages/interviews/components/InterviewManagementTable.tsx');
+const recruiterToolbar = read('readdy-frontend/src/pages/interviews/components/InterviewWorkbenchToolbar.tsx');
+const recruiterSurface = `${recruiterPage}\n${recruiterTable}\n${recruiterToolbar}`;
 const interviewApi = read('readdy-frontend/src/features/interviews/api.ts');
 const interviewDateTime = read('readdy-frontend/src/features/interviews/dateTime.ts');
 const router = read('readdy-frontend/src/router/config.tsx');
@@ -27,7 +30,7 @@ for (const method of ['listManagementRows', 'listInterviewers', 'createAssignmen
 assert.match(recruiterPage, /interviewsApi\.listManagementRows/, '招聘专员面试管理必须读真实待办');
 assert.match(recruiterPage, /useSearchParams/, '招聘专员面试页必须承接业务筛选上下文');
 for (const label of ['待安排', '已安排', '待反馈', '已完成', '安排面试', '调整安排', '确认已面试', '催反馈']) {
-  assert.ok(recruiterPage.includes(label), `招聘专员面试工作台缺少“${label}”`);
+  assert.ok(recruiterSurface.includes(label), `招聘专员面试工作台缺少“${label}”`);
 }
 assert.doesNotMatch(recruiterPage, /@\/mocks\//, '招聘专员面试管理不得使用假任务');
 const scheduleModal = read('readdy-frontend/src/pages/interviews/components/ScheduleInterviewModal.tsx');
