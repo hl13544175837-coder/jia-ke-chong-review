@@ -35,6 +35,9 @@ EXPECTED_FLOW_STATE = {
     "DEMO-DEMAND-CLOSED": ("completed", True, False),
 }
 
+ACTIVE_DEMO_STAGE_NOTE = "演示招聘中需求：可选候选人并查看招聘阶段。"
+USER_STAGE_NOTE = "用户手动推进的普通阶段历史"
+
 
 def load_demo_module():
     spec = importlib.util.spec_from_file_location("add_demand_demo_data", SCRIPT)
@@ -115,6 +118,39 @@ def preload_collision_rows(db_path):
         connection.close()
 
 
+def append_user_stage_history(db_path):
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        context = connection.execute(
+            "SELECT demand.org_id, demand.id AS demand_id, demand.job_id, "
+            "flow.candidate_id, demand.owner_hr_id "
+            "FROM recruitment_demands AS demand "
+            "JOIN candidate_demand_flows AS flow "
+            "ON flow.org_id = demand.org_id AND flow.demand_id = demand.id "
+            "WHERE demand.org_id = 1 "
+            "AND demand.request_no = 'DEMO-DEMAND-ACTIVE'"
+        ).fetchone()
+        assert context is not None
+        connection.execute(
+            "INSERT INTO pipeline_stages ("
+            "org_id, candidate_id, job_id, demand_id, stage, updated_by, note"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                context["org_id"],
+                context["candidate_id"],
+                context["job_id"],
+                context["demand_id"],
+                "interview",
+                context["owner_hr_id"],
+                USER_STAGE_NOTE,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def test_demand_demo_rejects_non_sqlite_before_writing():
     module = load_demo_module()
 
@@ -131,11 +167,16 @@ def test_demand_demo_is_idempotent_and_covers_five_scenarios(tmp_path):
     assert seed_result.returncode == 0, seed_result.stdout + seed_result.stderr
     ordinary_candidate_id = preload_collision_rows(db_path)
 
-    outputs = []
-    for _ in range(2):
-        result = run_script(SCRIPT, database_url)
-        outputs.append(result.stdout + result.stderr)
-        assert result.returncode == 0, outputs[-1]
+    first_result = run_script(SCRIPT, database_url)
+    assert first_result.returncode == 0, first_result.stdout + first_result.stderr
+    append_user_stage_history(db_path)
+
+    second_result = run_script(SCRIPT, database_url)
+    assert second_result.returncode == 0, second_result.stdout + second_result.stderr
+    outputs = [
+        first_result.stdout + first_result.stderr,
+        second_result.stdout + second_result.stderr,
+    ]
 
     combined_output = "\n".join(outputs)
     assert database_url not in combined_output
@@ -147,7 +188,8 @@ def test_demand_demo_is_idempotent_and_covers_five_scenarios(tmp_path):
         rows = connection.execute(
             "SELECT demand.id, demand.request_no, demand.job_title_snapshot, demand.headcount, "
             "demand.status, "
-            "demand.approval_status, demand.submitted_at, "
+            "demand.approval_status, demand.submitted_at, demand.closed_at, "
+            "demand.closed_by, "
             "owner.email AS owner_email, creator.email AS creator_email "
             "FROM recruitment_demands AS demand "
             "LEFT JOIN users AS owner ON owner.id = demand.owner_hr_id "
@@ -172,7 +214,6 @@ def test_demand_demo_is_idempotent_and_covers_five_scenarios(tmp_path):
         assert pending["submitted_at"] is not None
         assert pending["creator_email"] == "interviewer01@mvp.local"
         assert by_request_no["DEMO-DEMAND-FILLED"]["headcount"] == 1
-
         cross_org_rows = connection.execute(
             "SELECT request_no, job_title_snapshot, headcount, priority, status, "
             "approval_status, note FROM recruitment_demands "
@@ -254,13 +295,53 @@ def test_demand_demo_is_idempotent_and_covers_five_scenarios(tmp_path):
             assert (candidate["current_demand_id"] == demand["id"]) is should_be_current
 
             stages = connection.execute(
-                "SELECT stage FROM pipeline_stages "
+                "SELECT stage, note FROM pipeline_stages "
                 "WHERE org_id = 1 AND candidate_id = ? AND demand_id = ? "
                 "ORDER BY ts DESC, id DESC",
                 (candidate["id"], demand["id"]),
             ).fetchall()
-            assert len(stages) == 1
-            assert stages[0]["stage"] == expected_stage
+            script_stages = [
+                stage
+                for stage in stages
+                if stage["note"] == (
+                    ACTIVE_DEMO_STAGE_NOTE
+                    if request_no == "DEMO-DEMAND-ACTIVE"
+                    else {
+                        "DEMO-DEMAND-FILLED": (
+                            "演示已完成需求：可查看候选人与完成状态。"
+                        ),
+                        "DEMO-DEMAND-CLOSED": (
+                            "演示关闭需求：可查看候选人或恢复招聘。"
+                        ),
+                    }[request_no]
+                )
+            ]
+            assert len(script_stages) == 1
+            assert script_stages[0]["stage"] == expected_stage
+
+        active_demand = by_request_no["DEMO-DEMAND-ACTIVE"]
+        active_candidate = demo_candidates["DEMO-DEMAND-ACTIVE"]
+        active_stage_history = connection.execute(
+            "SELECT stage, note FROM pipeline_stages "
+            "WHERE org_id = 1 AND candidate_id = ? AND demand_id = ? "
+            "ORDER BY id",
+            (active_candidate["id"], active_demand["id"]),
+        ).fetchall()
+        assert sum(
+            row["note"] == ACTIVE_DEMO_STAGE_NOTE for row in active_stage_history
+        ) == 1
+        assert sum(row["note"] == USER_STAGE_NOTE for row in active_stage_history) == 1
+        assert any(
+            row["stage"] == "interview" and row["note"] == USER_STAGE_NOTE
+            for row in active_stage_history
+        )
+
+        paused = by_request_no["DEMO-DEMAND-PAUSED"]
+        closed = by_request_no["DEMO-DEMAND-CLOSED"]
+        assert paused["closed_at"] is None
+        assert paused["closed_by"] is None
+        assert closed["closed_at"] is not None
+        assert closed["closed_by"] is not None
 
     finally:
         connection.close()

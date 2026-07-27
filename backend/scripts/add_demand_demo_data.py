@@ -67,7 +67,7 @@ def _upsert_demand(base, recruiter, interviewer, scenario, now):
         db.session.add(demand)
 
     is_pending = request_no == "DEMO-DEMAND-PENDING"
-    is_stopped = status in {"paused", "closed"}
+    is_closed = status == "closed"
     demand.job_id = base.job_id
     demand.owner_hr_id = recruiter.id
     demand.default_interviewer_id = base.default_interviewer_id or interviewer.id
@@ -93,8 +93,8 @@ def _upsert_demand(base, recruiter, interviewer, scenario, now):
     demand.close_reason = "演示需求已暂停" if status == "paused" else (
         "演示需求已关闭" if status == "closed" else None
     )
-    demand.closed_at = now if is_stopped else None
-    demand.closed_by = recruiter.id if is_stopped else None
+    demand.closed_at = now if is_closed else None
+    demand.closed_by = recruiter.id if is_closed else None
     demand.note = SCENARIO_NOTES[request_no]
     demand.updated_at = now
     db.session.flush()
@@ -178,6 +178,7 @@ def _upsert_candidate_flow(demand, recruiter, candidate_name, stage_name, now):
         org_id=demand.org_id,
         candidate_id=candidate.id,
         demand_id=demand.id,
+        note=SCENARIO_NOTES[demand.request_no],
     ).order_by(PipelineStage.id.asc()).all()
     if stages:
         stage = stages[0]
