@@ -35,27 +35,47 @@ function initialOfferTab(value: string | null): OfferWorkbenchTab {
   return 'today';
 }
 
+function initialOfferRisk(value: string | null): '' | OfferRiskLevel {
+  return value === 'high' || value === 'medium' || value === 'low' ? value : '';
+}
+
+function initialOfferOrder(value: string | null): OfferOrder {
+  return value === 'updated' || value === 'onboard' ? value : 'urgent';
+}
+
+function setOfferSearchParam(
+  searchParams: URLSearchParams,
+  key: string,
+  value: string,
+  defaultValue = '',
+) {
+  if (!value || value === defaultValue) searchParams.delete(key);
+  else searchParams.set(key, value);
+}
+
 export default function OffersPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
+  const requestedOfferId = Number(searchParams.get('offer')) || null;
   const fromJobs = searchParams.get('from') === 'jobs';
   const fromDashboard = searchParams.get('from') === 'dashboard';
   const { role } = useProductRole();
   const { showToast } = useToast();
   const detailRequest = useRef(0);
   const handledDeepLink = useRef('');
+  const handledOfferDetail = useRef<number | null>(null);
   const [offers, setOffers] = useState<OfferRecord[]>([]);
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
   const [unmappedTotal, setUnmappedTotal] = useState(0);
   const [activeTab, setActiveTab] = useState<OfferWorkbenchTab>(() => initialOfferTab(searchParams.get('tab')));
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [demandFilter, setDemandFilter] = useState('');
-  const [ownerFilter, setOwnerFilter] = useState('');
-  const [riskFilter, setRiskFilter] = useState<'' | OfferRiskLevel>('');
-  const [order, setOrder] = useState<OfferOrder>('urgent');
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('q') || '');
+  const [search, setSearch] = useState(() => searchParams.get('q') || '');
+  const [demandFilter, setDemandFilter] = useState(() => searchParams.get('request') || '');
+  const [ownerFilter, setOwnerFilter] = useState(() => searchParams.get('owner') || '');
+  const [riskFilter, setRiskFilter] = useState<'' | OfferRiskLevel>(() => initialOfferRisk(searchParams.get('risk')));
+  const [order, setOrder] = useState<OfferOrder>(() => initialOfferOrder(searchParams.get('order')));
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [demandsLoading, setDemandsLoading] = useState(true);
@@ -67,6 +87,27 @@ export default function OffersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingOffer, setEditingOffer] = useState<OfferRecord | null>(null);
   const [createPrefill, setCreatePrefill] = useState<{ demandId: number; candidateId: number } | null>(null);
+
+  const syncOfferWorkspaceUrl = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    setOfferSearchParam(next, 'tab', activeTab, 'today');
+    setOfferSearchParam(next, 'q', search);
+    setOfferSearchParam(next, 'request', demandFilter);
+    setOfferSearchParam(next, 'owner', ownerFilter);
+    setOfferSearchParam(next, 'risk', riskFilter);
+    setOfferSearchParam(next, 'order', order, 'urgent');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [activeTab, demandFilter, order, ownerFilter, riskFilter, search, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    syncOfferWorkspaceUrl();
+  }, [syncOfferWorkspaceUrl]);
+
+  const openOfferInUrl = useCallback((offerId: number) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('offer', String(offerId));
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const loadOffers = useCallback(async () => {
     setLoading(true);
@@ -160,7 +201,8 @@ export default function OffersPage() {
     setSearchParams(next, { replace: true });
   };
 
-  const openDetail = useCallback(async (summary: OfferRecord) => {
+  const openDetail = useCallback(async (summary: OfferRecord, rememberInUrl = true) => {
+    if (rememberInUrl) openOfferInUrl(summary.id);
     const requestId = ++detailRequest.current;
     setSelectedOffer(summary);
     setDetailLoading(true);
@@ -176,7 +218,15 @@ export default function OffersPage() {
     } finally {
       if (detailRequest.current === requestId) setDetailLoading(false);
     }
-  }, []);
+  }, [openOfferInUrl]);
+
+  useEffect(() => {
+    if (!requestedOfferId || loading || handledOfferDetail.current === requestedOfferId) return;
+    const existing = offers.find((offer) => offer.id === requestedOfferId);
+    if (!existing) return;
+    handledOfferDetail.current = requestedOfferId;
+    void openDetail(existing, false);
+  }, [loading, offers, openDetail, requestedOfferId]);
 
   useEffect(() => {
     if (!requestedDemandId || !requestedCandidateId || loading || demandsLoading) return;
@@ -186,8 +236,10 @@ export default function OffersPage() {
     const existing = offers.find((offer) => (
       offer.demand_id === requestedDemandId && offer.candidate_id === requestedCandidateId
     ));
+    const next = new URLSearchParams(searchParams);
     if (existing) {
-      void openDetail(existing);
+      void openDetail(existing, false);
+      next.set('offer', String(existing.id));
     } else if (approvedDemands.some((demand) => demand.id === requestedDemandId)) {
       setEditingOffer(null);
       setCreatePrefill({ demandId: requestedDemandId, candidateId: requestedCandidateId });
@@ -195,18 +247,19 @@ export default function OffersPage() {
     } else {
       setDemandsError('对应需求不可创建 Offer，请确认需求仍在招聘中且已审核通过');
     }
-    const next = new URLSearchParams(searchParams);
-    next.delete('demand');
     next.delete('candidate');
-    setSearchParams(next, { replace: true });
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
   }, [approvedDemands, demandsLoading, loading, offers, openDetail, requestedCandidateId, requestedDemandId, searchParams, setSearchParams]);
 
-  const closeDetail = () => {
+  const closeOfferDetail = () => {
     detailRequest.current += 1;
     setSelectedOffer(null);
     setDetailLoading(false);
     setDetailError('');
     setRequestedAction(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete('offer');
+    setSearchParams(next, { replace: true });
   };
 
   const refreshSelected = async () => {
@@ -231,18 +284,19 @@ export default function OffersPage() {
     setCreatePrefill(null);
     setSelectedOffer(saved);
     setDetailError('');
+    openOfferInUrl(saved.id);
     showToast('Offer 草稿已保存');
   };
 
   const openCreate = () => {
-    closeDetail();
+    closeOfferDetail();
     setEditingOffer(null);
     setCreatePrefill(null);
     setShowCreate(true);
   };
 
   const openEdit = (offer: OfferRecord) => {
-    closeDetail();
+    closeOfferDetail();
     setEditingOffer(offer);
     setCreatePrefill(null);
     setShowCreate(true);
@@ -401,7 +455,7 @@ export default function OffersPage() {
           role={role}
           loading={detailLoading}
           loadError={detailError}
-          onClose={closeDetail}
+          onClose={closeOfferDetail}
           onEdit={() => openEdit(selectedOffer)}
           onRunAction={runAction}
           onRefresh={refreshSelected}
