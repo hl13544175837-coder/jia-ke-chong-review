@@ -13,9 +13,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
+import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { candidatesApi } from '@/features/candidates/api';
-import type { CandidateResumeDetail } from '@/features/candidates/types';
+import type { CandidateJourney, CandidateResumeDetail } from '@/features/candidates/types';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { interviewsApi } from '@/features/interviews/api';
@@ -98,6 +99,8 @@ export default function InterviewerInterviewsPage() {
   const [selected, setSelected] = useState<InterviewAssignment | null>(null);
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
   const [selectedResume, setSelectedResume] = useState<CandidateResumeDetail | null>(null);
+  const [selectedJourney, setSelectedJourney] = useState<CandidateJourney | null>(null);
+  const [journeyError, setJourneyError] = useState('');
   const [selectedFeedback, setSelectedFeedback] = useState<InterviewFeedback | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
@@ -144,11 +147,19 @@ export default function InterviewerInterviewsPage() {
     setSelected(assignment);
     setSelectedDemand(null);
     setSelectedResume(null);
+    setSelectedJourney(null);
+    setJourneyError('');
     setSelectedFeedback(null);
     setDetailLoading(true);
     setDetailError('');
     try {
-      const [resume, feedbackRows, demand] = await Promise.all([
+      const journeyPromise = assignment.demand_id
+        ? candidatesApi.getJourney(assignment.candidate_id, assignment.demand_id).catch((error) => {
+          setJourneyError(error instanceof Error ? error.message : '完整招聘过程暂不可用');
+          return null;
+        })
+        : Promise.resolve(null);
+      const [resume, feedbackRows, demand, journey] = await Promise.all([
         candidatesApi.getResume(assignment.candidate_id),
         interviewsApi.listFeedback({
           candidateId: assignment.candidate_id,
@@ -157,9 +168,11 @@ export default function InterviewerInterviewsPage() {
         assignment.demand_id
           ? demandsApi.getDemand(assignment.demand_id)
           : Promise.resolve(null),
+        journeyPromise,
       ]);
       setSelectedResume(resume);
       setSelectedDemand(demand);
+      setSelectedJourney(journey);
       setSelectedFeedback(
         feedbackRows.find((item) => item.assignment_id === assignment.id)
           ?? feedbackRows.find((item) => item.round === assignment.round)
@@ -413,6 +426,9 @@ export default function InterviewerInterviewsPage() {
                       {selectedDemand?.jd_text || '未填写岗位 JD'}
                     </div>
                   </section>
+
+                  {selectedJourney && <CandidateJourneySummary journey={selectedJourney} />}
+                  {journeyError && <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>}
 
                   <section>
                     <div className="flex flex-wrap items-center justify-between gap-3">

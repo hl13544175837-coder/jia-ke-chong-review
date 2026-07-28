@@ -13,6 +13,9 @@ import {
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
+import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
+import { candidatesApi } from '@/features/candidates/api';
+import type { CandidateJourney } from '@/features/candidates/types';
 
 interface BusinessReviewDetailProps {
   task: BusinessReviewTask;
@@ -40,6 +43,8 @@ function actionError(error: unknown) {
 export default function BusinessReviewDetail({ task, onReview }: BusinessReviewDetailProps) {
   const [resumeAction, setResumeAction] = useState<'preview' | 'download' | null>(null);
   const [resumeError, setResumeError] = useState('');
+  const [journey, setJourney] = useState<CandidateJourney | null>(null);
+  const [journeyError, setJourneyError] = useState('');
   const objectUrls = useRef(new Set<string>());
   const revokeTimers = useRef(new Set<number>());
 
@@ -49,6 +54,16 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
     revokeTimers.current.clear();
     objectUrls.current.clear();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setJourney(null);
+    setJourneyError('');
+    void candidatesApi.getJourney(task.candidate_id, task.demand_id)
+      .then((value) => { if (!cancelled) setJourney(value); })
+      .catch((error) => { if (!cancelled) setJourneyError(error instanceof Error ? error.message : '完整招聘过程暂不可用'); });
+    return () => { cancelled = true; };
+  }, [task.candidate_id, task.demand_id]);
 
   const originalResume = task.candidate.original_resume;
   const focusPoints = task.demand.focus_points ?? [];
@@ -144,6 +159,14 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
             <dd className="mt-1 text-foreground-700">{formatDate(task.due_at)}</dd>
           </div>
         </dl>
+      </section>
+
+      <section className="border-b border-background-200 px-5 py-5 sm:px-6">
+        {journey ? <CandidateJourneySummary journey={journey} /> : journeyError ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>
+        ) : (
+          <div className="rounded-lg bg-background-50 px-3 py-3 text-xs text-foreground-500">正在加载完整招聘过程...</div>
+        )}
       </section>
 
       <section className="border-b border-background-200 px-5 py-5 sm:px-6">

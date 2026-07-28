@@ -36,12 +36,14 @@ import {
 } from 'lucide-react';
 import { useProductRole } from '@/auth/productRole';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
+import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
 import { apiRequest } from '@/lib/api';
 import { candidatesApi } from '@/features/candidates/api';
 import type {
   CandidateListItem,
   CandidateListResponse,
   CandidatePipelineAddResult,
+  CandidateJourney,
   CandidateResumeDetail,
   CandidateStage,
   ParseStatus,
@@ -344,6 +346,8 @@ export default function CandidatesPage() {
 
   const [detailCandidate, setDetailCandidate] = useState<CandidateListItem | null>(null);
   const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);
+  const [candidateJourney, setCandidateJourney] = useState<CandidateJourney | null>(null);
+  const [journeyError, setJourneyError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const detailRequestId = useRef(0);
@@ -649,14 +653,21 @@ export default function CandidatesPage() {
     }
   };
 
-  const loadCandidateDetail = useCallback(async (candidateId: number) => {
+  const loadCandidateDetail = useCallback(async (candidateId: number, demandId: number | null) => {
     const requestId = ++detailRequestId.current;
     setDetailLoading(true);
     setDetailError(null);
+    setJourneyError(null);
     try {
-      const detail = await candidatesApi.getResume(candidateId);
+      const [resumeResult, journeyResult] = await Promise.allSettled([
+        candidatesApi.getResume(candidateId),
+        demandId ? candidatesApi.getJourney(candidateId, demandId) : Promise.resolve(null),
+      ]);
       if (requestId !== detailRequestId.current) return;
-      setResumeDetail(detail);
+      if (resumeResult.status === 'rejected') throw resumeResult.reason;
+      setResumeDetail(resumeResult.value);
+      if (journeyResult.status === 'fulfilled') setCandidateJourney(journeyResult.value);
+      else setJourneyError(errorMessage(journeyResult.reason, '完整招聘过程暂不可用'));
     } catch (error) {
       if (requestId !== detailRequestId.current) return;
       setDetailError(errorMessage(error, '简历详情加载失败'));
@@ -668,10 +679,12 @@ export default function CandidatesPage() {
   const openCandidateDetail = useCallback((candidate: CandidateListItem) => {
     setDetailCandidate(candidate);
     setResumeDetail(null);
+    setCandidateJourney(null);
+    setJourneyError(null);
     setResumePreviewUrl(null);
     setOriginalResumeError(null);
-    void loadCandidateDetail(candidate.id);
-  }, [loadCandidateDetail]);
+    void loadCandidateDetail(candidate.id, candidate.current_demand_id ?? candidate.latest_demand_id ?? requestedDemandId);
+  }, [loadCandidateDetail, requestedDemandId]);
 
   const focusedReview = useMemo(() => reviewTasks.find((task) => (
     task.candidate_id === requestedCandidateId
@@ -720,6 +733,8 @@ export default function CandidatesPage() {
     detailRequestId.current += 1;
     setDetailCandidate(null);
     setResumeDetail(null);
+    setCandidateJourney(null);
+    setJourneyError(null);
     setDetailError(null);
     setResumePreviewUrl(null);
     setOriginalResumeError(null);
@@ -1955,7 +1970,7 @@ export default function CandidatesPage() {
                   <p className="mt-1 text-sm text-foreground-500">{detailError}</p>
                   <button
                     type="button"
-                    onClick={() => void loadCandidateDetail(detailCandidate.id)}
+                    onClick={() => void loadCandidateDetail(detailCandidate.id, detailCandidate.current_demand_id ?? detailCandidate.latest_demand_id ?? requestedDemandId)}
                     className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 bg-white px-3.5 py-2 text-sm font-medium text-foreground-700 hover:bg-background-50"
                   >
                     <RefreshCw size={15} aria-hidden="true" />
@@ -1995,6 +2010,11 @@ export default function CandidatesPage() {
                         <div className="shrink-0">{renderReviewAction(detailReview)}</div>
                       </div>
                     </section>
+                  )}
+
+                  {candidateJourney && <CandidateJourneySummary journey={candidateJourney} />}
+                  {journeyError && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>
                   )}
 
                   <section className="grid grid-cols-2 gap-3 border-b border-background-200 pb-5 sm:grid-cols-4">

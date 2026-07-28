@@ -10,6 +10,7 @@ import type {
   CandidateMatchPreview,
   CandidateMergeResult,
   CandidatePipelineAddResult,
+  CandidateJourney,
   CandidateResumeDetail,
   ResumeUploadResponse,
   ResumeUploadSource,
@@ -38,6 +39,9 @@ export const candidatesApi = {
   },
   getResume(candidateId: number): Promise<CandidateResumeDetail> {
     return apiRequest(`/resume/${candidateId}`);
+  },
+  getJourney(candidateId: number, demandId: number): Promise<CandidateJourney> {
+    return apiRequest(`/candidates/${candidateId}/journey?demand_id=${demandId}`);
   },
   setFavorites(candidateIds: number[], favorite: boolean): Promise<CandidateFavoriteResult> {
     return apiRequest('/candidates/favorites/set', {

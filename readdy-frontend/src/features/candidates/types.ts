@@ -96,6 +96,72 @@ export interface CandidateResumeDetail {
   created_at: string;
 }
 
+export interface CandidateJourneyFeedback {
+  id: number;
+  assignment_id: number | null;
+  round: string;
+  score: number | null;
+  passed: boolean | null;
+  strengths: string | null;
+  concerns: string | null;
+  note: string | null;
+  interviewer_name: string | null;
+  created_at: string | null;
+}
+
+export interface CandidateJourney {
+  candidate_id: number;
+  name_masked: string;
+  demand_id: number;
+  job_id: number;
+  job_title: string | null;
+  demand_approval: {
+    status: string;
+    submitted_by_name: string | null;
+    submitted_at: string | null;
+    reviewed_by_name: string | null;
+    reviewed_at: string | null;
+    reason: string;
+    history: Array<{ action: string; actor_name: string | null; at: string | null; reason: string }>;
+  };
+  business_reviews: Array<{
+    id: number;
+    status: string;
+    created_by_name: string | null;
+    reviewer_name: string | null;
+    decided_by_name: string | null;
+    hr_note: string;
+    business_note: string;
+    due_at: string | null;
+    created_at: string | null;
+    decided_at: string | null;
+  }>;
+  timeline: Array<{ stage: string; ts: string | null; note: string | null; updated_by_name: string | null }>;
+  interview_rounds: Array<{
+    assignment_id: number;
+    round: string;
+    round_sequence: number;
+    interviewer_name: string | null;
+    scheduled_at: string | null;
+    location: string;
+    status: string;
+    note: string;
+    feedback: CandidateJourneyFeedback | null;
+  }>;
+  offers: Array<{
+    id: number;
+    status: string;
+    salary_range: string;
+    onboard_date: string | null;
+    submitted_at: string | null;
+    approved_at: string | null;
+    sent_at: string | null;
+    responded_at: string | null;
+    onboarded_at: string | null;
+    rejection_reason: string;
+  }>;
+}
+
 export interface ResumeUploadResponse {
   batch_id: number;
   total: number;
