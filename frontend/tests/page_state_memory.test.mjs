@@ -29,3 +29,19 @@ test('左侧导航记住四个招聘模块的最后网址和滚动位置', () =>
   assert.match(layout, /onScroll=\{rememberMainScroll\}/);
   assert.doesNotMatch(`${helper}\n${layout}`, /localStorage|sessionStorage/);
 });
+
+test('招聘需求把筛选、排序和当前详情写入网址', () => {
+  const page = read('readdy-frontend/src/pages/jobs/page.tsx');
+
+  for (const key of [
+    'tab', 'q', 'department', 'city', 'owner', 'stage',
+    'headcount', 'deadline', 'sort', 'order', 'demand',
+  ]) {
+    assert.match(page, new RegExp(`['\"]${key}['\"]`), `招聘需求缺少 ${key} 网址状态`);
+  }
+  assert.match(page, /syncDemandWorkspaceUrl/);
+  assert.match(page, /openDemandInUrl/);
+  assert.match(page, /closeDemandDetail/);
+  assert.match(page, /setSearchParams\(next,\s*\{\s*replace:\s*true\s*\}\)/);
+  assert.doesNotMatch(page, /localStorage|sessionStorage/);
+});
