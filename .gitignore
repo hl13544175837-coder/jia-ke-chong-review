@@ -3,6 +3,8 @@
 *.env
 !*.env.example
 backend/.env
+# Local database, uploads, logs, PID files and recovery bundles.
+runtime/
 # Isolated MySQL pilot credentials and generated acceptance manifests.
 runtime/mysql-pilot.env
 runtime/mysql-pilot-acceptance/

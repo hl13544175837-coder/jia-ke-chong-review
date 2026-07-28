@@ -12,12 +12,15 @@ assert.match(viteConfig, /LOCAL_OAUTH_PROXY_TARGET/);
 assert.match(viteConfig, /VITE_ALLOW_LAN/);
 
 const commonScript = read('scripts/isolated-demo-common.sh');
+const gitignore = read('.gitignore');
 assert.match(commonScript, /BACKEND_PORT=5010/);
 assert.match(commonScript, /OAUTH_PORT=5110/);
 assert.match(commonScript, /FRONTEND_PORT=5190/);
 assert.doesNotMatch(commonScript, /OPERATIONS_PORT|OPERATIONS_FRONTEND_PID_FILE/, '本地只保留 5190 主产品');
-assert.match(commonScript, /RUNTIME_ROOT=.*ISOLATION_ROOT.*runtime/);
+assert.match(commonScript, /RUNTIME_ROOT=.*APP_ROOT.*runtime/);
+assert.doesNotMatch(commonScript, /RUNTIME_ROOT=.*ISOLATION_ROOT.*runtime/);
 assert.match(commonScript, /zhipin-demo\.db/);
+assert.match(gitignore, /^runtime\/$/m, '项目内运行数据不得进入 Git');
 
 const startScript = read('scripts/start-isolated-demo.sh');
 assert.match(startScript, /seed_dev\.py/);

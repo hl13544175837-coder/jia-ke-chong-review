@@ -4,8 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ISOLATION_ROOT="$(cd "$APP_ROOT/.." && pwd)"
-RUNTIME_ROOT="$ISOLATION_ROOT/runtime"
+RUNTIME_ROOT="$APP_ROOT/runtime"
 
 BACKEND_PORT=5010
 OAUTH_PORT=5110
