@@ -1,8 +1,14 @@
-import { CheckCircle2, Clock3, MoreHorizontal, UserRound } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, ChevronDown, Clock3, MoreHorizontal, UserRound } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { InterviewManagementRow } from '@/features/interviews/types';
 import { formatInterviewDateTime, interviewHasStarted } from '@/features/interviews/dateTime';
-import { rowStatus, statusLabelForRow } from '../workbench';
+import {
+  rowStatus,
+  statusLabelForRow,
+  type InterviewFilterOptions,
+  type InterviewFilters,
+  type InterviewStatusTab,
+} from '../workbench';
 
 interface InterviewManagementTableProps {
   rows: InterviewManagementRow[];
@@ -11,9 +17,14 @@ interface InterviewManagementTableProps {
   onSchedule: (row: InterviewManagementRow) => void;
   onConfirmConducted: (row: InterviewManagementRow) => void;
   onRemind: (row: InterviewManagementRow) => void;
+  filters: InterviewFilters;
+  filterOptions: InterviewFilterOptions;
+  activeTab: InterviewStatusTab;
+  onFiltersChange: (filters: InterviewFilters) => void;
+  onStatusChange: (status: InterviewStatusTab) => void;
 }
 
-type ActionProps = Omit<InterviewManagementTableProps, 'rows'> & { row: InterviewManagementRow };
+type ActionProps = Pick<InterviewManagementTableProps, 'actionRowId' | 'onOpenDetails' | 'onSchedule' | 'onConfirmConducted' | 'onRemind'> & { row: InterviewManagementRow };
 
 function rowKey(row: InterviewManagementRow) {
   return `${row.demand_id}-${row.candidate_id}-${row.assignment_id || 'new'}`;
@@ -35,6 +46,21 @@ function statusTone(row: InterviewManagementRow) {
 
 const primaryActionClass = 'inline-flex h-8 items-center justify-center whitespace-nowrap rounded-lg bg-primary-500 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryActionClass = 'inline-flex h-8 items-center justify-center whitespace-nowrap rounded-lg border border-background-300 bg-white px-3 text-xs font-medium text-foreground-700 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-50';
+
+function HeaderFilter({ id, label, open, active, width, onToggle, children }: { id: string; label: string; open: boolean; active: boolean; width: string; onToggle: () => void; children: ReactNode }) {
+  return (
+    <th className={`relative ${width} px-3 py-3`}>
+      <button type="button" data-ui={`interview-header-filter-${id}`} aria-expanded={open} onClick={onToggle} className={`inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-background-100 hover:text-foreground-700 ${active ? 'text-primary-700' : ''}`}>
+        {label}<ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div role="menu" aria-label={`${label}筛选`} className="absolute left-3 top-full z-30 mt-1 max-h-60 min-w-44 overflow-y-auto rounded-lg border border-background-200 bg-white p-1.5 text-left shadow-xl">{children}</div>}
+    </th>
+  );
+}
+
+function HeaderOption({ label, selected, onClick }: { label: string; selected?: boolean; onClick: () => void }) {
+  return <button type="button" role="menuitemradio" aria-checked={Boolean(selected)} onClick={onClick} className={`block w-full rounded-md px-3 py-2 text-left text-xs transition ${selected ? 'bg-primary-50 font-medium text-primary-700' : 'text-foreground-600 hover:bg-background-100'}`}>{label}</button>;
+}
 
 function RowActions({ row, actionRowId, onOpenDetails, onSchedule, onConfirmConducted, onRemind }: ActionProps) {
   const status = rowStatus(row);
@@ -66,9 +92,16 @@ export default function InterviewManagementTable({
   onSchedule,
   onConfirmConducted,
   onRemind,
+  filters,
+  filterOptions,
+  activeTab,
+  onFiltersChange,
+  onStatusChange,
 }: InterviewManagementTableProps) {
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  const [headerPanel, setHeaderPanel] = useState<'round' | 'schedule' | 'interviewer' | 'status' | null>(null);
   const menuRootRef = useRef<HTMLDivElement>(null);
+  const tableRootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!openMenuKey) return undefined;
@@ -86,16 +119,55 @@ export default function InterviewManagementTable({
     };
   }, [openMenuKey]);
 
+  useEffect(() => {
+    if (!headerPanel) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setHeaderPanel(null);
+    };
+    const closeOnOutside = (event: MouseEvent) => {
+      if (tableRootRef.current && !tableRootRef.current.contains(event.target as Node)) setHeaderPanel(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('mousedown', closeOnOutside);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('mousedown', closeOnOutside);
+    };
+  }, [headerPanel]);
+
+  const chooseHeader = (action: () => void) => {
+    action();
+    setHeaderPanel(null);
+  };
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-background-200 bg-white shadow-[0_8px_24px_rgba(36,55,46,0.04)]">
+    <div ref={tableRootRef} className="overflow-x-auto rounded-xl border border-background-200 bg-white shadow-[0_8px_24px_rgba(36,55,46,0.04)]">
       <table className="w-full min-w-[980px] table-fixed">
         <thead className="bg-background-50/80">
           <tr className="border-b border-background-200 text-left text-[11px] font-medium text-foreground-400">
             <th className="w-[29%] px-4 py-3">候选人 / 应聘岗位</th>
-            <th className="w-[10%] px-3 py-3">轮次</th>
-            <th className="w-[17%] px-3 py-3">面试安排</th>
-            <th className="w-[14%] px-3 py-3">面试官</th>
-            <th className="w-[10%] px-3 py-3">状态</th>
+            <HeaderFilter id="round" label="轮次" width="w-[10%]" open={headerPanel === 'round'} active={Boolean(filters.roundSequence)} onToggle={() => setHeaderPanel((current) => current === 'round' ? null : 'round')}>
+              <HeaderOption label="全部轮次" selected={!filters.roundSequence} onClick={() => chooseHeader(() => onFiltersChange({ ...filters, roundSequence: '' }))} />
+              {filterOptions.rounds.map((value) => <HeaderOption key={value} label={`第 ${value} 轮`} selected={filters.roundSequence === String(value)} onClick={() => chooseHeader(() => onFiltersChange({ ...filters, roundSequence: String(value) }))} />)}
+            </HeaderFilter>
+            <HeaderFilter id="schedule" label="面试安排" width="w-[17%]" open={headerPanel === 'schedule'} active={Boolean(filters.schedule)} onToggle={() => setHeaderPanel((current) => current === 'schedule' ? null : 'schedule')}>
+              <HeaderOption label="全部安排" selected={!filters.schedule} onClick={() => chooseHeader(() => onFiltersChange({ ...filters, schedule: '' }))} />
+              <HeaderOption label="时间待安排" selected={filters.schedule === 'unassigned'} onClick={() => chooseHeader(() => onFiltersChange({ ...filters, schedule: 'unassigned' }))} />
+              <HeaderOption label="已有安排" selected={filters.schedule === 'scheduled'} onClick={() => chooseHeader(() => onFiltersChange({ ...filters, schedule: 'scheduled' }))} />
+            </HeaderFilter>
+            <HeaderFilter id="interviewer" label="面试官" width="w-[14%]" open={headerPanel === 'interviewer'} active={Boolean(filters.interviewerId)} onToggle={() => setHeaderPanel((current) => current === 'interviewer' ? null : 'interviewer')}>
+              <HeaderOption label="全部面试官" selected={!filters.interviewerId} onClick={() => chooseHeader(() => onFiltersChange({ ...filters, interviewerId: '' }))} />
+              {filterOptions.interviewers.map(([id, name]) => <HeaderOption key={id} label={name} selected={filters.interviewerId === id} onClick={() => chooseHeader(() => onFiltersChange({ ...filters, interviewerId: id }))} />)}
+            </HeaderFilter>
+            <HeaderFilter id="status" label="状态" width="w-[10%]" open={headerPanel === 'status'} active={activeTab !== 'all'} onToggle={() => setHeaderPanel((current) => current === 'status' ? null : 'status')}>
+              {([
+                ['all', '全部状态'],
+                ['unassigned', '待安排'],
+                ['scheduled', '已安排'],
+                ['awaiting_feedback', '待反馈'],
+                ['completed', '已完成'],
+              ] as Array<[InterviewStatusTab, string]>).map(([value, label]) => <HeaderOption key={value} label={label} selected={activeTab === value} onClick={() => chooseHeader(() => onStatusChange(value))} />)}
+            </HeaderFilter>
             <th className="w-[20%] px-4 py-3 text-right">操作</th>
           </tr>
         </thead>

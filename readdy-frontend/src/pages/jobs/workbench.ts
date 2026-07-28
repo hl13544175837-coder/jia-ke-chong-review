@@ -15,6 +15,8 @@ export interface DemandWorkspaceFilters {
   city: string;
   owner: string;
   stage: string;
+  headcount: string;
+  deadline: string;
 }
 
 export interface DemandWorkspaceQuery {
@@ -45,6 +47,12 @@ function dateValue(value: string | null | undefined) {
   if (!value) return null;
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? null : time;
+}
+
+function startOfToday() {
+  const value = new Date();
+  value.setHours(0, 0, 0, 0);
+  return value.getTime();
 }
 
 function compareOptionalNumber(
@@ -107,6 +115,13 @@ export function filterAndSortRequisitions(
     if (query.filters.stage === 'feedback' && row.stageFeedback <= 0) return false;
     if (query.filters.stage === 'interview' && row.stageInterview <= 0) return false;
     if (query.filters.stage === 'offer' && row.stageOffer <= 0) return false;
+    if (query.filters.headcount === 'available' && row.remainingHeadcount <= 0) return false;
+    if (query.filters.headcount === 'reached' && row.remainingHeadcount > 0) return false;
+    const deadline = dateValue(row.deadline);
+    const today = startOfToday();
+    if (query.filters.deadline === 'overdue' && (!deadline || deadline >= today)) return false;
+    if (query.filters.deadline === 'dueSoon' && (!deadline || deadline < today || deadline > today + 7 * 86_400_000)) return false;
+    if (query.filters.deadline === 'unset' && deadline !== null) return false;
     return true;
   });
 

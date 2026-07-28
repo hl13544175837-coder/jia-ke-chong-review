@@ -341,6 +341,19 @@ export default function DashboardPage() {
     navigate(`/jobs?demand=${item.demand.id}`);
   };
 
+  const openDemandMetric = (item: (typeof summary.demandProgress)[number], stage: 'business-review' | 'interview' | 'offer' | 'onboarded') => {
+    if (stage === 'business-review') {
+      navigate('/candidates', { state: { fromDashboard: true, demandId: item.demand.id, targetStage: 'business_review' } });
+      return;
+    }
+    if (stage === 'interview') {
+      navigate(`/interviews?demand=${item.demand.id}&from=dashboard`);
+      return;
+    }
+    const tab = stage === 'onboarded' ? '&tab=onboard' : '';
+    navigate(`/offers?demand=${item.demand.id}${tab}&from=dashboard`);
+  };
+
   const openStage = (stage: DashboardStage) => {
     const destination = dashboardStageDrilldown(stage);
     if (destination.kind === 'candidate') {
@@ -521,10 +534,10 @@ export default function DashboardPage() {
                     <tr key={item.demand.id} className="h-[52px] hover:bg-background-50/70">
                       <td className="px-4 py-2.5"><button type="button" onClick={() => navigate(`/jobs?demand=${item.demand.id}`)} className="max-w-[220px] truncate text-left text-sm font-semibold text-foreground-900 hover:text-primary-700">{item.demand.job_title}</button><p className="mt-0.5 text-[11px] text-foreground-400">{item.demand.job_department} · {item.demand.job_city}</p></td>
                       <td className="px-3 py-2.5 text-center text-sm font-medium text-foreground-800">{item.demand.metrics.onboarded_count}/{item.demand.headcount}</td>
-                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.business_review_count}</td>
-                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.interview_count}</td>
-                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.offer_count}</td>
-                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.onboarded_count}</td>
+                      <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-business-review" disabled={item.demand.metrics.business_review_count <= 0} onClick={() => openDemandMetric(item, 'business-review')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.business_review_count}</button></td>
+                      <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-interview" disabled={item.demand.metrics.interview_count <= 0} onClick={() => openDemandMetric(item, 'interview')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.interview_count}</button></td>
+                      <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-offer" disabled={item.demand.metrics.offer_count <= 0} onClick={() => openDemandMetric(item, 'offer')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.offer_count}</button></td>
+                      <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-onboarded" disabled={item.demand.metrics.onboarded_count <= 0} onClick={() => openDemandMetric(item, 'onboarded')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.onboarded_count}</button></td>
                       <td className="px-3 py-2.5 text-center"><span className={`inline-flex whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium ${riskClasses[item.risk.level]}`}>{item.risk.label}</span></td>
                       <td className="px-4 py-2.5 text-right"><button type="button" onClick={() => openDemandAction(item)} className="h-8 whitespace-nowrap rounded-lg border border-primary-300 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50">{item.nextAction}</button></td>
                     </tr>
@@ -576,12 +589,12 @@ export default function DashboardPage() {
           </summary>
           <div className="grid gap-3 border-t border-background-100 px-4 py-4 sm:grid-cols-2 lg:grid-cols-5">
             {[
-              ['生效需求', summary.activeDemands.length],
-              ['剩余 HC', summary.gap],
-              ['已排面试', summary.scheduledInterviews.length],
-              ['流程中 Offer', activeOfferCount],
-              ['累计已入职', onboardedCount],
-            ].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-background-50 px-3 py-3"><p className="text-xs text-foreground-500">{label}</p><p className="mt-1 text-xl font-semibold text-foreground-900">{value}</p></div>)}
+              { key: 'active-demands', label: '生效需求', value: summary.activeDemands.length, action: () => navigate('/jobs', { state: { fromDashboard: true, tab: 'active' } }) },
+              { key: 'remaining-hc', label: '剩余 HC', value: summary.gap, action: () => navigate('/jobs', { state: { fromDashboard: true, tab: 'active', filters: { headcount: 'available' } } }) },
+              { key: 'scheduled-interviews', label: '已排面试', value: summary.scheduledInterviews.length, action: () => navigate('/interviews?status=scheduled&from=dashboard') },
+              { key: 'active-offers', label: '流程中 Offer', value: activeOfferCount, action: () => navigate('/offers?from=dashboard') },
+              { key: 'onboarded-total', label: '累计已入职', value: onboardedCount, action: () => navigate('/offers?tab=onboard&from=dashboard') },
+            ].map((item) => <button type="button" key={item.key} data-ui={`dashboard-drilldown-${item.key}`} disabled={item.value <= 0} onClick={item.action} className="rounded-lg bg-background-50 px-3 py-3 text-left transition hover:bg-primary-50 disabled:cursor-default disabled:opacity-55"><span className="text-xs text-foreground-500">{item.label}</span><span className="mt-1 block text-xl font-semibold text-foreground-900">{item.value}</span></button>)}
           </div>
         </details>
 

@@ -89,6 +89,7 @@ export default function JobsPage() {
     openTitle?: string;
     openCreate?: boolean;
     tab?: string;
+    filters?: Partial<DemandWorkspaceFilters>;
   } | null;
   const [activeTab, setActiveTab] = useState<DemandWorkspaceTab>(() => initialWorkspaceTab(navState?.tab));
   const [formOpen, setFormOpen] = useState(Boolean(navState?.openCreate));
@@ -104,7 +105,15 @@ export default function JobsPage() {
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
   const [detailSaving, setDetailSaving] = useState(false);
   const [detailError, setDetailError] = useState('');
-  const [filters, setFilters] = useState<DemandWorkspaceFilters>({ department: '', owner: '', city: '', stage: '' });
+  const [filters, setFilters] = useState<DemandWorkspaceFilters>({
+    department: '',
+    owner: '',
+    city: '',
+    stage: '',
+    headcount: '',
+    deadline: '',
+    ...navState?.filters,
+  });
   const [sortField, setSortField] = useState<DemandSortField>('newest');
   const [sortDirection, setSortDirection] = useState<DemandSortDirection>('desc');
   const [pushDemand, setPushDemand] = useState<RecruitmentDemand | null>(null);
@@ -437,11 +446,13 @@ export default function JobsPage() {
           onSelectCandidates={(req) => setCandidateDemand(req.source)}
           onViewCandidates={(req) => openCandidates(req, 'all')}
           onStageCountClick={openStageProgress}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           filters={filters}
           onFilterChange={(key, value) => setFilters((current) => ({ ...current, [key]: value }))}
-          onClearFilters={() => setFilters({ department: '', owner: '', city: '', stage: '' })}
+          onClearFilters={() => setFilters({ department: '', owner: '', city: '', stage: '', headcount: '', deadline: '' })}
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={(field: DemandSortField) => {

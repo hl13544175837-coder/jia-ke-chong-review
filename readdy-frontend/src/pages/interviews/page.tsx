@@ -375,6 +375,11 @@ export default function RecruiterInterviewsPage() {
         <InterviewManagementTable
           rows={visibleRows}
           actionRowId={actionRowId}
+          filters={appliedFilters}
+          filterOptions={filterOptions}
+          activeTab={activeTab}
+          onFiltersChange={(next) => { setAppliedFilters(next); setDraftFilters(next); }}
+          onStatusChange={setActiveTab}
           onOpenDetails={setSelectedRow}
           onSchedule={openSchedule}
           onConfirmConducted={setConfirmConductedRow}
