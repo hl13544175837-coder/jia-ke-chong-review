@@ -269,7 +269,7 @@ export default function OffersPage() {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           {fromDashboard && !requestedDemandId && <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>}
-          <div><h1 className="text-2xl font-bold text-foreground-900">Offer 工作台</h1>
+          <div>
           <p className="mt-1 text-sm text-foreground-500">确认方案、登记发放、跟进回复和确认入职</p>
           </div>
         </div>

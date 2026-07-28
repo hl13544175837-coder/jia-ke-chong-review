@@ -288,7 +288,7 @@ export default function RecruiterInterviewsPage() {
       if (stage === 'offer') {
         navigate(`/offers?demand=${row.demand_id}&candidate=${row.candidate_id}`);
       } else {
-        setSuccessMessage('候选人已淘汰并保留在人才库，原因已写入流程记录');
+        setSuccessMessage('候选人已淘汰并保留在公司人才库，原因已写入流程记录');
       }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : '保存面试结果下一步失败');
@@ -302,7 +302,7 @@ export default function RecruiterInterviewsPage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           {fromDashboard && !requestedDemandId && <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>}
-          <div><h1 className="text-xl font-bold text-foreground-900">面试管理</h1>
+          <div>
           <p className="mt-1 text-sm text-foreground-500">从安排面试到收回反馈，都在这里处理</p>
           </div>
         </div>

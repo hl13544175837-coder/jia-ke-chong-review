@@ -81,7 +81,7 @@ assert.deepEqual(
 
 const page = source('readdy-frontend/src/pages/offers/page.tsx');
 const workbenchSource = source('readdy-frontend/src/pages/offers/workbench.ts');
-assert.match(page, /Offer 工作台/);
+assert.match(page, /确认方案、登记发放、跟进回复和确认入职/);
 assert.match(page, /今日提醒/);
 assert.match(page, /filterAndSortOffers/);
 for (const copy of ['今日待办', '草稿', '待确认', '待发放', '待回复', '待入职', '历史记录']) {

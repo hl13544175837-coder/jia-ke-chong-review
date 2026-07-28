@@ -430,7 +430,7 @@ def add_candidates_to_demand(
                             "error": "重新启用已淘汰候选人需要填写原因",
                         })
                         continue
-                    note = f"人才库重新启用：{reason}"
+                    note = f"公司人才库重新启用：{reason}"
                     counter = "reactivated"
                 else:
                     result["skipped_existing"] += 1

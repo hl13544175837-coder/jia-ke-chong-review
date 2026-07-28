@@ -403,5 +403,5 @@ def test_talent_pool_candidates_can_preview_match_join_and_reactivate(
         ).one()
         assert rejected.current_demand_id == demand_id
         assert latest.stage == "pending"
-        assert "人才库重新启用" in latest.note
+        assert "公司人才库重新启用" in latest.note
         assert flow.status == "active"

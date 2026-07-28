@@ -369,7 +369,6 @@ export default function DashboardPage() {
         <header>
           <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-end 2xl:justify-between">
             <div>
-              <h1 className="text-xl font-bold text-foreground-900">工作台</h1>
               <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground-900">
                 {greeting()}，{name || (role === 'manager' ? '招聘经理' : '招聘专员')}。
               </p>

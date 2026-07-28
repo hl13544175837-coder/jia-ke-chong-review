@@ -1103,9 +1103,7 @@ export default function CandidatesPage() {
               </button>
             )}
             <div>
-              <h1 className="text-lg font-bold text-foreground-900">
-                {navState?.jobTitle ? '当前需求候选人' : '简历库'}
-              </h1>
+              {navState?.jobTitle && <h1 className="text-lg font-bold text-foreground-900">当前需求候选人</h1>}
               <p className="mt-0.5 text-xs text-foreground-500">
                 {navState?.jobTitle ? `${navState.jobTitle} · 已自动带入需求和阶段条件` : '候选人与业务筛选'}
               </p>
@@ -1794,7 +1792,7 @@ export default function CandidatesPage() {
                 {demandsLoading && <p className="mt-1 text-xs text-foreground-400">正在加载可关联的招聘需求</p>}
                 {demandError && (
                   <p className="mt-1 text-xs text-amber-700">
-                    招聘需求暂时不可用，仍可先入人才库。
+                    招聘需求暂时不可用，仍可先入公司人才库。
                     <button type="button" onClick={() => void loadDemands()} className="ml-1 font-medium hover:text-amber-800">重试</button>
                   </p>
                 )}
