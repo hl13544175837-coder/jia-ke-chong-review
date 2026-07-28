@@ -693,6 +693,7 @@ OFFER_STATUSES = {
     "draft",
     "pending",
     "approved",
+    "rejected",
     "sent",
     "accepted",
     "declined",
@@ -704,7 +705,7 @@ OFFER_STATUSES = {
 OFFER_TRANSITIONS = {
     "submit": ({"draft"}, "pending"),
     "approve": ({"pending"}, "approved"),
-    "reject": ({"pending"}, "declined"),
+    "reject": ({"pending"}, "rejected"),
     "send": ({"approved"}, "sent"),
     "accept": ({"sent"}, "accepted"),
     "decline": ({"sent"}, "declined"),
@@ -1117,16 +1118,20 @@ def save_offer_record(*, demand_id, candidate_id, org_id, actor_id, data, commit
             )
             db.session.add(offer)
             db.session.flush()
-        elif (offer.approval_status or "draft") != "draft":
+        elif (offer.approval_status or "draft") not in {"draft", "rejected"}:
             raise PipelineServiceError(
                 "Offer 已提交审批，不能直接修改",
                 409,
                 "offer_not_editable",
             )
+        previous_status = offer.approval_status or "draft"
         offer.job_id = demand.job_id
         offer.salary_range = str(data.get("salary_range") or "")[:120]
         offer.onboard_date = parse_date(data.get("onboard_date"))
         offer.approval_status = "draft"
+        if previous_status == "rejected":
+            offer.approver_id = None
+            offer.rejection_reason = ""
         offer.note = str(data.get("note") or "")
         salary_breakdown = data.get("salary_breakdown")
         if isinstance(salary_breakdown, list):
@@ -1136,7 +1141,7 @@ def save_offer_record(*, demand_id, candidate_id, org_id, actor_id, data, commit
             offer,
             action="saved",
             actor_id=actor_id,
-            from_status="draft",
+            from_status=previous_status,
             to_status="draft",
             comment=offer.note,
             detail={"version": offer.version},

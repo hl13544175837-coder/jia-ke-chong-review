@@ -94,9 +94,22 @@ assert.match(page, /md:grid-cols-2/, '中等宽度下筛选区必须分成两列
 assert.match(page, /xl:grid-cols-3/, '常见桌面宽度下筛选区最多使用三列');
 
 const table = source('readdy-frontend/src/pages/offers/components/OfferTable.tsx');
+assert.match(table, /查看确认进度/, '招聘专员不能看到自审 Offer 的误导按钮');
+assert.match(table, /role/, 'Offer 行主操作必须根据当前角色显示');
+
+const drawer = source('readdy-frontend/src/pages/offers/components/OfferDetailDrawer.tsx');
+assert.match(drawer, /role === 'manager'[\s\S]*return \['approve', 'reject'\]/, '只有经理类角色可以确认或驳回 Offer');
+assert.match(drawer, /canMaintain \? \['withdraw'\] : \[\]/, '待确认期间招聘专员只能撤回，不能自行确认');
+assert.match(drawer, /canMaintain/, 'Offer 修改、发放、回复与入职操作必须限制给招聘专员或管理员');
+assert.match(drawer, /已退回招聘专员修改/, '主管查看退回记录时必须明确下一步由招聘专员处理');
 const detail = source('readdy-frontend/src/pages/offers/components/OfferDetailDrawer.tsx');
 const createModal = source('readdy-frontend/src/pages/offers/components/CreateOfferModal.tsx');
 const offerSurface = `${page}\n${table}\n${detail}\n${createModal}\n${workbenchSource}`;
+for (const copy of ['已退回修改', '修改后重提']) {
+  assert.match(offerSurface, new RegExp(copy), `经理退回的 Offer 缺少“${copy}”`);
+}
+assert.match(detail, /退回修改/, '主管退回操作不能再误写成终止流程');
+assert.match(detail, /退回原因/, '退回的 Offer 必须明确显示退回原因');
 assert.doesNotMatch(table, /min-w-\[1040px\]/, 'Offer 表格不应在常见桌面宽度下强制横向滚动');
 for (const copy of ['继续编辑', '确认 Offer', '登记发放', '登记候选人回复', '确认入职', '查看记录']) {
   assert.match(offerSurface, new RegExp(copy), `Offer 操作缺少“${copy}”`);

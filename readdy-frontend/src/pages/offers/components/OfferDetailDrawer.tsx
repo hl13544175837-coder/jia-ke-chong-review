@@ -20,6 +20,7 @@ const STATUS_META: Record<OfferStatus, { label: string; className: string }> = {
   draft: { label: '草稿', className: 'bg-background-200 text-foreground-700' },
   pending: { label: '待确认', className: 'bg-amber-50 text-amber-700' },
   approved: { label: '待发放', className: 'bg-blue-50 text-blue-700' },
+  rejected: { label: '已退回修改', className: 'bg-red-50 text-red-700' },
   sent: { label: '等待回复', className: 'bg-cyan-50 text-cyan-700' },
   accepted: { label: '待入职', className: 'bg-emerald-50 text-emerald-700' },
   declined: { label: '已拒绝', className: 'bg-red-50 text-red-700' },
@@ -31,7 +32,7 @@ const STATUS_META: Record<OfferStatus, { label: string; className: string }> = {
 const ACTION_META: Record<OfferAction, { label: string; danger?: boolean }> = {
   submit: { label: '提交确认' },
   approve: { label: '确认无误' },
-  reject: { label: '终止并退回', danger: true },
+  reject: { label: '退回修改', danger: true },
   send: { label: '登记发放' },
   accept: { label: '记录候选人接受' },
   decline: { label: '记录候选人拒绝', danger: true },
@@ -47,7 +48,7 @@ const HISTORY_LABELS: Record<string, string> = {
   saved: '保存草稿',
   submitted: '提交确认',
   approved: '确认无误',
-  rejected: '终止并退回',
+  rejected: '退回修改',
   sent: '登记发放',
   accepted: '候选人接受',
   declined: '候选人拒绝',
@@ -72,13 +73,17 @@ function formatTime(value: string | null) {
 }
 
 function availableActions(status: OfferStatus, role: ProductRole | null): OfferAction[] {
-  if (status === 'draft') return ['submit'];
-  if (status === 'pending') return role === 'manager' || role === 'admin' || role === 'hr_director'
-    ? ['approve', 'reject', 'withdraw']
-    : ['approve', 'withdraw'];
-  if (status === 'approved') return ['send', 'withdraw'];
-  if (status === 'sent') return ['accept', 'decline', 'withdraw', 'expire', 'resend', 'follow_up'];
-  if (status === 'accepted') return ['onboard', 'withdraw', 'follow_up'];
+  const canMaintain = role === 'recruiter' || role === 'admin';
+  if (status === 'draft') return canMaintain ? ['submit'] : [];
+  if (status === 'rejected') return [];
+  if (status === 'pending') {
+    if (role === 'manager' || role === 'hr_director') return ['approve', 'reject'];
+    if (role === 'admin') return ['approve', 'reject', 'withdraw'];
+    return canMaintain ? ['withdraw'] : [];
+  }
+  if (status === 'approved') return canMaintain ? ['send', 'withdraw'] : [];
+  if (status === 'sent') return canMaintain ? ['accept', 'decline', 'withdraw', 'expire', 'resend', 'follow_up'] : [];
+  if (status === 'accepted') return canMaintain ? ['onboard', 'withdraw', 'follow_up'] : [];
   return [];
 }
 
@@ -107,6 +112,7 @@ export default function OfferDetailDrawer({
   const status = STATUS_META[offer.status];
   const needsReason = action === 'reject' || action === 'decline' || action === 'withdraw';
   const risk = offerRisk(offer);
+  const canMaintain = role === 'recruiter' || role === 'admin';
 
   useEffect(() => {
     setAction(initialAction);
@@ -238,7 +244,7 @@ export default function OfferDetailDrawer({
             </div>
             {offer.rejection_reason && (
               <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-3">
-                <p className="text-xs font-medium text-red-700">结束 / 拒绝原因</p>
+                <p className="text-xs font-medium text-red-700">{offer.status === 'rejected' ? '退回原因' : '结束 / 拒绝原因'}</p>
                 <p className="mt-1 text-sm text-red-800">{offer.rejection_reason}</p>
               </div>
             )}
@@ -247,14 +253,18 @@ export default function OfferDetailDrawer({
           <section>
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold text-foreground-900">当前可执行操作</h3>
-              {offer.status === 'draft' && (
+              {canMaintain && (offer.status === 'draft' || offer.status === 'rejected') && (
                 <button type="button" onClick={onEdit} className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline">
-                  <i className="ri-edit-line" aria-hidden="true"></i>编辑草稿
+                  <i className="ri-edit-line" aria-hidden="true"></i>{offer.status === 'rejected' ? '修改后重提' : '编辑草稿'}
                 </button>
               )}
             </div>
             {actions.length === 0 ? (
-              <p className="mt-3 rounded-lg bg-background-50 px-3 py-3 text-sm text-foreground-500">当前状态已结束，可在下方查看完整记录。</p>
+              <p className="mt-3 rounded-lg bg-background-50 px-3 py-3 text-sm text-foreground-500">
+                {offer.status === 'rejected'
+                  ? (canMaintain ? '请按退回意见修改方案后重新提交确认。' : '已退回招聘专员修改，修改后会重新提交确认。')
+                  : '当前没有需要你执行的操作，可在下方查看完整记录。'}
+              </p>
             ) : (
               <div className="mt-3 flex flex-wrap gap-2">
                 {actions.map((item) => (

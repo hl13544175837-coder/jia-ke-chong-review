@@ -124,6 +124,11 @@ def test_offer_lifecycle_is_persisted_audited_and_updates_pipeline(
         role="recruiter",
         name="招聘李华",
     )
+    _, manager_token = make_user(
+        "offer-approver@example.com",
+        role="manager",
+        name="招聘经理",
+    )
     demand_id, job_id, candidate_id = _seed_offer_candidate(app, recruiter_id)
 
     created = client.put(
@@ -167,13 +172,28 @@ def test_offer_lifecycle_is_persisted_audited_and_updates_pipeline(
     assert replayed.status_code == 200
     assert replayed.headers["X-Idempotent-Replay"] == "true"
 
-    confirmed = client.post(
+    self_approval = client.post(
         f"/api/offers/{offer_id}/actions",
         headers=_auth(recruiter_token),
         json={"action": "approve", "comment": "薪酬与入职日期已确认"},
     )
+    assert self_approval.status_code == 403
+
+    confirmed = client.post(
+        f"/api/offers/{offer_id}/actions",
+        headers=_auth(manager_token),
+        json={"action": "approve", "comment": "薪酬与入职日期已确认"},
+    )
     assert confirmed.status_code == 200
     assert confirmed.get_json()["status"] == "approved"
+
+    manager_send = client.post(
+        f"/api/offers/{offer_id}/actions",
+        headers=_auth(manager_token),
+        json={"action": "send", "channel": "email"},
+    )
+    assert manager_send.status_code == 403
+    assert manager_send.get_json()["code"] == "offer_operation_forbidden"
 
     missing_channel = client.post(
         f"/api/offers/{offer_id}/actions",
@@ -457,6 +477,60 @@ def test_offer_state_machine_and_org_role_boundaries(client, make_user, app):
     )
     assert locked.status_code == 409
     assert locked.get_json()["code"] == "offer_not_editable"
+
+
+def test_manager_rejection_returns_offer_to_editable_revision_flow(
+    client, make_user, app
+):
+    recruiter_id, recruiter_token = make_user(
+        "offer-revision-owner@example.com", role="recruiter"
+    )
+    _, manager_token = make_user(
+        "offer-revision-manager@example.com", role="manager"
+    )
+    demand_id, _, candidate_id = _seed_offer_candidate(app, recruiter_id)
+    created = client.put(
+        f"/api/pipeline/demands/{demand_id}/offer/{candidate_id}",
+        headers=_auth(recruiter_token),
+        json={"salary_range": "30K × 14薪", "note": "初稿"},
+    ).get_json()
+    offer_id = created["id"]
+    assert client.post(
+        f"/api/offers/{offer_id}/actions",
+        headers=_auth(recruiter_token),
+        json={"action": "submit", "comment": "请确认"},
+    ).status_code == 200
+
+    rejected = client.post(
+        f"/api/offers/{offer_id}/actions",
+        headers=_auth(manager_token),
+        json={"action": "reject", "comment": "薪酬结构需要补充说明"},
+    )
+    assert rejected.status_code == 200
+    assert rejected.get_json()["status"] == "rejected"
+
+    manager_edit = client.put(
+        f"/api/pipeline/demands/{demand_id}/offer/{candidate_id}",
+        headers=_auth(manager_token),
+        json={"salary_range": "经理不应直接修改"},
+    )
+    assert manager_edit.status_code == 403
+    assert manager_edit.get_json()["code"] == "offer_edit_forbidden"
+
+    revised = client.put(
+        f"/api/pipeline/demands/{demand_id}/offer/{candidate_id}",
+        headers=_auth(recruiter_token),
+        json={"salary_range": "30K × 14薪 + 年终奖", "note": "已补充说明"},
+    )
+    assert revised.status_code == 200
+    assert revised.get_json()["status"] == "draft"
+    assert revised.get_json()["version"] == 2
+    assert [item["action"] for item in revised.get_json()["history"]] == [
+        "saved",
+        "submitted",
+        "rejected",
+        "saved",
+    ]
 
 
 def test_offer_list_reports_legacy_unmapped_rows_without_crashing(client, make_user, app):

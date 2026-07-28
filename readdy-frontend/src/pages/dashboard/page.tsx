@@ -35,6 +35,7 @@ const offerStatusLabels: Record<OfferStatus, string> = {
   draft: '草稿待提交',
   pending: '等待主管审批',
   approved: '待发放',
+  rejected: '主管退回修改',
   sent: '等待候选人回复',
   accepted: '待确认入职',
   declined: '已拒绝',

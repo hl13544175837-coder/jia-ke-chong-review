@@ -40,6 +40,7 @@ const statusLabels: Record<OfferStatus, string> = {
   draft: '草稿',
   pending: '待确认',
   approved: '待发放',
+  rejected: '已退回修改',
   sent: '待回复',
   accepted: '待入职',
   declined: '已拒绝',
@@ -52,6 +53,7 @@ const primaryActions: Record<OfferStatus, string> = {
   draft: '继续编辑',
   pending: '确认 Offer',
   approved: '登记发放',
+  rejected: '修改后重提',
   sent: '登记候选人回复',
   accepted: '确认入职',
   declined: '查看记录',
@@ -134,12 +136,13 @@ export function offerRisk(offer: OfferRecord, now = new Date()): OfferRisk {
     return { level: 'low', label: '等待入职', rank: 30 };
   }
   if (offer.status === 'approved') return { level: 'medium', label: '待登记发放', rank: 60 };
+  if (offer.status === 'rejected') return { level: 'high', label: '经理已退回', rank: 95 };
   if (offer.status === 'draft') return { level: 'low', label: '草稿待完善', rank: 40 };
   return { level: 'low', label: offerStatusLabel(offer.status), rank: 0 };
 }
 
 export function isTodayOfferTask(offer: OfferRecord, now = new Date()) {
-  if (offer.status === 'draft' || offer.status === 'pending' || offer.status === 'approved') return true;
+  if (offer.status === 'draft' || offer.status === 'rejected' || offer.status === 'pending' || offer.status === 'approved') return true;
   if (offer.status === 'sent') return offerRisk(offer, now).level !== 'low';
   if (offer.status === 'accepted') {
     const onboardIn = daysUntil(offer.onboard_date, now);
@@ -151,7 +154,7 @@ export function isTodayOfferTask(offer: OfferRecord, now = new Date()) {
 export function buildOfferTabCounts(items: OfferRecord[], now = new Date()) {
   return {
     today: items.filter((item) => isTodayOfferTask(item, now)).length,
-    draft: items.filter((item) => item.status === 'draft').length,
+    draft: items.filter((item) => item.status === 'draft' || item.status === 'rejected').length,
     pending: items.filter((item) => item.status === 'pending').length,
     approved: items.filter((item) => item.status === 'approved').length,
     sent: items.filter((item) => item.status === 'sent').length,
@@ -163,6 +166,7 @@ export function buildOfferTabCounts(items: OfferRecord[], now = new Date()) {
 function matchesTab(offer: OfferRecord, tab: OfferWorkbenchTab, now: Date) {
   if (tab === 'today') return isTodayOfferTask(offer, now);
   if (tab === 'history') return historyStatuses.has(offer.status);
+  if (tab === 'draft') return offer.status === 'draft' || offer.status === 'rejected';
   return offer.status === tab;
 }
 

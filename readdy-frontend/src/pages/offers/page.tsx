@@ -249,12 +249,13 @@ export default function OffersPage() {
   };
 
   const openPrimaryAction = (offer: OfferRecord) => {
-    if (offer.status === 'draft') {
+    const canMaintain = role === 'recruiter' || role === 'admin';
+    if (canMaintain && (offer.status === 'draft' || offer.status === 'rejected')) {
       openEdit(offer);
       return;
     }
     const actionByStatus: Partial<Record<OfferRecord['status'], OfferAction>> = {
-      pending: 'approve',
+      pending: role === 'manager' || role === 'admin' || role === 'hr_director' ? 'approve' : undefined,
       approved: 'send',
       sent: 'accept',
       accepted: 'onboard',
@@ -272,15 +273,17 @@ export default function OffersPage() {
           <p className="mt-1 text-sm text-foreground-500">确认方案、登记发放、跟进回复和确认入职</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          disabled={demandsLoading || Boolean(demandsError) || approvedDemands.length === 0}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <i className="ri-add-line text-base" aria-hidden="true"></i>
-          {demandsLoading ? '加载需求中' : '新建 Offer'}
-        </button>
+        {(role === 'recruiter' || role === 'admin') && (
+          <button
+            type="button"
+            onClick={openCreate}
+            disabled={demandsLoading || Boolean(demandsError) || approvedDemands.length === 0}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <i className="ri-add-line text-base" aria-hidden="true"></i>
+            {demandsLoading ? '加载需求中' : '新建 Offer'}
+          </button>
+        )}
       </header>
 
       {requestedDemandId && (
@@ -373,6 +376,7 @@ export default function OffersPage() {
         ) : (
           <OfferTable
             offers={visibleOffers}
+            role={role}
             onOpen={(offer) => { setRequestedAction(null); void openDetail(offer); }}
             onPrimaryAction={openPrimaryAction}
           />

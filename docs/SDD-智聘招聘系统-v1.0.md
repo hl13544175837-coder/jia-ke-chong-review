@@ -368,12 +368,12 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
-| `PUT` | `/pipeline/demands/<demand_id>/offer/<candidate_id>` | Demand owner/manager/admin | 新建或编辑 `draft`；请求体中的状态字段不会绕过审批，已提交草稿返回 409 |
+| `PUT` | `/pipeline/demands/<demand_id>/offer/<candidate_id>` | recruiter/admin + Demand 管理权 | 新建或编辑 `draft/rejected`；`rejected` 修改后回到 `draft` 并增加版本；请求体中的状态字段不会绕过确认，已提交草稿返回 409 |
 | `GET` | `/offers` | recruiter/manager/admin | 按组织和 Demand 可见范围列出 Offer；支持 `status` 和 `search` |
 | `GET` | `/offers/<offer_id>` | recruiter/manager/admin + Demand 读取权 | 返回候选人、需求、当前状态、回复和 append-only 操作历史 |
-| `POST` | `/offers/<offer_id>/actions` | Demand owner/manager/admin；审批/审批拒绝仅 manager/admin | 状态机动作：`submit/approve/reject/send/accept/decline/withdraw/expire/onboard/resend/follow_up`；支持 `Idempotency-Key`，关键动作写通用审计 |
+| `POST` | `/offers/<offer_id>/actions` | `approve/reject` 仅 manager/admin；其余动作仅 recruiter/admin，并同时校验 Demand 管理权 | 状态机动作：`submit/approve/reject/send/accept/decline/withdraw/expire/onboard/resend/follow_up`；招聘专员不能自审，经理不能修改或代替 HR 发放；支持 `Idempotency-Key`，关键动作写通用审计 |
 
-Offer 状态顺序为 `draft → pending → approved → sent → accepted → onboarded`，审批拒绝或候选人拒绝进入 `declined`，在途记录可进入 `withdrawn`，超时可进入 `expired`。只有 `accepted` Offer 的 `onboard` 动作可写入 `onboarded`，且请求必须提供 `onboard_date`；通用 Pipeline 推进和阶段修正写入该终态均返回 409 `offer_onboard_action_required`。确认入职在同一事务更新 OfferRecord、OfferEvent、PipelineStage、CandidateDemandFlow、Candidate.current_demand_id 与双方审计，任一步失败整体回滚。面试官不可访问 Offer 管理接口。
+Offer 主状态顺序为 `draft → pending → approved → sent → accepted → onboarded`。经理退回进入可修订的 `rejected`，招聘专员保存后回到 `draft` 并递增版本；候选人拒绝才进入终态 `declined`，二者不得混用。在途记录可进入 `withdrawn`，超时可进入 `expired`。只有 `accepted` Offer 的 `onboard` 动作可写入 `onboarded`，且请求必须提供 `onboard_date`；通用 Pipeline 推进和阶段修正写入该终态均返回 409 `offer_onboard_action_required`。确认入职在同一事务更新 OfferRecord、OfferEvent、PipelineStage、CandidateDemandFlow、Candidate.current_demand_id 与双方审计，任一步失败整体回滚。面试官不可访问 Offer 管理接口。
 
 ### 7.5.2 招聘流程口径（当前代码候选）
 
