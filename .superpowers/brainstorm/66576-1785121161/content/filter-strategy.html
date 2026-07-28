@@ -1,0 +1,48 @@
+<style>
+  .filter-options{display:grid;grid-template-columns:1fr;gap:18px;margin-top:22px}
+  .filter-card{border:1px solid #e4e9e6;border-radius:18px;background:#fff;overflow:hidden;cursor:pointer;transition:.18s ease;box-shadow:0 8px 28px rgba(31,50,42,.05)}
+  .filter-card:hover{transform:translateY(-2px);border-color:#55a079;box-shadow:0 13px 34px rgba(31,50,42,.1)}
+  .filter-card.selected{outline:3px solid rgba(64,148,105,.2);border-color:#409469}
+  .filter-title{display:flex;align-items:flex-start;justify-content:space-between;padding:16px 18px 12px}.filter-title h3{margin:0;color:#23382e;font-size:16px}.filter-title p{margin:5px 0 0;color:#728078;font-size:12px}.flag{font-size:11px;border-radius:999px;padding:5px 9px;background:#eef6f1;color:#347c58;font-weight:700}
+  .ui{margin:0 18px 17px;border:1px solid #e9eeeb;border-radius:13px;background:#fafcfb;padding:13px}.tabs{display:flex;gap:7px;margin-bottom:10px}.tab{font-size:10px;padding:6px 9px;border-radius:7px;background:#edf1ee;color:#68756e}.tab.on{background:#4b9d73;color:white}
+  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.control{height:31px;border:1px solid #dde4df;border-radius:8px;background:#fff;padding:8px 10px;color:#54645b;font-size:10px;min-width:105px}.control.search{min-width:210px;flex:1}.control.more{color:#3f8e68;border-color:#bcdcca;background:#f7fcf9}.control.clear{border:0;background:transparent;color:#9a6b64;min-width:auto}.second{margin-top:8px;padding-top:9px;border-top:1px dashed #dce5df}.chips{display:flex;gap:6px;margin-top:9px}.chip{font-size:9px;padding:5px 7px;border-radius:999px;background:#e9f5ee;color:#347a57}.chip b{margin-left:4px}.rows{margin-top:11px;border:1px solid #e7ece9;border-radius:9px;overflow:hidden;background:white}.row{height:34px;display:grid;grid-template-columns:1.5fr 1fr .9fr .8fr;align-items:center;border-bottom:1px solid #eff2f0;font-size:9px;color:#627168}.row:last-child{border:0}.row span{padding:0 8px}.row strong{color:#2b3d34}.action{justify-self:end;margin-right:7px;background:#4e9e75!important;color:#fff!important;border-radius:6px;padding:5px 7px!important}
+  .keyword{font-size:9px;color:#74837b;margin-top:7px}.keyword code{padding:3px 6px;border-radius:6px;background:#eef2ef;color:#3c6651}
+</style>
+
+<h2>B 型双行列表，筛选怎么补回来？</h2>
+<p class="subtitle">候选人多时，不能让招聘专员靠滚动和记名字。下面三种都支持搜索，但操作成本不同。</p>
+
+<div class="filter-options">
+  <div class="filter-card" data-choice="full-filter" onclick="toggleSelect(this)">
+    <div class="filter-title"><div><h3>A · 全量筛选一直展开</h3><p>所有字段直接铺开，最快找到人，但会重新变得拥挤。</p></div><span class="flag" style="background:#f4f1ec;color:#8a6a3e">接近旧版</span></div>
+    <div class="ui">
+      <div class="tabs"><i class="tab on">全部 126</i><i class="tab">待安排 31</i><i class="tab">已安排 46</i><i class="tab">待反馈 18</i><i class="tab">已完成 31</i></div>
+      <div class="bar"><i class="control search">搜索候选人、岗位、面试官</i><i class="control">岗位 ▾</i><i class="control">面试官 ▾</i><i class="control">面试轮次 ▾</i><i class="control">日期 ▾</i><i class="control">城市 ▾</i><i class="control">部门 ▾</i><i class="control clear">重置</i></div>
+    </div>
+  </div>
+
+  <div class="filter-card" data-choice="smart-filter" onclick="toggleSelect(this)">
+    <div class="filter-title"><div><h3>B · 常用筛选露出，更多筛选展开</h3><p>默认只留高频条件；需要时再展开城市、部门和轮次，并用标签显示已选条件。</p></div><span class="flag">推荐</span></div>
+    <div class="ui">
+      <div class="tabs"><i class="tab on">全部 126</i><i class="tab">待安排 31</i><i class="tab">已安排 46</i><i class="tab">待反馈 18</i><i class="tab">已完成 31</i></div>
+      <div class="bar"><i class="control search">搜索姓名、岗位、面试官</i><i class="control">岗位 ▾</i><i class="control">面试官 ▾</i><i class="control">日期范围 ▾</i><i class="control more">更多筛选 2</i><i class="control clear">重置</i></div>
+      <div class="bar second"><i class="control">面试轮次：一面 ▾</i><i class="control">城市：上海 ▾</i><i class="control">部门 ▾</i></div>
+      <div class="chips"><i class="chip">一面 <b>×</b></i><i class="chip">上海 <b>×</b></i><i class="chip">共找到 18 人</i></div>
+      <div class="rows">
+        <div class="row"><span><strong>王浩然</strong><br>后端开发 · 技术研发部</span><span>07/28 14:00</span><span>面试官01</span><span class="action">调整安排</span></div>
+        <div class="row"><span><strong>陈伟</strong><br>前端开发 · 技术研发部</span><span>时间待安排</span><span>待安排</span><span class="action">安排面试</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter-card" data-choice="command-search" onclick="toggleSelect(this)">
+    <div class="filter-title"><div><h3>C · 一个智能搜索框</h3><p>界面最干净，可输入“上海 一面 Python 面试官01”，但新用户不一定会用。</p></div><span class="flag" style="background:#f1eff8;color:#6d56a4">更极简</span></div>
+    <div class="ui">
+      <div class="tabs"><i class="tab on">全部 126</i><i class="tab">待安排 31</i><i class="tab">已安排 46</i><i class="tab">待反馈 18</i><i class="tab">已完成 31</i></div>
+      <div class="bar"><i class="control search">搜索或输入筛选条件：上海 + 一面 + Python</i><i class="control more">筛选语法</i></div>
+      <div class="keyword">示例：<code>岗位:Python</code> <code>城市:上海</code> <code>状态:待反馈</code></div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:18px">点击你认可的筛选方式，然后回到对话告诉我。</p>

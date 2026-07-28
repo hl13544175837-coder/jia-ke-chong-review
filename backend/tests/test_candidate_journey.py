@@ -1,3 +1,6 @@
+from datetime import UTC, datetime, timedelta
+
+
 def _auth(t): return {"Authorization": f"Bearer {t}"}
 
 def _seed(app, owner_id):
@@ -69,6 +72,96 @@ def test_journey_aggregates_timeline_and_feedback(client, make_user, app):
     assert len(body["timeline"]) == 1
     assert body["timeline"][0]["note"] == "n1"
     assert len(body["feedback"]) == 1 and body["feedback"][0]["score"] == 4
+
+
+def test_journey_includes_demand_review_business_review_interview_round_and_offer(client, make_user, app):
+    owner_id, owner_token = make_user("journey-owner@x.com", role="recruiter", name="张招聘")
+    manager_id, _ = make_user("journey-manager@x.com", role="manager", name="李经理")
+    interviewer_id, interviewer_token = make_user("journey-round@x.com", role="interviewer", name="面试官01")
+    _, demand_id, candidate_id = _seed(app, owner_id)
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    with app.app_context():
+        from app import db
+        from app.models import (
+            BusinessReviewTask,
+            InterviewAssignment,
+            OfferRecord,
+            RecruitmentDemand,
+        )
+
+        demand = db.session.get(RecruitmentDemand, demand_id)
+        demand.created_by = owner_id
+        demand.submitted_at = now - timedelta(days=3)
+        demand.approval_status = "approved"
+        demand.reviewed_by = manager_id
+        demand.reviewed_at = now - timedelta(days=2)
+        demand.review_reason = "编制确认通过"
+        db.session.add(BusinessReviewTask(
+            org_id=demand.org_id,
+            demand_id=demand_id,
+            candidate_id=candidate_id,
+            reviewer_id=interviewer_id,
+            created_by=owner_id,
+            status="approved",
+            hr_note="重点看项目经验",
+            business_note="建议进入面试",
+            decided_by=interviewer_id,
+            decided_at=now - timedelta(days=1),
+        ))
+        db.session.add(InterviewAssignment(
+            org_id=demand.org_id,
+            demand_id=demand_id,
+            job_id=demand.job_id,
+            candidate_id=candidate_id,
+            interviewer_id=interviewer_id,
+            created_by=owner_id,
+            round="round_1",
+            round_sequence=1,
+            scheduled_at=now + timedelta(hours=2),
+            status="awaiting_feedback",
+        ))
+        db.session.add(OfferRecord(
+            org_id=demand.org_id,
+            demand_id=demand_id,
+            job_id=demand.job_id,
+            candidate_id=candidate_id,
+            created_by=owner_id,
+            salary_range="25k-32k · 14薪",
+            approval_status="sent",
+            sent_at=now,
+        ))
+        db.session.commit()
+
+    response = client.get(
+        f"/api/candidates/{candidate_id}/journey?demand_id={demand_id}",
+        headers=_auth(owner_token),
+    )
+    assert response.status_code == 200
+    journey = response.get_json()
+    assert journey["demand_approval"]["submitted_by_name"] == "张招聘"
+    assert journey["demand_approval"]["reviewed_by_name"] == "李经理"
+    assert journey["demand_approval"]["status"] == "approved"
+    assert journey["business_reviews"][0]["business_note"] == "建议进入面试"
+    assert journey["interview_rounds"][0]["interviewer_name"] == "面试官01"
+    assert journey["interview_rounds"][0]["status"] == "awaiting_feedback"
+    assert journey["offers"][0]["status"] == "sent"
+
+    interviewer_response = client.get(
+        f"/api/candidates/{candidate_id}/journey?demand_id={demand_id}",
+        headers=_auth(interviewer_token),
+    )
+    assert interviewer_response.status_code == 200
+    assert interviewer_response.get_json()["demand_approval"]["reviewed_by_name"] == "李经理"
+
+    _, unrelated_interviewer_token = make_user(
+        "journey-unrelated@x.com", role="interviewer", name="无关面试官"
+    )
+    forbidden = client.get(
+        f"/api/candidates/{candidate_id}/journey?demand_id={demand_id}",
+        headers=_auth(unrelated_interviewer_token),
+    )
+    assert forbidden.status_code == 403
 
 def test_journey_requires_job_id(client, make_user, app):
     uid, token = make_user("hr@x.com", role="recruiter")

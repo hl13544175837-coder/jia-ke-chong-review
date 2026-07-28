@@ -41,7 +41,7 @@ assert.deepEqual(
 );
 for (const [routePath, label] of [
   ['/jobs', '需求审核'],
-  ['/candidates', '候选人'],
+  ['/candidates', '简历库'],
   ['/talent-map', '人才地图'],
   ['/interviews', '面试管理'],
   ['/offers', 'Offer'],

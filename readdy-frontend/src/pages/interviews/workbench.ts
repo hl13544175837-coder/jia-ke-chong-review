@@ -1,4 +1,5 @@
 import type { InterviewManagementRow } from '@/features/interviews/types';
+import { interviewHasStarted } from '@/features/interviews/dateTime';
 
 export type InterviewStatusTab = 'all' | 'unassigned' | 'scheduled' | 'awaiting_feedback' | 'completed';
 export type InterviewViewMode = 'list' | 'calendar';
@@ -6,6 +7,7 @@ export type InterviewViewMode = 'list' | 'calendar';
 export interface InterviewFilters {
   jobTitle: string;
   interviewerId: string;
+  schedule: string;
   dateFrom: string;
   dateTo: string;
   roundSequence: string;
@@ -24,6 +26,7 @@ export interface InterviewFilterOptions {
 export const emptyInterviewFilters: InterviewFilters = {
   jobTitle: '',
   interviewerId: '',
+  schedule: '',
   dateFrom: '',
   dateTo: '',
   roundSequence: '',
@@ -45,6 +48,12 @@ export function statusLabel(status: Exclude<InterviewStatusTab, 'all'>) {
     awaiting_feedback: '待反馈',
     completed: '已完成',
   }[status];
+}
+
+export function statusLabelForRow(row: InterviewManagementRow) {
+  const status = rowStatus(row);
+  if (status === 'scheduled' && interviewHasStarted(row.scheduled_at)) return '待确认已面试';
+  return statusLabel(status);
 }
 
 export function interviewLocalDateKey(value: string | null) {
@@ -81,6 +90,7 @@ export function activeInterviewFilterCount(filters: InterviewFilters) {
   return [
     filters.jobTitle,
     filters.interviewerId,
+    filters.schedule,
     filters.dateFrom || filters.dateTo,
     filters.roundSequence,
     filters.city,
@@ -105,6 +115,8 @@ export function filterInterviewRows(
     ) return false;
     if (filters.jobTitle && row.job_title !== filters.jobTitle) return false;
     if (filters.interviewerId && String(row.interviewer_id || '') !== filters.interviewerId) return false;
+    if (filters.schedule === 'unassigned' && rowStatus(row) !== 'unassigned') return false;
+    if (filters.schedule === 'scheduled' && rowStatus(row) === 'unassigned') return false;
     if (filters.roundSequence && String(row.round_sequence || '') !== filters.roundSequence) return false;
     if (filters.city && row.job_city !== filters.city) return false;
     if (filters.department && row.job_department !== filters.department) return false;

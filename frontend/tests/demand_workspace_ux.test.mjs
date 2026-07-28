@@ -98,9 +98,10 @@ assert.match(table, /排序：/);
 assert.doesNotMatch(table, /statusOptions|headerFilterOpen === 'status'/, '表头不得保留重复状态筛选');
 assert.match(
   table,
-  /const canSelectCandidates = req\.statusCode === 'active'\s*&&\s*req\.source\.approval_status === 'approved'/,
-  '选候选人只允许已通过审核且正在招聘的需求',
+  /const canSelectCandidates = req\.statusCode === 'active'\s*&&\s*req\.source\.approval_status === 'approved'\s*&&\s*req\.remainingHeadcount > 0/,
+  '选候选人只允许已通过审核、正在招聘且仍有 HC 的需求',
 );
+assert.match(table, /HC已满/, 'HC 已满时必须复用操作位给出明确禁用说明');
 assert.doesNotMatch(
   table,
   /canSelectCandidates\s*=\s*[^;]*statusCode === 'pending'/,

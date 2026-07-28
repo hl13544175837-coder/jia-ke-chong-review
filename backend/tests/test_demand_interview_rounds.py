@@ -193,9 +193,10 @@ def test_assignment_creates_interviewer_todo_and_primary_feedback_notifies_owner
             demand_id=demand_id,
             type="interview_assignment",
         ).one()
-        assert "待反馈" in todo.title
+        assert todo.title == "新的面试安排"
         assert f"demand={demand_id}" in todo.link
         assert f"candidate={candidate_id}" in todo.link
+        assert f"assignment={assignment.get_json()['id']}" in todo.link
         assigned_event = Event.query.filter_by(
             action="interview.assigned", demand_id=demand_id
         ).one()

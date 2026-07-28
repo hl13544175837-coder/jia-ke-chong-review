@@ -437,24 +437,25 @@ def create_interview_assignment(
         else "时间待确认"
     )
     location_label = location[:240] or "地点待确认"
-    db.session.add(Notification(
-        org_id=context.demand.org_id,
-        user_id=interviewer_id,
-        demand_id=context.demand_id,
-        type="interview_assignment",
-        title="新的面试安排（面试后待反馈）",
-        body=(
-            f"{context.candidate.name_masked or '候选人'} · "
-            f"第 {round_sequence} 轮 · {schedule_label} · {location_label}"
-            f"{' · 主面试官' if is_primary else ' · 辅助面试官'}"
-        ),
-        link=(
-            f"/interviewer/interviews?demand={context.demand_id}"
-            f"&candidate={context.candidate.id}"
-        ),
-    ))
     try:
         db.session.flush()
+        db.session.add(Notification(
+            org_id=context.demand.org_id,
+            user_id=interviewer_id,
+            demand_id=context.demand_id,
+            type="interview_assignment",
+            title="新的面试安排",
+            body=(
+                f"{context.candidate.name_masked or '候选人'} · "
+                f"第 {round_sequence} 轮 · {schedule_label} · {location_label}"
+                f"{' · 主面试官' if is_primary else ' · 辅助面试官'}"
+            ),
+            link=(
+                f"/interviewer/interviews?demand={context.demand_id}"
+                f"&candidate={context.candidate.id}"
+                f"&assignment={assignment.id}"
+            ),
+        ))
         record_event(
             "interview.assigned",
             entity_id=assignment.candidate_id,
@@ -550,6 +551,7 @@ def cancel_interview_assignment(*, assignment, reason):
         link=(
             f"/interviewer/interviews?demand={assignment.demand_id}"
             f"&candidate={assignment.candidate_id}"
+            f"&assignment={assignment.id}"
         ),
     ))
     record_event(

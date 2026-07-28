@@ -112,7 +112,7 @@ export default function CandidateDetailDrawer({
           {profile.status === 'talentPool' && profile.talentPoolInfo && (
             <div className="bg-accent-50 rounded-xl p-4 border border-accent-100">
               <h3 className="text-xs font-semibold text-foreground-700 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                <i className="ri-archive-line text-sm text-accent-600"></i>人才池记录
+                <i className="ri-archive-line text-sm text-accent-600"></i>公司人才库记录
               </h3>
               <div className="space-y-3">
                 <div>
@@ -136,7 +136,7 @@ export default function CandidateDetailDrawer({
                     onClick={() => onRemoveFromPool(profile)}
                     className="px-3 py-1.5 text-xs font-medium bg-white border border-accent-200 hover:bg-accent-100 text-accent-700 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    <i className="ri-logout-box-r-line mr-1"></i>移出人才池
+                    <i className="ri-logout-box-r-line mr-1"></i>移出公司人才库
                   </button>
                   <button
                     onClick={() => onAddToPosition(profile)}

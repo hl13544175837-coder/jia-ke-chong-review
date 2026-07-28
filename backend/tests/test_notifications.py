@@ -87,3 +87,59 @@ def test_mark_notifications_read_only_updates_current_user(app, client, make_use
     count_response = client.get("/api/notifications/unread-count", headers=_auth(user_token))
     assert count_response.status_code == 200
     assert count_response.get_json()["unread_count"] == 0
+
+
+def test_active_notification_scope_excludes_closed_demand_from_badge_but_keeps_history(
+    app, client, make_user
+):
+    Notification = models.Notification
+    user_id, user_token = make_user("notify-active-scope@example.com", role="recruiter")
+
+    with app.app_context():
+        active_job = models.Job(org_id=1, title="在招岗位", department="技术部", jd_text="JD")
+        closed_job = models.Job(org_id=1, title="已关闭岗位", department="技术部", jd_text="JD")
+        db.session.add_all([active_job, closed_job])
+        db.session.flush()
+        active_demand = models.RecruitmentDemand(
+            org_id=1,
+            job_id=active_job.id,
+            owner_hr_id=user_id,
+            request_no="NOTIFY-ACTIVE-001",
+            department="技术部",
+            job_title_snapshot="在招岗位",
+            headcount=1,
+            status="active",
+            approval_status="approved",
+        )
+        closed_demand = models.RecruitmentDemand(
+            org_id=1,
+            job_id=closed_job.id,
+            owner_hr_id=user_id,
+            request_no="NOTIFY-CLOSED-001",
+            department="技术部",
+            job_title_snapshot="已关闭岗位",
+            headcount=1,
+            status="closed",
+            approval_status="approved",
+        )
+        db.session.add_all([active_demand, closed_demand])
+        db.session.flush()
+        db.session.add_all([
+            Notification(org_id=1, user_id=user_id, demand_id=active_demand.id, type="business_review", title="在招待办"),
+            Notification(org_id=1, user_id=user_id, demand_id=closed_demand.id, type="business_review", title="关闭待办"),
+            Notification(org_id=1, user_id=user_id, demand_id=None, type="system", title="系统通知"),
+        ])
+        db.session.commit()
+
+    history = client.get("/api/notifications", headers=_auth(user_token))
+    assert history.status_code == 200
+    assert history.get_json()["total"] == 3
+
+    active = client.get("/api/notifications?active_only=1", headers=_auth(user_token))
+    assert active.status_code == 200
+    assert {item["title"] for item in active.get_json()["notifications"]} == {"在招待办", "系统通知"}
+    assert active.get_json()["unread_count"] == 2
+
+    active_count = client.get("/api/notifications/unread-count?active_only=1", headers=_auth(user_token))
+    assert active_count.status_code == 200
+    assert active_count.get_json()["unread_count"] == 2

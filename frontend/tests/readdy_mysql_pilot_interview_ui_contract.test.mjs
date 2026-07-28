@@ -16,6 +16,8 @@ assert.doesNotMatch(page, /@\/mocks\/interviews|@\/mocks\/interviewer/, '我的�
 assert.doesNotMatch(page, /ScorecardModal/, '试点评价不得继续使用复杂评分大表');
 assert.match(page, /useSearchParams/, '面试官必须承接通知中的面试任务上下文');
 assert.match(page, /searchParams\.get\(['"]candidate['"]\)/, '面试官页必须定位到对应候选人');
+assert.match(page, /searchParams\.get\(['"]assignment['"]\)/, '面试官页必须优先定位到通知中的具体面试任务');
+assert.match(page, /latestCandidateAssignment/, '旧通知没有任务编号时必须打开候选人的最新轮次');
 
 const recruiterPage = read('readdy-frontend/src/pages/interviews/page.tsx');
 const recruiterTable = read('readdy-frontend/src/pages/interviews/components/InterviewManagementTable.tsx');
@@ -29,6 +31,8 @@ for (const method of ['listManagementRows', 'listInterviewers', 'createAssignmen
 }
 assert.match(recruiterPage, /interviewsApi\.listManagementRows/, '招聘专员面试管理必须读真实待办');
 assert.match(recruiterPage, /useSearchParams/, '招聘专员面试页必须承接业务筛选上下文');
+assert.match(recruiterPage, /searchParams\.get\(['"]assignment['"]\)/, '招聘专员面试页必须优先定位到具体面试任务');
+assert.match(recruiterPage, /latestCandidateManagementRow/, '旧通知没有任务编号时必须打开候选人的最新轮次');
 for (const label of ['待安排', '已安排', '待反馈', '已完成', '安排面试', '调整安排', '确认已面试', '催反馈']) {
   assert.ok(recruiterSurface.includes(label), `招聘专员面试工作台缺少“${label}”`);
 }
@@ -50,9 +54,12 @@ for (const label of ['满意', '待定', '不满意']) {
   assert.ok(recruiterPage.includes(label), `招聘专员端必须与面试官端使用一致的“${label}”评价口径`);
 }
 assert.doesNotMatch(recruiterPage, /feedback_result === ['"]passed['"] \? ['"]通过['"]/, '招聘专员端不得把面试官的满意度改写成通过结论');
-assert.match(page, /canSubmitFeedback/, '面试官页面必须根据面试时间控制评价入口');
-assert.match(page, /interviewHasStarted\(item\.scheduled_at\)/, '面试官评价入口必须按统一时区判断是否开场');
+assert.match(page, /canSubmitFeedback/, '面试官页面必须根据面试状态控制评价入口');
+assert.match(page, /item\.status === ['"]awaiting_feedback['"]/, '面试官必须等招聘专员确认已面试后才能评价');
+assert.match(page, /interviewHasStarted\(item\.scheduled_at\)/, '面试官评价入口仍必须按统一时区判断是否开场');
+assert.match(page, /等待招聘专员确认/, '面试时间已过但未确认时必须说明正在等待谁处理');
 assert.match(page, /面试尚未开始/, '未来面试必须给出不能提前评价的说明');
+assert.match(recruiterPage, /查看 Offer/, '已进入 Offer 的候选人必须能从面试详情直达 Offer');
 assert.match(router, /RecruiterInterviewsPage/, '/interviews 必须切换为真实招聘专员面试工作台');
 assert.match(router, /path:\s*['"]\/interviews['"][\s\S]*?<RecruiterInterviewsPage/, '/interviews 路由必须使用真实工作台');
 

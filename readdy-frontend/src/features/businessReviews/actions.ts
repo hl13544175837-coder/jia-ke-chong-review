@@ -35,7 +35,7 @@ export function candidateBusinessAction(
   input: CandidateBusinessActionInput,
 ): CandidateBusinessAction {
   if (!input.currentDemandId) {
-    return { kind: 'join_and_push', label: '加入当前需求并推送业务筛选' };
+    return { kind: 'join_and_push', label: '选择招聘需求并推送业务筛选' };
   }
   const laterStageLabel = input.currentStage ? laterStageLabels[input.currentStage] : null;
   if (laterStageLabel) return { kind: 'later_stage', label: laterStageLabel };

@@ -314,12 +314,12 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `POST` | `/resume/upload` | recruiter/manager/admin | 批量上传 PDF / DOCX / ZIP 简历，AI 解析入库；旧版 `.doc` 跳过；旧调用若带 `target_job_id`，后端会校验岗位负责人、组织和在招状态；同一用户 10 分钟内重复上传同一批文件和来源信息时复用首次结果 |
 | `POST` | `/resume/batches/<batch_id>/rollback` | 批次上传人/manager/admin | 撤回误导入批次，候选人软删除、匿名化、删除原文件并写审计 |
 | `GET` | `/resume/<candidate_id>` | 登录 + 候选人可见权限 | 候选人简历详情与技能标签，返回 `owner_hr_id` 供负责人展示与转派 |
-| `GET` | `/candidates` | 登录 | 候选人列表，recruiter 只看当前组织内自己负责的；`search` 会覆盖姓名、邮箱、电话、技能标签和简历解析 JSON 中的公司、岗位、学校等文本；分页查询还支持意向城市、学历、技能关键词、最低技能分、解析状态、活动流程状态、个人收藏和任一 Demand 当前阶段筛选；返回 `current_stage`、`current_demand_id`、`latest_demand_id` 与 `is_favorite`，软删除候选人不返回 |
+| `GET` | `/candidates` | 登录 | 候选人列表，recruiter 只看当前组织内自己负责的；`search` 会覆盖姓名、邮箱、电话、技能标签和简历解析 JSON 中的公司、岗位、学校等文本；分页查询还支持意向城市、学历、技能关键词、最低技能分、解析状态、活动流程状态、个人收藏和任一 Demand 当前阶段筛选；返回简历事实字段 `desired_position`，并与 `current_stage`、`current_demand_id`、`latest_demand_id`、`is_favorite` 分开表达，软删除候选人不返回 |
 | `POST` | `/candidates/favorites/set` | recruiter/manager/admin | 单人或批量设置当前用户收藏状态；候选人必须在当前权限范围内，写入通用审计 |
 | `GET` | `/candidates/duplicates/get` | recruiter/manager/admin | 按完整手机号或邮箱列出可解释的重复组；不使用姓名模糊匹配自动判重 |
 | `POST` | `/candidates/duplicates/merge` | manager/admin | 选择主档并填写原因后安全合并；有业务历史的档案必须保留为主档，多份档案均有历史时拒绝自动合并 |
 | `POST` | `/candidates/match/preview` | recruiter/manager/admin | 传 `demand_id` 与候选人集合，返回只读岗位匹配结果及每位候选人在该 Demand 内的 `latest_stage`，不写 `matches` |
-| `POST` | `/candidates/pipeline/add` | recruiter/manager/admin | 单人或批量加入 Demand；同一 Demand 已淘汰候选人仅在显式重新启用并填写原因时回到 `pending` |
+| `POST` | `/candidates/pipeline/add` | recruiter/manager/admin | 单人或批量加入 Demand；同一 Demand 已淘汰候选人仅在显式重新启用并填写原因时回到 `pending`；Demand 可用 HC 为 0 时返回 `409 demand_headcount_reached`，重新启用和跨 Demand 转入使用同一容量规则 |
 | `GET` | `/candidates/owner-options` | recruiter/manager/admin/interviewer | 获取启用中的招聘专员下拉选项；recruiter 只返回本人，其他允许角色返回当前组织内可选招聘专员 |
 | `GET` | `/candidates/<id>/pipelines` | 登录 | 候选人参与的招聘需求流程 |
 | `GET` | `/candidates/<id>/journey?demand_id=` | 登录 + Demand 权限 | 候选人在具体 Demand 下的完整时间线、AI 面试和面试官反馈；兼容 `job_id` 仅在零/一/多 Demand 规则可唯一解析时代理 |
@@ -368,12 +368,12 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
-| `PUT` | `/pipeline/demands/<demand_id>/offer/<candidate_id>` | Demand owner/manager/admin | 新建或编辑 `draft`；请求体中的状态字段不会绕过审批，已提交草稿返回 409 |
+| `PUT` | `/pipeline/demands/<demand_id>/offer/<candidate_id>` | recruiter/admin + Demand 管理权 | 新建或编辑 `draft/rejected`；`rejected` 修改后回到 `draft` 并增加版本；请求体中的状态字段不会绕过确认，已提交草稿返回 409 |
 | `GET` | `/offers` | recruiter/manager/admin | 按组织和 Demand 可见范围列出 Offer；支持 `status` 和 `search` |
 | `GET` | `/offers/<offer_id>` | recruiter/manager/admin + Demand 读取权 | 返回候选人、需求、当前状态、回复和 append-only 操作历史 |
-| `POST` | `/offers/<offer_id>/actions` | Demand owner/manager/admin；审批/审批拒绝仅 manager/admin | 状态机动作：`submit/approve/reject/send/accept/decline/withdraw/expire/onboard/resend/follow_up`；支持 `Idempotency-Key`，关键动作写通用审计 |
+| `POST` | `/offers/<offer_id>/actions` | `approve/reject` 仅 manager/admin；其余动作仅 recruiter/admin，并同时校验 Demand 管理权 | 状态机动作：`submit/approve/reject/send/accept/decline/withdraw/expire/onboard/resend/follow_up`；招聘专员不能自审，经理不能修改或代替 HR 发放；支持 `Idempotency-Key`，关键动作写通用审计 |
 
-Offer 状态顺序为 `draft → pending → approved → sent → accepted → onboarded`，审批拒绝或候选人拒绝进入 `declined`，在途记录可进入 `withdrawn`，超时可进入 `expired`。只有 `accepted` Offer 的 `onboard` 动作可写入 `onboarded`，且请求必须提供 `onboard_date`；通用 Pipeline 推进和阶段修正写入该终态均返回 409 `offer_onboard_action_required`。确认入职在同一事务更新 OfferRecord、OfferEvent、PipelineStage、CandidateDemandFlow、Candidate.current_demand_id 与双方审计，任一步失败整体回滚。面试官不可访问 Offer 管理接口。
+Offer 主状态顺序为 `draft → pending → approved → sent → accepted → onboarded`。经理退回进入可修订的 `rejected`，招聘专员保存后回到 `draft` 并递增版本；候选人拒绝才进入终态 `declined`，二者不得混用。在途记录可进入 `withdrawn`，超时可进入 `expired`。只有 `accepted` Offer 的 `onboard` 动作可写入 `onboarded`，且请求必须提供 `onboard_date`；通用 Pipeline 推进和阶段修正写入该终态均返回 409 `offer_onboard_action_required`。确认入职在同一事务更新 OfferRecord、OfferEvent、PipelineStage、CandidateDemandFlow、Candidate.current_demand_id 与双方审计，任一步失败整体回滚。面试官不可访问 Offer 管理接口。
 
 ### 7.5.2 招聘流程口径（当前代码候选）
 
@@ -392,11 +392,13 @@ Offer 状态顺序为 `draft → pending → approved → sent → accepted → 
 | `POST` | `/interview/start` | recruiter/manager/admin + Demand 权限 | 在显式/唯一解析的 Demand 上下文生成 AI 面试题；面试官禁止 |
 | `POST` | `/interview/submit` | recruiter/manager/admin + Demand 权限 | 提交回答、保存 AI 评分与建议，不回写流程 |
 | `GET` | `/interview/<interview_id>` | 登录 | AI 面试报告详情 |
-| `POST` | `/interview/feedback` | 登录且有 Demand/assignment 权限 | 提交具体 assignment 反馈；同 assignment 重复返回已有反馈，数据库唯一索引为并发最终防线；任何反馈都不推进流程 |
+| `POST` | `/interview/feedback` | 登录且有 Demand/assignment 权限 | 当前简单评价必须在 HR 将 assignment 确认为 `awaiting_feedback` 后提交，提前提交返回 `409 interview_not_confirmed`；同 assignment 重复返回已有反馈，数据库唯一索引为并发最终防线；任何反馈都不推进流程 |
 | `GET` | `/interview/feedback` | 登录 | 查询反馈，返回原因分类 |
 | `GET` | `/interviews` | 登录 | 面试记录列表，按角色过滤 |
 | `GET` | `/interview/interviewers` | 登录 | 返回启用中的面试官/经理/管理员选项，包含姓名、email 和角色供可搜索选择 |
 | `POST` | `/interview/assignments` | recruiter/manager/admin + Demand 权限 | 创建主/辅安排；重复返回已有记录；同轮第二个有效 primary 或时间冲突稳定 409，数据库唯一索引兜底 |
+| `POST` | `/interview/assignments/<assignment_id>/mark-conducted` | recruiter/manager/admin + Demand 管理权 | 面试开始后确认真实发生，将状态从 `scheduled` 原子改为 `awaiting_feedback` 并通知具体面试官；重复调用幂等 |
+| `POST` | `/interview/assignments/<assignment_id>/remind-feedback` | recruiter/manager/admin + Demand 管理权 | 只允许催办 `awaiting_feedback` 且尚未提交的任务；15 分钟内同任务去重 |
 | `PATCH` | `/interview/assignments/<assignment_id>/cancel` | recruiter/manager/admin + Demand 管理权 | `reason` 必填；只取消未反馈任务，规范状态为 `cancelled`、释放 `primary_slot` 并允许重排；已有反馈返回稳定 409 |
 
 ### 7.7 BI / Admin / Agent（当前代码候选）
@@ -838,7 +840,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 发布通道另有一层不受运行时环境变量覆盖的边界：Makefile 只接受精确 `RC` / `GA`，并把发布通道写入镜像内 `.release-channel` 文件。entrypoint 先读取该标记；GA 镜像若被 K8S env 覆盖为 SIT 放行、自动迁移/空库初始化、公开注册或关闭安全头/限流，会在任何 DDL 之前拒绝启动。RC 镜像则保留本轮已授权的完全宽松测试配置。
 
-当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07` → `20260724_08` → `20260726_09`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。08 补齐 Demand 审批、业务筛选任务与反馈更新字段。09 新建个人收藏和候选人合并审计表；降级会破坏合并历史，因此不支持在线破坏性 downgrade。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
+当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07` → `20260724_08` → `20260726_09` → `20260728_10`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。08 补齐 Demand 审批、业务筛选任务与反馈更新字段。09 新建个人收藏和候选人合并审计表。10 新增组织设置持久化和用户部门字段；09 与 10 都涉及不可破坏的审计或配置数据，因此不支持在线破坏性 downgrade。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|

@@ -10,7 +10,7 @@ export interface DashboardFacts {
   reviews: BusinessReviewTask[];
 }
 
-const recruiterOfferActions = new Set<OfferStatus>(['draft', 'approved', 'accepted']);
+const recruiterOfferActions = new Set<OfferStatus>(['draft', 'rejected', 'approved', 'accepted']);
 const recruiterWaitingOffers = new Set<OfferStatus>(['pending', 'sent']);
 const managerOfferActions = new Set<OfferStatus>(['pending']);
 const managerWaitingOffers = new Set<OfferStatus>(['draft', 'approved', 'sent', 'accepted']);
@@ -95,19 +95,26 @@ export function buildDashboardSummary(
   now = new Date(),
 ) {
   const activeDemands = facts.demands.filter((item) => item.status === 'active');
+  const activeDemandIds = new Set(activeDemands.map((item) => item.id));
+  const managerView = role === 'manager' || role === 'admin';
   const gap = activeDemands.reduce(
     (total, item) => total + item.metrics.remaining_headcount,
     0,
   );
-  const pendingApprovals = facts.demands.filter((item) => item.approval_status === 'pending');
+  const pendingApprovals = managerView ? facts.demands.filter((item) => (
+    item.status === 'pending' && item.approval_status === 'pending'
+  )) : [];
   const completionDemands = activeDemands.filter((item) => (
     item.completion_suggested || item.metrics.over_headcount > 0
   ));
-  const pendingReviews = facts.reviews.filter((item) => item.status === 'pending');
-  const waitingFeedback = facts.interviews.filter((item) => (
+  const activeReviews = facts.reviews.filter((item) => activeDemandIds.has(item.demand_id));
+  const activeInterviews = facts.interviews.filter((item) => activeDemandIds.has(item.demand_id));
+  const activeOffers = facts.offers.filter((item) => activeDemandIds.has(item.demand_id));
+  const pendingReviews = activeReviews.filter((item) => item.status === 'pending');
+  const waitingFeedback = activeInterviews.filter((item) => (
     item.assignment_status === 'awaiting_feedback' && !item.feedback_submitted
   ));
-  const scheduledInterviews = facts.interviews
+  const scheduledInterviews = activeInterviews
     .filter((item) => item.assignment_status === 'scheduled')
     .sort((left, right) => (
       (interviewDate(left.scheduled_at)?.getTime() ?? Number.MAX_SAFE_INTEGER)
@@ -139,11 +146,10 @@ export function buildDashboardSummary(
       nextAction: dashboardDemandNextAction(demand),
     }))
     .sort((left, right) => right.risk.rank - left.risk.rank);
-  const managerView = role === 'manager' || role === 'admin';
   const ownStatuses = managerView ? managerOfferActions : recruiterOfferActions;
   const waitingStatuses = managerView ? managerWaitingOffers : recruiterWaitingOffers;
-  const myOfferActions = facts.offers.filter((item) => ownStatuses.has(item.status));
-  const waitingOfferActions = facts.offers.filter((item) => waitingStatuses.has(item.status));
+  const myOfferActions = activeOffers.filter((item) => ownStatuses.has(item.status));
+  const waitingOfferActions = activeOffers.filter((item) => waitingStatuses.has(item.status));
 
   return {
     activeDemands,

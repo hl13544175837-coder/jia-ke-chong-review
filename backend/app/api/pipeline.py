@@ -344,8 +344,16 @@ def run_offer_action(offer_id):
         return jsonify({"error": "Forbidden"}), 403
     data = request.get_json() or {}
     action = str(data.get("action") or "").strip().lower()
-    if action == "reject" and g.role not in {"manager", "admin"}:
-        return jsonify({"error": "Forbidden"}), 403
+    if action in {"approve", "reject"} and g.role not in {"manager", "admin"}:
+        return jsonify({
+            "error": "Offer 需要招聘经理或管理员确认",
+            "code": "offer_approval_forbidden",
+        }), 403
+    if action not in {"approve", "reject"} and g.role not in {"recruiter", "admin"}:
+        return jsonify({
+            "error": "该步骤需要招聘专员处理",
+            "code": "offer_operation_forbidden",
+        }), 403
     try:
         _, demand = get_offer_by_id(offer_id=offer_id, org_id=g.org_id)
         if not _manage_allowed(demand):
@@ -366,8 +374,11 @@ def run_offer_action(offer_id):
 @bp.put("/pipeline/demands/<int:demand_id>/offer/<int:candidate_id>")
 @require_auth
 def save_offer(candidate_id, job_id=None, demand_id=None):
-    if g.role == "interviewer":
-        return jsonify({"error": "Forbidden"}), 403
+    if g.role not in {"recruiter", "admin"}:
+        return jsonify({
+            "error": "Offer 方案需要招聘专员维护",
+            "code": "offer_edit_forbidden",
+        }), 403
     try:
         demand = _route_demand(route_demand_id=demand_id, legacy_job_id=job_id)
         if not _manage_allowed(demand):

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useCompanyPermissions } from '@/auth/companyPermissions';
@@ -8,6 +8,11 @@ import {
 import { PRODUCT_ROLES, type ProductRole } from '@/auth/productRoleModel';
 import { notificationsApi } from '@/features/notifications/api';
 import type { NotificationItem } from '@/features/notifications/types';
+import {
+  memoryKeyForPath,
+  safeRememberedHref,
+  type PageMemoryEntry,
+} from '@/features/navigation/pageMemory';
 
 interface NavItem {
   path: string;
@@ -21,7 +26,7 @@ interface NavItem {
 const hrNavItems: NavItem[] = [
   { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['recruiter', 'manager', 'admin'], menuCode: 'index' },
   { path: '/jobs', icon: 'ri-briefcase-line', label: '需求审核', displayLabel: '招聘需求', roles: ['recruiter', 'manager', 'admin'], menuCode: 'demands' },
-  { path: '/candidates', icon: 'ri-file-list-3-line', label: '候选人', roles: ['recruiter', 'manager', 'admin'], menuCode: 'candidates' },
+  { path: '/candidates', icon: 'ri-file-list-3-line', label: '简历库', roles: ['recruiter', 'manager', 'admin'], menuCode: 'candidates' },
   { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['recruiter', 'manager', 'admin'], menuCode: 'interviews' },
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['recruiter', 'manager', 'admin'], menuCode: 'pipeline' },
   { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['recruiter', 'manager', 'admin'], menuCode: 'candidates' },
@@ -85,6 +90,9 @@ export default function MainLayout() {
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const mainScrollRef = useRef<HTMLElement>(null);
+  const pageMemoriesRef = useRef<Record<string, PageMemoryEntry>>({});
+  const restoreFrameRef = useRef<number | null>(null);
   const currentRole: ProductRole = role ?? 'recruiter';
   const roleInfo = PRODUCT_ROLES.find((item) => item.key === currentRole) || PRODUCT_ROLES[0];
   const displayName = name || roleInfo.label;
@@ -94,7 +102,7 @@ export default function MainLayout() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const response = await notificationsApi.list(1, 20);
+      const response = await notificationsApi.list(1, 20, { activeOnly: true });
       setNotifications(response.notifications);
     } catch {
       // 通知读取失败不应阻断用户的主流程。
@@ -144,6 +152,41 @@ export default function MainLayout() {
     return location.pathname.startsWith(path);
   };
 
+  const rememberCurrentPage = useCallback(() => {
+    const memoryKey = memoryKeyForPath(location.pathname);
+    if (!memoryKey) return;
+    pageMemoriesRef.current[memoryKey] = {
+      href: `${location.pathname}${location.search}${location.hash}`,
+      scrollTop: mainScrollRef.current?.scrollTop ?? pageMemoriesRef.current[memoryKey]?.scrollTop ?? 0,
+    };
+  }, [location.hash, location.pathname, location.search]);
+
+  const rememberMainScroll = useCallback(() => {
+    rememberCurrentPage();
+  }, [rememberCurrentPage]);
+
+  const rememberedNavTarget = (basePath: string) => safeRememberedHref(
+    basePath,
+    pageMemoriesRef.current[basePath]?.href,
+  );
+
+  useEffect(() => {
+    rememberCurrentPage();
+  }, [rememberCurrentPage]);
+
+  useLayoutEffect(() => {
+    const memoryKey = memoryKeyForPath(location.pathname);
+    if (restoreFrameRef.current !== null) cancelAnimationFrame(restoreFrameRef.current);
+    const scrollTop = memoryKey ? pageMemoriesRef.current[memoryKey]?.scrollTop ?? 0 : 0;
+    restoreFrameRef.current = requestAnimationFrame(() => {
+      if (mainScrollRef.current) mainScrollRef.current.scrollTop = scrollTop;
+      restoreFrameRef.current = null;
+    });
+    return () => {
+      if (restoreFrameRef.current !== null) cancelAnimationFrame(restoreFrameRef.current);
+    };
+  }, [location.pathname]);
+
   const markRead = async (id: number) => {
     setNotifications((prev) => prev.map((item) => (
       item.id === id ? { ...item, is_read: true } : item
@@ -167,7 +210,10 @@ export default function MainLayout() {
   const openNotification = (notification: NotificationItem) => {
     if (!notification.is_read) void markRead(notification.id);
     setNotifOpen(false);
-    if (notification.link) navigate(notification.link);
+    if (notification.link) {
+      const sourceLink = `${notification.link}${notification.link.includes('?') ? '&' : '?'}from=notification`;
+      navigate(sourceLink);
+    }
   };
 
   return (
@@ -208,8 +254,8 @@ export default function MainLayout() {
           {navItems.map((item) => (
             <Link
               key={item.path}
-              to={item.path}
-              onClick={() => setMobileMenuOpen(false)}
+              to={rememberedNavTarget(item.path)}
+              onClick={() => { rememberCurrentPage(); setMobileMenuOpen(false); }}
               className={`
                 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap
                 ${sidebarCollapsed ? 'justify-center px-0' : ''}
@@ -421,6 +467,7 @@ export default function MainLayout() {
                     <button
                       type="button"
                       onClick={() => {
+                        pageMemoriesRef.current = {};
                         logout();
                         setRoleMenuOpen(false);
                         navigate('/login', { replace: true });
@@ -438,7 +485,7 @@ export default function MainLayout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto">
+        <main ref={mainScrollRef} onScroll={rememberMainScroll} className="flex-1 overflow-auto">
           <Outlet />
         </main>
       </div>

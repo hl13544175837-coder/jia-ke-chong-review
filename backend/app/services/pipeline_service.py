@@ -225,6 +225,21 @@ def _completion_state(demand):
     }
 
 
+def demand_completion_state(demand):
+    """Return the shared HC state for callers that open a new candidate flow."""
+
+    return _completion_state(demand)
+
+
+def _require_recruiting_capacity(demand):
+    if _completion_state(demand)["remaining_headcount"] <= 0:
+        raise PipelineServiceError(
+            "该需求 HC 已满，请先确认完成需求或调整 HC",
+            409,
+            "demand_headcount_reached",
+        )
+
+
 def _upsert_active_flow(candidate, demand, *, transfer_from_demand_id=None, transfer_reason=None):
     flow = _locked_flow(candidate.id, demand.id, demand.org_id)
     if flow is None:
@@ -287,6 +302,9 @@ def _move_candidate_in_demand(
     candidate = _require_candidate(candidate_id, org_id)
     previous = _latest_stage(candidate.id, demand.id)
     from_stage = normalize_pipeline_stage(previous.stage) if previous else None
+
+    if to_stage == "pending" and (previous is None or from_stage in TERMINAL_STAGES):
+        _require_recruiting_capacity(demand)
 
     if candidate.current_demand_id not in (None, demand.id):
         raise PipelineServiceError(
@@ -482,6 +500,7 @@ def transfer_candidate(
         source = by_id[from_demand_id]
         target = by_id[to_demand_id]
         _require_writable_demand(target)
+        _require_recruiting_capacity(target)
         candidate = _require_candidate(candidate_id, org_id)
 
         if candidate.current_demand_id != source.id:
@@ -674,6 +693,7 @@ OFFER_STATUSES = {
     "draft",
     "pending",
     "approved",
+    "rejected",
     "sent",
     "accepted",
     "declined",
@@ -685,7 +705,7 @@ OFFER_STATUSES = {
 OFFER_TRANSITIONS = {
     "submit": ({"draft"}, "pending"),
     "approve": ({"pending"}, "approved"),
-    "reject": ({"pending"}, "declined"),
+    "reject": ({"pending"}, "rejected"),
     "send": ({"approved"}, "sent"),
     "accept": ({"sent"}, "accepted"),
     "decline": ({"sent"}, "declined"),
@@ -1098,16 +1118,20 @@ def save_offer_record(*, demand_id, candidate_id, org_id, actor_id, data, commit
             )
             db.session.add(offer)
             db.session.flush()
-        elif (offer.approval_status or "draft") != "draft":
+        elif (offer.approval_status or "draft") not in {"draft", "rejected"}:
             raise PipelineServiceError(
                 "Offer 已提交审批，不能直接修改",
                 409,
                 "offer_not_editable",
             )
+        previous_status = offer.approval_status or "draft"
         offer.job_id = demand.job_id
         offer.salary_range = str(data.get("salary_range") or "")[:120]
         offer.onboard_date = parse_date(data.get("onboard_date"))
         offer.approval_status = "draft"
+        if previous_status == "rejected":
+            offer.approver_id = None
+            offer.rejection_reason = ""
         offer.note = str(data.get("note") or "")
         salary_breakdown = data.get("salary_breakdown")
         if isinstance(salary_breakdown, list):
@@ -1117,7 +1141,7 @@ def save_offer_record(*, demand_id, candidate_id, org_id, actor_id, data, commit
             offer,
             action="saved",
             actor_id=actor_id,
-            from_status="draft",
+            from_status=previous_status,
             to_status="draft",
             comment=offer.note,
             detail={"version": offer.version},

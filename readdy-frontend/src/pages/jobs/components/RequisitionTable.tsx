@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
 import type { RequisitionRow } from '@/features/demands/types';
 import {
   buildDemandFilterOptions,
@@ -6,6 +6,7 @@ import {
   type DemandSortDirection,
   type DemandSortField,
   type DemandWorkspaceFilters,
+  type DemandWorkspaceTab,
 } from '../workbench';
 import { canOpenDemandStage, type DemandStageDrilldown } from '../stageDrilldown';
 
@@ -28,6 +29,8 @@ interface RequisitionTableProps {
   onSelectCandidates: (req: RequisitionTableProps['data'][0]) => void;
   onViewCandidates: (req: RequisitionTableProps['data'][0]) => void;
   onStageCountClick: (req: RequisitionTableProps['data'][0], stage: DemandStageDrilldown) => void;
+  activeTab: DemandWorkspaceTab;
+  onTabChange: (tab: DemandWorkspaceTab) => void;
   searchQuery: string;
   onSearchChange: (v: string) => void;
   filters: DemandWorkspaceFilters;
@@ -60,6 +63,47 @@ const priorityConfig: Record<string, { label: string; className: string }> = {
   '普通': { label: '普通', className: 'bg-secondary-100 text-secondary-700' },
 };
 
+function HeaderFilter({
+  id,
+  label,
+  open,
+  active,
+  align = 'left',
+  onToggle,
+  children,
+}: {
+  id: string;
+  label: string;
+  open: boolean;
+  active: boolean;
+  align?: 'left' | 'center';
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <th className={`relative whitespace-nowrap px-5 py-3 text-xs font-medium text-foreground-500 ${align === 'center' ? 'text-center' : 'text-left'}`}>
+      <button
+        type="button"
+        data-ui={`demand-header-filter-${id}`}
+        aria-expanded={open}
+        onClick={onToggle}
+        className={`inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-background-100 hover:text-foreground-800 ${active ? 'text-primary-700' : ''}`}
+      >
+        {label}<i className={`ri-arrow-down-s-line text-sm transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true"></i>
+      </button>
+      {open && (
+        <div role="menu" aria-label={`${label}筛选`} className="absolute left-4 top-full z-30 mt-1 max-h-60 min-w-48 overflow-y-auto rounded-lg border border-background-200 bg-white p-1.5 text-left shadow-xl">
+          {children}
+        </div>
+      )}
+    </th>
+  );
+}
+
+function HeaderOption({ label, selected, onClick }: { label: string; selected?: boolean; onClick: () => void }) {
+  return <button type="button" role="menuitemradio" aria-checked={Boolean(selected)} onClick={onClick} className={`block w-full rounded-md px-3 py-2 text-left text-xs transition ${selected ? 'bg-primary-50 font-medium text-primary-700' : 'text-foreground-600 hover:bg-background-100'}`}>{label}</button>;
+}
+
 export default function RequisitionTable({
   data,
   optionSource,
@@ -70,6 +114,8 @@ export default function RequisitionTable({
   onSelectCandidates,
   onViewCandidates,
   onStageCountClick,
+  activeTab,
+  onTabChange,
   searchQuery,
   onSearchChange,
   filters,
@@ -85,8 +131,10 @@ export default function RequisitionTable({
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const [toolbarPanel, setToolbarPanel] = useState<'filters' | 'sort' | null>(null);
+  const [headerPanel, setHeaderPanel] = useState<'identity' | 'location' | 'owner' | 'delivery' | 'stage' | 'status' | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const tableRef = useRef<HTMLDivElement | null>(null);
 
   const filterOptions = useMemo(() => buildDemandFilterOptions(optionSource), [optionSource]);
 
@@ -98,6 +146,8 @@ export default function RequisitionTable({
     { value: 'interview', label: '面试中' },
     { value: 'offer', label: 'Offer中' },
   ], []);
+
+  const identityOptions = useMemo(() => Array.from(new Set(optionSource.map((row) => row.name).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'zh-CN')), [optionSource]);
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -119,6 +169,27 @@ export default function RequisitionTable({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [toolbarPanel]);
 
+  useEffect(() => {
+    if (!headerPanel) return undefined;
+    const close = (event: MouseEvent) => {
+      if (tableRef.current && !tableRef.current.contains(event.target as Node)) setHeaderPanel(null);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setHeaderPanel(null);
+    };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', escape);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [headerPanel]);
+
+  const chooseHeader = (action: () => void) => {
+    action();
+    setHeaderPanel(null);
+  };
+
   const renderSortArrow = (active: boolean) => {
     if (!active) return null;
     if (sortDirection === 'asc') {
@@ -132,6 +203,8 @@ export default function RequisitionTable({
     ['city', '城市', filters.city],
     ['owner', '负责人', filters.owner],
     ['stage', '阶段', filters.stage ? stageOptions.find((option) => option.value === filters.stage)?.label || filters.stage : ''],
+    ['headcount', 'HC', filters.headcount === 'available' ? '仍有名额' : filters.headcount === 'reached' ? '已达成' : ''],
+    ['deadline', '截止日期', filters.deadline === 'overdue' ? '已逾期' : filters.deadline === 'dueSoon' ? '7天内到期' : filters.deadline === 'unset' ? '未设置' : ''],
   ] as Array<[keyof DemandWorkspaceFilters, string, string]>).filter(([, , value]) => Boolean(value));
 
   const removeFilter = (key: keyof DemandWorkspaceFilters) => onFilterChange(key, '');
@@ -250,16 +323,47 @@ export default function RequisitionTable({
             <p className="text-sm text-foreground-500">暂无符合条件的招聘需求</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div ref={tableRef} className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-background-200">
-                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">需求 / 职位</th>
-                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">部门 / 城市</th>
-                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">负责人</th>
-                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">HC / 截止日期</th>
-                  <th className="whitespace-nowrap px-5 py-3 text-center text-xs font-medium text-foreground-500">阶段进度</th>
-                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">状态</th>
+                  <HeaderFilter id="identity" label="需求 / 职位" open={headerPanel === 'identity'} active={Boolean(searchQuery)} onToggle={() => setHeaderPanel((current) => current === 'identity' ? null : 'identity')}>
+                    <HeaderOption label="全部需求" selected={!searchQuery} onClick={() => chooseHeader(() => onSearchChange(''))} />
+                    {identityOptions.map((value) => <HeaderOption key={value} label={value} selected={searchQuery === value} onClick={() => chooseHeader(() => onSearchChange(value))} />)}
+                  </HeaderFilter>
+                  <HeaderFilter id="location" label="部门 / 城市" open={headerPanel === 'location'} active={Boolean(filters.department || filters.city)} onToggle={() => setHeaderPanel((current) => current === 'location' ? null : 'location')}>
+                    <HeaderOption label="全部部门和城市" selected={!filters.department && !filters.city} onClick={() => chooseHeader(() => { onFilterChange('department', ''); onFilterChange('city', ''); })} />
+                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-foreground-400">部门</p>
+                    {filterOptions.departments.map((value) => <HeaderOption key={`department-${value}`} label={value} selected={filters.department === value} onClick={() => chooseHeader(() => { onFilterChange('department', value); onFilterChange('city', ''); })} />)}
+                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-foreground-400">城市</p>
+                    {filterOptions.cities.map((value) => <HeaderOption key={`city-${value}`} label={value} selected={filters.city === value} onClick={() => chooseHeader(() => { onFilterChange('city', value); onFilterChange('department', ''); })} />)}
+                  </HeaderFilter>
+                  <HeaderFilter id="owner" label="负责人" open={headerPanel === 'owner'} active={Boolean(filters.owner)} onToggle={() => setHeaderPanel((current) => current === 'owner' ? null : 'owner')}>
+                    <HeaderOption label="全部负责人" selected={!filters.owner} onClick={() => chooseHeader(() => onFilterChange('owner', ''))} />
+                    {filterOptions.owners.map((value) => <HeaderOption key={value} label={value} selected={filters.owner === value} onClick={() => chooseHeader(() => onFilterChange('owner', value))} />)}
+                  </HeaderFilter>
+                  <HeaderFilter id="delivery" label="HC / 截止日期" open={headerPanel === 'delivery'} active={Boolean(filters.headcount || filters.deadline)} onToggle={() => setHeaderPanel((current) => current === 'delivery' ? null : 'delivery')}>
+                    <HeaderOption label="全部 HC 和日期" selected={!filters.headcount && !filters.deadline} onClick={() => chooseHeader(() => { onFilterChange('headcount', ''); onFilterChange('deadline', ''); })} />
+                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-foreground-400">HC</p>
+                    <HeaderOption label="仍有名额" selected={filters.headcount === 'available'} onClick={() => chooseHeader(() => { onFilterChange('headcount', 'available'); onFilterChange('deadline', ''); })} />
+                    <HeaderOption label="HC 已达成" selected={filters.headcount === 'reached'} onClick={() => chooseHeader(() => { onFilterChange('headcount', 'reached'); onFilterChange('deadline', ''); })} />
+                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-foreground-400">截止日期</p>
+                    <HeaderOption label="已逾期" selected={filters.deadline === 'overdue'} onClick={() => chooseHeader(() => { onFilterChange('deadline', 'overdue'); onFilterChange('headcount', ''); })} />
+                    <HeaderOption label="7 天内到期" selected={filters.deadline === 'dueSoon'} onClick={() => chooseHeader(() => { onFilterChange('deadline', 'dueSoon'); onFilterChange('headcount', ''); })} />
+                    <HeaderOption label="未设置日期" selected={filters.deadline === 'unset'} onClick={() => chooseHeader(() => { onFilterChange('deadline', 'unset'); onFilterChange('headcount', ''); })} />
+                  </HeaderFilter>
+                  <HeaderFilter id="stage" label="阶段进度" open={headerPanel === 'stage'} active={Boolean(filters.stage)} align="center" onToggle={() => setHeaderPanel((current) => current === 'stage' ? null : 'stage')}>
+                    {stageOptions.map((option) => <HeaderOption key={option.value || 'all'} label={option.label} selected={filters.stage === option.value} onClick={() => chooseHeader(() => onFilterChange('stage', option.value))} />)}
+                  </HeaderFilter>
+                  <HeaderFilter id="status" label="状态" open={headerPanel === 'status'} active={activeTab !== 'all'} onToggle={() => setHeaderPanel((current) => current === 'status' ? null : 'status')}>
+                    {([
+                      ['all', '全部状态'],
+                      ['pendingApproval', '待审核'],
+                      ['active', '招聘中'],
+                      ['filled', '已完成'],
+                      ['stopped', '已停止'],
+                    ] as Array<[DemandWorkspaceTab, string]>).map(([value, label]) => <HeaderOption key={value} label={label} selected={activeTab === value} onClick={() => chooseHeader(() => onTabChange(value))} />)}
+                  </HeaderFilter>
                   <th className="whitespace-nowrap px-3 py-3 text-center text-xs font-medium text-foreground-500">操作</th>
                 </tr>
               </thead>
@@ -267,7 +371,8 @@ export default function RequisitionTable({
                 {data.map((req) => {
                   const transitions = statusTransitions[req.statusCode];
                   const extras = statusExtraActions[req.statusCode] || [];
-                  const canSelectCandidates = req.statusCode === 'active' && req.source.approval_status === 'approved';
+                  const canSelectCandidates = req.statusCode === 'active' && req.source.approval_status === 'approved' && req.remainingHeadcount > 0;
+                  const headcountReached = req.statusCode === 'active' && req.source.approval_status === 'approved' && req.remainingHeadcount <= 0;
                   const isClosedOrCompleted = ['filled', 'cancelled', 'closed'].includes(req.statusCode);
                   const hasActions = transitions && (transitions.advance || transitions.rollback || extras.length > 0);
                   const prio = priorityConfig[req.priority] || priorityConfig['普通'];
@@ -369,6 +474,17 @@ export default function RequisitionTable({
                             >
                               <i className="ri-user-add-line text-sm"></i>
                               选候选人
+                            </button>
+                          )}
+                          {headcountReached && (
+                            <button
+                              type="button"
+                              disabled
+                              title="该需求 HC 已满，请确认完成需求或在需求详情调整 HC"
+                              className="flex cursor-not-allowed items-center gap-1 whitespace-nowrap rounded-md bg-background-100 px-2.5 py-1.5 text-xs font-medium text-foreground-400"
+                            >
+                              <i className="ri-user-add-line text-sm"></i>
+                              HC已满
                             </button>
                           )}
                           {isClosedOrCompleted && (

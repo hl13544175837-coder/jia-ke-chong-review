@@ -85,7 +85,7 @@ export default function DirectorInsightsPage() {
         position: c.position,
         source: c.source,
         category: 'talentPool',
-        reason: '已在人才池中，可随时激活',
+        reason: '已在公司人才库中，可随时激活',
         lastContact: c.appliedAt,
       });
     });
@@ -239,7 +239,7 @@ export default function DirectorInsightsPage() {
     const shortages = positionTalentData.filter(p => p.totalInPool === 0 && p.totalInProcess < 3);
     const shortageNames = shortages.slice(0, 3).map(s => s.position).join('、');
 
-    return `当前人才储备总量${metrics.total}人，其中${recruiting}人在招聘流程中，${poolCount}人在人才池待激活。${reactivatable > poolCount ? `另有${reactivatable - poolCount}名优秀候选人可重新联系。` : ''}${shortageNames ? `需重点关注${shortageNames}等岗位的人才储备不足问题，建议加大主动寻访力度。` : '各岗位人才储备充足，建议持续维护人才关系。'}`;
+    return `当前人才储备总量${metrics.total}人，其中${recruiting}人在招聘流程中，${poolCount}人在公司人才库待激活。${reactivatable > poolCount ? `另有${reactivatable - poolCount}名优秀候选人可重新联系。` : ''}${shortageNames ? `需重点关注${shortageNames}等岗位的人才储备不足问题，建议加大主动寻访力度。` : '各岗位人才储备充足，建议持续维护人才关系。'}`;
   }, [metrics, positionTalentData]);
 
   // ── Navigate to candidates with preset filter ──
@@ -262,7 +262,7 @@ export default function DirectorInsightsPage() {
         <div>
           <h1 className="font-heading text-2xl font-bold text-foreground-900">人才储备</h1>
           <p className="text-sm text-foreground-500 mt-1">
-            {metrics.total} 位候选人 · {metrics.recruiting} 人流程中 · {metrics.poolCount} 人人才池 · {metrics.hiredTotal} 人已录用 · 只读模式
+            {metrics.total} 位候选人 · {metrics.recruiting} 人流程中 · {metrics.poolCount} 人在公司人才库 · {metrics.hiredTotal} 人已录用 · 只读模式
           </p>
         </div>
         <Link to="/director/cockpit" className="flex items-center gap-1 text-sm text-foreground-500 hover:text-foreground-800 transition-colors cursor-pointer whitespace-nowrap">
@@ -281,7 +281,7 @@ export default function DirectorInsightsPage() {
             {showAiDetail && (
               <div className="mt-3 p-3 bg-white rounded-lg border border-secondary-200 space-y-2">
                 <p className="text-xs text-foreground-700 leading-relaxed">
-                  建议行动：①对人才池中的{metrics.poolCount}名候选人，建议每季度至少联系一次，保持关系热度；
+                  建议行动：①对公司人才库中的{metrics.poolCount}名候选人，建议每季度至少联系一次，保持关系热度；
                   ②对有Offer拒绝和优秀淘汰经历的候选人，可在3-6个月后重新接触，彼时其职业状态可能发生变化；
                   ③关注储备不足的岗位，提前启动被动寻访计划，避免因急招导致质量下降或成本上升。
                 </p>
@@ -341,7 +341,7 @@ export default function DirectorInsightsPage() {
             </div>
           </div>
           <p className="text-2xl font-bold text-accent-600">{metrics.poolCount}</p>
-          <p className="text-xs text-foreground-500 mt-0.5">人才池人数</p>
+          <p className="text-xs text-foreground-500 mt-0.5">公司人才库人数</p>
           <p className="text-[10px] text-foreground-400 mt-1 group-hover:text-accent-500 transition-colors">
             点击查看详情 <i className="ri-arrow-right-line"></i>
           </p>
@@ -401,7 +401,7 @@ export default function DirectorInsightsPage() {
         <div className="px-5 py-4 border-b border-background-200 flex items-center justify-between">
           <div>
             <h3 className="font-bold text-foreground-900">关键岗位人才储备</h3>
-            <p className="text-xs text-foreground-500 mt-0.5">按岗位查看人才池、流程中人数与储备充足度</p>
+            <p className="text-xs text-foreground-500 mt-0.5">按岗位查看公司人才库、流程中人数与储备充足度</p>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -409,7 +409,7 @@ export default function DirectorInsightsPage() {
             <thead>
               <tr className="border-b border-background-200">
                 <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500">岗位名称</th>
-                <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">人才池</th>
+                <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">公司人才库</th>
                 <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">流程中</th>
                 <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">可重新激活</th>
                 <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">储备状态</th>
@@ -617,7 +617,7 @@ export default function DirectorInsightsPage() {
             <tbody className="divide-y divide-background-100">
               {reactivatableList.map(entry => {
                 const categoryLabel = {
-                  talentPool: '人才池',
+                  talentPool: '公司人才库',
                   offerRejected: 'Offer拒绝',
                   finalRoundEliminated: '终面淘汰',
                   excellentEliminated: '优秀淘汰',

@@ -24,17 +24,17 @@ for (const field of ['demandId?: number', 'targetStage?: string']) {
 }
 assert.match(
   page,
-  /useState<number \| ''>\(navState\?\.demandId \?\? ''\)/,
+  /useState<number \| ''>\(navState\?\.demandId \?\? requestedDemandId \?\? ''\)/,
   '从需求进入候选人页时必须自动选中当前需求',
 );
 assert.match(
   page,
-  /useState<'' \| CandidateStage>\(candidateStageFromNavigation\(navState\?\.targetStage\)\)/,
+  /const fromNavigation = candidateStageFromNavigation\(navState\?\.targetStage\)/,
   '从需求阶段数字进入时必须自动带上候选人阶段',
 );
 assert.match(
   page,
-  /useState<number \| ''>\(navState\?\.demandId \?\? ''\)/,
+  /setUploadDemandId\] = useState<number \| ''>\(navState\?\.demandId \?\? requestedDemandId \?\? ''\)/,
   '需求上下文必须同时作为简历上传的默认目标',
 );
 assert.match(page, /当前需求候选人/, '需求上下文页面必须使用清楚的候选人工作区名称');

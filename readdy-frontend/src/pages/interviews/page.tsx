@@ -20,7 +20,8 @@ import {
   emptyInterviewFilters,
   filterInterviewRows,
   rowStatus,
-  statusLabel,
+  statusLabelForRow,
+  type InterviewFilters,
   type InterviewStatusTab,
   type InterviewViewMode,
 } from './workbench';
@@ -50,6 +51,8 @@ function followUpScheduleRow(
     feedback_score: null,
     feedback_passed: null,
     feedback_result: null,
+    disposition_reason: '',
+    enter_talent_pool: null,
   };
 }
 
@@ -60,24 +63,72 @@ function initialInterviewTab(value: string | null): InterviewStatusTab {
   return 'all';
 }
 
+function initialInterviewView(value: string | null): InterviewViewMode {
+  return value === 'calendar' ? 'calendar' : 'list';
+}
+
+function initialInterviewFilters(searchParams: URLSearchParams): InterviewFilters {
+  return {
+    jobTitle: searchParams.get('job') || '',
+    interviewerId: searchParams.get('interviewer') || '',
+    schedule: searchParams.get('schedule') || '',
+    dateFrom: searchParams.get('dateFrom') || '',
+    dateTo: searchParams.get('dateTo') || '',
+    roundSequence: searchParams.get('round') || '',
+    city: searchParams.get('city') || '',
+    department: searchParams.get('department') || '',
+  };
+}
+
+function setInterviewSearchParam(
+  searchParams: URLSearchParams,
+  key: string,
+  value: string,
+  defaultValue = '',
+) {
+  if (!value || value === defaultValue) searchParams.delete(key);
+  else searchParams.set(key, value);
+}
+
+function latestCandidateManagementRow(
+  rows: InterviewManagementRow[],
+  candidateId: number,
+  demandId: number | null,
+  assignmentId: number | null,
+) {
+  const matches = rows.filter((item) => (
+    item.candidate_id === candidateId
+    && (!demandId || item.demand_id === demandId)
+  ));
+  if (assignmentId) {
+    const exact = matches.find((item) => item.assignment_id === assignmentId);
+    if (exact) return exact;
+  }
+  return matches.sort((left, right) => (
+    (right.round_sequence || 0) - (left.round_sequence || 0)
+    || (right.assignment_id || 0) - (left.assignment_id || 0)
+  ))[0] ?? null;
+}
+
 export default function RecruiterInterviewsPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
+  const requestedAssignmentId = Number(searchParams.get('assignment')) || null;
   const fromJobs = searchParams.get('from') === 'jobs';
   const fromDashboard = searchParams.get('from') === 'dashboard';
-  const handledCandidateId = useRef<number | null>(null);
+  const handledDeepLink = useRef('');
   const [rows, setRows] = useState<InterviewManagementRow[]>([]);
   const [interviewers, setInterviewers] = useState<InterviewerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [activeTab, setActiveTab] = useState<InterviewStatusTab>(() => initialInterviewTab(searchParams.get('status')));
-  const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<InterviewViewMode>('list');
+  const [search, setSearch] = useState(() => searchParams.get('q') || '');
+  const [viewMode, setViewMode] = useState<InterviewViewMode>(() => initialInterviewView(searchParams.get('view')));
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [appliedFilters, setAppliedFilters] = useState(emptyInterviewFilters);
-  const [draftFilters, setDraftFilters] = useState(emptyInterviewFilters);
+  const [appliedFilters, setAppliedFilters] = useState<InterviewFilters>(() => initialInterviewFilters(searchParams));
+  const [draftFilters, setDraftFilters] = useState<InterviewFilters>(() => initialInterviewFilters(searchParams));
   const [scheduleRow, setScheduleRow] = useState<InterviewManagementRow | null>(null);
   const [scheduleIsPrimary, setScheduleIsPrimary] = useState(true);
   const [selectedRow, setSelectedRow] = useState<InterviewManagementRow | null>(null);
@@ -89,6 +140,51 @@ export default function RecruiterInterviewsPage() {
   const [actionRowId, setActionRowId] = useState<number | null>(null);
   const [actionError, setActionError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  const syncInterviewWorkspaceUrl = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    setInterviewSearchParam(next, 'status', activeTab, 'all');
+    setInterviewSearchParam(next, 'q', search);
+    setInterviewSearchParam(next, 'view', viewMode, 'list');
+    setInterviewSearchParam(next, 'job', appliedFilters.jobTitle);
+    setInterviewSearchParam(next, 'interviewer', appliedFilters.interviewerId);
+    setInterviewSearchParam(next, 'schedule', appliedFilters.schedule);
+    setInterviewSearchParam(next, 'dateFrom', appliedFilters.dateFrom);
+    setInterviewSearchParam(next, 'dateTo', appliedFilters.dateTo);
+    setInterviewSearchParam(next, 'round', appliedFilters.roundSequence);
+    setInterviewSearchParam(next, 'city', appliedFilters.city);
+    setInterviewSearchParam(next, 'department', appliedFilters.department);
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [activeTab, appliedFilters, search, searchParams, setSearchParams, viewMode]);
+
+  useEffect(() => {
+    syncInterviewWorkspaceUrl();
+  }, [syncInterviewWorkspaceUrl]);
+
+  const openInterviewInUrl = useCallback((row: InterviewManagementRow) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('candidate', String(row.candidate_id));
+    if (row.assignment_id) next.set('assignment', String(row.assignment_id));
+    else next.delete('assignment');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const openInterviewDetail = useCallback((row: InterviewManagementRow) => {
+    setSelectedRow(row);
+    setShowReject(false);
+    setRejectReason('');
+    openInterviewInUrl(row);
+  }, [openInterviewInUrl]);
+
+  const closeInterviewDetail = useCallback(() => {
+    setSelectedRow(null);
+    setShowReject(false);
+    setRejectReason('');
+    const next = new URLSearchParams(searchParams);
+    next.delete('candidate');
+    next.delete('assignment');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const loadWorkbench = useCallback(async () => {
     setLoading(true);
@@ -115,19 +211,22 @@ export default function RecruiterInterviewsPage() {
   }, [loadWorkbench]);
 
   useEffect(() => {
-    if (!requestedCandidateId || loading || handledCandidateId.current === requestedCandidateId) return;
-    const row = rows.find((item) => (
-      item.candidate_id === requestedCandidateId
-      && (!requestedDemandId || item.demand_id === requestedDemandId)
-    ));
+    const deepLinkKey = `${requestedCandidateId || ''}:${requestedAssignmentId || ''}`;
+    if (!requestedCandidateId || loading || handledDeepLink.current === deepLinkKey) return;
+    const row = latestCandidateManagementRow(
+      rows,
+      requestedCandidateId,
+      requestedDemandId,
+      requestedAssignmentId,
+    );
     if (!row) return;
-    handledCandidateId.current = requestedCandidateId;
-    if (rowStatus(row) === 'unassigned') {
+    handledDeepLink.current = deepLinkKey;
+    if (rowStatus(row) === 'unassigned' && (fromJobs || fromDashboard)) {
       setScheduleIsPrimary(true);
       setScheduleRow(row);
     }
     else setSelectedRow(row);
-  }, [loading, requestedCandidateId, requestedDemandId, rows]);
+  }, [fromDashboard, fromJobs, loading, requestedAssignmentId, requestedCandidateId, requestedDemandId, rows]);
 
   const scopedRows = useMemo(
     () => requestedDemandId
@@ -173,7 +272,7 @@ export default function RecruiterInterviewsPage() {
         setSuccessMessage('站内面试日程和待办已创建；企业微信日历待接入');
       }
       setScheduleRow(null);
-      setSelectedRow(null);
+      closeInterviewDetail();
       await loadWorkbench();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : '保存面试安排失败');
@@ -255,14 +354,14 @@ export default function RecruiterInterviewsPage() {
           },
         } : {}),
       });
-      setSelectedRow(null);
+      closeInterviewDetail();
       setShowReject(false);
       setRejectReason('');
       await loadWorkbench();
       if (stage === 'offer') {
         navigate(`/offers?demand=${row.demand_id}&candidate=${row.candidate_id}`);
       } else {
-        setSuccessMessage('候选人已淘汰并保留在人才库，原因已写入流程记录');
+        setSuccessMessage('候选人已淘汰并保留在公司人才库，原因已写入流程记录');
       }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : '保存面试结果下一步失败');
@@ -276,7 +375,7 @@ export default function RecruiterInterviewsPage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           {fromDashboard && !requestedDemandId && <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>}
-          <div><h1 className="text-xl font-bold text-foreground-900">面试管理</h1>
+          <div>
           <p className="mt-1 text-sm text-foreground-500">从安排面试到收回反馈，都在这里处理</p>
           </div>
         </div>
@@ -349,21 +448,26 @@ export default function RecruiterInterviewsPage() {
         <InterviewManagementTable
           rows={visibleRows}
           actionRowId={actionRowId}
-          onOpenDetails={setSelectedRow}
+          filters={appliedFilters}
+          filterOptions={filterOptions}
+          activeTab={activeTab}
+          onFiltersChange={(next) => { setAppliedFilters(next); setDraftFilters(next); }}
+          onStatusChange={setActiveTab}
+          onOpenDetails={openInterviewDetail}
           onSchedule={openSchedule}
           onConfirmConducted={setConfirmConductedRow}
           onRemind={(row) => void runAssignmentAction(row, 'remind')}
         />
       ) : (
-        <InterviewManagementCalendar rows={visibleRows} onOpenDetails={setSelectedRow} onSchedule={openSchedule} />
+        <InterviewManagementCalendar rows={visibleRows} onOpenDetails={openInterviewDetail} onSchedule={openSchedule} />
       )}
 
       {selectedRow && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-foreground-900/40" role="presentation" onMouseDown={() => setSelectedRow(null)}>
+        <div className="fixed inset-0 z-50 flex justify-end bg-foreground-900/40" role="presentation" onMouseDown={closeInterviewDetail}>
           <aside className="h-full w-full max-w-[520px] overflow-y-auto bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-bold text-foreground-900">{selectedRow.name_masked}</h2><p className="mt-1 text-sm text-foreground-500">{selectedRow.job_title}</p></div><button type="button" onClick={() => setSelectedRow(null)} className="rounded-lg p-2 text-foreground-400 hover:bg-background-100"><X size={18} /></button></div>
+            <div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-bold text-foreground-900">{selectedRow.name_masked}</h2><p className="mt-1 text-sm text-foreground-500">{selectedRow.job_title}</p></div><button type="button" onClick={closeInterviewDetail} className="rounded-lg p-2 text-foreground-400 hover:bg-background-100"><X size={18} /></button></div>
             <dl className="mt-6 grid grid-cols-2 gap-4 text-sm">
-              <div><dt className="text-xs text-foreground-400">当前状态</dt><dd className="mt-1 font-medium text-foreground-800">{statusLabel(rowStatus(selectedRow))}</dd></div>
+              <div><dt className="text-xs text-foreground-400">当前状态</dt><dd className="mt-1 font-medium text-foreground-800">{statusLabelForRow(selectedRow)}</dd></div>
               <div><dt className="text-xs text-foreground-400">面试官</dt><dd className="mt-1 font-medium text-foreground-800">{selectedRow.interviewer_name || '待安排'}</dd></div>
               <div><dt className="text-xs text-foreground-400">面试时间</dt><dd className="mt-1 text-foreground-700">{formatInterviewDateTime(selectedRow.scheduled_at)}</dd></div>
               <div><dt className="text-xs text-foreground-400">地点 / 链接</dt><dd className="mt-1 inline-flex items-center gap-1 text-foreground-700"><MapPin size={13} />{selectedRow.location || '待确认'}</dd></div>
@@ -398,6 +502,8 @@ export default function RecruiterInterviewsPage() {
             {selectedRow.feedback_submitted && selectedRow.pipeline_stage !== 'interview' && (
               <div className="mt-5 rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">
                 该候选人已进入“{selectedRow.pipeline_stage === 'offer' ? 'Offer' : selectedRow.pipeline_stage === 'rejected' ? '已淘汰' : selectedRow.pipeline_stage}”阶段，不再重复显示面试决策。
+                {selectedRow.pipeline_stage === 'offer' && <button type="button" onClick={() => navigate(`/offers?demand=${selectedRow.demand_id}&candidate=${selectedRow.candidate_id}`)} className="ml-2 font-medium text-primary-700 hover:underline">查看 Offer</button>}
+                {selectedRow.pipeline_stage === 'rejected' && <p className="mt-2 text-xs text-foreground-500">淘汰原因：{selectedRow.disposition_reason || '未填写'} · {selectedRow.enter_talent_pool ? '已进入公司人才库' : '不进入公司人才库'}</p>}
               </div>
             )}
           </aside>

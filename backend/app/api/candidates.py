@@ -17,12 +17,14 @@ from ..models import (
     CandidateFavorite,
     CandidateTag,
     CandidateDisposition,
+    BusinessReviewTask,
     Event,
     Job,
     PipelineStage,
     Interview,
     InterviewAssignment,
     InterviewFeedback,
+    OfferRecord,
     RecruitmentDemand,
     UploadBatch,
     User,
@@ -105,6 +107,16 @@ CITY_LABEL_PATTERN = re.compile(
     rf"(?:意向城市|目标城市|期望城市|求职城市|工作城市|希望城市|投递城市|城市)"
     rf"\s*[：:：]?\s*({'|'.join(COMMON_CITIES)})市?"
 )
+POSITION_FIELD_KEYS = {
+    "target_position",
+    "desired_position",
+    "target_role",
+    "job_intention",
+    "求职目标",
+    "目标岗位",
+    "意向岗位",
+    "求职意向",
+}
 
 
 def _resume_info(candidate):
@@ -163,6 +175,17 @@ def _candidate_intent_city(candidate):
     raw_text = json.dumps(resume, ensure_ascii=False)
     match = CITY_LABEL_PATTERN.search(raw_text)
     return _normalize_city_value(match.group(1)) if match else ""
+
+
+def _candidate_desired_position(info):
+    for key in POSITION_FIELD_KEYS:
+        value = info.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:120]
+    for key, value in _walk_resume_values(info):
+        if key in POSITION_FIELD_KEYS and isinstance(value, str) and value.strip():
+            return value.strip()[:120]
+    return ""
 
 
 def _latest_experience(info):
@@ -224,6 +247,7 @@ def _candidate_library_item(
         "top_tags": tags[:6],
         "max_score": tags[0]["score"] if tags else 0,
         "intent_city": _candidate_intent_city(candidate),
+        "desired_position": _candidate_desired_position(info),
         "latest_experience": _latest_experience(info),
         "education_summary": _education_summary(info),
         "source": _candidate_source_payload(candidate),
@@ -738,15 +762,18 @@ def add_candidates_to_pipeline():
         .filter(Candidate.id.in_(candidate_ids))
         .all()
     }
-    result = add_candidates_to_demand(
-        demand=demand,
-        candidate_ids=candidate_ids,
-        visible_candidate_ids=visible_ids,
-        org_id=g.org_id,
-        actor_id=g.user_id,
-        reactivate_rejected=data.get("reactivate_rejected") is True,
-        reason=data.get("reason"),
-    )
+    try:
+        result = add_candidates_to_demand(
+            demand=demand,
+            candidate_ids=candidate_ids,
+            visible_candidate_ids=visible_ids,
+            org_id=g.org_id,
+            actor_id=g.user_id,
+            reactivate_rejected=data.get("reactivate_rejected") is True,
+            reason=data.get("reason"),
+        )
+    except CandidateLibraryError as error:
+        return jsonify({"error": error.message, "code": error.code}), error.status_code
     record_event(
         "pipeline.batch_add",
         entity_id=demand.id,
@@ -908,6 +935,69 @@ def candidate_journey(candidate_id):
     job = demand.job
     job_id = demand.job_id
 
+    approval_events = (
+        Event.query.filter(
+            Event.org_id == g.org_id,
+            Event.demand_id == demand.id,
+            Event.action.in_(("demand.created", "demand.submitted", "demand.resubmitted", "demand.approved", "demand.rejected")),
+        )
+        .order_by(Event.id.asc())
+        .all()
+    )
+    approval_actor_ids = {
+        value for value in [demand.created_by, demand.reviewed_by, *(item.actor_id for item in approval_events)] if value
+    }
+    approval_actor_names = {
+        user.id: user.name
+        for user in User.query.filter(User.id.in_(approval_actor_ids)).all()
+    } if approval_actor_ids else {}
+    demand_approval = {
+        "status": demand.approval_status,
+        "submitted_by_name": approval_actor_names.get(demand.created_by),
+        "submitted_at": demand.submitted_at.isoformat() if demand.submitted_at else None,
+        "reviewed_by_name": approval_actor_names.get(demand.reviewed_by),
+        "reviewed_at": demand.reviewed_at.isoformat() if demand.reviewed_at else None,
+        "reason": demand.review_reason or "",
+        "history": [{
+            "action": item.action,
+            "actor_name": approval_actor_names.get(item.actor_id),
+            "at": item.ts.isoformat() if item.ts else None,
+            "reason": str((item.payload or {}).get("reason") or ""),
+        } for item in approval_events],
+    }
+
+    review_rows = (
+        BusinessReviewTask.query.filter_by(
+            org_id=g.org_id,
+            candidate_id=candidate_id,
+            demand_id=demand.id,
+        )
+        .order_by(BusinessReviewTask.id.asc())
+        .all()
+    )
+    review_user_ids = {
+        value
+        for row in review_rows
+        for value in (row.created_by, row.reviewer_id, row.decided_by)
+        if value
+    }
+    review_user_names = {
+        user.id: user.name
+        for user in User.query.filter(User.id.in_(review_user_ids)).all()
+    } if review_user_ids else {}
+    business_reviews = [{
+        "id": item.id,
+        "status": item.status,
+        "created_by_name": review_user_names.get(item.created_by),
+        "reviewer_name": review_user_names.get(item.reviewer_id),
+        "decided_by_name": review_user_names.get(item.decided_by),
+        "hr_note": item.hr_note or "",
+        "business_note": item.business_note or "",
+        "due_at": item.due_at.isoformat() if item.due_at else None,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "decided_at": item.decided_at.isoformat() if item.decided_at else None,
+    } for item in review_rows]
+
     # 阶段时间线（含操作人、备注）
     stage_rows = (
         db.session.query(PipelineStage, User)
@@ -940,13 +1030,37 @@ def candidate_journey(candidate_id):
                        InterviewFeedback.demand_id == demand.id)
                .order_by(InterviewFeedback.id.desc()).all())
     feedback = [{
-        "id": f.id, "round": f.round, "score": f.score, "passed": f.passed,
+        "id": f.id, "assignment_id": f.assignment_id, "round": f.round, "score": f.score, "passed": f.passed,
         "strengths": f.strengths, "concerns": f.concerns, "note": f.note,
         "reason_tags": f.reason_tags if isinstance(f.reason_tags, list) else [],
         "evaluation": f.evaluation_json or {},
         "interviewer_name": u.name if u else None,
         "created_at": f.created_at.isoformat() if f.created_at else None,
     } for f, u in fb_rows]
+
+    feedback_by_assignment = {item["assignment_id"]: item for item in feedback if item.get("assignment_id")}
+    assignment_rows = (
+        db.session.query(InterviewAssignment, User)
+        .outerjoin(User, User.id == InterviewAssignment.interviewer_id)
+        .filter(
+            InterviewAssignment.org_id == g.org_id,
+            InterviewAssignment.candidate_id == candidate_id,
+            InterviewAssignment.demand_id == demand.id,
+        )
+        .order_by(InterviewAssignment.round_sequence.asc(), InterviewAssignment.id.asc())
+        .all()
+    )
+    interview_rounds = [{
+        "assignment_id": assignment.id,
+        "round": assignment.round,
+        "round_sequence": assignment.round_sequence,
+        "interviewer_name": interviewer.name if interviewer else None,
+        "scheduled_at": assignment.scheduled_at.isoformat() if assignment.scheduled_at else None,
+        "location": assignment.location or "",
+        "status": assignment.status,
+        "note": assignment.note or "",
+        "feedback": feedback_by_assignment.get(assignment.id),
+    } for assignment, interviewer in assignment_rows]
 
     disposition_rows = (db.session.query(CandidateDisposition, User)
                         .outerjoin(User, User.id == CandidateDisposition.created_by)
@@ -964,16 +1078,42 @@ def candidate_journey(candidate_id):
         "created_at": d.created_at.isoformat() if d.created_at else None,
     } for d, u in disposition_rows]
 
+    offer_rows = (
+        OfferRecord.query.filter_by(
+            org_id=g.org_id,
+            candidate_id=candidate_id,
+            demand_id=demand.id,
+        )
+        .order_by(OfferRecord.id.asc())
+        .all()
+    )
+    offers = [{
+        "id": item.id,
+        "status": item.approval_status,
+        "salary_range": item.salary_range or "",
+        "onboard_date": item.onboard_date.isoformat() if item.onboard_date else None,
+        "submitted_at": item.submitted_at.isoformat() if item.submitted_at else None,
+        "approved_at": item.approved_at.isoformat() if item.approved_at else None,
+        "sent_at": item.sent_at.isoformat() if item.sent_at else None,
+        "responded_at": item.responded_at.isoformat() if item.responded_at else None,
+        "onboarded_at": item.onboarded_at.isoformat() if item.onboarded_at else None,
+        "rejection_reason": item.rejection_reason or "",
+    } for item in offer_rows]
+
     return jsonify({
         "candidate_id": candidate_id,
         "name_masked": cand.name_masked,
         "demand_id": demand.id,
         "job_id": job_id,
         "job_title": job.title if job else None,
+        "demand_approval": demand_approval,
+        "business_reviews": business_reviews,
         "timeline": timeline,
         "ai_interviews": ai_interviews,
+        "interview_rounds": interview_rounds,
         "feedback": feedback,
         "dispositions": dispositions,
+        "offers": offers,
         "decision_summary": _decision_summary(timeline, ai_interviews, feedback, dispositions),
     })
 

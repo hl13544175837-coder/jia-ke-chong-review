@@ -44,9 +44,9 @@ export const talentPoolIds = new Set([15, 20, 24, 31]);
 const endedIds = new Set([10, 11, 22, 27, 33]);
 
 const talentPoolData: Record<number, TalentPoolInfo> = {
-  15: { reason: '前端经验与当前在招岗位要求不完全匹配，候选人同意进入人才池等待合适机会', tags: ['前端', 'Vue'], contactable: '工作日 14:00-18:00', addedAt: '2026-07-16' },
+  15: { reason: '前端经验与当前在招岗位要求不完全匹配，候选人同意进入公司人才库等待合适机会', tags: ['前端', 'Vue'], contactable: '工作日 14:00-18:00', addedAt: '2026-07-16' },
   20: { reason: '工作经验偏少（1年），目前暂无匹配的初级岗位，待有新岗位开放后优先联系', tags: ['数据分析', '初级'], contactable: '随时', addedAt: '2026-07-15' },
-  24: { reason: '候选人主动表示暂不急于换工作，愿意进入人才池等待更匹配的高级岗位机会', tags: ['前端', 'Vue'], contactable: '周末 10:00-16:00', addedAt: '2026-07-16' },
+  24: { reason: '候选人主动表示暂不急于换工作，愿意进入公司人才库等待更匹配的高级岗位机会', tags: ['前端', 'Vue'], contactable: '周末 10:00-16:00', addedAt: '2026-07-16' },
   31: { reason: '市场运营岗位已满编，候选人背景良好，待岗位重新开放后优先推荐', tags: ['运营', '新媒体'], contactable: '工作日 10:00-17:00', addedAt: '2026-07-15' },
 };
 
@@ -61,7 +61,7 @@ export function getCandidateStatus(candidate: Candidate): CandidateStatus {
 
 export const statusLabel: Record<CandidateStatus, string> = {
   recruiting: '招聘流程中',
-  talentPool: '人才池',
+  talentPool: '公司人才库',
   ended: '已结束',
 };
 
@@ -152,7 +152,7 @@ function buildAppProgress(candidate: Candidate, stage: string, nextAction?: stri
 function buildLatestActivity(candidate: Candidate, status: CandidateStatus, apps: CandidateApplication[]): string {
   if (status === 'talentPool') {
     const info = talentPoolData[candidate.id];
-    return info?.reason?.slice(0, 40) + '…' || '进入人才池';
+    return info?.reason?.slice(0, 40) + '…' || '进入公司人才库';
   }
   if (status === 'ended') {
     if (candidate.stage === '已入职') return '已完成入职';

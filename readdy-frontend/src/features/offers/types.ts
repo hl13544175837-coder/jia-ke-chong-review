@@ -2,6 +2,7 @@ export const OFFER_STATUSES = [
   'draft',
   'pending',
   'approved',
+  'rejected',
   'sent',
   'accepted',
   'declined',

@@ -36,12 +36,14 @@ import {
 } from 'lucide-react';
 import { useProductRole } from '@/auth/productRole';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
+import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
 import { apiRequest } from '@/lib/api';
 import { candidatesApi } from '@/features/candidates/api';
 import type {
   CandidateListItem,
   CandidateListResponse,
   CandidatePipelineAddResult,
+  CandidateJourney,
   CandidateResumeDetail,
   CandidateStage,
   ParseStatus,
@@ -122,6 +124,7 @@ type CandidateColumnFilter = 'identity' | 'parse' | 'profile' | 'skills' | 'sour
 type PipelineStatusFilter = '' | 'in_pipeline' | 'not_in_pipeline';
 type CandidateSortBy = 'created_at' | 'name_masked';
 type SortOrder = 'asc' | 'desc';
+type CandidateLibraryScope = 'all' | 'in_pipeline' | 'talent_pool' | 'favorite';
 
 const filterControlClass = 'h-9 w-full rounded-lg border border-background-300 bg-white px-2.5 text-xs text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100';
 
@@ -140,6 +143,26 @@ function isPipelineStatus(value: string): value is Exclude<PipelineStatusFilter,
 function positiveSearchId(value: string | null) {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function positiveSearchPage(value: string | null) {
+  const page = Number(value);
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
+function initialCandidateScope(value: string | null): CandidateLibraryScope {
+  if (value === 'in_pipeline' || value === 'talent_pool' || value === 'favorite') return value;
+  return 'all';
+}
+
+function setCandidateSearchParam(
+  params: URLSearchParams,
+  key: string,
+  value: string,
+  defaultValue = '',
+) {
+  if (!value || value === defaultValue) params.delete(key);
+  else params.set(key, value);
 }
 
 function candidateFromReviewTask(task: BusinessReviewTask): CandidateListItem {
@@ -270,7 +293,7 @@ export default function CandidatesPage() {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = positiveSearchId(searchParams.get('demand'));
   const requestedCandidateId = positiveSearchId(searchParams.get('candidate'));
   const navState = isCandidateNavigationState(location.state)
@@ -284,21 +307,31 @@ export default function CandidatesPage() {
       ? '&from=jobs'
       : '';
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [demandFilter, setDemandFilter] = useState<number | ''>(navState?.demandId ?? '');
-  const [cityFilter, setCityFilter] = useState('');
-  const [educationFilter, setEducationFilter] = useState('');
-  const [skillFilter, setSkillFilter] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('');
-  const [parseStatusFilter, setParseStatusFilter] = useState<'' | ParseStatus>('');
-  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<PipelineStatusFilter>('');
-  const [favoriteFilter, setFavoriteFilter] = useState(false);
-  const [stageFilter, setStageFilter] = useState<'' | CandidateStage>(candidateStageFromNavigation(navState?.targetStage));
-  const [scoreFilter, setScoreFilter] = useState('0');
-  const [sortBy, setSortBy] = useState<CandidateSortBy>('created_at');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const initialScope = initialCandidateScope(searchParams.get('scope'));
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
+  const [demandFilter, setDemandFilter] = useState<number | ''>(navState?.demandId ?? requestedDemandId ?? '');
+  const [cityFilter, setCityFilter] = useState(() => searchParams.get('city') ?? '');
+  const [educationFilter, setEducationFilter] = useState(() => searchParams.get('education') ?? '');
+  const [skillFilter, setSkillFilter] = useState(() => searchParams.get('skill') ?? '');
+  const [sourceFilter, setSourceFilter] = useState(() => searchParams.get('source') ?? '');
+  const [parseStatusFilter, setParseStatusFilter] = useState<'' | ParseStatus>(() => {
+    const value = searchParams.get('parse');
+    return value && isParseStatus(value) ? value : '';
+  });
+  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<PipelineStatusFilter>(
+    initialScope === 'in_pipeline' ? 'in_pipeline' : initialScope === 'talent_pool' ? 'not_in_pipeline' : '',
+  );
+  const [favoriteFilter, setFavoriteFilter] = useState(initialScope === 'favorite');
+  const [stageFilter, setStageFilter] = useState<'' | CandidateStage>(() => {
+    const fromNavigation = candidateStageFromNavigation(navState?.targetStage);
+    const fromUrl = searchParams.get('stage');
+    return fromNavigation || (fromUrl && isCandidateStage(fromUrl) ? fromUrl : '');
+  });
+  const [scoreFilter, setScoreFilter] = useState(() => searchParams.get('score') ?? '0');
+  const [sortBy, setSortBy] = useState<CandidateSortBy>(() => searchParams.get('sort') === 'name_masked' ? 'name_masked' : 'created_at');
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => searchParams.get('order') === 'asc' ? 'asc' : 'desc');
   const [openColumnFilter, setOpenColumnFilter] = useState<CandidateColumnFilter | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => positiveSearchPage(searchParams.get('page')));
   const [candidateResponse, setCandidateResponse] = useState<CandidateListResponse>(emptyCandidateResponse);
   const [candidatesLoading, setCandidatesLoading] = useState(true);
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
@@ -326,7 +359,7 @@ export default function CandidatesPage() {
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
   const [uploadOpen, setUploadOpen] = useState(Boolean(navState?.openUpload));
-  const [uploadDemandId, setUploadDemandId] = useState<number | ''>(navState?.demandId ?? '');
+  const [uploadDemandId, setUploadDemandId] = useState<number | ''>(navState?.demandId ?? requestedDemandId ?? '');
   const [uploadSourceChannel, setUploadSourceChannel] = useState('');
   const [uploadNote, setUploadNote] = useState('');
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
@@ -339,11 +372,13 @@ export default function CandidatesPage() {
   useEffect(() => {
     if (!navState?.openUpload) return;
     setUploadOpen(true);
-    navigate(location.pathname, { replace: true, state: null });
-  }, [location.pathname, navState?.openUpload, navigate]);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, navState?.openUpload, navigate]);
 
   const [detailCandidate, setDetailCandidate] = useState<CandidateListItem | null>(null);
   const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);
+  const [candidateJourney, setCandidateJourney] = useState<CandidateJourney | null>(null);
+  const [journeyError, setJourneyError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const detailRequestId = useRef(0);
@@ -359,6 +394,57 @@ export default function CandidatesPage() {
   const handledCandidateQuery = useRef<number | null>(null);
   const deferredSearch = useDeferredValue(searchQuery.trim());
   const deferredSkill = useDeferredValue(skillFilter.trim());
+
+  const openCandidateInUrl = useCallback((candidateId: number | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (candidateId) next.set('candidate', String(candidateId));
+    else next.delete('candidate');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const syncCandidateWorkspaceUrl = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    const scope: CandidateLibraryScope = favoriteFilter
+      ? 'favorite'
+      : pipelineStatusFilter === 'in_pipeline'
+        ? 'in_pipeline'
+        : pipelineStatusFilter === 'not_in_pipeline'
+          ? 'talent_pool'
+          : 'all';
+    setCandidateSearchParam(next, 'scope', scope, 'all');
+    setCandidateSearchParam(next, 'q', searchQuery);
+    setCandidateSearchParam(next, 'demand', demandFilter ? String(demandFilter) : '');
+    setCandidateSearchParam(next, 'city', cityFilter);
+    setCandidateSearchParam(next, 'education', educationFilter);
+    setCandidateSearchParam(next, 'skill', skillFilter);
+    setCandidateSearchParam(next, 'source', sourceFilter);
+    setCandidateSearchParam(next, 'parse', parseStatusFilter);
+    setCandidateSearchParam(next, 'stage', stageFilter);
+    setCandidateSearchParam(next, 'score', scoreFilter, '0');
+    setCandidateSearchParam(next, 'sort', sortBy, 'created_at');
+    setCandidateSearchParam(next, 'order', sortOrder, 'desc');
+    setCandidateSearchParam(next, 'page', String(page), '1');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [
+    cityFilter,
+    demandFilter,
+    educationFilter,
+    favoriteFilter,
+    page,
+    parseStatusFilter,
+    pipelineStatusFilter,
+    scoreFilter,
+    searchParams,
+    searchQuery,
+    setSearchParams,
+    skillFilter,
+    sortBy,
+    sortOrder,
+    sourceFilter,
+    stageFilter,
+  ]);
+
+  useEffect(() => { syncCandidateWorkspaceUrl(); }, [syncCandidateWorkspaceUrl]);
 
   const activeDemands = useMemo(
     () => demands.filter((demand) => demand.status === 'active' && demand.approval_status === 'approved'),
@@ -649,14 +735,21 @@ export default function CandidatesPage() {
     }
   };
 
-  const loadCandidateDetail = useCallback(async (candidateId: number) => {
+  const loadCandidateDetail = useCallback(async (candidateId: number, demandId: number | null) => {
     const requestId = ++detailRequestId.current;
     setDetailLoading(true);
     setDetailError(null);
+    setJourneyError(null);
     try {
-      const detail = await candidatesApi.getResume(candidateId);
+      const [resumeResult, journeyResult] = await Promise.allSettled([
+        candidatesApi.getResume(candidateId),
+        demandId ? candidatesApi.getJourney(candidateId, demandId) : Promise.resolve(null),
+      ]);
       if (requestId !== detailRequestId.current) return;
-      setResumeDetail(detail);
+      if (resumeResult.status === 'rejected') throw resumeResult.reason;
+      setResumeDetail(resumeResult.value);
+      if (journeyResult.status === 'fulfilled') setCandidateJourney(journeyResult.value);
+      else setJourneyError(errorMessage(journeyResult.reason, '完整招聘过程暂不可用'));
     } catch (error) {
       if (requestId !== detailRequestId.current) return;
       setDetailError(errorMessage(error, '简历详情加载失败'));
@@ -668,10 +761,13 @@ export default function CandidatesPage() {
   const openCandidateDetail = useCallback((candidate: CandidateListItem) => {
     setDetailCandidate(candidate);
     setResumeDetail(null);
+    setCandidateJourney(null);
+    setJourneyError(null);
     setResumePreviewUrl(null);
     setOriginalResumeError(null);
-    void loadCandidateDetail(candidate.id);
-  }, [loadCandidateDetail]);
+    openCandidateInUrl(candidate.id);
+    void loadCandidateDetail(candidate.id, candidate.current_demand_id ?? candidate.latest_demand_id ?? requestedDemandId);
+  }, [loadCandidateDetail, openCandidateInUrl, requestedDemandId]);
 
   const focusedReview = useMemo(() => reviewTasks.find((task) => (
     task.candidate_id === requestedCandidateId
@@ -720,9 +816,12 @@ export default function CandidatesPage() {
     detailRequestId.current += 1;
     setDetailCandidate(null);
     setResumeDetail(null);
+    setCandidateJourney(null);
+    setJourneyError(null);
     setDetailError(null);
     setResumePreviewUrl(null);
     setOriginalResumeError(null);
+    openCandidateInUrl(null);
   };
 
   const previewOriginalResume = async () => {
@@ -1088,9 +1187,7 @@ export default function CandidatesPage() {
               </button>
             )}
             <div>
-              <h1 className="text-lg font-bold text-foreground-900">
-                {navState?.jobTitle ? '当前需求候选人' : '简历库'}
-              </h1>
+              {navState?.jobTitle && <h1 className="text-lg font-bold text-foreground-900">当前需求候选人</h1>}
               <p className="mt-0.5 text-xs text-foreground-500">
                 {navState?.jobTitle ? `${navState.jobTitle} · 已自动带入需求和阶段条件` : '候选人与业务筛选'}
               </p>
@@ -1166,7 +1263,7 @@ export default function CandidatesPage() {
       )}
 
       <section className="space-y-3">
-        <div className="flex flex-wrap gap-1 border-b border-background-200" role="tablist" aria-label="候选人库范围">
+        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="候选人库范围">
           {([
             ['all', '全部候选人'],
             ['in_pipeline', '招聘流程中'],
@@ -1177,9 +1274,10 @@ export default function CandidatesPage() {
               key={scope}
               type="button"
               role="tab"
+              data-ui="candidate-scope-tab"
               aria-selected={libraryScope === scope}
               onClick={() => selectLibraryScope(scope)}
-              className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${libraryScope === scope ? 'border-primary-500 text-primary-700' : 'border-transparent text-foreground-500 hover:text-foreground-800'}`}
+              className={`inline-flex h-9 items-center rounded-lg border px-3.5 text-sm font-medium transition-colors ${libraryScope === scope ? 'border-primary-500 bg-primary-500 text-white' : 'border-background-200 bg-white text-foreground-600 hover:bg-background-100 hover:text-foreground-800'}`}
             >
               {label}
             </button>
@@ -1542,7 +1640,7 @@ export default function CandidatesPage() {
                       className={filterControlClass}
                     />
                   </CandidateColumnFilterHeader>
-                  <th className="min-w-48 px-3 py-3">目标岗位</th>
+                  <th className="min-w-48 px-3 py-3">目标岗位 / 当前需求</th>
                   <CandidateColumnFilterHeader
                     data-ui="candidate-column-filter-stage"
                     label="当前阶段"
@@ -1657,14 +1755,14 @@ export default function CandidatesPage() {
                         {candidate.source?.channel || '—'}
                       </td>
                       <td className="max-w-56 px-3 py-3.5">
-                        {targetDemand ? (
+                        {candidate.desired_position || targetDemand ? (
                           <div>
-                            <p className="truncate text-sm font-medium text-foreground-800">{targetDemand.job_title}</p>
-                            <p className="mt-0.5 truncate text-xs text-foreground-400">
-                              {candidate.current_demand ? '当前需求' : '最近需求'} · {targetDemand.request_no || '未编号'}
-                            </p>
+                            <p className="truncate text-sm font-medium text-foreground-800">{candidate.desired_position || '求职目标待补充'}</p>
+                            {targetDemand && <p className="mt-0.5 truncate text-xs text-foreground-400">
+                              {candidate.current_demand ? '当前需求' : '最近需求'} · {targetDemand.job_title} · {targetDemand.request_no || '未编号'}
+                            </p>}
                           </div>
-                        ) : <span className="text-sm text-foreground-400">待匹配岗位</span>}
+                        ) : <span className="text-sm text-foreground-400">求职目标待补充</span>}
                       </td>
                       <td className="px-3 py-3.5 text-sm text-foreground-600">
                         {candidate.current_stage ? stageLabels[candidate.current_stage] : '—'}
@@ -1778,7 +1876,7 @@ export default function CandidatesPage() {
                 {demandsLoading && <p className="mt-1 text-xs text-foreground-400">正在加载可关联的招聘需求</p>}
                 {demandError && (
                   <p className="mt-1 text-xs text-amber-700">
-                    招聘需求暂时不可用，仍可先入人才库。
+                    招聘需求暂时不可用，仍可先入公司人才库。
                     <button type="button" onClick={() => void loadDemands()} className="ml-1 font-medium hover:text-amber-800">重试</button>
                   </p>
                 )}
@@ -1954,7 +2052,7 @@ export default function CandidatesPage() {
                   <p className="mt-1 text-sm text-foreground-500">{detailError}</p>
                   <button
                     type="button"
-                    onClick={() => void loadCandidateDetail(detailCandidate.id)}
+                    onClick={() => void loadCandidateDetail(detailCandidate.id, detailCandidate.current_demand_id ?? detailCandidate.latest_demand_id ?? requestedDemandId)}
                     className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 bg-white px-3.5 py-2 text-sm font-medium text-foreground-700 hover:bg-background-50"
                   >
                     <RefreshCw size={15} aria-hidden="true" />
@@ -1963,15 +2061,15 @@ export default function CandidatesPage() {
                 </div>
               ) : resumeDetail ? (
                 <div className="space-y-6">
-                  {(detailCandidate.current_demand ?? detailCandidate.latest_demand) && (
+                  {(detailCandidate.desired_position || detailCandidate.current_demand || detailCandidate.latest_demand) && (
                     <section className="rounded-lg border border-background-200 bg-background-50 px-4 py-3">
-                      <p className="text-xs text-foreground-400">目标岗位</p>
+                      <p className="text-xs text-foreground-400">简历求职目标</p>
                       <p className="mt-1 text-sm font-semibold text-foreground-900">
-                        {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.job_title}
+                        {detailCandidate.desired_position || '待补充'}
                       </p>
-                      <p className="mt-1 text-xs text-foreground-500">
-                        {detailCandidate.current_demand ? '当前需求' : '最近需求'} · {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.request_no || '未编号'}
-                      </p>
+                      {(detailCandidate.current_demand ?? detailCandidate.latest_demand) && <p className="mt-1 text-xs text-foreground-500">
+                        {detailCandidate.current_demand ? '当前需求' : '最近需求'} · {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.job_title} · {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.request_no || '未编号'}
+                      </p>}
                     </section>
                   )}
                   {detailReview && (
@@ -1994,6 +2092,11 @@ export default function CandidatesPage() {
                         <div className="shrink-0">{renderReviewAction(detailReview)}</div>
                       </div>
                     </section>
+                  )}
+
+                  {candidateJourney && <CandidateJourneySummary journey={candidateJourney} />}
+                  {journeyError && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>
                   )}
 
                   <section className="grid grid-cols-2 gap-3 border-b border-background-200 pb-5 sm:grid-cols-4">

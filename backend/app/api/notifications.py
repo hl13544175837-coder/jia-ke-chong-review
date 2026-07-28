@@ -1,8 +1,9 @@
 from flask import Blueprint, jsonify, request, g
+from sqlalchemy import or_
 
 from .. import db
 from ..middleware.auth import require_auth
-from ..models import Notification
+from ..models import Notification, RecruitmentDemand
 
 bp = Blueprint("notifications", __name__)
 
@@ -13,6 +14,30 @@ def _positive_int_arg(name, default, max_value=None):
     if max_value is not None:
         value = min(value, max_value)
     return value
+
+
+def _active_only_arg():
+    return str(request.args.get("active_only", "")).strip().lower() in {
+        "1", "true", "yes",
+    }
+
+
+def _notifications_for_current_user(*, active_only=False):
+    query = Notification.query.filter(
+        Notification.user_id == g.user_id,
+        Notification.org_id == g.org_id,
+    )
+    if active_only:
+        query = query.outerjoin(
+            RecruitmentDemand,
+            RecruitmentDemand.id == Notification.demand_id,
+        ).filter(
+            or_(
+                Notification.demand_id.is_(None),
+                RecruitmentDemand.status == "active",
+            )
+        )
+    return query
 
 
 def _serialize(notification):
@@ -33,18 +58,13 @@ def _serialize(notification):
 def list_notifications():
     page = _positive_int_arg("page", 1)
     per_page = _positive_int_arg("per_page", 20, max_value=50)
-
-    query = (
-        Notification.query
-        .filter(Notification.user_id == g.user_id)
-        .filter(Notification.org_id == g.org_id)
-        .order_by(Notification.created_at.desc(), Notification.id.desc())
+    active_only = _active_only_arg()
+    query = _notifications_for_current_user(active_only=active_only).order_by(
+        Notification.created_at.desc(), Notification.id.desc()
     )
     total = query.count()
     notifications = query.offset((page - 1) * per_page).limit(per_page).all()
-    unread_count = Notification.query.filter(
-        Notification.user_id == g.user_id,
-        Notification.org_id == g.org_id,
+    unread_count = _notifications_for_current_user(active_only=active_only).filter(
         Notification.is_read.is_(False),
     ).count()
 
@@ -61,9 +81,7 @@ def list_notifications():
 @bp.get("/notifications/unread-count")
 @require_auth
 def unread_count():
-    count = Notification.query.filter(
-        Notification.user_id == g.user_id,
-        Notification.org_id == g.org_id,
+    count = _notifications_for_current_user(active_only=_active_only_arg()).filter(
         Notification.is_read.is_(False),
     ).count()
     return jsonify({"unread_count": count})

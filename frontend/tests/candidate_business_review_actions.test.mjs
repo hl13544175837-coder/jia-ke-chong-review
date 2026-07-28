@@ -12,6 +12,7 @@ assert.ok(fs.existsSync(path.join(root, actionPath)), '必须提供统一的候�
 const actions = read(actionPath);
 const api = read('readdy-frontend/src/features/businessReviews/api.ts');
 const types = read('readdy-frontend/src/features/businessReviews/types.ts');
+const candidateTypes = read('readdy-frontend/src/features/candidates/types.ts');
 const candidatePage = read('readdy-frontend/src/pages/candidates/page.tsx');
 const demandDrawer = read('readdy-frontend/src/pages/jobs/components/DemandCandidateDrawer.tsx');
 const pushModal = read('readdy-frontend/src/pages/candidates/components/PushToReviewerModal.tsx');
@@ -20,7 +21,7 @@ const dashboard = read('readdy-frontend/src/pages/dashboard/page.tsx');
 
 assert.match(actions, /export function candidateBusinessAction/, '必须由共享函数决定候选人下一步');
 for (const phrase of [
-  '加入当前需求并推送业务筛选',
+  '选择招聘需求并推送业务筛选',
   '推送业务筛选',
   '等待「',
   '反馈',
@@ -30,6 +31,10 @@ for (const phrase of [
 ]) {
   assert.ok(actions.includes(phrase), `下一步动作缺少“${phrase}”`);
 }
+assert.doesNotMatch(actions, /加入当前需求并推送业务筛选/, '未选需求时不能假装已经有“当前需求”');
+assert.match(candidateTypes, /desired_position\?:\s*string/, '候选人列表必须返回简历中的求职目标');
+assert.match(candidatePage, /candidate\.desired_position/, '简历库目标岗位必须优先展示简历求职目标');
+assert.match(candidatePage, /目标岗位 \/ 当前需求/, '目标岗位和流程归属必须明确区分');
 assert.match(actions, /pendingTask[\s\S]*reviewer_name/, '等待状态必须显示当前业务筛选人');
 assert.match(actions, /interview|offer|onboarded|rejected|transferred/, '后续流程不得退回业务筛选');
 

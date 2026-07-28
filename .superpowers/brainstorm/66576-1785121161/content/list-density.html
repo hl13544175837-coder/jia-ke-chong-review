@@ -1,0 +1,57 @@
+<style>
+  .density-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:22px}
+  .density-card{border:1px solid #e6e9e7;border-radius:18px;background:#fff;overflow:hidden;cursor:pointer;transition:.18s ease;box-shadow:0 8px 26px rgba(31,50,42,.05)}
+  .density-card:hover{transform:translateY(-3px);border-color:#5aa47f;box-shadow:0 14px 32px rgba(31,50,42,.11)}
+  .density-card.selected{outline:3px solid rgba(64,148,105,.22);border-color:#409469}
+  .density-head{padding:16px 17px 13px;border-bottom:1px solid #edf0ee;display:flex;align-items:center;justify-content:space-between}
+  .density-head b{font-size:15px;color:#20352b}.density-head span{font-size:11px;color:#688075;background:#eef6f1;padding:4px 8px;border-radius:999px}
+  .mini-toolbar{margin:13px 13px 8px;display:flex;gap:6px;align-items:center}.pill{height:21px;border-radius:7px;background:#eef2ef;color:#6c7b74;font-size:9px;padding:5px 7px}.pill.on{background:#4b9c73;color:#fff}.search{margin-left:auto;width:62px;height:20px;border:1px solid #e4e8e5;border-radius:6px}
+  .mini-table{margin:0 13px 13px;border:1px solid #e9ecea;border-radius:10px;overflow:hidden}.mini-row{display:grid;grid-template-columns:1.25fr 1fr .8fr .9fr;border-bottom:1px solid #eff2f0;align-items:center;color:#47584f}.mini-row:last-child{border:0}.mini-row>span{padding:0 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mini-row .name{font-weight:650;color:#263b31}.mini-row .act{justify-self:end;background:#4f9f76;color:white;border-radius:6px;margin-right:6px;text-align:center}
+  .compact .mini-row{height:27px;font-size:8px}.compact .mini-row .act{padding:4px 5px}.balanced .mini-row{height:38px;font-size:9px}.balanced .mini-row .name{display:flex;flex-direction:column}.balanced .mini-row .name em{font-style:normal;font-weight:400;color:#8b9891;margin-top:3px}.balanced .mini-row .act{padding:5px 7px}.roomy .mini-row{height:54px;font-size:10px;grid-template-columns:1.4fr .9fr .8fr}.roomy .mini-row .name{display:flex;flex-direction:column}.roomy .mini-row .name em{font-style:normal;font-weight:400;color:#8b9891;margin-top:4px}.roomy .mini-row .act{padding:7px 8px}
+  .density-copy{padding:0 17px 17px;color:#66776e;font-size:12px;line-height:1.6}.recommend{color:#327b57;font-weight:700}
+  @media(max-width:900px){.density-grid{grid-template-columns:1fr}}
+</style>
+
+<h2>列表默认显示多“密”最舒服？</h2>
+<p class="subtitle">三种都保留“列表 + 日历”切换，只比较日常列表的信息量和呼吸感。</p>
+
+<div class="density-grid">
+  <div class="density-card compact" data-choice="compact" onclick="toggleSelect(this)">
+    <div class="density-head"><b>A · 高密表格</b><span>一屏约 14 条</span></div>
+    <div class="mini-toolbar"><i class="pill on">全部 26</i><i class="pill">待安排</i><i class="pill">待反馈</i><i class="search"></i></div>
+    <div class="mini-table">
+      <div class="mini-row"><span class="name">林小雅</span><span>产品经理</span><span>一面</span><span class="act">安排</span></div>
+      <div class="mini-row"><span class="name">王浩然</span><span>后端开发</span><span>一面</span><span class="act">安排</span></div>
+      <div class="mini-row"><span class="name">赵晓月</span><span>UI设计师</span><span>已安排</span><span class="act">调整</span></div>
+      <div class="mini-row"><span class="name">陈建国</span><span>数据分析</span><span>待反馈</span><span class="act">催反馈</span></div>
+      <div class="mini-row"><span class="name">孙博文</span><span>前端开发</span><span>已完成</span><span class="act">结果</span></div>
+      <div class="mini-row"><span class="name">周雨桐</span><span>市场运营</span><span>待反馈</span><span class="act">催反馈</span></div>
+    </div>
+    <div class="density-copy">接近旧版，扫得快，但字段多、按钮容易再次挤在一起。</div>
+  </div>
+
+  <div class="density-card balanced" data-choice="balanced" onclick="toggleSelect(this)">
+    <div class="density-head"><b>B · 平衡双行</b><span>一屏约 8 条</span></div>
+    <div class="mini-toolbar"><i class="pill on">全部 7</i><i class="pill">待安排 1</i><i class="pill">待反馈 1</i><i class="search"></i></div>
+    <div class="mini-table">
+      <div class="mini-row"><span class="name">林小雅<em>产品经理 · 产品部</em></span><span>时间待安排</span><span>待安排</span><span class="act">安排面试</span></div>
+      <div class="mini-row"><span class="name">赵晓月<em>UI设计师 · 设计部</em></span><span>07/27 10:00</span><span>已安排</span><span class="act">调整</span></div>
+      <div class="mini-row"><span class="name">陈建国<em>数据分析师 · 数据部</em></span><span>面试官01</span><span>待反馈</span><span class="act">催反馈</span></div>
+      <div class="mini-row"><span class="name">孙博文<em>前端开发 · 研发部</em></span><span>07/26 15:00</span><span>已完成</span><span class="act">查看反馈</span></div>
+    </div>
+    <div class="density-copy"><span class="recommend">推荐：</span>岗位和部门合并为副标题，保留关键时间、面试官、状态和一个主操作。</div>
+  </div>
+
+  <div class="density-card roomy" data-choice="roomy" onclick="toggleSelect(this)">
+    <div class="density-head"><b>C · 舒展卡片</b><span>一屏约 5 条</span></div>
+    <div class="mini-toolbar"><i class="pill on">全部 7</i><i class="pill">已安排 3</i><i class="pill">已完成 2</i><i class="search"></i></div>
+    <div class="mini-table">
+      <div class="mini-row"><span class="name">面试演示-待安排<em>高级 Python 后端工程师 · 技术研发部</em></span><span>时间待安排</span><span class="act">安排面试</span></div>
+      <div class="mini-row"><span class="name">面试演示-待确认<em>高级 Python 后端工程师 · 技术研发部</em></span><span>07/27 08:35</span><span class="act">确认已面试</span></div>
+      <div class="mini-row"><span class="name">面试演示-待反馈<em>高级 Python 后端工程师 · 技术研发部</em></span><span>面试官01</span><span class="act">催反馈</span></div>
+    </div>
+    <div class="density-copy">最接近当前版，按钮舒服，但横向字段不够，批量扫进度偏慢。</div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:18px">点击你最舒服的一种，然后回到对话里告诉我。</p>

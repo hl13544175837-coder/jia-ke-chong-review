@@ -1,0 +1,48 @@
+<style>
+  .concept{border:1px solid #dfe7e2;border-radius:22px;background:#fff;box-shadow:0 18px 54px rgba(31,50,42,.08);overflow:hidden;cursor:pointer;transition:.18s ease;margin-top:22px}.concept:hover{border-color:#54a079}.concept.selected{outline:3px solid rgba(65,149,106,.22);border-color:#41956a}
+  .browser{background:#f4f7f5;padding:20px}.app{border:1px solid #dfe5e1;border-radius:16px;background:#fbfcfb;overflow:hidden;box-shadow:0 12px 36px rgba(33,55,45,.07)}
+  .app-top{height:48px;background:white;border-bottom:1px solid #edf0ee;display:flex;align-items:center;padding:0 20px;justify-content:space-between}.brand{font-size:13px;font-weight:800;color:#294035}.account{font-size:10px;color:#607269}
+  .workspace{display:grid;grid-template-columns:130px 1fr;min-height:535px}.sidebar{background:#fff;border-right:1px solid #edf0ee;padding:17px 11px}.nav{font-size:10px;color:#69776f;padding:9px 10px;border-radius:8px;margin-bottom:4px}.nav.on{background:#e7f3ec;color:#337956;font-weight:700}
+  .main{padding:22px 24px}.headline{display:flex;align-items:flex-start;justify-content:space-between}.headline h3{font-size:20px;margin:0;color:#21342b}.headline p{font-size:10px;color:#839087;margin:5px 0 0}.refresh{font-size:10px;border:1px solid #e1e6e3;background:#fff;border-radius:8px;padding:8px 10px;color:#5c6b63}
+  .toolbar{height:48px;margin-top:18px;display:flex;align-items:center;border-bottom:1px solid #e4e9e6;gap:7px;position:relative}.status{font-size:10px;color:#66756d;padding:8px 10px;border-radius:8px;white-space:nowrap}.status.on{background:#4f9c74;color:white}.tools{margin-left:auto;display:flex;align-items:center;gap:7px}.search{height:31px;width:210px;border:1px solid #dfe5e1;background:white;border-radius:8px;padding:8px 10px;font-size:9px;color:#8a958f}.filter{height:31px;border:1px solid #cfe1d6;background:#f8fcfa;border-radius:8px;padding:8px 10px;font-size:9px;color:#397c59;position:relative}.badge{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;width:15px;height:15px;border-radius:999px;background:#4c9a71;color:#fff;font-size:8px}.count{font-size:9px;color:#87928c;padding:0 4px}.toggle{display:flex;background:#edf1ee;border-radius:9px;padding:3px}.toggle i{font-size:9px;padding:5px 8px;border-radius:6px;color:#78847d}.toggle i.on{background:white;color:#30443a;box-shadow:0 2px 7px rgba(38,58,49,.08)}
+  .table{margin-top:14px;border:1px solid #e5eae7;border-radius:11px;overflow:hidden;background:#fff}.thead,.row{display:grid;grid-template-columns:1.55fr .65fr 1.1fr .85fr .7fr 1.1fr;align-items:center}.thead{height:34px;background:#fafbfa;color:#8a958f;font-size:8px;border-bottom:1px solid #edf0ee}.thead span,.row>span{padding:0 10px}.row{height:58px;border-bottom:1px solid #eef1ef;color:#596a61;font-size:9px}.row:last-child{border:0}.person{display:flex;align-items:center;gap:9px}.avatar{width:29px;height:29px;border-radius:9px;background:#e6f2eb;color:#397b59;display:flex;align-items:center;justify-content:center;font-weight:800}.person b{display:block;color:#263a30;font-size:10px}.person small{display:block;color:#8a958f;margin-top:3px}.tag{display:inline-block!important;width:max-content;padding:5px 7px!important;border-radius:999px;background:#e9f5ee;color:#347b57}.tag.wait{background:#fff3cf;color:#a66b16}.tag.feedback{background:#f0ebff;color:#7855bd}.act{display:flex;gap:5px!important;justify-content:flex-end}.primary{background:#4e9d74;color:#fff;border-radius:7px;padding:7px 9px!important}.secondary{border:1px solid #dfe5e1;color:#4d5d54;border-radius:7px;padding:7px 9px!important}.more{font-size:14px;color:#9aa49f;padding:3px!important}
+  .popover{position:absolute;right:86px;top:42px;z-index:5;width:375px;background:#fff;border:1px solid #dfe6e1;border-radius:14px;box-shadow:0 18px 45px rgba(33,55,45,.18);padding:15px}.popover:before{content:"";position:absolute;right:29px;top:-6px;width:11px;height:11px;background:#fff;border-left:1px solid #dfe6e1;border-top:1px solid #dfe6e1;transform:rotate(45deg)}.pop-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.pop-head b{font-size:11px;color:#2b4035}.pop-head span{font-size:9px;color:#9a7068}.fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.field{border:1px solid #e0e6e2;border-radius:8px;padding:9px;color:#69776f;font-size:9px;background:#fcfdfc}.pop-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:12px;border-top:1px solid #edf0ee;padding-top:11px}.pop-actions i{font-size:9px;padding:7px 11px;border-radius:7px}.cancel{color:#68776f}.apply{background:#4d9b72;color:#fff}
+  .caption{padding:16px 20px 18px;border-top:1px solid #e7ece9;display:flex;justify-content:space-between;gap:20px}.caption b{color:#2b4236;font-size:14px}.caption p{margin:4px 0 0;color:#718078;font-size:12px;line-height:1.6}.approve{font-size:12px;color:#347c58;font-weight:700;white-space:nowrap}
+  @media(max-width:900px){.browser{padding:8px}.workspace{grid-template-columns:1fr}.sidebar{display:none}.main{padding:16px}.status:nth-of-type(n+4){display:none}.search{width:135px}.thead,.row{grid-template-columns:1.5fr .8fr 1fr}.thead span:nth-child(2),.thead span:nth-child(4),.thead span:nth-child(5),.row>span:nth-child(2),.row>span:nth-child(4),.row>span:nth-child(5){display:none}.popover{right:0;width:330px}}
+</style>
+
+<h2>最终折中方向：一排工具栏 + 隐藏式筛选</h2>
+<p class="subtitle">默认只有状态、搜索、筛选入口、结果数和列表/日历切换；筛选浮层悬浮展开，不占页面高度。</p>
+
+<div class="concept" data-choice="approve-balanced-layout" onclick="toggleSelect(this)">
+  <div class="browser">
+    <div class="app">
+      <div class="app-top"><span class="brand">▣ 智聘</span><span class="account">招聘专员01 · 日常招聘执行</span></div>
+      <div class="workspace">
+        <aside class="sidebar"><div class="nav">工作台</div><div class="nav">需求审核</div><div class="nav">候选人</div><div class="nav on">面试管理</div><div class="nav">Offer</div></aside>
+        <main class="main">
+          <div class="headline"><div><h3>面试管理</h3><p>从安排面试到收回反馈，都在这里处理</p></div><i class="refresh">↻ 刷新</i></div>
+          <div class="toolbar">
+            <i class="status on">全部 126</i><i class="status">待安排 31</i><i class="status">已安排 46</i><i class="status">待反馈 18</i><i class="status">已完成 31</i>
+            <div class="tools"><i class="search">⌕ 搜索候选人、岗位或面试官</i><i class="filter">☷ 筛选 <b class="badge">2</b></i><i class="count">18 条</i><span class="toggle"><i class="on">列表</i><i>日历</i></span></div>
+            <div class="popover">
+              <div class="pop-head"><b>筛选面试任务</b><span>重置全部</span></div>
+              <div class="fields"><i class="field">岗位 ▾</i><i class="field">面试官 ▾</i><i class="field">日期范围 ▾</i><i class="field">面试轮次 ▾</i><i class="field">城市 ▾</i><i class="field">部门 ▾</i></div>
+              <div class="pop-actions"><i class="cancel">取消</i><i class="apply">查看 18 条结果</i></div>
+            </div>
+          </div>
+          <section class="table">
+            <div class="thead"><span>候选人 / 应聘岗位</span><span>轮次</span><span>面试安排</span><span>面试官</span><span>状态</span><span style="text-align:right">操作</span></div>
+            <div class="row"><span class="person"><i class="avatar">王</i><i><b>王浩然</b><small>后端开发 · 技术研发部</small></i></span><span>一面</span><span>07/28 14:00</span><span>面试官01</span><span class="tag">已安排</span><span class="act"><i class="secondary">调整</i><i class="primary">确认已面试</i><i class="more">⋮</i></span></div>
+            <div class="row"><span class="person"><i class="avatar">陈</i><i><b>陈伟</b><small>前端开发 · 技术研发部</small></i></span><span>一面</span><span>时间待安排</span><span>待安排</span><span class="tag wait">待安排</span><span class="act"><i class="primary">安排面试</i><i class="more">⋮</i></span></div>
+            <div class="row"><span class="person"><i class="avatar">林</i><i><b>林小雅</b><small>产品经理 · 产品部</small></i></span><span>二面</span><span>07/27 10:00</span><span>面试官02</span><span class="tag feedback">待反馈</span><span class="act"><i class="primary">催反馈</i><i class="more">⋮</i></span></div>
+            <div class="row"><span class="person"><i class="avatar">赵</i><i><b>赵晓月</b><small>UI/UX 设计师 · 设计部</small></i></span><span>一面</span><span>07/26 16:30</span><span>面试官03</span><span class="tag">已完成</span><span class="act"><i class="secondary">查看反馈</i><i class="more">⋮</i></span></div>
+          </section>
+        </main>
+      </div>
+    </div>
+  </div>
+  <div class="caption"><div><b>平衡双行列表，保留真实功能</b><p>一行一个主操作，次要动作放“⋮”；筛选默认隐藏，弹出后六项整齐对称排列。</p></div><span class="approve">点击认可这个方向</span></div>
+</div>
+
+<p class="subtitle" style="margin-top:18px">图中为了说明交互，特意展示了筛选浮层；实际默认进入页面时它是关闭的。</p>

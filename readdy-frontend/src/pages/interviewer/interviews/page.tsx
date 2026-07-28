@@ -13,9 +13,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
+import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { candidatesApi } from '@/features/candidates/api';
-import type { CandidateResumeDetail } from '@/features/candidates/types';
+import type { CandidateJourney, CandidateResumeDetail } from '@/features/candidates/types';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { interviewsApi } from '@/features/interviews/api';
@@ -46,19 +47,50 @@ function assignmentBucket(item: InterviewAssignment): Exclude<TabKey, 'all'> {
   if (item.feedback_submitted || ['completed', 'feedback_submitted'].includes(item.status)) {
     return 'completed';
   }
-  if (item.status === 'awaiting_feedback' || item.is_overdue) return 'feedback';
+  if (item.status === 'awaiting_feedback') return 'feedback';
   return 'upcoming';
 }
 
 function canSubmitFeedback(item: InterviewAssignment) {
-  return interviewHasStarted(item.scheduled_at);
+  return Boolean(item.feedback_submitted) || (
+    item.status === 'awaiting_feedback'
+    && interviewHasStarted(item.scheduled_at)
+  );
+}
+
+function feedbackActionLabel(item: InterviewAssignment) {
+  if (item.feedback_submitted) return '修改评价';
+  if (!interviewHasStarted(item.scheduled_at)) return '面试尚未开始';
+  if (item.status !== 'awaiting_feedback') return '等待招聘专员确认';
+  return '填写评价';
+}
+
+function latestCandidateAssignment(
+  assignments: InterviewAssignment[],
+  candidateId: number,
+  demandId: number | null,
+  assignmentId: number | null,
+) {
+  const matches = assignments.filter((item) => (
+    item.candidate_id === candidateId
+    && (!demandId || item.demand_id === demandId)
+  ));
+  if (assignmentId) {
+    const exact = matches.find((item) => item.id === assignmentId);
+    if (exact) return exact;
+  }
+  return matches.sort((left, right) => (
+    (right.round_sequence || 0) - (left.round_sequence || 0)
+    || right.id - left.id
+  ))[0] ?? null;
 }
 
 export default function InterviewerInterviewsPage() {
   const [searchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
-  const handledCandidateId = useRef<number | null>(null);
+  const requestedAssignmentId = Number(searchParams.get('assignment')) || null;
+  const handledDeepLink = useRef('');
   const [assignments, setAssignments] = useState<InterviewAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -67,6 +99,8 @@ export default function InterviewerInterviewsPage() {
   const [selected, setSelected] = useState<InterviewAssignment | null>(null);
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
   const [selectedResume, setSelectedResume] = useState<CandidateResumeDetail | null>(null);
+  const [selectedJourney, setSelectedJourney] = useState<CandidateJourney | null>(null);
+  const [journeyError, setJourneyError] = useState('');
   const [selectedFeedback, setSelectedFeedback] = useState<InterviewFeedback | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
@@ -113,11 +147,19 @@ export default function InterviewerInterviewsPage() {
     setSelected(assignment);
     setSelectedDemand(null);
     setSelectedResume(null);
+    setSelectedJourney(null);
+    setJourneyError('');
     setSelectedFeedback(null);
     setDetailLoading(true);
     setDetailError('');
     try {
-      const [resume, feedbackRows, demand] = await Promise.all([
+      const journeyPromise = assignment.demand_id
+        ? candidatesApi.getJourney(assignment.candidate_id, assignment.demand_id).catch((error) => {
+          setJourneyError(error instanceof Error ? error.message : '完整招聘过程暂不可用');
+          return null;
+        })
+        : Promise.resolve(null);
+      const [resume, feedbackRows, demand, journey] = await Promise.all([
         candidatesApi.getResume(assignment.candidate_id),
         interviewsApi.listFeedback({
           candidateId: assignment.candidate_id,
@@ -126,9 +168,11 @@ export default function InterviewerInterviewsPage() {
         assignment.demand_id
           ? demandsApi.getDemand(assignment.demand_id)
           : Promise.resolve(null),
+        journeyPromise,
       ]);
       setSelectedResume(resume);
       setSelectedDemand(demand);
+      setSelectedJourney(journey);
       setSelectedFeedback(
         feedbackRows.find((item) => item.assignment_id === assignment.id)
           ?? feedbackRows.find((item) => item.round === assignment.round)
@@ -142,15 +186,18 @@ export default function InterviewerInterviewsPage() {
   }, []);
 
   useEffect(() => {
-    if (loading || !requestedCandidateId || handledCandidateId.current === requestedCandidateId) return;
-    const assignment = assignments.find((item) => (
-      item.candidate_id === requestedCandidateId
-      && (!requestedDemandId || item.demand_id === requestedDemandId)
-    ));
+    const deepLinkKey = `${requestedCandidateId || ''}:${requestedAssignmentId || ''}`;
+    if (loading || !requestedCandidateId || handledDeepLink.current === deepLinkKey) return;
+    const assignment = latestCandidateAssignment(
+      assignments,
+      requestedCandidateId,
+      requestedDemandId,
+      requestedAssignmentId,
+    );
     if (!assignment) return;
-    handledCandidateId.current = requestedCandidateId;
+    handledDeepLink.current = deepLinkKey;
     void openDetail(assignment);
-  }, [assignments, loading, openDetail, requestedCandidateId, requestedDemandId]);
+  }, [assignments, loading, openDetail, requestedAssignmentId, requestedCandidateId, requestedDemandId]);
 
   const openOriginalResume = async (download: boolean) => {
     if (!selected) return;
@@ -176,7 +223,11 @@ export default function InterviewerInterviewsPage() {
 
   const startFeedback = async (assignment: InterviewAssignment) => {
     if (!canSubmitFeedback(assignment)) {
-      setFeedbackError('面试尚未开始，暂时不能提交评价');
+      setFeedbackError(
+        interviewHasStarted(assignment.scheduled_at)
+          ? '请等待招聘专员确认面试已经完成'
+          : '面试尚未开始，暂时不能提交评价',
+      );
       return;
     }
     if (selected?.id !== assignment.id) await openDetail(assignment);
@@ -277,6 +328,7 @@ export default function InterviewerInterviewsPage() {
           <div className="divide-y divide-background-100">
             {filtered.map((item) => {
               const bucket = assignmentBucket(item);
+              const actionLabel = feedbackActionLabel(item);
               return (
                 <div key={item.id} className="flex flex-wrap items-center gap-4 px-5 py-4 hover:bg-background-50/70">
                   <button
@@ -309,17 +361,17 @@ export default function InterviewerInterviewsPage() {
                         ? 'bg-emerald-100 text-emerald-700'
                         : 'bg-primary-100 text-primary-700'
                   }`}>
-                    {bucket === 'feedback' ? '待反馈' : bucket === 'completed' ? '已完成' : '待面试'}
+                    {bucket === 'feedback' ? '待反馈' : bucket === 'completed' ? '已完成' : interviewHasStarted(item.scheduled_at) ? '等待确认' : '待面试'}
                   </span>
                   <button
                     type="button"
                     onClick={() => void startFeedback(item)}
                     disabled={!canSubmitFeedback(item)}
-                    title={!canSubmitFeedback(item) ? '面试尚未开始，暂时不能提交评价' : undefined}
+                    title={!canSubmitFeedback(item) ? actionLabel : undefined}
                     className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground-900 px-3 text-sm font-medium text-white hover:bg-foreground-800 disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500"
                   >
                     <MessageSquareText size={15} />
-                    {!canSubmitFeedback(item) ? '面试尚未开始' : item.feedback_submitted ? '修改评价' : '填写评价'}
+                    {actionLabel}
                   </button>
                 </div>
               );
@@ -374,6 +426,9 @@ export default function InterviewerInterviewsPage() {
                       {selectedDemand?.jd_text || '未填写岗位 JD'}
                     </div>
                   </section>
+
+                  {selectedJourney && <CandidateJourneySummary journey={selectedJourney} />}
+                  {journeyError && <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>}
 
                   <section>
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -431,7 +486,7 @@ export default function InterviewerInterviewsPage() {
                         className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-foreground-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500"
                       >
                         <MessageSquareText size={15} />
-                        {!canSubmitFeedback(selected) ? '面试尚未开始' : selectedFeedback ? '修改评价' : '填写评价'}
+                        {selectedFeedback ? '修改评价' : feedbackActionLabel(selected)}
                       </button>
                     </div>
                   </section>

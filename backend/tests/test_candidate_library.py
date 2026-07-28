@@ -14,6 +14,7 @@ def test_candidate_library_list_includes_resume_summary_and_top_tags(client, mak
             email_masked="a@example.com",
             phone_masked="13800000000",
             resume_json={
+                "target_position": "大模型算法工程师",
                 "education": [
                     {"school": "复旦大学", "degree": "本科", "major": "计算机科学"}
                 ],
@@ -63,6 +64,7 @@ def test_candidate_library_list_includes_resume_summary_and_top_tags(client, mak
         "duration": "2022-至今",
     }
     assert body[0]["education_summary"] == "复旦大学 · 本科 · 计算机科学"
+    assert body[0]["desired_position"] == "大模型算法工程师"
     assert body[0]["current_stage"] == "offer"
     assert body[0]["current_demand_id"] == demand_id
     assert body[0]["current_demand"] == {
@@ -79,6 +81,59 @@ def test_candidate_library_list_includes_resume_summary_and_top_tags(client, mak
     )
     assert offer_candidates.status_code == 200
     assert offer_candidates.get_json()["candidates"][0]["current_stage"] == "offer"
+
+
+def test_full_headcount_blocks_new_candidate_from_joining_demand(client, make_user, app):
+    owner_id, token = make_user("full-hc-owner@example.com", role="recruiter")
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, Job, PipelineStage, RecruitmentDemand
+
+        job = Job(title="HC 已满岗位", jd_text="用于验证名额守卫", owner_hr_id=owner_id)
+        onboarded = Candidate(owner_hr_id=owner_id, name_masked="已入职候选人", resume_json={})
+        waiting = Candidate(owner_hr_id=owner_id, name_masked="待加入候选人", resume_json={})
+        db.session.add_all([job, onboarded, waiting])
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no="REQ-FULL-HC",
+            status="active",
+            approval_status="approved",
+            headcount=1,
+        )
+        db.session.add(demand)
+        db.session.flush()
+        db.session.add(PipelineStage(
+            org_id=demand.org_id,
+            candidate_id=onboarded.id,
+            job_id=job.id,
+            demand_id=demand.id,
+            stage="onboarded",
+            updated_by=owner_id,
+        ))
+        db.session.commit()
+        demand_id = demand.id
+        waiting_id = waiting.id
+
+    response = client.post(
+        "/api/candidates/pipeline/add",
+        headers=_auth(token),
+        json={"demand_id": demand_id, "candidate_ids": [waiting_id]},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json() == {
+        "code": "demand_headcount_reached",
+        "error": "该需求 HC 已满，请先确认完成需求或调整 HC",
+    }
+    with app.app_context():
+        from app.models import PipelineStage
+
+        assert PipelineStage.query.filter_by(
+            candidate_id=waiting_id,
+            demand_id=demand_id,
+        ).count() == 0
 
 
 def test_candidate_favorites_and_safe_duplicate_merge(client, make_user, app):

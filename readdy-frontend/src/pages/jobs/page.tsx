@@ -66,7 +66,7 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
-function initialWorkspaceTab(value: string | undefined): DemandWorkspaceTab {
+function initialWorkspaceTab(value: string | null | undefined): DemandWorkspaceTab {
   if (value === 'pending') return 'pendingApproval';
   if (['paused', 'closed', 'cancelled', 'ended'].includes(value ?? '')) return 'stopped';
   if (value === 'rejected') return 'all';
@@ -74,6 +74,24 @@ function initialWorkspaceTab(value: string | undefined): DemandWorkspaceTab {
     return value as DemandWorkspaceTab;
   }
   return 'all';
+}
+
+function initialDemandSortField(value: string | null): DemandSortField {
+  return value === 'priority' || value === 'deadline' ? value : 'newest';
+}
+
+function initialDemandSortDirection(value: string | null): DemandSortDirection {
+  return value === 'asc' ? 'asc' : 'desc';
+}
+
+function setOptionalSearchParam(
+  params: URLSearchParams,
+  key: string,
+  value: string,
+  defaultValue = '',
+) {
+  if (!value || value === defaultValue) params.delete(key);
+  else params.set(key, value);
 }
 
 export default function JobsPage() {
@@ -89,10 +107,11 @@ export default function JobsPage() {
     openTitle?: string;
     openCreate?: boolean;
     tab?: string;
+    filters?: Partial<DemandWorkspaceFilters>;
   } | null;
-  const [activeTab, setActiveTab] = useState<DemandWorkspaceTab>(() => initialWorkspaceTab(navState?.tab));
+  const [activeTab, setActiveTab] = useState<DemandWorkspaceTab>(() => initialWorkspaceTab(navState?.tab ?? searchParams.get('tab')));
   const [formOpen, setFormOpen] = useState(Boolean(navState?.openCreate));
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
   const [owners, setOwners] = useState<DemandOwnerOption[]>([]);
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
@@ -104,9 +123,17 @@ export default function JobsPage() {
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
   const [detailSaving, setDetailSaving] = useState(false);
   const [detailError, setDetailError] = useState('');
-  const [filters, setFilters] = useState<DemandWorkspaceFilters>({ department: '', owner: '', city: '', stage: '' });
-  const [sortField, setSortField] = useState<DemandSortField>('newest');
-  const [sortDirection, setSortDirection] = useState<DemandSortDirection>('desc');
+  const [filters, setFilters] = useState<DemandWorkspaceFilters>({
+    department: searchParams.get('department') ?? '',
+    owner: searchParams.get('owner') ?? '',
+    city: searchParams.get('city') ?? '',
+    stage: searchParams.get('stage') ?? '',
+    headcount: searchParams.get('headcount') ?? '',
+    deadline: searchParams.get('deadline') ?? '',
+    ...navState?.filters,
+  });
+  const [sortField, setSortField] = useState<DemandSortField>(() => initialDemandSortField(searchParams.get('sort')));
+  const [sortDirection, setSortDirection] = useState<DemandSortDirection>(() => initialDemandSortDirection(searchParams.get('order')));
   const [pushDemand, setPushDemand] = useState<RecruitmentDemand | null>(null);
   const [pushTargets, setPushTargets] = useState<PushTarget[] | null>(null);
   const [pushSubmitting, setPushSubmitting] = useState(false);
@@ -115,6 +142,28 @@ export default function JobsPage() {
   const [reviewers, setReviewers] = useState<BusinessReviewerOption[]>([]);
   const [reviewersLoading, setReviewersLoading] = useState(false);
   const [reviewerError, setReviewerError] = useState<string | null>(null);
+
+  const openDemandInUrl = useCallback((demandId: number | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (demandId) next.set('demand', String(demandId));
+    else next.delete('demand');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const syncDemandWorkspaceUrl = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    setOptionalSearchParam(next, 'tab', activeTab, 'all');
+    setOptionalSearchParam(next, 'q', searchQuery);
+    setOptionalSearchParam(next, 'department', filters.department);
+    setOptionalSearchParam(next, 'city', filters.city);
+    setOptionalSearchParam(next, 'owner', filters.owner);
+    setOptionalSearchParam(next, 'stage', filters.stage);
+    setOptionalSearchParam(next, 'headcount', filters.headcount);
+    setOptionalSearchParam(next, 'deadline', filters.deadline);
+    setOptionalSearchParam(next, 'sort', sortField, 'newest');
+    setOptionalSearchParam(next, 'order', sortDirection, 'desc');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [activeTab, filters, searchParams, searchQuery, setSearchParams, sortDirection, sortField]);
 
   const loadDemands = useCallback(async () => {
     setLoading(true);
@@ -162,30 +211,35 @@ export default function JobsPage() {
 
   useEffect(() => { void loadDemands(); }, [loadDemands]);
   useEffect(() => { void loadOwners(); }, [loadOwners]);
+  useEffect(() => { syncDemandWorkspaceUrl(); }, [syncDemandWorkspaceUrl]);
 
   useEffect(() => {
     if (!navState?.openCreate) return;
     setFormOpen(true);
-    navigate(location.pathname, { replace: true, state: null });
-  }, [location.pathname, navState?.openCreate, navigate]);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, navState?.openCreate, navigate]);
 
   const requisitions = useMemo(() => demands.map(toRequisitionRow), [demands]);
 
   useEffect(() => {
     if (!navState?.openTitle || demands.length === 0) return;
     const match = demands.find((demand) => demand.job_title === navState.openTitle || demand.request_no === navState.openTitle);
-    if (match) setSelectedDemand(match);
-    navigate(location.pathname, { replace: true, state: null });
-  }, [demands, location.pathname, navState?.openTitle, navigate]);
+    if (match) {
+      setSelectedDemand(match);
+      openDemandInUrl(match.id);
+    }
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [demands, location.pathname, location.search, navState?.openTitle, navigate, openDemandInUrl]);
 
   useEffect(() => {
     if (!requestedDemandId || demands.length === 0) return;
     const match = demands.find((demand) => demand.id === requestedDemandId);
     if (match) setSelectedDemand(match);
-    const next = new URLSearchParams(searchParams);
-    next.delete('demand');
-    setSearchParams(next, { replace: true });
-  }, [demands, requestedDemandId, searchParams, setSearchParams]);
+    else {
+      setSelectedDemand(null);
+      openDemandInUrl(null);
+    }
+  }, [demands, openDemandInUrl, requestedDemandId]);
 
   const filteredData = useMemo(() => filterAndSortRequisitions(requisitions, {
     activeTab,
@@ -204,6 +258,7 @@ export default function JobsPage() {
       const created = await demandsApi.createDemand(payload, key);
       setFormOpen(false);
       setSelectedDemand(created);
+      openDemandInUrl(created.id);
       showToast('招聘需求已创建并保存到本地数据库');
       await loadDemands();
     } catch (error) {
@@ -299,11 +354,18 @@ export default function JobsPage() {
   const openDemand = async (row: RequisitionRow) => {
     setDetailError('');
     setSelectedDemand(row.source);
+    openDemandInUrl(Number(row.id));
     try {
       setSelectedDemand(await demandsApi.getDemand(Number(row.id)));
     } catch (error) {
       setDetailError(error instanceof Error ? error.message : '加载完整需求详情失败');
     }
+  };
+
+  const closeDemandDetail = () => {
+    setSelectedDemand(null);
+    setDetailError('');
+    openDemandInUrl(null);
   };
 
   const openCandidates = (req: RequisitionRow, stage: string) => {
@@ -407,7 +469,6 @@ export default function JobsPage() {
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground-900">招聘需求</h1>
           <p className="mt-1 text-sm text-foreground-500">审核需求、寻找候选人并跟进每个岗位的招聘进度</p>
         </div>
         <button type="button" onClick={() => { setCreateErrors({}); setFormOpen(true); }} className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-primary-600">
@@ -437,11 +498,13 @@ export default function JobsPage() {
           onSelectCandidates={(req) => setCandidateDemand(req.source)}
           onViewCandidates={(req) => openCandidates(req, 'all')}
           onStageCountClick={openStageProgress}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           filters={filters}
           onFilterChange={(key, value) => setFilters((current) => ({ ...current, [key]: value }))}
-          onClearFilters={() => setFilters({ department: '', owner: '', city: '', stage: '' })}
+          onClearFilters={() => setFilters({ department: '', owner: '', city: '', stage: '', headcount: '', deadline: '' })}
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={(field: DemandSortField) => {
@@ -555,7 +618,7 @@ export default function JobsPage() {
         saving={detailSaving}
         error={detailError}
         canReview={role === 'recruiter' || role === 'manager' || role === 'admin'}
-        onClose={() => setSelectedDemand(null)}
+        onClose={closeDemandDetail}
         onSave={handleUpdate}
         onApprove={handleApprove}
         onReject={handleReject}

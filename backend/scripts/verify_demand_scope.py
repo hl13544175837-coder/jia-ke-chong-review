@@ -22,7 +22,7 @@ except ImportError:  # Direct execution: python backend/scripts/verify_demand_sc
     from audit_demand_scope import FACT_SPECS, fact_context
 
 
-EXPECTED_REVISION = "20260726_09"
+EXPECTED_REVISION = "20260728_10"
 EXPECTED_COLUMNS = {
     "recruitment_demands": {
         "approval_status",
@@ -132,6 +132,15 @@ EXPECTED_COLUMNS = {
     "events": {"demand_id"},
     "notifications": {"demand_id"},
     "upload_batches": {"demand_id"},
+    "organization_settings": {
+        "org_id",
+        "config_json",
+        "version",
+        "updated_by",
+        "created_at",
+        "updated_at",
+    },
+    "users": {"department"},
 }
 EXPECTED_UNIQUE_INDEXES = {
     "recruitment_demands": {
@@ -168,6 +177,9 @@ EXPECTED_UNIQUE_INDEXES = {
             "candidate_id",
             "pending_slot",
         ),
+    },
+    "organization_settings": {
+        "uq_organization_settings_org": ("org_id",),
     },
 }
 EXPECTED_INDEXES = {
@@ -223,6 +235,9 @@ EXPECTED_INDEXES = {
             "candidate_id",
         ),
     },
+    "organization_settings": {
+        "ix_organization_settings_org_id": ("org_id",),
+    },
 }
 EXPECTED_NOT_NULL_COLUMNS = {
     "recruitment_demands": {"approval_status", "request_no"},
@@ -238,6 +253,8 @@ EXPECTED_NOT_NULL_COLUMNS = {
         "created_at",
         "updated_at",
     },
+    "organization_settings": {"org_id", "config_json", "version", "updated_by", "created_at", "updated_at"},
+    "users": {"department"},
 }
 EXPECTED_FOREIGN_KEYS = {
     "recruitment_demands": {

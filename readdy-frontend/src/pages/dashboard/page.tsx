@@ -35,6 +35,7 @@ const offerStatusLabels: Record<OfferStatus, string> = {
   draft: '草稿待提交',
   pending: '等待主管审批',
   approved: '待发放',
+  rejected: '主管退回修改',
   sent: '等待候选人回复',
   accepted: '待确认入职',
   declined: '已拒绝',
@@ -124,6 +125,15 @@ function waitingDuration(value: string | null) {
   return `${days} 天`;
 }
 
+function isDueTodayOrOverdue(value: string | null | undefined) {
+  if (!value) return false;
+  const parsed = value.length === 10 ? new Date(`${value}T23:59:59`) : backendDate(value);
+  if (!parsed || Number.isNaN(parsed.getTime())) return false;
+  const tomorrow = new Date();
+  tomorrow.setHours(24, 0, 0, 0);
+  return parsed.getTime() < tomorrow.getTime();
+}
+
 function SectionCard({
   title,
   meta,
@@ -207,7 +217,7 @@ export default function DashboardPage() {
       time: demand.target_date ? `截止 ${shortDateLabel(demand.target_date)}` : '截止日期待定',
       actionLabel: '去审核',
       tone: 'amber' as const,
-      urgent: true,
+      urgent: false,
       priority: 100,
       action: () => navigate('/jobs', { state: { fromDashboard: true, tab: 'pendingApproval', openTitle: demand.request_no } }),
     })),
@@ -220,8 +230,8 @@ export default function DashboardPage() {
         : '招聘目标已达成，等待确认是否结束需求',
       time: demand.target_date ? `截止 ${shortDateLabel(demand.target_date)}` : '日期待定',
       actionLabel: '核对需求',
-      tone: (demand.metrics.over_headcount > 0 ? 'red' : 'green') as TaskTone,
-      urgent: demand.metrics.over_headcount > 0,
+      tone: (demand.metrics.over_headcount > 0 ? 'amber' : 'green') as TaskTone,
+      urgent: false,
       priority: demand.metrics.over_headcount > 0 ? 95 : 70,
       action: () => navigate(`/jobs?demand=${demand.id}`),
     })),
@@ -232,8 +242,8 @@ export default function DashboardPage() {
       detail: '请查看完整简历并给出业务筛选结论',
       time: item.due_at ? `截止 ${shortDateLabel(item.due_at)}` : '截止日期待定',
       actionLabel: '去筛选',
-      tone: 'blue' as const,
-      urgent: false,
+      tone: (isDueTodayOrOverdue(item.due_at) ? 'red' : 'blue') as TaskTone,
+      urgent: isDueTodayOrOverdue(item.due_at),
       priority: 80,
       action: () => navigate(`/interviewer/screening?task=${item.id}`),
     })),
@@ -301,13 +311,14 @@ export default function DashboardPage() {
     })),
   ], [navigate, remindFeedback, reviewsWaitingForOthers, summary.waitingFeedback, summary.waitingOfferActions]);
 
-  const attentionItems = [
-    summary.pendingApprovals.length > 0 ? `${summary.pendingApprovals.length} 个需求待审核` : '',
-    summary.overdueFeedback.length > 0 ? `${summary.overdueFeedback.length} 份面试反馈逾期` : '',
+  const attentionItems = ([
+    summary.pendingApprovals.length > 0 ? { label: `${summary.pendingApprovals.length} 个需求待审核`, tone: 'amber' } : null,
+    summary.overdueFeedback.length > 0 ? { label: `${summary.overdueFeedback.length} 份面试反馈逾期`, tone: 'red' } : null,
     summary.demandProgress.filter((item) => item.demand.metrics.over_headcount > 0).length > 0
-      ? `${summary.demandProgress.filter((item) => item.demand.metrics.over_headcount > 0).length} 个岗位超出 HC`
-      : '',
-  ].filter(Boolean);
+      ? { label: `${summary.demandProgress.filter((item) => item.demand.metrics.over_headcount > 0).length} 个岗位超出 HC`, tone: 'amber' }
+      : null,
+  ] as Array<{ label: string; tone: 'amber' | 'red' } | null>)
+    .filter((item): item is { label: string; tone: 'amber' | 'red' } => Boolean(item));
 
   const urgentTaskCount = taskItems.filter((item) => item.urgent).length;
   const activeOfferCount = facts.offers.filter((item) => !['declined', 'withdrawn', 'expired', 'onboarded'].includes(item.status)).length;
@@ -330,6 +341,19 @@ export default function DashboardPage() {
     navigate(`/jobs?demand=${item.demand.id}`);
   };
 
+  const openDemandMetric = (item: (typeof summary.demandProgress)[number], stage: 'business-review' | 'interview' | 'offer' | 'onboarded') => {
+    if (stage === 'business-review') {
+      navigate('/candidates', { state: { fromDashboard: true, demandId: item.demand.id, targetStage: 'business_review' } });
+      return;
+    }
+    if (stage === 'interview') {
+      navigate(`/interviews?demand=${item.demand.id}&from=dashboard`);
+      return;
+    }
+    const tab = stage === 'onboarded' ? '&tab=onboard' : '';
+    navigate(`/offers?demand=${item.demand.id}${tab}&from=dashboard`);
+  };
+
   const openStage = (stage: DashboardStage) => {
     const destination = dashboardStageDrilldown(stage);
     if (destination.kind === 'candidate') {
@@ -345,7 +369,6 @@ export default function DashboardPage() {
         <header>
           <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-end 2xl:justify-between">
             <div>
-              <h1 className="text-xl font-bold text-foreground-900">工作台</h1>
               <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground-900">
                 {greeting()}，{name || (role === 'manager' ? '招聘经理' : '招聘专员')}。
               </p>
@@ -402,9 +425,9 @@ export default function DashboardPage() {
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700">
               <AlertTriangle size={15} aria-hidden="true" />需要关注
             </span>
-            {attentionItems.map((item, index) => (
-              <span key={item} className={`rounded-full px-2.5 py-1 text-xs font-medium ${index === 1 ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                {item}
+            {attentionItems.map((item) => (
+              <span key={item.label} className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.tone === 'red' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                {item.label}
               </span>
             ))}
           </aside>
@@ -510,10 +533,10 @@ export default function DashboardPage() {
                     <tr key={item.demand.id} className="h-[52px] hover:bg-background-50/70">
                       <td className="px-4 py-2.5"><button type="button" onClick={() => navigate(`/jobs?demand=${item.demand.id}`)} className="max-w-[220px] truncate text-left text-sm font-semibold text-foreground-900 hover:text-primary-700">{item.demand.job_title}</button><p className="mt-0.5 text-[11px] text-foreground-400">{item.demand.job_department} · {item.demand.job_city}</p></td>
                       <td className="px-3 py-2.5 text-center text-sm font-medium text-foreground-800">{item.demand.metrics.onboarded_count}/{item.demand.headcount}</td>
-                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.business_review_count}</td>
-                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.interview_count}</td>
-                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.offer_count}</td>
-                      <td className="px-3 py-2.5 text-center text-sm text-foreground-600">{item.demand.metrics.onboarded_count}</td>
+                      <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-business-review" disabled={item.demand.metrics.business_review_count <= 0} onClick={() => openDemandMetric(item, 'business-review')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.business_review_count}</button></td>
+                      <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-interview" disabled={item.demand.metrics.interview_count <= 0} onClick={() => openDemandMetric(item, 'interview')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.interview_count}</button></td>
+                      <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-offer" disabled={item.demand.metrics.offer_count <= 0} onClick={() => openDemandMetric(item, 'offer')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.offer_count}</button></td>
+                      <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-onboarded" disabled={item.demand.metrics.onboarded_count <= 0} onClick={() => openDemandMetric(item, 'onboarded')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.onboarded_count}</button></td>
                       <td className="px-3 py-2.5 text-center"><span className={`inline-flex whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium ${riskClasses[item.risk.level]}`}>{item.risk.label}</span></td>
                       <td className="px-4 py-2.5 text-right"><button type="button" onClick={() => openDemandAction(item)} className="h-8 whitespace-nowrap rounded-lg border border-primary-300 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50">{item.nextAction}</button></td>
                     </tr>
@@ -565,12 +588,12 @@ export default function DashboardPage() {
           </summary>
           <div className="grid gap-3 border-t border-background-100 px-4 py-4 sm:grid-cols-2 lg:grid-cols-5">
             {[
-              ['生效需求', summary.activeDemands.length],
-              ['剩余 HC', summary.gap],
-              ['已排面试', summary.scheduledInterviews.length],
-              ['流程中 Offer', activeOfferCount],
-              ['累计已入职', onboardedCount],
-            ].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-background-50 px-3 py-3"><p className="text-xs text-foreground-500">{label}</p><p className="mt-1 text-xl font-semibold text-foreground-900">{value}</p></div>)}
+              { key: 'active-demands', label: '生效需求', value: summary.activeDemands.length, action: () => navigate('/jobs', { state: { fromDashboard: true, tab: 'active' } }) },
+              { key: 'remaining-hc', label: '剩余 HC', value: summary.gap, action: () => navigate('/jobs', { state: { fromDashboard: true, tab: 'active', filters: { headcount: 'available' } } }) },
+              { key: 'scheduled-interviews', label: '已排面试', value: summary.scheduledInterviews.length, action: () => navigate('/interviews?status=scheduled&from=dashboard') },
+              { key: 'active-offers', label: '流程中 Offer', value: activeOfferCount, action: () => navigate('/offers?from=dashboard') },
+              { key: 'onboarded-total', label: '累计已入职', value: onboardedCount, action: () => navigate('/offers?tab=onboard&from=dashboard') },
+            ].map((item) => <button type="button" key={item.key} data-ui={`dashboard-drilldown-${item.key}`} disabled={item.value <= 0} onClick={item.action} className="rounded-lg bg-background-50 px-3 py-3 text-left transition hover:bg-primary-50 disabled:cursor-default disabled:opacity-55"><span className="text-xs text-foreground-500">{item.label}</span><span className="mt-1 block text-xl font-semibold text-foreground-900">{item.value}</span></button>)}
           </div>
         </details>
 

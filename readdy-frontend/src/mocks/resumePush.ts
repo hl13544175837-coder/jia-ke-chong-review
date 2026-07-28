@@ -290,7 +290,7 @@ export const resumePushRecords: ResumePushRecord[] = [
     deadline: '2026-07-15',
     keyRequirements: '4年测试经验，有移动端自动化经验。评估Appium实战深度和兼容性测试方案设计能力。',
     status: 'rejected',
-    reviewComment: '移动端自动化经验丰富，但岗位目前更需要性能测试方向的人才。候选人缺乏Jmeter和LoadRunner经验，与岗位当前需求不匹配。建议人才池保留，未来有移动端专项测试需求时再联系。',
+    reviewComment: '移动端自动化经验丰富，但岗位目前更需要性能测试方向的人才。候选人缺乏Jmeter和LoadRunner经验，与岗位当前需求不匹配。建议保留在公司人才库，未来有移动端专项测试需求时再联系。',
     reviewTime: '2026-07-12 09:00',
     scheduleMethod: null,
     scheduledTime: null,

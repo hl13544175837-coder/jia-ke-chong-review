@@ -26,6 +26,8 @@ export interface InterviewManagementRow {
   feedback_score: number | null;
   feedback_passed: boolean | null;
   feedback_result: 'passed' | 'not_passed' | 'pending' | null;
+  disposition_reason: string;
+  enter_talent_pool: boolean | null;
 }
 
 export interface InterviewerOption {

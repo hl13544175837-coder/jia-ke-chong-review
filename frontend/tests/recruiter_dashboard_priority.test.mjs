@@ -30,16 +30,16 @@ const facts = {
     },
   ],
   candidateTotal: 8,
-  reviews: [{ status: 'pending' }],
+  reviews: [{ demand_id: 2, status: 'pending' }],
   interviews: [
-    { assignment_status: 'awaiting_feedback', feedback_submitted: false },
-    { assignment_status: 'scheduled', feedback_submitted: false },
+    { demand_id: 2, assignment_status: 'awaiting_feedback', feedback_submitted: false },
+    { demand_id: 2, assignment_status: 'scheduled', feedback_submitted: false },
   ],
   offers: [
-    { status: 'draft' },
-    { status: 'pending' },
-    { status: 'sent' },
-    { status: 'accepted' },
+    { demand_id: 2, status: 'draft' },
+    { demand_id: 2, status: 'pending' },
+    { demand_id: 2, status: 'sent' },
+    { demand_id: 2, status: 'accepted' },
   ],
 };
 
@@ -48,14 +48,14 @@ assert.equal(recruiter.gap, 1);
 assert.equal(recruiter.completionDemands.length, 1);
 assert.deepEqual(recruiter.myOfferActions.map((item) => item.status), ['draft', 'accepted']);
 assert.deepEqual(recruiter.waitingOfferActions.map((item) => item.status), ['pending', 'sent']);
-assert.equal(recruiter.myTaskCount, 4);
+assert.equal(recruiter.myTaskCount, 3);
 assert.equal(recruiter.waitingOthersCount, 4);
 assert.equal(recruiter.scheduledInterviews.length, 1);
 
 const manager = buildDashboardSummary(facts, 'manager');
 assert.deepEqual(manager.myOfferActions.map((item) => item.status), ['pending']);
 assert.deepEqual(manager.waitingOfferActions.map((item) => item.status), ['draft', 'sent', 'accepted']);
-assert.equal(manager.myTaskCount, 3);
+assert.equal(manager.myTaskCount, 2);
 assert.equal(manager.waitingOthersCount, 5);
 
 const page = fs.readFileSync(

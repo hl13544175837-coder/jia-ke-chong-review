@@ -1,3 +1,4 @@
+import type { ProductRole } from '@/auth/productRoleModel';
 import type { OfferRecord } from '@/features/offers/types';
 import {
   offerPrimaryAction,
@@ -8,14 +9,25 @@ import {
 
 interface Props {
   offers: OfferRecord[];
+  role: ProductRole | null;
   onOpen: (offer: OfferRecord) => void;
   onPrimaryAction: (offer: OfferRecord) => void;
+}
+
+function rowPrimaryAction(offer: OfferRecord, role: ProductRole | null) {
+  const canApprove = role === 'manager' || role === 'admin' || role === 'hr_director';
+  if (offer.status === 'pending' && !canApprove) return '查看确认进度';
+  if ((offer.status === 'draft' || offer.status === 'rejected') && role !== 'recruiter' && role !== 'admin') {
+    return offer.status === 'rejected' ? '查看退回记录' : '查看草稿';
+  }
+  return offerPrimaryAction(offer.status);
 }
 
 const statusClasses: Record<OfferRecord['status'], string> = {
   draft: 'bg-background-200 text-foreground-600',
   pending: 'bg-amber-50 text-amber-700',
   approved: 'bg-blue-50 text-blue-700',
+  rejected: 'bg-red-50 text-red-700',
   sent: 'bg-cyan-50 text-cyan-700',
   accepted: 'bg-emerald-50 text-emerald-700',
   declined: 'bg-red-50 text-red-700',
@@ -36,7 +48,7 @@ function displayDate(offer: OfferRecord) {
   return offer.onboard_date ? `预计入职 ${offer.onboard_date}` : '日期待确认';
 }
 
-export default function OfferTable({ offers, onOpen, onPrimaryAction }: Props) {
+export default function OfferTable({ offers, role, onOpen, onPrimaryAction }: Props) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[920px] table-fixed text-left text-sm">
@@ -92,7 +104,7 @@ export default function OfferTable({ offers, onOpen, onPrimaryAction }: Props) {
                 <td className="px-5 py-4" onClick={(event) => event.stopPropagation()}>
                   <div className="flex justify-end">
                     <button type="button" onClick={() => onPrimaryAction(offer)} className={`h-8 rounded-lg px-3 text-xs font-medium ${['declined', 'withdrawn', 'expired', 'onboarded'].includes(offer.status) ? 'border border-background-300 bg-white text-foreground-700 hover:bg-background-100' : 'bg-primary-500 text-white hover:bg-primary-600'}`}>
-                      {offerPrimaryAction(offer.status)}
+                      {rowPrimaryAction(offer, role)}
                     </button>
                   </div>
                 </td>

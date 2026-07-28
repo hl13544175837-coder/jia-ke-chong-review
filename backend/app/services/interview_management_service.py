@@ -11,6 +11,7 @@ from ..models import (
     BusinessReviewTask,
     Candidate,
     CandidateDemandFlow,
+    CandidateDisposition,
     Event,
     InterviewAssignment,
     InterviewFeedback,
@@ -94,6 +95,24 @@ def interview_management_rows(*, user_id, role, org_id):
         .correlate(CandidateDemandFlow)
         .scalar_subquery()
     )
+    latest_disposition_ids = (
+        db.session.query(
+            CandidateDisposition.org_id.label("org_id"),
+            CandidateDisposition.candidate_id.label("candidate_id"),
+            CandidateDisposition.demand_id.label("demand_id"),
+            func.max(CandidateDisposition.id).label("disposition_id"),
+        )
+        .filter(
+            CandidateDisposition.org_id == org_id,
+            CandidateDisposition.demand_id.isnot(None),
+        )
+        .group_by(
+            CandidateDisposition.org_id,
+            CandidateDisposition.candidate_id,
+            CandidateDisposition.demand_id,
+        )
+        .subquery()
+    )
     interviewer = aliased(User)
     query = (
         db.session.query(
@@ -104,6 +123,7 @@ def interview_management_rows(*, user_id, role, org_id):
             InterviewAssignment,
             interviewer,
             InterviewFeedback,
+            CandidateDisposition,
         )
         .select_from(CandidateDemandFlow)
         .join(
@@ -160,12 +180,27 @@ def interview_management_rows(*, user_id, role, org_id):
                 InterviewFeedback.assignment_id == InterviewAssignment.id,
             ),
         )
+        .outerjoin(
+            latest_disposition_ids,
+            and_(
+                latest_disposition_ids.c.org_id == CandidateDemandFlow.org_id,
+                latest_disposition_ids.c.candidate_id == CandidateDemandFlow.candidate_id,
+                latest_disposition_ids.c.demand_id == CandidateDemandFlow.demand_id,
+            ),
+        )
+        .outerjoin(
+            CandidateDisposition,
+            CandidateDisposition.id == latest_disposition_ids.c.disposition_id,
+        )
         .filter(
             CandidateDemandFlow.org_id == org_id,
-            CandidateDemandFlow.status == "active",
             Candidate.org_id == org_id,
             Candidate.deleted_at.is_(None),
             RecruitmentDemand.org_id == org_id,
+            db.or_(
+                CandidateDemandFlow.status == "active",
+                InterviewAssignment.id.isnot(None),
+            ),
             db.or_(
                 PipelineStage.stage.in_(INTERVIEW_PIPELINE_STAGES),
                 InterviewAssignment.id.isnot(None),
@@ -185,7 +220,7 @@ def interview_management_rows(*, user_id, role, org_id):
         InterviewAssignment.id.asc(),
     ).all()
     rows = []
-    for candidate, demand, job, stage, assignment, assigned_user, feedback in records:
+    for candidate, demand, job, stage, assignment, assigned_user, feedback, disposition in records:
         rows.append(
             {
                 "candidate_id": candidate.id,
@@ -219,6 +254,10 @@ def interview_management_rows(*, user_id, role, org_id):
                 "feedback_score": feedback.score if feedback else None,
                 "feedback_passed": feedback.passed if feedback else None,
                 "feedback_result": feedback_result(feedback),
+                "disposition_reason": disposition.reason if disposition else "",
+                "enter_talent_pool": (
+                    bool(disposition.enter_talent_pool) if disposition else None
+                ),
             }
         )
     return rows
@@ -304,6 +343,7 @@ def update_interview_assignment(
                 link=(
                     f"/interviewer/interviews?demand={assignment.demand_id}"
                     f"&candidate={assignment.candidate_id}"
+                    f"&assignment={assignment.id}"
                 ),
             )
         )
@@ -363,6 +403,7 @@ def mark_interview_conducted(*, assignment):
             link=(
                 f"/interviewer/interviews?demand={assignment.demand_id}"
                 f"&candidate={assignment.candidate_id}"
+                f"&assignment={assignment.id}"
             ),
         )
     )
@@ -431,6 +472,7 @@ def remind_interview_feedback(*, assignment):
             link=(
                 f"/interviewer/interviews?demand={assignment.demand_id}"
                 f"&candidate={assignment.candidate_id}"
+                f"&assignment={assignment.id}"
             ),
         )
     )
