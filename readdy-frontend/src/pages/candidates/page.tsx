@@ -1542,7 +1542,7 @@ export default function CandidatesPage() {
                       className={filterControlClass}
                     />
                   </CandidateColumnFilterHeader>
-                  <th className="min-w-48 px-3 py-3">求职目标 / 当前需求</th>
+                  <th className="min-w-48 px-3 py-3">目标岗位 / 当前需求</th>
                   <CandidateColumnFilterHeader
                     data-ui="candidate-column-filter-stage"
                     label="当前阶段"
