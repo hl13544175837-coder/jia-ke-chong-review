@@ -39,6 +39,14 @@ export interface MonthlyPerformanceFunnel {
   hired: number;
 }
 
+export interface MonthlyPerformanceConversionRates {
+  resume_to_screened: number | null;
+  screened_to_business_review: number | null;
+  business_review_to_interview: number | null;
+  interview_to_offer: number | null;
+  offer_to_hired: number | null;
+}
+
 export interface MonthlyPerformanceDemand {
   demand_id: number;
   request_no: string;
@@ -48,8 +56,8 @@ export interface MonthlyPerformanceDemand {
   status: string;
   headcount: number;
   funnel: MonthlyPerformanceFunnel;
-  conversion_rates: Record<string, number>;
-  overall_conversion_rate: number;
+  conversion_rates: MonthlyPerformanceConversionRates;
+  overall_conversion_rate: number | null;
 }
 
 export interface MonthlyPerformance {
@@ -59,8 +67,8 @@ export interface MonthlyPerformance {
   summary: {
     demand_count: number;
     funnel: MonthlyPerformanceFunnel;
-    conversion_rates: Record<string, number>;
-    overall_conversion_rate: number;
+    conversion_rates: MonthlyPerformanceConversionRates;
+    overall_conversion_rate: number | null;
     progress_count: number;
   };
   demands: MonthlyPerformanceDemand[];

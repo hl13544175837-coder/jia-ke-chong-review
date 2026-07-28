@@ -19,7 +19,6 @@ for (const label of [
   '待处理事项',
   '今日面试',
   '我的岗位进展',
-  '阶段概况',
   '等待他人',
   '数据看板',
 ]) {
@@ -34,7 +33,9 @@ assert.match(page, /summary\.todayInterviews\.slice\(0, 3\)/, '今日面试最�
 assert.match(page, /taskItems\.slice\(0, 4\)/, '待处理事项首屏最多展示四条');
 assert.match(page, /summary\.demandProgress\.slice\(0, 5\)/, '岗位进展首屏最多展示五个重点岗位');
 assert.match(page, /interviewsApi\.remindFeedback/, '面试催反馈必须调用真实提醒接口');
-assert.match(page, /<FunnelChart/, '工作台应展示可点击的招聘漏斗');
+assert.doesNotMatch(page, /<FunnelChart/, '工作台顶部不得再保留口径不同的重复漏斗');
+assert.match(monthlyPanel, /<FunnelChart/, '月度数据看板应展示可点击的招聘漏斗');
+assert.doesNotMatch(visibleDashboardSource, /阶段概况/, '重复的阶段概况应从工作台移除');
 assert.match(page, /MonthlyPerformancePanel/, '工作台应展示按自然月统计的数据看板');
 assert.doesNotMatch(page, /data-ui="dashboard-data-overview"/, '旧数据概览应从工作台移除');
 assert.doesNotMatch(page, /data-ui="dashboard-performance-overview"/, '旧招聘业绩统计应从工作台移除');
