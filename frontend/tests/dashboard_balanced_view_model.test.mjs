@@ -74,18 +74,21 @@ const facts = {
   offers: [],
   interviews: [
     {
+      demand_id: 1,
       assignment_id: 101,
       assignment_status: 'scheduled',
       feedback_submitted: false,
       scheduled_at: '2026-07-27T02:00:00Z',
     },
     {
+      demand_id: 1,
       assignment_id: 102,
       assignment_status: 'scheduled',
       feedback_submitted: false,
       scheduled_at: '2026-07-28T02:00:00Z',
     },
     {
+      demand_id: 1,
       assignment_id: 103,
       assignment_status: 'awaiting_feedback',
       feedback_submitted: false,

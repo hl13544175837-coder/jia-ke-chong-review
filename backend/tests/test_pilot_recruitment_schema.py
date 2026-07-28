@@ -80,7 +80,7 @@ def test_revisions_08_and_09_accept_preexisting_orm_contract(tmp_path):
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260726_09"
+            ).scalar_one() == "20260728_10"
     finally:
         engine.dispose()
 
@@ -125,6 +125,6 @@ def test_revision_09_creates_candidate_talent_pool_tables(tmp_path):
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260726_09"
+            ).scalar_one() == "20260728_10"
     finally:
         engine.dispose()

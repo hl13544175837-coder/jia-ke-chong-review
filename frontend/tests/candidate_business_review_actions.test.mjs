@@ -34,7 +34,7 @@ for (const phrase of [
 assert.doesNotMatch(actions, /加入当前需求并推送业务筛选/, '未选需求时不能假装已经有“当前需求”');
 assert.match(candidateTypes, /desired_position\?:\s*string/, '候选人列表必须返回简历中的求职目标');
 assert.match(candidatePage, /candidate\.desired_position/, '简历库目标岗位必须优先展示简历求职目标');
-assert.match(candidatePage, /求职目标 \/ 当前需求/, '目标岗位和流程归属必须明确区分');
+assert.match(candidatePage, /目标岗位 \/ 当前需求/, '目标岗位和流程归属必须明确区分');
 assert.match(actions, /pendingTask[\s\S]*reviewer_name/, '等待状态必须显示当前业务筛选人');
 assert.match(actions, /interview|offer|onboarded|rejected|transferred/, '后续流程不得退回业务筛选');
 

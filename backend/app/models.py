@@ -578,9 +578,13 @@ class KpiStandard(db.Model):
 
 
 class OrganizationSetting(db.Model):
+    __table_args__ = (
+        db.UniqueConstraint("org_id", name="uq_organization_settings_org"),
+        db.Index("ix_organization_settings_org_id", "org_id"),
+    )
     __tablename__ = "organization_settings"
     id = db.Column(db.Integer, primary_key=True)
-    org_id = db.Column(db.Integer, nullable=False, unique=True, index=True)
+    org_id = db.Column(db.Integer, nullable=False)
     config_json = db.Column(db.JSON, nullable=False)
     version = db.Column(db.Integer, default=1, nullable=False)
     updated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)

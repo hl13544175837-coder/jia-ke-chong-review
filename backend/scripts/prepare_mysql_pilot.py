@@ -13,7 +13,7 @@ import sys
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 ROOT = BACKEND_DIR.parent
 ALEMBIC_INI = BACKEND_DIR / "alembic.ini"
-TARGET_REVISION = "20260726_09"
+TARGET_REVISION = "20260728_10"
 
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))

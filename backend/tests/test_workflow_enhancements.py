@@ -493,6 +493,7 @@ def test_assignment_payload_flags_overdue_and_feedback_status(client, make_user,
 
         assignment = db.session.get(InterviewAssignment, created["id"])
         assignment.scheduled_at = past
+        assignment.status = "awaiting_feedback"
         db.session.commit()
 
     listed = client.get("/api/interview/assignments", headers=_auth(iv_token)).get_json()
