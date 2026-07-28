@@ -94,7 +94,7 @@ export default function MainLayout() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const response = await notificationsApi.list(1, 20);
+      const response = await notificationsApi.list(1, 20, { activeOnly: true });
       setNotifications(response.notifications);
     } catch {
       // 通知读取失败不应阻断用户的主流程。
@@ -167,7 +167,10 @@ export default function MainLayout() {
   const openNotification = (notification: NotificationItem) => {
     if (!notification.is_read) void markRead(notification.id);
     setNotifOpen(false);
-    if (notification.link) navigate(notification.link);
+    if (notification.link) {
+      const sourceLink = `${notification.link}${notification.link.includes('?') ? '&' : '?'}from=notification`;
+      navigate(sourceLink);
+    }
   };
 
   return (
