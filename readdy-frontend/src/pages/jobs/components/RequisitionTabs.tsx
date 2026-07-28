@@ -24,10 +24,10 @@ export default function RequisitionTabs({ activeTab, onTabChange }: RequisitionT
           key={tab.key}
           onClick={() => onTabChange(tab.key)}
           className={`
-            px-3.5 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-all cursor-pointer
+            inline-flex h-9 items-center rounded-lg border px-3.5 text-sm font-medium whitespace-nowrap transition-all cursor-pointer
             ${activeTab === tab.key
-              ? 'bg-primary-500 text-white'
-              : 'bg-white text-foreground-600 hover:bg-background-100 border border-background-200'
+              ? 'border-primary-500 bg-primary-500 text-white'
+              : 'border-background-200 bg-white text-foreground-600 hover:bg-background-100'
             }
           `}
         >

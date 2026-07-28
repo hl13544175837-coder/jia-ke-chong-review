@@ -1166,7 +1166,7 @@ export default function CandidatesPage() {
       )}
 
       <section className="space-y-3">
-        <div className="flex flex-wrap gap-1 border-b border-background-200" role="tablist" aria-label="候选人库范围">
+        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="候选人库范围">
           {([
             ['all', '全部候选人'],
             ['in_pipeline', '招聘流程中'],
@@ -1177,9 +1177,10 @@ export default function CandidatesPage() {
               key={scope}
               type="button"
               role="tab"
+              data-ui="candidate-scope-tab"
               aria-selected={libraryScope === scope}
               onClick={() => selectLibraryScope(scope)}
-              className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${libraryScope === scope ? 'border-primary-500 text-primary-700' : 'border-transparent text-foreground-500 hover:text-foreground-800'}`}
+              className={`inline-flex h-9 items-center rounded-lg border px-3.5 text-sm font-medium transition-colors ${libraryScope === scope ? 'border-primary-500 bg-primary-500 text-white' : 'border-background-200 bg-white text-foreground-600 hover:bg-background-100 hover:text-foreground-800'}`}
             >
               {label}
             </button>

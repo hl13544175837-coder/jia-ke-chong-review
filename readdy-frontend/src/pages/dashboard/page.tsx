@@ -125,6 +125,15 @@ function waitingDuration(value: string | null) {
   return `${days} 天`;
 }
 
+function isDueTodayOrOverdue(value: string | null | undefined) {
+  if (!value) return false;
+  const parsed = value.length === 10 ? new Date(`${value}T23:59:59`) : backendDate(value);
+  if (!parsed || Number.isNaN(parsed.getTime())) return false;
+  const tomorrow = new Date();
+  tomorrow.setHours(24, 0, 0, 0);
+  return parsed.getTime() < tomorrow.getTime();
+}
+
 function SectionCard({
   title,
   meta,
@@ -208,7 +217,7 @@ export default function DashboardPage() {
       time: demand.target_date ? `截止 ${shortDateLabel(demand.target_date)}` : '截止日期待定',
       actionLabel: '去审核',
       tone: 'amber' as const,
-      urgent: true,
+      urgent: false,
       priority: 100,
       action: () => navigate('/jobs', { state: { fromDashboard: true, tab: 'pendingApproval', openTitle: demand.request_no } }),
     })),
@@ -221,8 +230,8 @@ export default function DashboardPage() {
         : '招聘目标已达成，等待确认是否结束需求',
       time: demand.target_date ? `截止 ${shortDateLabel(demand.target_date)}` : '日期待定',
       actionLabel: '核对需求',
-      tone: (demand.metrics.over_headcount > 0 ? 'red' : 'green') as TaskTone,
-      urgent: demand.metrics.over_headcount > 0,
+      tone: (demand.metrics.over_headcount > 0 ? 'amber' : 'green') as TaskTone,
+      urgent: false,
       priority: demand.metrics.over_headcount > 0 ? 95 : 70,
       action: () => navigate(`/jobs?demand=${demand.id}`),
     })),
@@ -233,8 +242,8 @@ export default function DashboardPage() {
       detail: '请查看完整简历并给出业务筛选结论',
       time: item.due_at ? `截止 ${shortDateLabel(item.due_at)}` : '截止日期待定',
       actionLabel: '去筛选',
-      tone: 'blue' as const,
-      urgent: false,
+      tone: (isDueTodayOrOverdue(item.due_at) ? 'red' : 'blue') as TaskTone,
+      urgent: isDueTodayOrOverdue(item.due_at),
       priority: 80,
       action: () => navigate(`/interviewer/screening?task=${item.id}`),
     })),
@@ -302,13 +311,14 @@ export default function DashboardPage() {
     })),
   ], [navigate, remindFeedback, reviewsWaitingForOthers, summary.waitingFeedback, summary.waitingOfferActions]);
 
-  const attentionItems = [
-    summary.pendingApprovals.length > 0 ? `${summary.pendingApprovals.length} 个需求待审核` : '',
-    summary.overdueFeedback.length > 0 ? `${summary.overdueFeedback.length} 份面试反馈逾期` : '',
+  const attentionItems = ([
+    summary.pendingApprovals.length > 0 ? { label: `${summary.pendingApprovals.length} 个需求待审核`, tone: 'amber' } : null,
+    summary.overdueFeedback.length > 0 ? { label: `${summary.overdueFeedback.length} 份面试反馈逾期`, tone: 'red' } : null,
     summary.demandProgress.filter((item) => item.demand.metrics.over_headcount > 0).length > 0
-      ? `${summary.demandProgress.filter((item) => item.demand.metrics.over_headcount > 0).length} 个岗位超出 HC`
-      : '',
-  ].filter(Boolean);
+      ? { label: `${summary.demandProgress.filter((item) => item.demand.metrics.over_headcount > 0).length} 个岗位超出 HC`, tone: 'amber' }
+      : null,
+  ] as Array<{ label: string; tone: 'amber' | 'red' } | null>)
+    .filter((item): item is { label: string; tone: 'amber' | 'red' } => Boolean(item));
 
   const urgentTaskCount = taskItems.filter((item) => item.urgent).length;
   const activeOfferCount = facts.offers.filter((item) => !['declined', 'withdrawn', 'expired', 'onboarded'].includes(item.status)).length;
@@ -403,9 +413,9 @@ export default function DashboardPage() {
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700">
               <AlertTriangle size={15} aria-hidden="true" />需要关注
             </span>
-            {attentionItems.map((item, index) => (
-              <span key={item} className={`rounded-full px-2.5 py-1 text-xs font-medium ${index === 1 ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                {item}
+            {attentionItems.map((item) => (
+              <span key={item.label} className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.tone === 'red' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                {item.label}
               </span>
             ))}
           </aside>
