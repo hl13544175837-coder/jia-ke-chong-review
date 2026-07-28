@@ -10,6 +10,7 @@ from scripts.bootstrap_database import bootstrap_database
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 SEED_SCRIPT = BACKEND_DIR / "seed_dev.py"
+INTERVIEW_DEMO_SCRIPT = BACKEND_DIR / "scripts" / "add_interview_demo_data.py"
 
 
 def _run_seed(database_url):
@@ -29,6 +30,66 @@ def _run_seed(database_url):
         text=True,
         check=False,
     )
+
+
+def _run_interview_demo_sync(database_url):
+    env = os.environ.copy()
+    env.update(
+        {
+            "DATABASE_URL": database_url,
+            "FLASK_DEBUG": "true",
+            "LOCAL_SCHEMA_COMPAT": "false",
+        }
+    )
+    return subprocess.run(
+        [sys.executable, str(INTERVIEW_DEMO_SCRIPT)],
+        cwd=BACKEND_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_interview_demo_sync_is_idempotent_and_covers_every_action(tmp_path):
+    db_path = tmp_path / "interview-demo.db"
+    database_url = f"sqlite:///{db_path}"
+    bootstrap_database(database_url, allow_empty=True)
+    seed_result = _run_seed(database_url)
+    assert seed_result.returncode == 0, seed_result.stdout + seed_result.stderr
+
+    for _ in range(2):
+        sync_result = _run_interview_demo_sync(database_url)
+        assert sync_result.returncode == 0, sync_result.stdout + sync_result.stderr
+
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(
+            "SELECT candidate.name_masked, assignment.status, assignment.scheduled_at, "
+            "feedback.id AS feedback_id "
+            "FROM candidates AS candidate "
+            "LEFT JOIN interview_assignments AS assignment "
+            "ON assignment.candidate_id = candidate.id AND assignment.is_primary = 1 "
+            "LEFT JOIN interview_feedback AS feedback ON feedback.assignment_id = assignment.id "
+            "WHERE candidate.name_masked LIKE '面试演示-%' "
+            "ORDER BY candidate.name_masked"
+        ).fetchall()
+        assert len(rows) == 5
+        by_name = {row["name_masked"]: row for row in rows}
+        assert by_name["面试演示-待安排"]["status"] is None
+        assert by_name["面试演示-可改期"]["status"] == "scheduled"
+        assert by_name["面试演示-待确认"]["status"] == "scheduled"
+        assert by_name["面试演示-待反馈"]["status"] == "awaiting_feedback"
+        assert by_name["面试演示-已完成"]["status"] == "feedback_submitted"
+        assert by_name["面试演示-已完成"]["feedback_id"] is not None
+
+        now = connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+        assert by_name["面试演示-可改期"]["scheduled_at"] > now
+        assert by_name["面试演示-待确认"]["scheduled_at"] <= now
+        assert by_name["面试演示-待反馈"]["scheduled_at"] <= now
+    finally:
+        connection.close()
 
 
 def test_seed_dev_creates_demand_scoped_acceptance_data_on_bootstrapped_head(tmp_path):
@@ -72,6 +133,76 @@ def test_seed_dev_creates_demand_scoped_acceptance_data_on_bootstrapped_head(tmp
             "AND assignment.job_id = demand.job_id"
         ).fetchone()[0]
         assert assigned_to_interviewer >= 1
+
+        hr01_interview_statuses = {
+            row[0]
+            for row in connection.execute(
+                "SELECT DISTINCT assignment.status "
+                "FROM interview_assignments AS assignment "
+                "JOIN recruitment_demands AS demand ON demand.id = assignment.demand_id "
+                "JOIN users AS owner ON owner.id = demand.owner_hr_id "
+                "WHERE owner.email = 'hr01@mvp.local' "
+                "AND assignment.is_primary = 1 "
+                "AND assignment.status IN ('scheduled', 'awaiting_feedback', 'feedback_submitted')"
+            ).fetchall()
+        }
+        assert hr01_interview_statuses == {
+            "scheduled",
+            "awaiting_feedback",
+            "feedback_submitted",
+        }
+
+        scheduled_scenarios = connection.execute(
+            "SELECT candidate.name_masked, assignment.scheduled_at "
+            "FROM interview_assignments AS assignment "
+            "JOIN candidates AS candidate ON candidate.id = assignment.candidate_id "
+            "JOIN recruitment_demands AS demand ON demand.id = assignment.demand_id "
+            "JOIN users AS owner ON owner.id = demand.owner_hr_id "
+            "WHERE owner.email = 'hr01@mvp.local' "
+            "AND assignment.is_primary = 1 "
+            "AND assignment.status = 'scheduled' "
+            "AND candidate.name_masked LIKE '验收候选人-%'"
+        ).fetchall()
+        assert {row["name_masked"] for row in scheduled_scenarios} >= {
+            "验收候选人-已安排",
+            "验收候选人-待确认",
+        }
+        now = connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+        assert any(row["scheduled_at"] > now for row in scheduled_scenarios)
+        assert any(row["scheduled_at"] <= now for row in scheduled_scenarios)
+
+        hr01_unassigned_interviews = connection.execute(
+            "SELECT COUNT(*) "
+            "FROM candidate_demand_flows AS flow "
+            "JOIN recruitment_demands AS demand ON demand.id = flow.demand_id "
+            "JOIN users AS owner ON owner.id = demand.owner_hr_id "
+            "JOIN pipeline_stages AS stage ON stage.id = ("
+            "SELECT MAX(latest.id) FROM pipeline_stages AS latest "
+            "WHERE latest.candidate_id = flow.candidate_id "
+            "AND latest.demand_id = flow.demand_id"
+            ") "
+            "LEFT JOIN interview_assignments AS assignment "
+            "ON assignment.candidate_id = flow.candidate_id "
+            "AND assignment.demand_id = flow.demand_id "
+            "AND assignment.is_primary = 1 "
+            "AND assignment.status NOT IN ('cancelled', 'canceled') "
+            "WHERE owner.email = 'hr01@mvp.local' "
+            "AND flow.status = 'active' "
+            "AND stage.stage = 'interview' "
+            "AND assignment.id IS NULL"
+        ).fetchone()[0]
+        assert hr01_unassigned_interviews >= 1
+
+        hr01_completed_feedback = connection.execute(
+            "SELECT COUNT(*) "
+            "FROM interview_feedback AS feedback "
+            "JOIN interview_assignments AS assignment ON assignment.id = feedback.assignment_id "
+            "JOIN recruitment_demands AS demand ON demand.id = assignment.demand_id "
+            "JOIN users AS owner ON owner.id = demand.owner_hr_id "
+            "WHERE owner.email = 'hr01@mvp.local' "
+            "AND assignment.status = 'feedback_submitted'"
+        ).fetchone()[0]
+        assert hr01_completed_feedback >= 1
 
         visible_offers = connection.execute(
             "SELECT COUNT(*) FROM offer_records AS offer "
