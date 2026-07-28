@@ -86,6 +86,8 @@ def _seed_monthly_facts(app, owner_a_id, owner_b_id):
             stage(candidates[1], demand_a, "A2", (7, 11), "ai_screen"),
             stage(candidates[2], demand_old, "A3", (6, 28), "pending"),
             stage(candidates[2], demand_old, "A3", (7, 12), "interview"),
+            # 同一候选人参与不同需求时，每个需求都应单独计入月度漏斗。
+            stage(candidates[0], demand_old, "A1-OLD", (7, 14), "pending"),
             stage(candidates[3], demand_b, "B1", (7, 13), "pending"),
         ]
         db.session.add_all(stages)
@@ -115,14 +117,21 @@ def test_monthly_staff_performance_is_scoped_by_owner_and_month(
     assert payload["month"] == "2026-07"
     assert payload["owner"]["name"] == "专员A"
     assert payload["summary"]["funnel"] == {
-        "resumes": 2,
-        "screened": 2,
-        "business_review": 1,
+        "resumes": 4,
+        "screened": 3,
+        "business_review": 2,
         "interview": 2,
         "offer": 1,
         "hired": 1,
     }
-    assert payload["summary"]["overall_conversion_rate"] == 50.0
+    assert payload["summary"]["conversion_rates"] == {
+        "resume_to_screened": 75.0,
+        "screened_to_business_review": 66.7,
+        "business_review_to_interview": 100.0,
+        "interview_to_offer": 50.0,
+        "offer_to_hired": 100.0,
+    }
+    assert payload["summary"]["overall_conversion_rate"] == 25.0
     assert {row["demand_id"] for row in payload["demands"]} == {
         seeded["demand_a_id"],
         seeded["demand_old_id"],
@@ -132,6 +141,23 @@ def test_monthly_staff_performance_is_scoped_by_owner_and_month(
         f"/api/bi/staff/{owner_a_id}/monthly?month=2026-07",
         headers=_auth(manager_token),
     ).status_code == 200
+
+    empty_response = client.get(
+        f"/api/bi/staff/{owner_a_id}/monthly?month=2026-08",
+        headers=_auth(owner_a_token),
+    )
+    assert empty_response.status_code == 200
+    empty_summary = empty_response.get_json()["summary"]
+    assert empty_summary["funnel"] == {
+        "resumes": 0,
+        "screened": 0,
+        "business_review": 0,
+        "interview": 0,
+        "offer": 0,
+        "hired": 0,
+    }
+    assert all(value is None for value in empty_summary["conversion_rates"].values())
+    assert empty_summary["overall_conversion_rate"] is None
 
 
 def test_monthly_staff_performance_rejects_other_recruiters(client, make_user):

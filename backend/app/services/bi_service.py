@@ -568,43 +568,53 @@ def _month_bounds(month):
 
 
 def _monthly_funnel_counts(rows):
-    counts = {
-        "resumes": 0,
-        "screened": 0,
-        "business_review": 0,
-        "interview": 0,
-        "offer": 0,
-        "hired": 0,
+    stage_keys = (
+        "resumes",
+        "screened",
+        "business_review",
+        "interview",
+        "offer",
+        "hired",
+    )
+    stage_index = {
+        "pending": 0,
+        "ai_screen": 1,
+        "business_review": 2,
+        "interview": 3,
+        "offer": 4,
+        "onboarded": 5,
     }
-    candidates_by_stage = {key: set() for key in counts}
-    stage_map = {
-        "pending": "resumes",
-        "ai_screen": "screened",
-        "business_review": "business_review",
-        "interview": "interview",
-        "offer": "offer",
-        "onboarded": "hired",
-    }
+    candidates_by_stage = {key: set() for key in stage_keys}
     for row in rows:
-        key = stage_map.get(normalize_pipeline_stage(row.stage))
-        if key is not None:
-            candidates_by_stage[key].add(row.candidate_id)
-    for key, candidate_ids in candidates_by_stage.items():
-        counts[key] = len(candidate_ids)
-    return counts
+        reached_index = stage_index.get(normalize_pipeline_stage(row.stage))
+        if reached_index is None:
+            continue
+        demand_candidate = (row.demand_id, row.candidate_id)
+        for key in stage_keys[: reached_index + 1]:
+            candidates_by_stage[key].add(demand_candidate)
+    return {
+        key: len(candidates_by_stage[key])
+        for key in stage_keys
+    }
+
+
+def _monthly_rate(numerator, denominator):
+    if int(denominator or 0) <= 0:
+        return None
+    return _safe_rate(numerator, denominator)
 
 
 def _monthly_conversion_rates(funnel):
     return {
-        "resume_to_screened": _safe_rate(funnel["screened"], funnel["resumes"]),
-        "screened_to_business_review": _safe_rate(
+        "resume_to_screened": _monthly_rate(funnel["screened"], funnel["resumes"]),
+        "screened_to_business_review": _monthly_rate(
             funnel["business_review"], funnel["screened"]
         ),
-        "business_review_to_interview": _safe_rate(
+        "business_review_to_interview": _monthly_rate(
             funnel["interview"], funnel["business_review"]
         ),
-        "interview_to_offer": _safe_rate(funnel["offer"], funnel["interview"]),
-        "offer_to_hired": _safe_rate(funnel["hired"], funnel["offer"]),
+        "interview_to_offer": _monthly_rate(funnel["offer"], funnel["interview"]),
+        "offer_to_hired": _monthly_rate(funnel["hired"], funnel["offer"]),
     }
 
 
@@ -659,7 +669,7 @@ def build_monthly_staff_performance(org_id, hr_id, month):
             "headcount": int(demand.headcount or 0),
             "funnel": funnel,
             "conversion_rates": _monthly_conversion_rates(funnel),
-            "overall_conversion_rate": _safe_rate(funnel["hired"], funnel["resumes"]),
+            "overall_conversion_rate": _monthly_rate(funnel["hired"], funnel["resumes"]),
         })
 
     total_funnel = {
@@ -674,7 +684,7 @@ def build_monthly_staff_performance(org_id, hr_id, month):
             "demand_count": len(demand_rows),
             "funnel": total_funnel,
             "conversion_rates": _monthly_conversion_rates(total_funnel),
-            "overall_conversion_rate": _safe_rate(total_funnel["hired"], total_funnel["resumes"]),
+            "overall_conversion_rate": _monthly_rate(total_funnel["hired"], total_funnel["resumes"]),
             "progress_count": sum(
                 total_funnel[key]
                 for key in ("screened", "business_review", "interview", "offer", "hired")

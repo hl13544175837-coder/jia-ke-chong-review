@@ -18,10 +18,16 @@ assert.match(panel, /自然月/);
 assert.match(panel, /只展示该招聘专员负责且当月有数据的招聘需求/);
 assert.match(panel, /查看岗位明细/);
 assert.match(panel, /本月合计/);
+assert.match(panel, /当月招聘漏斗/);
+assert.match(panel, /performance\.summary\.funnel/);
+assert.match(panel, /performance\.summary\.conversion_rates/);
+assert.match(panel, /<FunnelChart/);
 assert.match(funnel, /onStageClick/);
+assert.match(funnel, /转化[^\n]*—/);
 assert.doesNotMatch(funnel, /@\/mocks\/dashboard/);
 assert.match(page, /MonthlyPerformancePanel/);
-assert.match(page, /<FunnelChart/);
+assert.doesNotMatch(page, /import FunnelChart/);
+assert.doesNotMatch(page, /<FunnelChart/);
 assert.doesNotMatch(page, /data-ui="dashboard-data-overview"/);
 assert.doesNotMatch(page, /data-ui="dashboard-performance-overview"/);
 

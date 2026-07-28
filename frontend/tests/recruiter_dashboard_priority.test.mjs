@@ -62,9 +62,15 @@ const page = fs.readFileSync(
   path.join(root, 'readdy-frontend/src/pages/dashboard/page.tsx'),
   'utf8',
 );
-for (const label of ['待处理事项', '今日面试', '我的岗位进展', '阶段概况', '等待他人']) {
-  assert.match(page, new RegExp(label), `工作台缺少“${label}”`);
+const monthlyPanel = fs.readFileSync(
+  path.join(root, 'readdy-frontend/src/pages/dashboard/components/MonthlyPerformancePanel.tsx'),
+  'utf8',
+);
+const visibleDashboardSource = `${page}\n${monthlyPanel}`;
+for (const label of ['待处理事项', '今日面试', '我的岗位进展', '等待他人', '当月招聘漏斗']) {
+  assert.match(visibleDashboardSource, new RegExp(label), `工作台缺少“${label}”`);
 }
+assert.doesNotMatch(page, /阶段概况/, '工作台不得保留与月度漏斗重复的阶段概况');
 for (const duplicate of ['现在最该处理', '候选人档案', '进入面试管理']) {
   assert.doesNotMatch(page, new RegExp(duplicate), `工作台仍保留重复内容“${duplicate}”`);
 }

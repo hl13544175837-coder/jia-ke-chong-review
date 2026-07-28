@@ -4,7 +4,13 @@ import { useCompanyAuth } from '@/auth/companyAuth';
 import { demandsApi } from '@/features/demands/api';
 import type { DemandOwnerOption } from '@/features/demands/types';
 import { analyticsApi } from '@/features/analytics/api';
-import type { MonthlyPerformance, MonthlyPerformanceDemand } from '@/features/analytics/types';
+import type {
+  MonthlyPerformance,
+  MonthlyPerformanceConversionRates,
+  MonthlyPerformanceDemand,
+} from '@/features/analytics/types';
+import type { DashboardStage } from '../stageDrilldown';
+import FunnelChart from './FunnelChart';
 
 function currentMonth() {
   const now = new Date();
@@ -19,13 +25,18 @@ function recentMonths() {
   });
 }
 
-const funnelColumns: Array<{ key: keyof MonthlyPerformanceDemand['funnel']; label: string }> = [
-  { key: 'resumes', label: '简历库' },
-  { key: 'screened', label: '初筛' },
-  { key: 'business_review', label: '业务筛选' },
-  { key: 'interview', label: '面试' },
-  { key: 'offer', label: 'Offer' },
-  { key: 'hired', label: '入职' },
+const funnelColumns: Array<{
+  key: keyof MonthlyPerformanceDemand['funnel'];
+  label: string;
+  stage: DashboardStage;
+  conversionKey?: keyof MonthlyPerformanceConversionRates;
+}> = [
+  { key: 'resumes', label: '简历库', stage: 'hr_screening' },
+  { key: 'screened', label: '初筛', stage: 'ai_screening', conversionKey: 'resume_to_screened' },
+  { key: 'business_review', label: '业务筛选', stage: 'business_review', conversionKey: 'screened_to_business_review' },
+  { key: 'interview', label: '面试', stage: 'interview', conversionKey: 'business_review_to_interview' },
+  { key: 'offer', label: 'Offer', stage: 'offer', conversionKey: 'interview_to_offer' },
+  { key: 'hired', label: '入职', stage: 'onboarding', conversionKey: 'offer_to_hired' },
 ];
 
 function SummaryMetric({ label, value, suffix = '' }: { label: string; value: number | string; suffix?: string }) {
@@ -49,13 +60,13 @@ function DemandDetail({ demand }: { demand: MonthlyPerformanceDemand }) {
         ))}
       </div>
       <p className="mt-3 text-xs text-foreground-500">
-        本岗位总体转化率：<span className="font-semibold text-primary-700">{demand.overall_conversion_rate}%</span>
+        本岗位总体转化率：<span className="font-semibold text-primary-700">{demand.overall_conversion_rate === null ? '—' : `${demand.overall_conversion_rate}%`}</span>
       </p>
     </div>
   );
 }
 
-export default function MonthlyPerformancePanel() {
+export default function MonthlyPerformancePanel({ onStageClick }: { onStageClick: (stage: DashboardStage) => void }) {
   const { role, userId } = useCompanyAuth();
   const [month, setMonth] = useState(currentMonth);
   const [owners, setOwners] = useState<DemandOwnerOption[]>([]);
@@ -160,6 +171,23 @@ export default function MonthlyPerformancePanel() {
 
       {performance && (
         <>
+          <FunnelChart
+            embedded
+            title="当月招聘漏斗"
+            description={`${month.replace('-', '年')}月 · ${performance.owner.name} · 点击阶段查看对应信息`}
+            items={funnelColumns.map((column) => ({
+              stage: column.label,
+              count: performance.summary.funnel[column.key],
+              conversionRate: column.conversionKey
+                ? performance.summary.conversion_rates[column.conversionKey]
+                : null,
+            }))}
+            onStageClick={(stageLabel) => {
+              const target = funnelColumns.find((column) => column.label === stageLabel);
+              if (target) onStageClick(target.stage);
+            }}
+          />
+
           <div className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-4 lg:grid-cols-7">
             <SummaryMetric label="负责招聘需求" value={performance.summary.demand_count} suffix=" 个" />
             <SummaryMetric label="简历进入" value={performance.summary.funnel.resumes} suffix=" 人" />
@@ -167,7 +195,11 @@ export default function MonthlyPerformancePanel() {
             <SummaryMetric label="面试推进" value={performance.summary.funnel.interview} suffix=" 人" />
             <SummaryMetric label="Offer" value={performance.summary.funnel.offer} suffix=" 人" />
             <SummaryMetric label="已入职" value={performance.summary.funnel.hired} suffix=" 人" />
-            <SummaryMetric label="总体转化率" value={performance.summary.overall_conversion_rate} suffix="%" />
+            <SummaryMetric
+              label="总体转化率"
+              value={performance.summary.overall_conversion_rate ?? '—'}
+              suffix={performance.summary.overall_conversion_rate === null ? '' : '%'}
+            />
           </div>
 
           {expanded && (
@@ -204,7 +236,7 @@ export default function MonthlyPerformancePanel() {
                             )}
                           </td>
                           {!isOpen && funnelColumns.map((column) => <td key={column.key} className="px-2 py-3 text-center font-medium text-foreground-700">{demand.funnel[column.key]}</td>)}
-                          {!isOpen && <td className="px-3 py-3 text-center font-medium text-primary-700">{demand.overall_conversion_rate}%</td>}
+                          {!isOpen && <td className="px-3 py-3 text-center font-medium text-primary-700">{demand.overall_conversion_rate === null ? '—' : `${demand.overall_conversion_rate}%`}</td>}
                         </tr>
                       );
                     })}

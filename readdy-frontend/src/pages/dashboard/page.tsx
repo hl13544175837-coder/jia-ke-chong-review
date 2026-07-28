@@ -18,11 +18,9 @@ import type { OfferStatus } from '@/features/offers/types';
 import { useToast } from '@/hooks/useToast';
 import { buildDashboardSummary, type DashboardFacts, type DemandRiskLevel } from './summary';
 import {
-  canOpenDashboardStage,
   dashboardStageDrilldown,
   type DashboardStage,
 } from './stageDrilldown';
-import FunnelChart from './components/FunnelChart';
 import MonthlyPerformancePanel from './components/MonthlyPerformancePanel';
 
 const emptyFacts: DashboardFacts = {
@@ -322,25 +320,6 @@ export default function DashboardPage() {
     .filter((item): item is { label: string; tone: 'amber' | 'red' } => Boolean(item));
 
   const urgentTaskCount = taskItems.filter((item) => item.urgent).length;
-  const dashboardFunnel = useMemo(() => {
-    const resumes = summary.activeDemands.reduce((total, item) => total + item.metrics.recommended_count, 0);
-    const stages = [
-      { stage: '简历库', count: resumes, key: 'hr_screening' as const },
-      { stage: '初筛', count: summary.stageSummary.aiScreening, key: 'ai_screening' as const },
-      { stage: '业务筛选', count: summary.stageSummary.businessReview, key: 'business_review' as const },
-      { stage: '面试', count: summary.stageSummary.interview, key: 'interview' as const },
-      { stage: 'Offer', count: summary.stageSummary.offer, key: 'offer' as const },
-      { stage: '入职', count: summary.stageSummary.onboarding, key: 'onboarding' as const },
-    ];
-    return stages.map((item, index) => ({
-      stage: item.stage,
-      count: item.count,
-      key: item.key,
-      conversionRate: index === 0 ? null : (stages[index - 1].count > 0
-        ? Math.round((item.count / stages[index - 1].count) * 1000) / 10
-        : 0),
-    }));
-  }, [summary.activeDemands, summary.stageSummary]);
 
   const openDemandAction = (item: (typeof summary.demandProgress)[number]) => {
     if (item.nextAction === '管理面试') {
@@ -378,11 +357,6 @@ export default function DashboardPage() {
       return;
     }
     navigate(destination.to);
-  };
-
-  const openFunnelStage = (stage: string) => {
-    const target = dashboardFunnel.find((item) => item.stage === stage);
-    if (target) openStage(target.key);
   };
 
   return (
@@ -454,8 +428,6 @@ export default function DashboardPage() {
             ))}
           </aside>
         )}
-
-        <FunnelChart items={dashboardFunnel} onStageClick={openFunnelStage} />
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(320px,0.95fr)]">
           <SectionCard
@@ -573,24 +545,6 @@ export default function DashboardPage() {
           </SectionCard>
 
           <div className="grid gap-4">
-            <SectionCard title="阶段概况">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 px-4 py-3 sm:grid-cols-5 xl:grid-cols-1">
-                {[
-                  ['HR 初筛', summary.stageSummary.hrScreening, 'ri-file-search-line', 'bg-stone-100 text-stone-600', 'hr_screening'],
-                  ['AI 筛选', summary.stageSummary.aiScreening, 'ri-robot-2-line', 'bg-sky-50 text-sky-700', 'ai_screening'],
-                  ['业务筛选', summary.stageSummary.businessReview, 'ri-user-search-line', 'bg-amber-50 text-amber-700', 'business_review'],
-                  ['面试', summary.stageSummary.interview, 'ri-checkbox-circle-line', 'bg-emerald-50 text-emerald-700', 'interview'],
-                  ['Offer', summary.stageSummary.offer, 'ri-mail-line', 'bg-primary-50 text-primary-700', 'offer'],
-                  ['待入职', summary.stageSummary.onboarding, 'ri-user-follow-line', 'bg-emerald-50 text-emerald-800', 'onboarding'],
-                ].map(([label, value, icon, tone, stage]) => (
-                  <button key={String(label)} type="button" disabled={!canOpenDashboardStage(Number(value))} onClick={() => openStage(stage as DashboardStage)} className="flex items-center justify-between rounded-lg px-1 py-0.5 text-left hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent">
-                    <span className="inline-flex items-center gap-2 text-xs text-foreground-600"><span className={`flex h-7 w-7 items-center justify-center rounded-lg ${tone}`}><i className={String(icon)} /></span>{label}</span>
-                    <span className="text-sm font-semibold text-foreground-900">{value} 人</span>
-                  </button>
-                ))}
-              </div>
-            </SectionCard>
-
             <SectionCard title="等待他人">
               <div className="divide-y divide-background-100">
                 {waitingItems.slice(0, 3).map((item) => (
@@ -606,7 +560,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <MonthlyPerformancePanel />
+        <MonthlyPerformancePanel onStageClick={openStage} />
       </div>
     </div>
   );
