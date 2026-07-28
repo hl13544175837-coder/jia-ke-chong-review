@@ -124,6 +124,7 @@ type CandidateColumnFilter = 'identity' | 'parse' | 'profile' | 'skills' | 'sour
 type PipelineStatusFilter = '' | 'in_pipeline' | 'not_in_pipeline';
 type CandidateSortBy = 'created_at' | 'name_masked';
 type SortOrder = 'asc' | 'desc';
+type CandidateLibraryScope = 'all' | 'in_pipeline' | 'talent_pool' | 'favorite';
 
 const filterControlClass = 'h-9 w-full rounded-lg border border-background-300 bg-white px-2.5 text-xs text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100';
 
@@ -142,6 +143,26 @@ function isPipelineStatus(value: string): value is Exclude<PipelineStatusFilter,
 function positiveSearchId(value: string | null) {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function positiveSearchPage(value: string | null) {
+  const page = Number(value);
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
+function initialCandidateScope(value: string | null): CandidateLibraryScope {
+  if (value === 'in_pipeline' || value === 'talent_pool' || value === 'favorite') return value;
+  return 'all';
+}
+
+function setCandidateSearchParam(
+  params: URLSearchParams,
+  key: string,
+  value: string,
+  defaultValue = '',
+) {
+  if (!value || value === defaultValue) params.delete(key);
+  else params.set(key, value);
 }
 
 function candidateFromReviewTask(task: BusinessReviewTask): CandidateListItem {
@@ -272,7 +293,7 @@ export default function CandidatesPage() {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = positiveSearchId(searchParams.get('demand'));
   const requestedCandidateId = positiveSearchId(searchParams.get('candidate'));
   const navState = isCandidateNavigationState(location.state)
@@ -286,21 +307,31 @@ export default function CandidatesPage() {
       ? '&from=jobs'
       : '';
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [demandFilter, setDemandFilter] = useState<number | ''>(navState?.demandId ?? '');
-  const [cityFilter, setCityFilter] = useState('');
-  const [educationFilter, setEducationFilter] = useState('');
-  const [skillFilter, setSkillFilter] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('');
-  const [parseStatusFilter, setParseStatusFilter] = useState<'' | ParseStatus>('');
-  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<PipelineStatusFilter>('');
-  const [favoriteFilter, setFavoriteFilter] = useState(false);
-  const [stageFilter, setStageFilter] = useState<'' | CandidateStage>(candidateStageFromNavigation(navState?.targetStage));
-  const [scoreFilter, setScoreFilter] = useState('0');
-  const [sortBy, setSortBy] = useState<CandidateSortBy>('created_at');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const initialScope = initialCandidateScope(searchParams.get('scope'));
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
+  const [demandFilter, setDemandFilter] = useState<number | ''>(navState?.demandId ?? requestedDemandId ?? '');
+  const [cityFilter, setCityFilter] = useState(() => searchParams.get('city') ?? '');
+  const [educationFilter, setEducationFilter] = useState(() => searchParams.get('education') ?? '');
+  const [skillFilter, setSkillFilter] = useState(() => searchParams.get('skill') ?? '');
+  const [sourceFilter, setSourceFilter] = useState(() => searchParams.get('source') ?? '');
+  const [parseStatusFilter, setParseStatusFilter] = useState<'' | ParseStatus>(() => {
+    const value = searchParams.get('parse');
+    return value && isParseStatus(value) ? value : '';
+  });
+  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<PipelineStatusFilter>(
+    initialScope === 'in_pipeline' ? 'in_pipeline' : initialScope === 'talent_pool' ? 'not_in_pipeline' : '',
+  );
+  const [favoriteFilter, setFavoriteFilter] = useState(initialScope === 'favorite');
+  const [stageFilter, setStageFilter] = useState<'' | CandidateStage>(() => {
+    const fromNavigation = candidateStageFromNavigation(navState?.targetStage);
+    const fromUrl = searchParams.get('stage');
+    return fromNavigation || (fromUrl && isCandidateStage(fromUrl) ? fromUrl : '');
+  });
+  const [scoreFilter, setScoreFilter] = useState(() => searchParams.get('score') ?? '0');
+  const [sortBy, setSortBy] = useState<CandidateSortBy>(() => searchParams.get('sort') === 'name_masked' ? 'name_masked' : 'created_at');
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => searchParams.get('order') === 'asc' ? 'asc' : 'desc');
   const [openColumnFilter, setOpenColumnFilter] = useState<CandidateColumnFilter | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => positiveSearchPage(searchParams.get('page')));
   const [candidateResponse, setCandidateResponse] = useState<CandidateListResponse>(emptyCandidateResponse);
   const [candidatesLoading, setCandidatesLoading] = useState(true);
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
@@ -328,7 +359,7 @@ export default function CandidatesPage() {
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
   const [uploadOpen, setUploadOpen] = useState(Boolean(navState?.openUpload));
-  const [uploadDemandId, setUploadDemandId] = useState<number | ''>(navState?.demandId ?? '');
+  const [uploadDemandId, setUploadDemandId] = useState<number | ''>(navState?.demandId ?? requestedDemandId ?? '');
   const [uploadSourceChannel, setUploadSourceChannel] = useState('');
   const [uploadNote, setUploadNote] = useState('');
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
@@ -341,8 +372,8 @@ export default function CandidatesPage() {
   useEffect(() => {
     if (!navState?.openUpload) return;
     setUploadOpen(true);
-    navigate(location.pathname, { replace: true, state: null });
-  }, [location.pathname, navState?.openUpload, navigate]);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, navState?.openUpload, navigate]);
 
   const [detailCandidate, setDetailCandidate] = useState<CandidateListItem | null>(null);
   const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);
@@ -363,6 +394,57 @@ export default function CandidatesPage() {
   const handledCandidateQuery = useRef<number | null>(null);
   const deferredSearch = useDeferredValue(searchQuery.trim());
   const deferredSkill = useDeferredValue(skillFilter.trim());
+
+  const openCandidateInUrl = useCallback((candidateId: number | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (candidateId) next.set('candidate', String(candidateId));
+    else next.delete('candidate');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const syncCandidateWorkspaceUrl = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    const scope: CandidateLibraryScope = favoriteFilter
+      ? 'favorite'
+      : pipelineStatusFilter === 'in_pipeline'
+        ? 'in_pipeline'
+        : pipelineStatusFilter === 'not_in_pipeline'
+          ? 'talent_pool'
+          : 'all';
+    setCandidateSearchParam(next, 'scope', scope, 'all');
+    setCandidateSearchParam(next, 'q', searchQuery);
+    setCandidateSearchParam(next, 'demand', demandFilter ? String(demandFilter) : '');
+    setCandidateSearchParam(next, 'city', cityFilter);
+    setCandidateSearchParam(next, 'education', educationFilter);
+    setCandidateSearchParam(next, 'skill', skillFilter);
+    setCandidateSearchParam(next, 'source', sourceFilter);
+    setCandidateSearchParam(next, 'parse', parseStatusFilter);
+    setCandidateSearchParam(next, 'stage', stageFilter);
+    setCandidateSearchParam(next, 'score', scoreFilter, '0');
+    setCandidateSearchParam(next, 'sort', sortBy, 'created_at');
+    setCandidateSearchParam(next, 'order', sortOrder, 'desc');
+    setCandidateSearchParam(next, 'page', String(page), '1');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [
+    cityFilter,
+    demandFilter,
+    educationFilter,
+    favoriteFilter,
+    page,
+    parseStatusFilter,
+    pipelineStatusFilter,
+    scoreFilter,
+    searchParams,
+    searchQuery,
+    setSearchParams,
+    skillFilter,
+    sortBy,
+    sortOrder,
+    sourceFilter,
+    stageFilter,
+  ]);
+
+  useEffect(() => { syncCandidateWorkspaceUrl(); }, [syncCandidateWorkspaceUrl]);
 
   const activeDemands = useMemo(
     () => demands.filter((demand) => demand.status === 'active' && demand.approval_status === 'approved'),
@@ -683,8 +765,9 @@ export default function CandidatesPage() {
     setJourneyError(null);
     setResumePreviewUrl(null);
     setOriginalResumeError(null);
+    openCandidateInUrl(candidate.id);
     void loadCandidateDetail(candidate.id, candidate.current_demand_id ?? candidate.latest_demand_id ?? requestedDemandId);
-  }, [loadCandidateDetail, requestedDemandId]);
+  }, [loadCandidateDetail, openCandidateInUrl, requestedDemandId]);
 
   const focusedReview = useMemo(() => reviewTasks.find((task) => (
     task.candidate_id === requestedCandidateId
@@ -738,6 +821,7 @@ export default function CandidatesPage() {
     setDetailError(null);
     setResumePreviewUrl(null);
     setOriginalResumeError(null);
+    openCandidateInUrl(null);
   };
 
   const previewOriginalResume = async () => {

@@ -45,3 +45,18 @@ test('招聘需求把筛选、排序和当前详情写入网址', () => {
   assert.match(page, /setSearchParams\(next,\s*\{\s*replace:\s*true\s*\}\)/);
   assert.doesNotMatch(page, /localStorage|sessionStorage/);
 });
+
+test('简历库把范围、筛选、页码和当前简历写入网址', () => {
+  const page = read('readdy-frontend/src/pages/candidates/page.tsx');
+
+  for (const key of [
+    'scope', 'q', 'demand', 'city', 'education', 'skill', 'source',
+    'parse', 'stage', 'score', 'sort', 'order', 'page', 'candidate',
+  ]) {
+    assert.match(page, new RegExp(`['\"]${key}['\"]`), `简历库缺少 ${key} 网址状态`);
+  }
+  assert.match(page, /syncCandidateWorkspaceUrl/);
+  assert.match(page, /openCandidateInUrl/);
+  assert.match(page, /closeCandidateDetail/);
+  assert.doesNotMatch(page, /localStorage|sessionStorage/);
+});
