@@ -5,7 +5,7 @@ template projection and is never used to merge sibling Demand workflows.
 """
 
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 
 from .. import db
 from ..models import (
@@ -550,4 +550,135 @@ def build_staff_operational_workload(org_id, hr_id):
             ),
         },
         "demands": [_demand_summary(metrics) for metrics in metrics_rows],
+    }
+
+
+def _month_bounds(month):
+    year_text, month_text = str(month or "").split("-", 1)
+    year = int(year_text)
+    month_number = int(month_text)
+    if year < 2000 or year > 2100 or month_number < 1 or month_number > 12:
+        raise ValueError("月份格式不正确")
+    start = datetime(year, month_number, 1)
+    if month_number == 12:
+        end = datetime(year + 1, 1, 1)
+    else:
+        end = datetime(year, month_number + 1, 1)
+    return start, end
+
+
+def _monthly_funnel_counts(rows):
+    counts = {
+        "resumes": 0,
+        "screened": 0,
+        "business_review": 0,
+        "interview": 0,
+        "offer": 0,
+        "hired": 0,
+    }
+    candidates_by_stage = {key: set() for key in counts}
+    stage_map = {
+        "pending": "resumes",
+        "ai_screen": "screened",
+        "business_review": "business_review",
+        "interview": "interview",
+        "offer": "offer",
+        "onboarded": "hired",
+    }
+    for row in rows:
+        key = stage_map.get(normalize_pipeline_stage(row.stage))
+        if key is not None:
+            candidates_by_stage[key].add(row.candidate_id)
+    for key, candidate_ids in candidates_by_stage.items():
+        counts[key] = len(candidate_ids)
+    return counts
+
+
+def _monthly_conversion_rates(funnel):
+    return {
+        "resume_to_screened": _safe_rate(funnel["screened"], funnel["resumes"]),
+        "screened_to_business_review": _safe_rate(
+            funnel["business_review"], funnel["screened"]
+        ),
+        "business_review_to_interview": _safe_rate(
+            funnel["interview"], funnel["business_review"]
+        ),
+        "interview_to_offer": _safe_rate(funnel["offer"], funnel["interview"]),
+        "offer_to_hired": _safe_rate(funnel["hired"], funnel["offer"]),
+    }
+
+
+def build_monthly_staff_performance(org_id, hr_id, month):
+    """Build an explainable month view for one recruiter's owned demands.
+
+    This is a throughput view, not a ranking. Counts are distinct candidates
+    entering each pipeline stage during the selected calendar month. Demand
+    rows are limited to the selected recruiter and demands created or touched
+    during that month.
+    """
+
+    start, end = _month_bounds(month)
+    user = User.query.filter_by(id=hr_id, org_id=org_id, role="recruiter").first()
+    if user is None:
+        return None
+    demands = RecruitmentDemand.query.filter_by(
+        org_id=org_id,
+        owner_hr_id=hr_id,
+    ).order_by(RecruitmentDemand.created_at.asc(), RecruitmentDemand.id.asc()).all()
+    demand_ids = [demand.id for demand in demands]
+    stage_rows = []
+    if demand_ids:
+        stage_rows = (
+            PipelineStage.query.filter(
+                PipelineStage.org_id == org_id,
+                PipelineStage.demand_id.in_(demand_ids),
+                PipelineStage.ts >= start,
+                PipelineStage.ts < end,
+            )
+            .order_by(PipelineStage.ts.asc(), PipelineStage.id.asc())
+            .all()
+        )
+    rows_by_demand = {demand_id: [] for demand_id in demand_ids}
+    for row in stage_rows:
+        rows_by_demand[row.demand_id].append(row)
+
+    demand_rows = []
+    for demand in demands:
+        rows = rows_by_demand[demand.id]
+        created_this_month = demand.created_at is not None and start <= demand.created_at < end
+        if not rows and not created_this_month:
+            continue
+        funnel = _monthly_funnel_counts(rows)
+        demand_rows.append({
+            "demand_id": demand.id,
+            "request_no": demand.request_no,
+            "title": demand.job_title_snapshot or (demand.job.title if demand.job else "未命名岗位"),
+            "department": demand.department or demand.requester_department or "未填写部门",
+            "city": demand.city or "",
+            "status": demand.status,
+            "headcount": int(demand.headcount or 0),
+            "funnel": funnel,
+            "conversion_rates": _monthly_conversion_rates(funnel),
+            "overall_conversion_rate": _safe_rate(funnel["hired"], funnel["resumes"]),
+        })
+
+    total_funnel = {
+        key: sum(row["funnel"][key] for row in demand_rows)
+        for key in ("resumes", "screened", "business_review", "interview", "offer", "hired")
+    }
+    return {
+        "month": month,
+        "purpose": "自然月招聘推进统计，仅展示客观推进量和转化率，不自动评判个人努力程度",
+        "owner": {"id": user.id, "name": user.name, "department": user.department},
+        "summary": {
+            "demand_count": len(demand_rows),
+            "funnel": total_funnel,
+            "conversion_rates": _monthly_conversion_rates(total_funnel),
+            "overall_conversion_rate": _safe_rate(total_funnel["hired"], total_funnel["resumes"]),
+            "progress_count": sum(
+                total_funnel[key]
+                for key in ("screened", "business_review", "interview", "offer", "hired")
+            ),
+        },
+        "demands": demand_rows,
     }

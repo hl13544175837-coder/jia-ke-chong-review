@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   CalendarDays,
-  ChevronDown,
   ChevronRight,
   CirclePlus,
   Clock3,
@@ -23,6 +22,8 @@ import {
   dashboardStageDrilldown,
   type DashboardStage,
 } from './stageDrilldown';
+import FunnelChart from './components/FunnelChart';
+import MonthlyPerformancePanel from './components/MonthlyPerformancePanel';
 
 const emptyFacts: DashboardFacts = {
   demands: [],
@@ -321,9 +322,25 @@ export default function DashboardPage() {
     .filter((item): item is { label: string; tone: 'amber' | 'red' } => Boolean(item));
 
   const urgentTaskCount = taskItems.filter((item) => item.urgent).length;
-  const activeOfferCount = facts.offers.filter((item) => !['declined', 'withdrawn', 'expired', 'onboarded'].includes(item.status)).length;
-  const onboardedCount = summary.activeDemands.reduce((total, item) => total + item.metrics.onboarded_count, 0);
-  const completedInterviewCount = facts.interviews.filter((item) => item.feedback_submitted).length;
+  const dashboardFunnel = useMemo(() => {
+    const resumes = summary.activeDemands.reduce((total, item) => total + item.metrics.recommended_count, 0);
+    const stages = [
+      { stage: '简历库', count: resumes, key: 'hr_screening' as const },
+      { stage: '初筛', count: summary.stageSummary.aiScreening, key: 'ai_screening' as const },
+      { stage: '业务筛选', count: summary.stageSummary.businessReview, key: 'business_review' as const },
+      { stage: '面试', count: summary.stageSummary.interview, key: 'interview' as const },
+      { stage: 'Offer', count: summary.stageSummary.offer, key: 'offer' as const },
+      { stage: '入职', count: summary.stageSummary.onboarding, key: 'onboarding' as const },
+    ];
+    return stages.map((item, index) => ({
+      stage: item.stage,
+      count: item.count,
+      key: item.key,
+      conversionRate: index === 0 ? null : (stages[index - 1].count > 0
+        ? Math.round((item.count / stages[index - 1].count) * 1000) / 10
+        : 0),
+    }));
+  }, [summary.activeDemands, summary.stageSummary]);
 
   const openDemandAction = (item: (typeof summary.demandProgress)[number]) => {
     if (item.nextAction === '管理面试') {
@@ -361,6 +378,11 @@ export default function DashboardPage() {
       return;
     }
     navigate(destination.to);
+  };
+
+  const openFunnelStage = (stage: string) => {
+    const target = dashboardFunnel.find((item) => item.stage === stage);
+    if (target) openStage(target.key);
   };
 
   return (
@@ -432,6 +454,8 @@ export default function DashboardPage() {
             ))}
           </aside>
         )}
+
+        <FunnelChart items={dashboardFunnel} onStageClick={openFunnelStage} />
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(320px,0.95fr)]">
           <SectionCard
@@ -582,34 +606,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <details data-ui="dashboard-data-overview" className="group rounded-xl border border-background-200 bg-white">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-foreground-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">
-            数据概览<ChevronDown size={16} className="text-foreground-400 transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="grid gap-3 border-t border-background-100 px-4 py-4 sm:grid-cols-2 lg:grid-cols-5">
-            {[
-              { key: 'active-demands', label: '生效需求', value: summary.activeDemands.length, action: () => navigate('/jobs', { state: { fromDashboard: true, tab: 'active' } }) },
-              { key: 'remaining-hc', label: '剩余 HC', value: summary.gap, action: () => navigate('/jobs', { state: { fromDashboard: true, tab: 'active', filters: { headcount: 'available' } } }) },
-              { key: 'scheduled-interviews', label: '已排面试', value: summary.scheduledInterviews.length, action: () => navigate('/interviews?status=scheduled&from=dashboard') },
-              { key: 'active-offers', label: '流程中 Offer', value: activeOfferCount, action: () => navigate('/offers?from=dashboard') },
-              { key: 'onboarded-total', label: '累计已入职', value: onboardedCount, action: () => navigate('/offers?tab=onboard&from=dashboard') },
-            ].map((item) => <button type="button" key={item.key} data-ui={`dashboard-drilldown-${item.key}`} disabled={item.value <= 0} onClick={item.action} className="rounded-lg bg-background-50 px-3 py-3 text-left transition hover:bg-primary-50 disabled:cursor-default disabled:opacity-55"><span className="text-xs text-foreground-500">{item.label}</span><span className="mt-1 block text-xl font-semibold text-foreground-900">{item.value}</span></button>)}
-          </div>
-        </details>
-
-        <details data-ui="dashboard-performance-overview" className="group rounded-xl border border-background-200 bg-white">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-foreground-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">
-            招聘业绩统计<ChevronDown size={16} className="text-foreground-400 transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="border-t border-background-100 px-4 py-4">
-            <p className="mb-3 text-xs text-foreground-500">这里只展示当前可见招聘流程结果，用于工作复盘，不作为个人绩效排名。</p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-lg border border-background-100 px-3 py-3"><p className="text-xs text-foreground-500">已完成面试评价</p><p className="mt-1 text-xl font-semibold text-foreground-900">{completedInterviewCount}</p></div>
-              <div className="rounded-lg border border-background-100 px-3 py-3"><p className="text-xs text-foreground-500">已接受及入职 Offer</p><p className="mt-1 text-xl font-semibold text-foreground-900">{facts.offers.filter((item) => ['accepted', 'onboarded'].includes(item.status)).length}</p></div>
-              <div className="rounded-lg border border-background-100 px-3 py-3"><p className="text-xs text-foreground-500">已入职人数</p><p className="mt-1 text-xl font-semibold text-foreground-900">{onboardedCount}</p></div>
-            </div>
-          </div>
-        </details>
+        <MonthlyPerformancePanel />
       </div>
     </div>
   );

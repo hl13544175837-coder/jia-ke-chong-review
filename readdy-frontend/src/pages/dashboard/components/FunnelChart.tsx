@@ -1,40 +1,44 @@
-import { recruitmentFunnel } from '@/mocks/dashboard';
+import { ChevronRight } from 'lucide-react';
 
-export default function FunnelChart() {
-  const maxCount = recruitmentFunnel[0]?.count || 1;
+export interface FunnelItem {
+  stage: string;
+  count: number;
+  conversionRate?: number | null;
+}
 
-  const colors = [
-    'bg-primary-400',
-    'bg-primary-500',
-    'bg-accent-400',
-    'bg-accent-500',
-    'bg-secondary-400',
-    'bg-secondary-500',
-  ];
-
+export default function FunnelChart({
+  items,
+  onStageClick,
+}: {
+  items: FunnelItem[];
+  onStageClick: (stage: string) => void;
+}) {
   return (
-    <div className="bg-white rounded-xl border border-background-200 p-5">
-      <h3 className="font-semibold text-foreground-900 text-sm mb-4">招聘漏斗</h3>
-      <div className="space-y-3">
-        {recruitmentFunnel.map((item, index) => (
-          <div key={item.stage} className="flex items-center gap-3">
-            <span className="text-xs text-foreground-600 w-16 text-right whitespace-nowrap flex-shrink-0">{item.stage}</span>
-            <div className="flex-1 h-7 bg-background-100 rounded-md overflow-hidden relative">
-              <div
-                className={`h-full rounded-md ${colors[index]} transition-all duration-700`}
-                style={{ width: `${(item.count / maxCount) * 100}%` }}
-              ></div>
-              <span className="absolute inset-y-0 left-2 flex items-center text-xs font-bold text-white drop-shadow-sm">
-                {item.count}
-              </span>
-            </div>
-          </div>
+    <section data-ui="dashboard-funnel" className="rounded-xl border border-background-200 bg-white p-4 shadow-[0_8px_28px_rgba(44,62,52,0.035)]">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-foreground-900">总体漏斗</h2>
+        <span className="text-xs text-foreground-500">点击阶段查看对应信息</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {items.map((item, index) => (
+          <button
+            key={item.stage}
+            type="button"
+            disabled={item.count <= 0}
+            onClick={() => onStageClick(item.stage)}
+            className="group flex min-w-0 items-center gap-2 rounded-lg border border-background-200 bg-background-50/60 px-3 py-2 text-left transition hover:border-primary-300 hover:bg-primary-50 disabled:cursor-default disabled:opacity-50 disabled:hover:border-background-200 disabled:hover:bg-background-50/60"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs text-foreground-500">{item.stage}</span>
+              <span className="mt-1 block text-sm font-semibold text-foreground-900">{item.count} 人</span>
+              {index > 0 && item.conversionRate !== null && item.conversionRate !== undefined && (
+                <span className="mt-0.5 block text-[11px] text-primary-700">转化 {item.conversionRate}%</span>
+              )}
+            </span>
+            <ChevronRight size={14} className="shrink-0 text-foreground-300 transition group-hover:text-primary-600" aria-hidden="true" />
+          </button>
         ))}
       </div>
-      <div className="mt-4 pt-3 border-t border-background-100 flex items-center justify-between text-xs text-foreground-500">
-        <span>简历投递转化率</span>
-        <span className="font-semibold text-primary-600">{Math.round((recruitmentFunnel[5].count / recruitmentFunnel[0].count) * 100)}%</span>
-      </div>
-    </div>
+    </section>
   );
 }

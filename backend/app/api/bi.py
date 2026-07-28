@@ -1,17 +1,15 @@
-"""Demand-owned operational BI endpoints.
+"""Demand-owned operational BI endpoints."""
 
-These routes expose current progress, blockers and responsibility only. Personal
-performance, ranking and conversion-rate contracts deliberately do not live in
-the API layer.
-"""
+import re
 
-from flask import Blueprint, g, jsonify
+from flask import Blueprint, g, jsonify, request
 
 from .. import db
 from ..middleware.auth import require_auth, require_role
 from ..models import Job, RecruitmentDemand, User
 from ..services.bi_service import (
     build_demand_operational_metrics,
+    build_monthly_staff_performance,
     build_staff_operational_workload,
     build_team_operational_overview,
 )
@@ -45,6 +43,23 @@ def staff_detail(hr_id):
     if user is None:
         return jsonify({"error": "用户不存在"}), 404
     return jsonify(build_staff_operational_workload(g.org_id, hr_id))
+
+
+@bp.get("/bi/staff/<int:hr_id>/monthly")
+@require_auth
+def staff_monthly_performance(hr_id):
+    if g.role == "recruiter" and g.user_id != hr_id:
+        return jsonify({"error": "Forbidden"}), 403
+    if g.role not in {"recruiter", "manager", "admin"}:
+        return jsonify({"error": "Forbidden"}), 403
+
+    month = (request.args.get("month") or "").strip()
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+        return jsonify({"error": "月份格式不正确，请使用 YYYY-MM"}), 400
+    payload = build_monthly_staff_performance(g.org_id, hr_id, month)
+    if payload is None:
+        return jsonify({"error": "招聘专员不存在"}), 404
+    return jsonify(payload)
 
 
 @bp.get("/bi/job/<int:job_id>")
