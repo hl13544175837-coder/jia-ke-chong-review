@@ -55,10 +55,8 @@ const dashboard = read('readdy-frontend/src/pages/dashboard/page.tsx');
 for (const key of ['business-review', 'interview', 'offer', 'onboarded']) {
   assert.match(dashboard, new RegExp(`data-ui="dashboard-drilldown-${key}"`), `工作台缺少 ${key} 精准入口`);
 }
-for (const key of ['active-demands', 'remaining-hc']) {
-  assert.match(dashboard, new RegExp(`key: '${key}'`), `工作台缺少 ${key} 精准入口`);
-}
-assert.match(dashboard, /data-ui=\{`dashboard-drilldown-\$\{item\.key\}`\}/, '数据概览数字应按类型提供精准入口');
+assert.match(dashboard, /MonthlyPerformancePanel/, '工作台应使用新的自然月数据看板');
+assert.doesNotMatch(dashboard, /dashboard-data-overview|dashboard-performance-overview/, '旧底部数据板块应移除');
 assert.match(dashboard, /targetStage: 'business_review'/, '业务筛选人数必须直达对应候选人阶段');
 assert.match(dashboard, /\?status=scheduled&from=dashboard/, '已排面试必须直达已安排列表');
 

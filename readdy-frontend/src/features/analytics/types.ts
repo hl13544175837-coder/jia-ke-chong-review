@@ -29,3 +29,39 @@ export interface AnalyticsOverview {
   sources: Array<{ channel: string; count: number }>;
   demands: AnalyticsDemandRow[];
 }
+
+export interface MonthlyPerformanceFunnel {
+  resumes: number;
+  screened: number;
+  business_review: number;
+  interview: number;
+  offer: number;
+  hired: number;
+}
+
+export interface MonthlyPerformanceDemand {
+  demand_id: number;
+  request_no: string;
+  title: string;
+  department: string;
+  city: string;
+  status: string;
+  headcount: number;
+  funnel: MonthlyPerformanceFunnel;
+  conversion_rates: Record<string, number>;
+  overall_conversion_rate: number;
+}
+
+export interface MonthlyPerformance {
+  month: string;
+  purpose: string;
+  owner: { id: number; name: string; department: string };
+  summary: {
+    demand_count: number;
+    funnel: MonthlyPerformanceFunnel;
+    conversion_rates: Record<string, number>;
+    overall_conversion_rate: number;
+    progress_count: number;
+  };
+  demands: MonthlyPerformanceDemand[];
+}
