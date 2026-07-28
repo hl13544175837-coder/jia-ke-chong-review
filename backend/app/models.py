@@ -18,6 +18,7 @@ class User(db.Model):
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
     role = db.Column(db.String(20), nullable=False, default="recruiter")  # admin/manager/recruiter/interviewer
+    department = db.Column(db.String(120), default="", nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -567,6 +568,17 @@ class OfferEvent(db.Model):
 
 class KpiStandard(db.Model):
     __tablename__ = "kpi_standards"
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, nullable=False, unique=True, index=True)
+    config_json = db.Column(db.JSON, nullable=False)
+    version = db.Column(db.Integer, default=1, nullable=False)
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class OrganizationSetting(db.Model):
+    __tablename__ = "organization_settings"
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, nullable=False, unique=True, index=True)
     config_json = db.Column(db.JSON, nullable=False)

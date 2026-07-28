@@ -100,7 +100,7 @@ const routes: RouteObject[] = [
       },
       {
         path: '/analytics',
-        element: <RequireCompanyRole allow={directorRoles}><AnalyticsPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={managerRoles}><AnalyticsPage /></RequireCompanyRole>,
       },
       {
         path: '/ai-assistant',
