@@ -52,6 +52,7 @@ def test_sit_server_build_is_explicitly_unrestricted_but_ga_is_strict():
         ("SECURITY_HEADERS_ENABLED", "false", "true"),
         ("RATE_LIMIT_ENABLED", "false", "true"),
         ("ALLOW_PUBLIC_REGISTRATION", "true", "false"),
+        ("RESUME_AI_ENABLED", "false", "true"),
     ]:
         assert f"--build-arg {build_arg}={rc_value}" in rc.stdout
         assert f"--build-arg {build_arg}={ga_value}" in ga.stdout
@@ -284,6 +285,8 @@ def test_backend_dockerfile_wires_migration_entrypoint():
     assert "ENV RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED}" in content
     assert "ARG ALLOW_PUBLIC_REGISTRATION=false" in content
     assert "ENV ALLOW_PUBLIC_REGISTRATION=${ALLOW_PUBLIC_REGISTRATION}" in content
+    assert "ARG RESUME_AI_ENABLED=true" in content
+    assert "ENV RESUME_AI_ENABLED=${RESUME_AI_ENABLED}" in content
     assert "ENV FLASK_DEBUG=false" in content
     assert "ARG FLASK_DEBUG" not in content
     assert "ENV LOCAL_SCHEMA_COMPAT=false" in content

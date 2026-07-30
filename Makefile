@@ -27,6 +27,7 @@ ifeq ($(PKG_TAG),GA)
 	override SECURITY_HEADERS_ENABLED := true
 	override RATE_LIMIT_ENABLED := true
 	override ALLOW_PUBLIC_REGISTRATION := false
+	override RESUME_AI_ENABLED := true
 else ifeq ($(PKG_TAG),RC)
 	override REGISTRY := registry-sit.uce.cn
 	override AUTO_MIGRATE_DATABASE := true
@@ -35,6 +36,7 @@ else ifeq ($(PKG_TAG),RC)
 	override SECURITY_HEADERS_ENABLED := false
 	override RATE_LIMIT_ENABLED := false
 	override ALLOW_PUBLIC_REGISTRATION := true
+	override RESUME_AI_ENABLED := false
 else
 $(error PKG_TAG must be exactly RC or GA, got '$(PKG_TAG)')
 endif
@@ -69,7 +71,7 @@ cleanfrontend:
 
 buildserver:
 	@echo "Building zhipin-server image: $(ZHIPIN_SERVER_IMAGE)"
-	sudo docker build --build-arg RELEASE_CHANNEL=$(RELEASE_CHANNEL) --build-arg AUTO_MIGRATE_DATABASE=$(AUTO_MIGRATE_DATABASE) --build-arg ALLOW_EMPTY_DATABASE_BOOTSTRAP=$(ALLOW_EMPTY_DATABASE_BOOTSTRAP) --build-arg ALLOW_INSECURE_SIT_STARTUP=$(ALLOW_INSECURE_SIT_STARTUP) --build-arg SECURITY_HEADERS_ENABLED=$(SECURITY_HEADERS_ENABLED) --build-arg RATE_LIMIT_ENABLED=$(RATE_LIMIT_ENABLED) --build-arg ALLOW_PUBLIC_REGISTRATION=$(ALLOW_PUBLIC_REGISTRATION) -t $(ZHIPIN_SERVER_IMAGE) -f backend/Dockerfile .
+	sudo docker build --build-arg RELEASE_CHANNEL=$(RELEASE_CHANNEL) --build-arg AUTO_MIGRATE_DATABASE=$(AUTO_MIGRATE_DATABASE) --build-arg ALLOW_EMPTY_DATABASE_BOOTSTRAP=$(ALLOW_EMPTY_DATABASE_BOOTSTRAP) --build-arg ALLOW_INSECURE_SIT_STARTUP=$(ALLOW_INSECURE_SIT_STARTUP) --build-arg SECURITY_HEADERS_ENABLED=$(SECURITY_HEADERS_ENABLED) --build-arg RATE_LIMIT_ENABLED=$(RATE_LIMIT_ENABLED) --build-arg ALLOW_PUBLIC_REGISTRATION=$(ALLOW_PUBLIC_REGISTRATION) --build-arg RESUME_AI_ENABLED=$(RESUME_AI_ENABLED) -t $(ZHIPIN_SERVER_IMAGE) -f backend/Dockerfile .
 
 pushserver:
 	@echo "Pushing zhipin-server image: $(ZHIPIN_SERVER_IMAGE)"
