@@ -958,3 +958,13 @@ def test_small_team_sit_release_uses_safe_roles_manual_resume_and_clean_context(
     assert "docs/acceptance-assets" in dockerignore
     assert "20260730_13" in deployment
     assert "AUTH_GATEWAY_ROLE_MAP" in deployment
+
+
+def test_python_dependency_audit_is_pinned_and_not_in_runtime_image():
+    audit_requirements = (
+        ROOT / "backend" / "requirements-audit.txt"
+    ).read_text(encoding="utf-8")
+    dockerfile = (ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert audit_requirements.strip() == "pip-audit==2.10.1"
+    assert "requirements-audit.txt" not in dockerfile
