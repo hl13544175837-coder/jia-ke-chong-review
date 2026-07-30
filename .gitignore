@@ -50,6 +50,7 @@ tmp/
 .claude/scheduled_tasks.lock
 minutes/
 .workbuddy/
+.worktrees/
 outputs/
 /diagrams/
 /docs/acceptance-assets/
