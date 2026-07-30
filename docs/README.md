@@ -4,14 +4,14 @@
 > 用途：给产品、研发、部署和 AI/Codex 判断“先读哪份、信哪份”。
 > 状态：当前文档入口。当前开发只看下方真源文档和真实代码，不再追旧计划。
 
-> **当前状态（2026-07-22）**：本地 Codex 功能候选 `codex/readdy-test-product` 基于远端 `test` `5e251a2`；已完成同页右侧抽屉和 Demand 五列表头/单元格真实筛选，功能提交为 `c2dcf78`（准确文档 HEAD 以 `git log -1` 和根目录外的 `CODEX_RESULT_2026-07-22.md` 为准）。旧公司招聘系统是视觉基准，Figma/Readdy 是流程和交互基准。前端 105 个测试、typecheck、lint、build，后端 493 个测试、Base Agent 6 个测试与 Demand-scope verifier 均已通过；当前未 push、未进入 Libra 构建/部署、未在 SIT 生效。
+> **当前状态（2026-07-30）**：当前唯一前端主线为 `readdy-frontend/`，本地规范化分支基于 CFPD `test` 缓存基线 `c686b11`。准确代码版本以 `git log -1`、登录页版本号和后端 `/actuator/info` 为准；统一本地门禁入口为 `./scripts/check-sit-release.sh`。Mock 数据按负责人决定暂时保留，Test/SIT 简历 AI 关闭。当前本地候选未推送、未进入 Libra 构建/部署、未在 SIT 生效。
 >
 > **历史状态（2026-07-11 合并前收口）**：`codex/premerge-p0-closeout-20260711` 当时以 CFPD `test` 基线为起点，完成 P0 代码与文档收口，曾作为下一代码候选。
 
 | 状态面 | 真源 | 当前可证明什么 |
 |---|---|---|
-| 原始 checkout | `/Users/yenns/Desktop/智聘` 的实际 `git status` / HEAD | 用户原工作区有哪些本地改动；不等于实施分支或发布源 |
-| 隔离实施分支 | `codex/readdy-test-product` 工作树的 HEAD、diff 和测试 | 当前本地 Codex 功能候选；已提交 HEAD `5bdc6f7` 后仍有未提交的交互收口；最终测试与 SHA 待补录；未 push、未 Libra、未 SIT |
+| 原始 checkout | 当前仓库根目录的实际 `git status` / HEAD | 用户原工作区有哪些本地改动；不等于实施分支或发布源 |
+| 隔离实施分支 | `codex/sit-release-hardening` 工作树的 HEAD、diff 和统一门禁 | 当前本地 Test/SIT 发布候选；未 push、未 Libra、未 SIT |
 | CFPD `test` | `git ls-remote git@git.ymdd.tech:cfpd/zhipin-mvp.git refs/heads/test` 的 SHA | Libra 应当读到的代码源；不证明构建或部署完成 |
 | 已部署 SIT | Libra CommitID/镜像摘要、后端受控版本/schema revision、测试站 HTML 与前端 asset hash、冒烟证据 | 环境真正运行的版本；不能只凭 pipeline 绿色对勾判定 |
 
@@ -19,7 +19,7 @@
 
 ## 先说结论
 
-智聘当前是一套面向 HR、招聘负责人、面试官和管理员的 AI 招聘管理系统。主线是在现有 `frontend/` + `backend/` + `base_agent/` 上做前后端分离开发、单体部署收口。
+智聘当前是一套面向 HR、招聘负责人、面试官和管理员的 AI 招聘管理系统。主线是在现有 `readdy-frontend/` + `backend/` + `base_agent/` 上做前后端分离开发、单体部署收口。
 
 当前开发和审查时请先分清两类文档：
 
@@ -63,9 +63,9 @@
 
 ### 架构口径
 
-- 当前主线：`frontend/` React + Vite + TypeScript，`backend/` Flask + SQLAlchemy + JWT/RBAC，`base_agent/` 复用 AI 能力。
-- 部署口径：开发期前后端分离联调；手工生产/试点收口为 Flask 单端口托管 `frontend/dist` + `/api/*`。Libra/SIT 可能按 `zhipin-frontend` / `zhipin-server` 两个模块打包镜像，这是公司 CI/CD 模块形态，不等于手工试点要改成双服务拓扑。
-- 环境口径：当前 CFPD `test` / SIT 是项目负责人单人使用的可丢弃数据环境，RC 显式开启 `ALLOW_INSECURE_SIT_STARTUP` 并关闭应用安全头/限流、开放注册和 CORS；`GA`/真实数据试点仍按严格清单。两者不得混用。
+- 当前主线：`readdy-frontend/` React + Vite + TypeScript，`backend/` Flask + SQLAlchemy + JWT/RBAC，`base_agent/` 复用 AI 能力。
+- 部署口径：开发期前后端分离联调；手工单入口部署由 Flask 托管 `readdy-frontend/out` + `/api/*`。Libra/SIT 按 `zhipin-frontend` / `zhipin-server` 两个模块打包镜像，这是公司 CI/CD 模块形态，不代表出现第二套业务前端。
+- 环境口径：当前 CFPD `test` / SIT 只允许可丢弃测试数据，简历 AI 关闭。通用 RC 镜像保留宽松启动默认值；小团队试用必须使用 `backend/sit-team-trial.env.example` 的安全运行时覆盖，并通过 `--profile sit-team` 自检。`GA`/真实数据试点仍按严格清单，两者不得混用。
 - 不要把项目带向微服务、微前端、第二套前端框架、第二套权限体系或绕开现有 `/api` 边界的并行运行面。
 
 ### 当前实现 vs 后续规划
@@ -76,7 +76,7 @@
 
 - 当前代码候选已将流程、面试、Offer、审计关联和 BI 的业务归属收敛到 `demand_id`；匹配继续使用 `job_id`，AI 预筛/面试反馈不自动改变流程。
 - 同一 Demand/候选人/轮次的主面试安排和同一 assignment 的反馈由数据库唯一约束兜底；反馈写入必须属于当前用户的有效 assignment，零 Demand 的 Job 模板不能承载面试事实；BI API 只返回 Demand 进度、卡点和当前责任协同，前端将加载失败、真实空态和零值分开展示。
-- 生产应用工厂不执行 DDL；空库显式 bootstrap，已有库 Alembic。当前 additive head 是 `20260729_11`（08 补齐试点审批/业务筛选 schema，09 新增候选人个人收藏和合并审计，10 新增持久化组织设置和用户部门字段，11 新增可空简历 SHA-256 指纹及组织索引以阻止重复导入），Strict cutover、目标引擎恢复证据和 SIT 四角色现场验收仍属于环境发布门禁，不能由本地代码测试替代。
+- 生产应用工厂不执行 DDL；空库显式 bootstrap，已有库 Alembic。当前 additive head 是 `20260730_13`：11 增加简历 SHA-256 指纹，12 增加简历版本留档，13 增加面试改约申请。Strict cutover、目标引擎恢复证据和 SIT 多角色现场验收仍属于环境发布门禁，不能由本地代码测试替代。
 - 旧“一个 Job 同时只能有一个未结束 Demand”假设已被 [ADR-0002](./adr/0002-demand-scoped-recruiting-flow.md) 和批准设计取代。历史文件可保留作决策轨迹，但不得再指导新实现或发布验收。
 
 以下是后续规划或生产增强，不是当前必须补齐的开发前提：
@@ -110,6 +110,7 @@ BOSS 直聘集成目前按实验辅助能力理解：代码中可保留 `/api/bo
 | `manager` | 招聘经理/负责人 | 招聘主管、HRD、主管、负责人 | 当前组织内团队视角；普通用人部门负责人若不应看全组织数据，不能直接授予此角色 |
 | `recruiter` | 招聘专员 | HR 专员、HR | 负责自己的候选人、岗位、需求流程和个人数据 |
 | `interviewer` | 业务负责人 / 面试官 | 用人部门负责人、用人部门面试官 | 填写业务需求；处理分配给自己的业务筛选、面试和反馈 |
+| `hr_director` | 人力资源总监 | 总监 | 管理驾驶舱和授权审批视角；正式公司数据范围仍需现场确认 |
 
 试用账号里的 `manager01@mvp.local` 和 `lead01@mvp.local` 都按 `manager` 权限理解；“招聘负责人”只是业务展示名，不是新的技术角色。
 

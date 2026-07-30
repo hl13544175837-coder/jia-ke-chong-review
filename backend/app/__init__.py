@@ -16,7 +16,7 @@ db = SQLAlchemy()
 # 前端构建产物目录（npm run build 输出）。可用 FRONTEND_DIST 环境变量覆盖。
 FRONTEND_DIST = os.environ.get(
     "FRONTEND_DIST",
-    str(Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"),
+    str(Path(__file__).resolve().parent.parent.parent / "readdy-frontend" / "out"),
 )
 
 def create_app(config=None):
@@ -620,4 +620,7 @@ def _register_frontend(app):
         index = dist / "index.html"
         if index.is_file():
             return send_from_directory(str(dist), "index.html")
-        return {"error": "frontend not built", "hint": "run npm run build in frontend/"}, 503
+        return {
+            "error": "frontend not built",
+            "hint": "run npm run build in readdy-frontend/",
+        }, 503

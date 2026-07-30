@@ -1041,3 +1041,12 @@ def test_sit_release_gate_runs_required_checks_without_mutating_release_state():
     assert "npm audit --json" in frontend_audit
     assert "blockedAdvisories" in frontend_audit
     assert "scanForRscEntrypoints" in frontend_audit
+
+
+def test_flask_static_fallback_targets_the_active_readdy_build():
+    app_factory = (ROOT / "backend" / "app" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"readdy-frontend" / "out"' in app_factory
+    assert '"frontend" / "dist"' not in app_factory

@@ -7,7 +7,7 @@
 用自然语言驱动的企业招聘平台 — 简历解析、智能匹配、AI 面试、数据看板，一站式闭环
 
 [![Backend](https://img.shields.io/badge/backend-Flask%203.1-000000)](https://flask.palletsprojects.com/)
-[![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite%208-61dafb)](https://react.dev/)
+[![Frontend](https://img.shields.io/badge/frontend-React%2019%20%2B%20Vite%208-61dafb)](https://react.dev/)
 [![AI](https://img.shields.io/badge/AI-LangGraph%20%2B%20DeepSeek-ff6b6b)](https://langchain-ai.github.io/langgraph/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -15,21 +15,29 @@
 
 ---
 
-## 2026-07-24 独立整合版
+## 当前 Test/SIT 候选（2026-07-30）
 
-Readdy ZIP 完整前端、公司招聘业务底座和 GitHub 图片简历能力都保存在这个完全独立的目录中。`5190` 是完整 ZIP 主产品，`5192` 保留业务接口与图片解析实现。详细产品交互见 [docs/PRODUCT_INTERACTION_GUIDE.md](docs/PRODUCT_INTERACTION_GUIDE.md)，彻底删除边界见 [docs/ISOLATED_CLEANUP.md](docs/ISOLATED_CLEANUP.md)。
+当前唯一前端主线是 `readdy-frontend/`，后端主线是 `backend/`。招聘需求、候选人、业务筛选、面试、Offer、工作台与核心管理统计已接真实后端；仓库仍保留部分非试点页面的 Mock 数据，本轮不清理，不能把本地闭环描述成全站生产数据验收。
 
 ```bash
-cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 ./scripts/serve-isolated-demo.sh
 ```
 
 - 主产品：`http://127.0.0.1:5190`，长期本地运行默认账号 `admin01`、密码 `Zhipin2026`
-- 接口版：`http://127.0.0.1:5192`，账号 `admin01`，密码 `Zhipin2026`
+- 本地登录桥：`http://127.0.0.1:5100`
+- 本地后端：`http://127.0.0.1:5010`
 - 同一内网：启动时自动打印当前内网地址
 - 停止：另开终端执行 `./scripts/stop-isolated-demo.sh`
 
-主产品的招聘需求模块已接入本项目独立后端和 SQLite，列表、新增、编辑、关闭、恢复会真实保存；其他主产品模块仍以浏览器演示数据为主。`5190` 已恢复招聘主管、招聘专员、系统管理员、人力资源总监和业务负责人 / 面试官五套产品界面；本地启动时可在右上角预览切换，正式公司模式不显示该入口。试点暂时隐藏 AI 助手、BOSS 自动化和 KPI 标准，业务流程和研发接口责任见 [docs/13_试点业务流程与研发接口交接.md](docs/13_试点业务流程与研发接口交接.md)。接口版同样使用独立数据库，两者都不读取其他产品数据。本地启动默认使用隔离 OAuth 验收桥，方便长期打开；公司 OAuth 代码和配置完整保留，公司环境可显式使用 `READDY_AUTH_MODE=company ./scripts/serve-isolated-demo.sh`。生产数据库、其他正式业务 API、LLM 和图片识别密钥仍由后续阶段接入，仓库不保存真实密钥。
+`5190` 使用五套真实账号验证不同角色界面，不提供前端假切角色。Test/SIT 简历 AI 明确关闭：原件会保存，用户通过人工补录继续流程。AI 助手、BOSS 自动化和 KPI 标准等试点外能力按现有导航边界处理。业务流程和研发接口责任见 [docs/13_试点业务流程与研发接口交接.md](docs/13_试点业务流程与研发接口交接.md)。本地默认使用隔离 OAuth 验收桥；公司环境显式使用 `READDY_AUTH_MODE=company ./scripts/serve-isolated-demo.sh`。仓库不保存真实密钥。
+
+本地发布候选交付前，在仓库根目录运行唯一总检查：
+
+```bash
+./scripts/check-sit-release.sh
+```
+
+它会一次检查前后端测试、类型、Lint、构建、依赖安全、数据库版本和 Git 状态，不会清理 Mock、迁移数据库、提交、推送或发布。
 
 ## 接手先读
 
@@ -37,13 +45,13 @@ cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 
 本 README 里的功能介绍用于了解系统能力，不等于生产上线完成证明。涉及真实 HR 试点、服务器部署、数据清理、LLM 合规或备份恢复时，必须再看 [docs/06_试点上线检查清单.md](docs/06_试点上线检查清单.md) 和 [docs/07_上线部署前关键清单](docs/07_上线部署前关键清单_给AI执行.md)，并由负责人确认后执行。
 
-> **2026-07-22 当前候选状态**：本地 Codex 功能候选 `codex/readdy-test-product` 基于远端 `test` `5e251a2`，功能候选 SHA `5ef064a`。当前未 push、未进入 Libra 构建/部署、未在 SIT 生效；本地候选不等于 SIT 已部署，环境状态必须分别用 CFPD ref、Libra CommitID/镜像、schema revision、测试站资产和受控 API 证据确认。
+> **当前候选状态**：本地规范化分支从 CFPD `test` 缓存基线 `c686b11` 建立；准确版本以 `git log -1`、前端登录页版本号和后端 `/actuator/info` 为准。本地通过不等于已经推送、Libra 已构建或 SIT 已部署，这四个状态必须分别确认。
 >
 > **2026-07-11 历史收口状态口径**：当时代码树已完成 `demand_id` P0、数据库生命周期、面试轮次唯一性、Demand 维度 BI、错误态保真、运行配置与可恢复清理的合并前收口，并补齐 Demand 默认面试官口子、需求编号唯一性和视口级操作弹窗；`codex/premerge-p0-closeout-20260711` 曾作为 CFPD `test` 的下一代码候选。本轮当时不引入 OA/Consul、微服务或依赖大版本升级。
 
 > **2026-07-13 更新（服务注册中心）**：`test` 分支已新增可选的 Consul / Eureka 服务注册能力，由配置动态切换，**默认关闭**（`CONSUL_ENABLED` / `EUREKA_ENABLED` 均为 false 时不注册，仍走 K8S 原生服务发现）。这更新了上方 2026-07-11 口径中“不引入 Consul”关于注册中心的部分：此前顾虑的“Gunicorn 多 worker 重复注册”已由 `backend/gunicorn.conf.py` 的 master 单点注册钩子解决。是否在 SIT 真正启用、以及 HTTP/TTL 健康检查模式的选择，仍需负责人结合网络可达性确认。详见 [DEPLOYMENT.md](DEPLOYMENT.md) 的「服务注册中心（Consul / Eureka）」。
 
-> **当前 test/SIT 口径**：当前只用于项目负责人的可丢弃数据测试。RC 镜像会显式跳过生产启动自检，并关闭应用安全头和限流、允许公开注册与宽松 CORS；这不代表可以存放真实候选人数据或作为生产配置。`GA`/生产默认仍严格。详见 [RUNNING.md](RUNNING.md) 和 [DEPLOYMENT.md](DEPLOYMENT.md)。
+> **当前 Test/SIT 口径**：只允许可丢弃测试数据，简历 AI 关闭。通用 RC 镜像仍保留宽松启动默认值；小团队试用必须用 `backend/sit-team-trial.env.example` 的运行时安全值覆盖，并通过 `--profile sit-team` 自检。任何 Test 结果都不代表允许存放真实候选人数据或已通过生产门禁。
 
 ## 📖 项目简介
 
@@ -113,7 +121,7 @@ cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  前端 SPA  (React 18 + Vite + TS + Tailwind + GSAP)    │
+│  前端 SPA  (React 19 + Vite + TS + Tailwind + GSAP)    │
 │  工作台/招聘需求/简历库/流程/面试/BI/AI助手等试点页面 │
 │  recharts 图表 · 近黑 Cal.com 设计语言                    │
 └──────────────────────────┬──────────────────────────────┘
@@ -136,7 +144,7 @@ cd '/Users/yenns/Documents/找寻项目/zhipin-readdy-resume-20260724/app'
 
 | 层 | 技术 |
 |----|------|
-| 前端 | React 18.3 · Vite 8 · TypeScript 5.9 · Tailwind 3.4 · GSAP 3.15 · recharts 3.8 · React Router 6 |
+| 前端 | React 19 · Vite 8 · TypeScript 5.8 · Tailwind 3.4 · GSAP 3.15 · recharts 3.8 · React Router 7 |
 | 后端 | Flask 3.1 · SQLAlchemy 2.0 · SQLite/MySQL/PostgreSQL · PyJWT |
 | AI | LangGraph 1.2 · DeepSeek v4 (OpenAI 兼容) · pdfplumber · python-docx |
 | 数据 | SQLite（开发）/ MySQL（公司试点）/ PostgreSQL（兼容） |
@@ -178,10 +186,12 @@ python backend/scripts/cleanup_demo_data.py --confirm
 
 ### 3. 前端
 ```bash
-cd frontend
+cd readdy-frontend
 npm ci
-npm run dev                   # http://localhost:5173，代理到 :5001
+npm run dev                   # 直接 Vite 开发默认 http://localhost:3000
 ```
+
+完整五角色本地验收使用根目录 `./scripts/serve-isolated-demo.sh`，访问 `http://127.0.0.1:5190`。
 
 ### MVP 内部试用账号（统一密码 `Zhipin2026`）
 | 展示角色 | 技术角色 | 邮箱 |
@@ -193,8 +203,10 @@ npm run dev                   # http://localhost:5173，代理到 :5001
 | 招聘专员 | `recruiter` | hr02@mvp.local |
 | 招聘专员 | `recruiter` | hr03@mvp.local |
 | 面试官 | `interviewer` | interviewer01@mvp.local |
+| 面试官 | `interviewer` | interviewer02@mvp.local |
+| 人力资源总监 | `hr_director` | director01@mvp.local |
 
-> 角色口径：权限判断只认 `admin` / `manager` / `recruiter` / `interviewer` 四类技术角色。“招聘负责人”是 `manager` 的业务展示名，不是新的 RBAC 角色。
+> 角色口径：权限判断只认 `admin` / `manager` / `recruiter` / `interviewer` / `hr_director` 五类技术角色。“招聘负责人”是 `manager` 的业务展示名。
 
 面试官账号用于查看分配给自己的面试任务、候选人详情和填写反馈；不会显示“推进 Offer/淘汰”等流程按钮，招聘流程推进仍由 HR/经理/管理员完成。
 
@@ -208,7 +220,7 @@ npm run dev                   # http://localhost:5173，代理到 :5001
 │   ├── app/api/      API 蓝图（auth/resume/jobs/demands/match/pipeline/interview/bi/agent/boss/talent_maps/notifications/admin/candidates）
 │   ├── app/services/ 业务服务（agent / match / resume / interview / boss）
 │   └── run.py        启动入口
-├── frontend/         Vite + React 前端
+├── readdy-frontend/  Vite + React 前端（构建输出 out/）
 │   └── src/
 │       ├── pages/    工作台/招聘需求/简历库/流程/面试/BI/AI助手/系统设置等页面（实验页代码可保留，P0 主导航隐藏）
 │       ├── components/ UI 基元 + 业务组件

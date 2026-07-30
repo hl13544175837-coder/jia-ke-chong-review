@@ -27,8 +27,8 @@
 
 ```
 前端 (Vite + React + TS + Tailwind)
-    │  开发模式: localhost:5173  →  /api 代理到 :5001
-    │  生产模式: Flask 直接托管 frontend/dist (SPA)
+    │  开发模式: readdy-frontend 默认 localhost:3000；完整验收使用 :5190
+    │  单入口部署: Flask 直接托管 readdy-frontend/out (SPA)
     ▼
 后端 (Flask + SQLAlchemy)  开发 localhost:5001 / 生产 localhost:5000
     ├── /api/auth          认证 (JWT + RBAC)
@@ -134,19 +134,19 @@ PORT=5001 python run.py
 
 **Windows PowerShell**（推荐，npm 仅在 PowerShell 可用）：
 ```powershell
-cd frontend
+cd readdy-frontend
 npm ci
 npm run dev
 ```
 
 **Linux / macOS**：
 ```bash
-cd frontend
+cd readdy-frontend
 npm ci
 npm run dev
 ```
 
-访问 **http://localhost:5173** 即可使用。
+直接运行 Vite 时访问 **http://localhost:3000**；完整本地验收使用根目录 `./scripts/serve-isolated-demo.sh` 后访问 **http://127.0.0.1:5190**。
 
 ---
 
@@ -312,9 +312,9 @@ rg -o '/assets/[^" ]+' /tmp/test-zhipin.html | sort -u
 
 1. 构建前端：
 ```powershell
-cd frontend
+cd readdy-frontend
 npm ci
-npm run build    # 生成 frontend/dist/；构建产物不提交
+npm run build    # 生成 readdy-frontend/out/；构建产物不提交
 ```
 
 2. 修改 `.env`。可以从轻量试点模板开始：
@@ -367,7 +367,7 @@ python backend/scripts/check_pilot_readiness.py
 
 开发机上的 `.env` 可能会显示大量 FAIL，这代表服务器必填配置还没填好，不代表脚本本身失败。只有服务器真实 `.env` 填完后，自检通过，才继续启动和开放试点。
 
-4. 启动（Flask 会自动托管 `frontend/dist`）：
+4. 启动（Flask 会自动托管 `readdy-frontend/out`，也可用 `FRONTEND_DIST` 覆盖）：
 ```bash
 cd backend
 python run.py
@@ -532,7 +532,7 @@ python backend/scripts/registry_smoketest.py --hold 60
 
 ### Libra/CI 镜像构建参考（非手工试点首选）
 
-公司 Libra/SIT 流水线会按 `zhipin-frontend` 和 `zhipin-server` 两个模块构建镜像。这是 CI/CD 打包与公司发布平台的模块形态，不改变本项目手工试点/生产推荐路线：前端先 `npm run build`，再由 Flask 同源托管 `frontend/dist`，对外暴露一个应用入口。
+公司 Libra/SIT 流水线会按 `zhipin-frontend` 和 `zhipin-server` 两个模块构建镜像。这是 CI/CD 打包与公司发布平台的模块形态，不改变业务边界。手工单入口路线先在 `readdy-frontend/` 运行 `npm run build`，再由 Flask 同源托管 `readdy-frontend/out`。
 
 除非公司发布平台明确要求排查镜像构建、标签或模块包记录，否则手工试点部署不要按下面示例改成前后端双容器拓扑；优先使用上面的方案 A/B/C。
 
@@ -591,14 +591,14 @@ docker run -d \
 
 ## 7. 公网穿透（cloudflared）
 
-内部临时试看优先暴露前端开发服务 `5173`，因为前端会自动把 `/api` 代理到后端 `5001`。
+内部临时试看优先暴露完整本地验收入口 `5190`，它会连接隔离登录桥 `5100` 和后端 `5010`。
 
 ```bash
 # Windows
-tools\cloudflared.exe tunnel --url http://127.0.0.1:5173 --protocol http2 --no-autoupdate
+tools\cloudflared.exe tunnel --url http://127.0.0.1:5190 --protocol http2 --no-autoupdate
 
 # Linux/macOS (需先下载 cloudflared)
-cloudflared tunnel --url http://127.0.0.1:5173 --protocol http2 --no-autoupdate
+cloudflared tunnel --url http://127.0.0.1:5190 --protocol http2 --no-autoupdate
 ```
 
 启动后输出类似：
@@ -665,7 +665,7 @@ A：检查 `backend/.env` 中的 API Key 是否填写正确，网络是否能访
 
 A：
 1. 开发模式确认后端已启动（`http://localhost:5001` 可访问）；生产模式确认 `http://localhost:5000` 可访问
-2. 生产模式：确认已运行 `npm run build` 生成 `frontend/dist/`
+2. 单入口模式：确认已在 `readdy-frontend/` 运行 `npm run build` 生成 `readdy-frontend/out/`
 3. 开发模式：确认 `npm run dev` 在 PowerShell 中运行（不是 Git Bash）
 
 ### Q：数据库如何重置？
@@ -674,7 +674,7 @@ A：仅显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 本地开�
 
 ### Q：端口冲突怎么办？
 
-A：开发联调优先固定 `PORT=5001` 和前端 `5173`。如果必须改后端端口，前端 `vite.config.ts` 中的 proxy 也需同步修改。
+A：直接 Vite 开发默认前端 `3000`；完整本地验收固定使用 `5190/5100/5010`。如果必须改端口，需同步核对启动脚本和前端代理目标。
 
 ### Q：Windows 下 npm 命令找不到？
 
@@ -683,6 +683,20 @@ A：必须在 **PowerShell** 中运行 npm 命令，不要在 Git Bash 中运行
 ---
 
 ## 快速验证清单
+
+本地准备 Test/SIT 发布候选时，先在仓库根目录运行统一门禁：
+
+```bash
+./scripts/check-sit-release.sh
+```
+
+该命令只读检查代码、构建、依赖安全、迁移 head、Git 状态和 RC 构建参数；不会清理 Mock、迁移数据库、提交、推送或发布。如需同时验证小团队 SIT 的真实配置文件，使用：
+
+```bash
+SIT_ENV_FILE=/absolute/path/to/sit.env ./scripts/check-sit-release.sh
+```
+
+发布后打开 `/actuator/info`，核对后端返回的版本、渠道、构建时间和预期 schema，并确认登录页页脚是同一个版本。这能防止“前端是新版、后端还是旧版”的暗病。
 
 ### 本地开发/演示验证
 
@@ -694,9 +708,10 @@ python -c "from app import create_app; app=create_app(); print('后端 OK')"
 # 2. 本地演示数据（只适用于本地演示库）
 python seed_dev.py
 
-# 3. 前端构建验证（PowerShell）
-cd ../frontend
-npm run typecheck
+# 3. 前端构建验证
+cd ../readdy-frontend
+npm run type-check
+npm run lint
 npm run build
 
 # 4. 接口验证

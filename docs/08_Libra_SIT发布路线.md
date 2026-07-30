@@ -56,20 +56,19 @@ cd /tmp/zhipin-cfpd-<fix-name>
 
 ### 2. 本地验证
 
-前端改动至少跑：
+本地发布候选优先运行统一门禁：
 
 ```bash
-(cd frontend && npm ci && npm test && npm run typecheck && npm run build)
+./scripts/check-sit-release.sh
 ```
 
-发布链路或 Docker/CI 改动还要检查：
+只做前端开发中的快速反馈时可运行：
 
 ```bash
-git diff --check
-make -n buildfrontend PKG_TAG= PKG_VERSION=
+(cd readdy-frontend && node --test tests/*.test.mjs && npm run type-check && npm run lint && npm run build)
 ```
 
-`make -n` 输出里不应出现 `zhipin-frontend:` 或 `zhipin-server:` 这种空镜像标签。
+统一门禁会额外检查 Git 格式、敏感文件、依赖安全、唯一迁移 head 和 RC 镜像构建参数；不能用快速反馈命令替代最终门禁。
 
 ### 3. 推送 CFPD
 
@@ -105,14 +104,14 @@ https://libra.yimidida.com/#/cicd/ci/pipelineexec/2994/4334,4335
 
 #### demand_id 版本的发布顺序
 
-Libra 构建成功不会自动证明 schema 已准备好。当前 RC/SIT server 镜像通过 Makefile 传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 和 `AUTO_MIGRATE_DATABASE=true`：entrypoint 先只在真正空库运行显式 bootstrap 并 stamp 当前 head，再在 Gunicorn 前执行 `alembic -c /app/backend/alembic.ini upgrade head`；发现部分 schema 会拒绝继续，不做猜测补表。`GA` 对两个开关都关闭。这条路线只用于数据可丢弃的 SIT 验收环境，发布时不得并发启动多个新 server 副本；生产仍必须使用唯一 migration job 和完整门禁。当前代码候选期望 revision 为 `20260729_11`。
+Libra 构建成功不会自动证明 schema 已准备好。当前 RC/SIT server 镜像通过 Makefile 传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 和 `AUTO_MIGRATE_DATABASE=true`：entrypoint 先只在真正空库运行显式 bootstrap 并 stamp 当前 head，再在 Gunicorn 前执行 `alembic -c /app/backend/alembic.ini upgrade head`；发现部分 schema 会拒绝继续，不做猜测补表。`GA` 对两个开关都关闭。这条路线只用于数据可丢弃的 SIT 验收环境，发布时不得并发启动多个新 server 副本；生产仍必须使用唯一 migration job 和完整门禁。当前代码候选期望 revision 为 `20260730_13`。
 
 同一个非 `GA` 构建还应在 `make -n PKG_TAG=RC buildserver` 中出现 `ALLOW_INSECURE_SIT_STARTUP=true`、`SECURITY_HEADERS_ENABLED=false`、`RATE_LIMIT_ENABLED=false` 和 `ALLOW_PUBLIC_REGISTRATION=true`；`GA` 干跑必须显示反向严格值。`check_pilot_readiness.py` 会故意拒绝宽松开关，因为它是真实数据试点/GA 工具，不应作为本 SIT 构建成功条件。
 
 干跑还必须分别出现 `--build-arg RELEASE_CHANNEL=RC` 和 `--build-arg RELEASE_CHANNEL=GA`。该值在构建时写入镜像内部文件；GA entrypoint 会在空库 bootstrap 或 Alembic 之前拒绝任何运行时宽松覆盖，因此不能用 K8S env 把 GA 镜像临时变成 RC。
 
 1. 在 SIT 同引擎临时库验证 pre-cutover 备份恢复；MySQL 必须有真实临时库导入与核对证据。
-2. RC/SIT 容器启动时由 entrypoint 处理真空库 bootstrap 或已有库 Expand，发布后独立核对 `alembic current == 20260729_11`；`/api/health` 只证明 liveness。
+2. RC/SIT 容器启动时由 entrypoint 处理真空库 bootstrap 或已有库 Expand，发布后独立核对 `alembic current == 20260730_13`；`/api/health` 只证明 liveness，`/actuator/info` 用于核对前后端批次和预期 schema。
 3. 运行 audit/backfill dry-run；歧义 bundle 经业务负责人批准后才允许回填。
 4. verify 通过后部署 dual-write 兼容版，做 shadow comparison，不立即 Contract。
 5. 新前端、新后端、AI、BI、通知、审计全部对齐且旧 worker/旧资产退出后，由负责人决定是否设置 cutover marker。

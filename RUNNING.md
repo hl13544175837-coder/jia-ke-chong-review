@@ -88,7 +88,7 @@ python seed_dev.py
 ```bash
 cd backend
 alembic upgrade head
-alembic current  # 当前收口候选应为 20260729_11
+alembic current  # 当前收口候选应为 20260730_13
 python scripts/audit_demand_scope.py --database <local-sqlite-fixture> \
   --output <audit-report.json> --manifest-output <mapping-to-review.json>
 # 必须由 Product/Data Owner 将审批后的条目标记 approved=true
@@ -272,43 +272,45 @@ DASHSCOPE_VISION_MODEL=qwen3.7-plus
 ## 前端二次开发
 
 ```bash
-cd frontend
+cd readdy-frontend
 npm ci
-npm run dev      # http://localhost:5173，代理到 :5001
-npm run build    # 验证生产构建；frontend/dist/ 是生成物，不提交
+npm run dev      # 当前 Vite 开发服务；完整本地验收优先使用根目录启动脚本
+npm run build    # 验证生产构建；readdy-frontend/out/ 是生成物，不提交
 ```
 
-开发时只保留一个前端地址：`http://localhost:5173`。如果 5173 被占用，Vite 会直接报错，不会自动跳到 5174/5175。
+完整本地验收默认只使用 `http://127.0.0.1:5190`，避免旧端口或其他项目页面混入验收。
 
-### 公司网关不可达时的本地四角色验收
+### Test/SIT 发布前本地总检查
 
-普通开发仍使用上面的 `npm run dev`。只有需要在公司网关不可达的本机完整点击登录页、验证四角色路由时，才额外开启本地 OAuth 验收桥。该桥只接受本文列出的 `@mvp.local` 试用账号，调用本地后端生成真实 JWT，不创建业务假数据，也不会修改或替代正式公司的 `gatewayAuth.ts` 登录链路。
+依赖已安装后，在仓库根目录运行：
+
+```bash
+./scripts/check-sit-release.sh
+```
+
+这是最终交付口径：通过才说明当前本地代码可作为 Test/SIT 发布候选。它不会动 Mock 数据、数据库或远端分支；公司 SIT 的密钥、网关、数据库和账号仍需单独现场验收。
+
+### 公司网关不可达时的本地五角色验收
+
+普通前端开发仍可使用上面的 `npm run dev`。需要在公司网关不可达时完整点击登录页、验证五角色路由，统一使用根目录隔离启动脚本。该桥只接受本文列出的 `@mvp.local` 试用账号，调用本地后端生成真实 JWT，不会修改或替代正式公司的公司登录链路。
 
 本地桥在校验登录 Token 后，还会为 `clientId=zhipin` 返回本地验收所需的完整菜单 code；页面仍先按登录角色过滤路由，后端 RBAC 仍是最终权限边界。该行为只用于公司网关不可达时的本机验收，不进入 SIT/正式网关协议。
 
-先确保后端已在 `:5001` 启动并执行过 `seed_dev.py`，再开两个终端：
-
 ```bash
-cd frontend
-npm run dev:oauth-bridge
+./scripts/serve-isolated-demo.sh
+# 打开 http://127.0.0.1:5190
 ```
 
-```bash
-cd frontend
-npm run dev:local-acceptance
-# 打开 http://127.0.0.1:5174
-```
-
-`dev:local-acceptance` 会显式把业务 `/api` 指向本地 `:5001`，避免 `frontend/.env.development` 把本地验收误接到远端 SIT。登录账号填写 `admin01`、`manager01`、`hr01`、`interviewer01` 或 `director01`，密码仍为 `Zhipin2026`。正式构建和 SIT 不使用这两个本地命令，仍走公司网关及原冻结链路。
+该脚本会启动 `5190` 前端、`5100` 本地登录桥和 `5010` 后端，并检查端口归属。登录账号填写 `admin01`、`manager01`、`hr01`、`interviewer01`、`interviewer02` 或 `director01`，密码仍为 `Zhipin2026`。正式构建和 SIT 不使用本地桥，仍走公司网关。
 
 ## 临时外链试用
 
-给内部同事临时试看时，可以用 Cloudflare Tunnel 或 localtunnel 把本机 `5173` 暴露出去。前端开发服务已允许 `.trycloudflare.com` 和 `.loca.lt` 临时域名访问。
+给内部同事临时试看时，可以用 Cloudflare Tunnel 或 localtunnel 把完整本地验收入口 `5190` 暴露出去。前端开发服务已允许 `.trycloudflare.com` 和 `.loca.lt` 临时域名访问。
 
 优先使用 Cloudflare Tunnel：
 
 ```bash
-cloudflared tunnel --url http://127.0.0.1:5173 --protocol http2
+cloudflared tunnel --url http://127.0.0.1:5190 --protocol http2
 ```
 
 如果看到 localtunnel 的英文/中文安全确认页，说明那是 localtunnel 免费通道的访问确认，不是产品报错。面向 HR 试用时优先改用 Cloudflare Tunnel 链接。

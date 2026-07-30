@@ -50,7 +50,7 @@ AI 开始开发、修复、重构、配置调整或文档维护前，应先读�
 
 当前项目主线是前后端分离开发、单体部署收口的招聘管理系统：
 
-- 前端主线：`frontend/`，React + Vite + TypeScript。
+- 前端主线：`readdy-frontend/`，React + Vite + TypeScript；构建产物为 `readdy-frontend/out/`。
 - 后端主线：`backend/`，Flask + SQLAlchemy + JWT/RBAC。
 - AI 与复用能力：`base_agent/` 和后端 `app/services/agent_service.py` 等服务层。
 - 文档真源：`README.md`、`RUNNING.md`、`DEPLOYMENT.md`、`docs/` 和 `docs/adr/`。
