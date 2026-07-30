@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 
 from app import _enforce_production_security
 from app.config import Config
@@ -181,3 +182,74 @@ def test_frontend_build_and_git_hygiene_are_reproducible():
     assert ".workbuddy/" in gitignore
     assert "outputs/" in gitignore
     assert "apt-get install -y curl git" not in backend_dockerfile
+
+
+def _safe_sit_values():
+    return {
+        "JWT_SECRET": "s" * 48,
+        "JWT_EXPIRY_HOURS": "8",
+        "FLASK_DEBUG": "false",
+        "ALLOW_INSECURE_SIT_STARTUP": "true",
+        "DATABASE_URL": "mysql+pymysql://user:secret@db.internal:3306/zhipin_test",
+        "CORS_ORIGINS": "https://test-zhipin.yimidida.com",
+        "SECURITY_HEADERS_ENABLED": "true",
+        "RATE_LIMIT_ENABLED": "true",
+        "RATE_LIMIT_LOGIN": "10",
+        "RATE_LIMIT_AGENT_CHAT": "20",
+        "RATE_LIMIT_RESUME_UPLOAD": "8",
+        "BACKUP_DIR": "/var/lib/zhipin/backups",
+        "UPLOAD_FOLDER": "/var/lib/zhipin/uploads",
+        "LOCAL_SCHEMA_COMPAT": "false",
+        "AUTO_MIGRATE_DATABASE": "true",
+        "ALLOW_EMPTY_DATABASE_BOOTSTRAP": "true",
+        "ALLOW_PUBLIC_REGISTRATION": "false",
+        "BOSS_CLI_AUTO_INSTALL": "false",
+        "RESUME_AI_ENABLED": "false",
+        "AI_HUMAN_REVIEW_REQUIRED": "true",
+        "AUTH_DISABLED": "true",
+        "AUTH_GATEWAY_USER_ROLE": "recruiter",
+        "AUTH_GATEWAY_ROLE_MAP": "A001:recruiter,A002:interviewer",
+        "FIELD_ENCRYPTION_KEY": Fernet.generate_key().decode("ascii"),
+    }
+
+
+def test_sit_profile_accepts_safe_small_team_configuration():
+    checks = run_checks(
+        _safe_sit_values(),
+        ROOT,
+        ROOT / "backend" / ".env",
+        profile="sit-team",
+    )
+
+    assert [check.name for check in checks if not check.ok] == []
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("RESUME_AI_ENABLED", "true"),
+        ("ALLOW_PUBLIC_REGISTRATION", "true"),
+        ("SECURITY_HEADERS_ENABLED", "false"),
+        ("AUTH_GATEWAY_USER_ROLE", "admin"),
+        ("JWT_SECRET", "REPLACE_WITH_32_PLUS_RANDOM_CHARACTERS"),
+        ("AUTH_GATEWAY_ROLE_MAP", "REPLACE_HR_EMP_CODE:recruiter"),
+        ("BACKUP_DIR", "/tmp/zhipin-backups"),
+    ],
+)
+def test_sit_profile_rejects_dangerous_or_placeholder_values(key, value):
+    values = _safe_sit_values()
+    values[key] = value
+
+    checks = run_checks(
+        values,
+        ROOT,
+        ROOT / "backend" / ".env",
+        profile="sit-team",
+    )
+
+    assert any(check.name == key and not check.ok for check in checks)
+
+
+def test_readiness_rejects_unknown_profile():
+    with pytest.raises(ValueError, match="unsupported readiness profile"):
+        run_checks({}, ROOT, ROOT / "backend" / ".env", profile="unknown")
