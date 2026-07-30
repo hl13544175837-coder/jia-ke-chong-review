@@ -1004,3 +1004,40 @@ def test_frontend_and_backend_images_receive_the_same_build_identity():
     assert dry_run.stdout.count("BUILD_VERSION=abc123def456") == 2
     assert dry_run.stdout.count("BUILD_CHANNEL=RC") == 2
     assert dry_run.stdout.count("BUILD_TIME=2026-07-30T12:00:00Z") == 2
+
+
+def test_sit_release_gate_runs_required_checks_without_mutating_release_state():
+    release_gate = (ROOT / "scripts" / "check-sit-release.sh").read_text(
+        encoding="utf-8"
+    )
+    frontend_audit = (
+        ROOT / "scripts" / "check-frontend-audit.mjs"
+    ).read_text(encoding="utf-8")
+
+    assert "set -euo pipefail" in release_gate
+    for required in [
+        "pytest backend/tests base_agent/tests",
+        "node --test tests/*.test.mjs",
+        "npm run type-check",
+        "npm run lint",
+        "npm run build",
+        "check-frontend-audit.mjs",
+        "pip_audit --local --strict",
+        "alembic heads",
+        "git diff --check",
+        "make -n build",
+    ]:
+        assert required in release_gate
+    for forbidden in [
+        "git push",
+        "git commit",
+        "alembic upgrade",
+        "npm audit fix",
+        "rm -rf",
+    ]:
+        assert forbidden not in release_gate
+
+    assert "GHSA-qwww-vcr4-c8h2" in frontend_audit
+    assert "npm audit --json" in frontend_audit
+    assert "blockedAdvisories" in frontend_audit
+    assert "scanForRscEntrypoints" in frontend_audit
