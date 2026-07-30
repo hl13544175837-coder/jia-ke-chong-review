@@ -1,11 +1,13 @@
 import { ArrowLeft, CalendarDays, CheckCircle2, MapPin, RefreshCw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import PageHeader from '@/components/ui/PageHeader';
 import { interviewsApi } from '@/features/interviews/api';
 import type {
   InterviewAssignmentInput,
   InterviewAssignmentUpdateInput,
   InterviewManagementRow,
+  InterviewRescheduleRequest,
   InterviewerOption,
 } from '@/features/interviews/types';
 import { formatInterviewDateTime } from '@/features/interviews/dateTime';
@@ -14,6 +16,8 @@ import InterviewFilterPopover from './components/InterviewFilterPopover';
 import InterviewManagementCalendar from './components/InterviewManagementCalendar';
 import InterviewManagementTable from './components/InterviewManagementTable';
 import InterviewWorkbenchToolbar from './components/InterviewWorkbenchToolbar';
+import RescheduleHistory from './components/RescheduleHistory';
+import RescheduleRequestPanel from './components/RescheduleRequestPanel';
 import ScheduleInterviewModal from './components/ScheduleInterviewModal';
 import {
   deriveInterviewFilterOptions,
@@ -118,7 +122,9 @@ export default function RecruiterInterviewsPage() {
   const requestedAssignmentId = Number(searchParams.get('assignment')) || null;
   const fromJobs = searchParams.get('from') === 'jobs';
   const fromDashboard = searchParams.get('from') === 'dashboard';
+  const dashboardScheduleHandledInUrl = searchParams.get('quickSchedule') === 'handled';
   const handledDeepLink = useRef('');
+  const handledDashboardSchedule = useRef(false);
   const [rows, setRows] = useState<InterviewManagementRow[]>([]);
   const [interviewers, setInterviewers] = useState<InterviewerOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,6 +146,10 @@ export default function RecruiterInterviewsPage() {
   const [actionRowId, setActionRowId] = useState<number | null>(null);
   const [actionError, setActionError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [selectedRescheduleHistory, setSelectedRescheduleHistory] = useState<InterviewRescheduleRequest[]>([]);
+  const [rescheduleRequestId, setRescheduleRequestId] = useState<number | null>(null);
+  const [rescheduleBusy, setRescheduleBusy] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState('');
 
   const syncInterviewWorkspaceUrl = useCallback(() => {
     const next = new URLSearchParams(searchParams);
@@ -171,15 +181,24 @@ export default function RecruiterInterviewsPage() {
 
   const openInterviewDetail = useCallback((row: InterviewManagementRow) => {
     setSelectedRow(row);
+    setSelectedRescheduleHistory(row.reschedule_request ? [row.reschedule_request] : []);
     setShowReject(false);
     setRejectReason('');
+    setRescheduleError('');
     openInterviewInUrl(row);
+    if (row.assignment_id) {
+      void interviewsApi.listRescheduleHistory(row.assignment_id)
+        .then(setSelectedRescheduleHistory)
+        .catch(() => undefined);
+    }
   }, [openInterviewInUrl]);
 
   const closeInterviewDetail = useCallback(() => {
     setSelectedRow(null);
     setShowReject(false);
     setRejectReason('');
+    setSelectedRescheduleHistory([]);
+    setRescheduleError('');
     const next = new URLSearchParams(searchParams);
     next.delete('candidate');
     next.delete('assignment');
@@ -196,6 +215,16 @@ export default function RecruiterInterviewsPage() {
       ]);
       setRows(managementRows);
       setInterviewers(reviewerRows);
+      setSelectedRow((current) => (
+        current
+          ? latestCandidateManagementRow(
+            managementRows,
+            current.candidate_id,
+            current.demand_id,
+            current.assignment_id,
+          )
+          : null
+      ));
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : '面试管理加载失败');
     } finally {
@@ -259,19 +288,62 @@ export default function RecruiterInterviewsPage() {
     [activeTab, draftFilters, scopedRows, search],
   );
 
+  useEffect(() => {
+    if (
+      !fromDashboard
+      || activeTab !== 'unassigned'
+      || loading
+      || loadError
+      || dashboardScheduleHandledInUrl
+      || handledDashboardSchedule.current
+    ) return;
+
+    handledDashboardSchedule.current = true;
+    if (visibleRows.length !== 1) return;
+
+    setScheduleIsPrimary(true);
+    setActionError('');
+    setScheduleRow(visibleRows[0]);
+
+    const next = new URLSearchParams(searchParams);
+    next.set('quickSchedule', 'handled');
+    setSearchParams(next, { replace: true });
+  }, [activeTab, dashboardScheduleHandledInUrl, fromDashboard, loadError, loading, searchParams, setSearchParams, visibleRows]);
+
   const saveSchedule = async (payload: InterviewAssignmentInput | InterviewAssignmentUpdateInput) => {
     if (!scheduleRow) return;
     setSaving(true);
     setActionError('');
     try {
-      if (scheduleRow.assignment_id) {
+      if (rescheduleRequestId && scheduleRow.assignment_id) {
+        const update = payload as InterviewAssignmentUpdateInput;
+        await interviewsApi.processRescheduleRequest(rescheduleRequestId, {
+          action: 'approve',
+          interviewer_id: update.interviewer_id,
+          scheduled_at: update.scheduled_at || undefined,
+          location: update.location,
+          note: update.note,
+          processor_note: update.change_reason,
+        });
+        setSuccessMessage('改约已确认，最终安排和变更记录已通知对应面试官');
+      } else if (rescheduleRequestId) {
+        const replacement = payload as InterviewAssignmentInput;
+        await interviewsApi.createReplacementAssignment(rescheduleRequestId, {
+          interviewer_id: replacement.interviewer_id,
+          scheduled_at: replacement.scheduled_at || '',
+          location: replacement.location,
+          note: replacement.note,
+        });
+        setSuccessMessage('已重新激活面试流程，新任务已创建并通知面试官');
+      } else if (scheduleRow.assignment_id) {
         await interviewsApi.updateAssignment(scheduleRow.assignment_id, payload as InterviewAssignmentUpdateInput);
-        setSuccessMessage('面试安排已更新，面试官会收到站内通知；企业微信待接入');
+        setSuccessMessage('面试安排已更新，变更记录和站内通知已生成');
       } else {
         await interviewsApi.createAssignment(payload as InterviewAssignmentInput);
-        setSuccessMessage('站内面试日程和待办已创建；企业微信日历待接入');
+        setSuccessMessage('本地站内日程和面试官待办已创建');
       }
       setScheduleRow(null);
+      setRescheduleRequestId(null);
       closeInterviewDetail();
       await loadWorkbench();
     } catch (error) {
@@ -321,7 +393,54 @@ export default function RecruiterInterviewsPage() {
   const openSchedule = (row: InterviewManagementRow, isPrimary = true) => {
     setScheduleIsPrimary(isPrimary);
     setActionError('');
+    setRescheduleRequestId(
+      row.reschedule_request?.status === 'waiting_reassignment'
+        ? row.reschedule_request.id
+        : null,
+    );
     setScheduleRow(row);
+  };
+
+  const openRescheduleApproval = (
+    row: InterviewManagementRow,
+    requestItem: InterviewRescheduleRequest,
+    suggestedTime: string,
+  ) => {
+    setScheduleIsPrimary(Boolean(row.is_primary));
+    setActionError('');
+    setRescheduleRequestId(requestItem.id);
+    setScheduleRow({ ...row, scheduled_at: suggestedTime });
+  };
+
+  const processRescheduleDecision = async (
+    requestItem: InterviewRescheduleRequest,
+    action: 'reject' | 'cancel_and_wait',
+    reason: string,
+  ) => {
+    if (rescheduleBusy || !reason.trim()) return;
+    setRescheduleBusy(true);
+    setRescheduleError('');
+    try {
+      await interviewsApi.processRescheduleRequest(requestItem.id, {
+        action,
+        processor_note: reason.trim(),
+      });
+      await loadWorkbench();
+      setSelectedRescheduleHistory((current) => current.map((item) => (
+        item.id === requestItem.id
+          ? { ...item, status: action === 'reject' ? 'rejected' : 'waiting_reassignment', processor_note: reason.trim() }
+          : item
+      )));
+      setSuccessMessage(
+        action === 'reject'
+          ? '改约申请已拒绝，原安排继续有效并已通知面试官'
+          : '原面试已取消，候选人仍在面试流程中，可随时重新安排',
+      );
+    } catch (error) {
+      setRescheduleError(error instanceof Error ? error.message : '处理改约申请失败');
+    } finally {
+      setRescheduleBusy(false);
+    }
   };
 
   const openFollowUpSchedule = (
@@ -372,17 +491,18 @@ export default function RecruiterInterviewsPage() {
 
   return (
     <div className="space-y-5 p-6" data-ui="real-recruiter-interview-workbench">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          {fromDashboard && !requestedDemandId && <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>}
-          <div>
-          <p className="mt-1 text-sm text-foreground-500">从安排面试到收回反馈，都在这里处理</p>
-          </div>
-        </div>
-        <button type="button" onClick={() => void loadWorkbench()} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-300 bg-white px-3 text-sm text-foreground-600 disabled:opacity-50">
-          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> 刷新
-        </button>
-      </header>
+      <PageHeader
+        title="面试管理"
+        description="从安排面试到收回反馈，都在这里处理"
+        leading={fromDashboard && !requestedDemandId ? (
+          <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>
+        ) : undefined}
+        actions={(
+          <button type="button" onClick={() => void loadWorkbench()} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-300 bg-white px-3 text-sm text-foreground-600 disabled:opacity-50">
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> 刷新
+          </button>
+        )}
+      />
 
       {requestedDemandId && (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-200 bg-primary-50/60 px-4 py-3" aria-label="当前岗位面试">
@@ -441,7 +561,9 @@ export default function RecruiterInterviewsPage() {
       ) : visibleRows.length === 0 ? (
         <div className="rounded-xl border border-background-200 bg-white py-16 text-center">
           <CalendarDays className="mx-auto text-foreground-300" size={28} />
-          <p className="mt-3 text-sm font-medium text-foreground-700">没有符合当前条件的面试任务</p>
+          <p className="mt-3 text-sm font-medium text-foreground-700">
+            {fromDashboard && activeTab === 'unassigned' ? '当前没有待安排面试' : '没有符合当前条件的面试任务'}
+          </p>
           <button type="button" onClick={() => { setSearch(''); setActiveTab('all'); setAppliedFilters(emptyInterviewFilters); }} className="mt-3 text-sm font-medium text-primary-600 hover:text-primary-700">重置筛选</button>
         </div>
       ) : viewMode === 'list' ? (
@@ -473,6 +595,38 @@ export default function RecruiterInterviewsPage() {
               <div><dt className="text-xs text-foreground-400">地点 / 链接</dt><dd className="mt-1 inline-flex items-center gap-1 text-foreground-700"><MapPin size={13} />{selectedRow.location || '待确认'}</dd></div>
             </dl>
             {selectedRow.note && <div className="mt-5 rounded-lg bg-background-50 px-4 py-3"><p className="text-xs text-foreground-400">安排备注</p><p className="mt-1 text-sm text-foreground-700">{selectedRow.note}</p></div>}
+            {selectedRow.reschedule_request?.status === 'pending' && (
+              <RescheduleRequestPanel
+                request={selectedRow.reschedule_request}
+                busy={rescheduleBusy}
+                error={rescheduleError}
+                onApprove={(suggestedTime) => openRescheduleApproval(
+                  selectedRow,
+                  selectedRow.reschedule_request as InterviewRescheduleRequest,
+                  suggestedTime,
+                )}
+                onReject={(reason) => void processRescheduleDecision(
+                  selectedRow.reschedule_request as InterviewRescheduleRequest,
+                  'reject',
+                  reason,
+                )}
+                onCancelAndWait={(reason) => void processRescheduleDecision(
+                  selectedRow.reschedule_request as InterviewRescheduleRequest,
+                  'cancel_and_wait',
+                  reason,
+                )}
+              />
+            )}
+            {selectedRow.reschedule_request?.status === 'waiting_reassignment' && (
+              <section className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <h3 className="text-sm font-semibold text-amber-900">因改约待重新安排</h3>
+                <p className="mt-1 text-xs leading-5 text-amber-800">原任务已保留为取消记录，候选人仍在面试流程中。</p>
+                <button type="button" onClick={() => openSchedule(selectedRow)} className="mt-3 rounded-md bg-primary-500 px-3 py-2 text-sm font-medium text-white">重新安排面试</button>
+              </section>
+            )}
+            <div className="mt-5">
+              <RescheduleHistory items={selectedRescheduleHistory} />
+            </div>
             {selectedRow.feedback_submitted && <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3"><p className="text-sm font-medium text-emerald-800">面试反馈已提交</p><p className="mt-1 text-sm text-emerald-700">面试官评价：{selectedRow.feedback_result === 'passed' ? '满意' : selectedRow.feedback_result === 'not_passed' ? '不满意' : '待定'}{selectedRow.feedback_score !== null ? ` · ${selectedRow.feedback_score} 分` : ''}</p></div>}
 
             {selectedRow.feedback_submitted && selectedRow.pipeline_stage === 'interview' && (
@@ -524,7 +678,7 @@ export default function RecruiterInterviewsPage() {
         </div>
       )}
 
-      {scheduleRow && <ScheduleInterviewModal row={scheduleRow} interviewers={interviewers} saving={saving} error={actionError} isPrimary={scheduleIsPrimary} onClose={() => { if (!saving) { setScheduleRow(null); setActionError(''); } }} onSave={(payload) => void saveSchedule(payload)} onCancelAssignment={(reason) => void cancelSchedule(reason)} />}
+      {scheduleRow && <ScheduleInterviewModal row={scheduleRow} interviewers={interviewers} saving={saving} error={actionError} isPrimary={scheduleIsPrimary} allowCancel={rescheduleRequestId === null} onClose={() => { if (!saving) { setScheduleRow(null); setRescheduleRequestId(null); setActionError(''); } }} onSave={(payload) => void saveSchedule(payload)} onCancelAssignment={(reason) => void cancelSchedule(reason)} />}
     </div>
   );
 }

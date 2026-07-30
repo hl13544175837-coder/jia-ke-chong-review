@@ -68,6 +68,10 @@ function DemandDetail({ demand }: { demand: MonthlyPerformanceDemand }) {
 
 export default function MonthlyPerformancePanel({ onStageClick }: { onStageClick: (stage: DashboardStage) => void }) {
   const { role, userId } = useCompanyAuth();
+  const panelTitle = role === 'recruiter' ? '我的月度招聘表现' : '招聘专员月度表现';
+  const panelDescription = role === 'recruiter'
+    ? '按自然月查看自己负责且当月有数据的招聘需求'
+    : '按自然月和招聘专员查看客观推进数据';
   const [month, setMonth] = useState(currentMonth);
   const [owners, setOwners] = useState<DemandOwnerOption[]>([]);
   const [ownerId, setOwnerId] = useState<number | null>(role === 'recruiter' ? userId : null);
@@ -110,12 +114,12 @@ export default function MonthlyPerformancePanel({ onStageClick }: { onStageClick
   }, [loadPerformance]);
 
   return (
-    <section data-ui="dashboard-monthly-performance" className="overflow-hidden rounded-xl border border-background-200 bg-white shadow-[0_8px_28px_rgba(44,62,52,0.035)]">
+    <section data-ui="analytics-monthly-performance" className="overflow-hidden rounded-xl border border-background-200 bg-white shadow-[0_8px_28px_rgba(44,62,52,0.035)]">
       <header className="flex flex-col gap-3 border-b border-background-100 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-foreground-900">数据看板</h2>
-            <p className="mt-0.5 truncate text-xs text-foreground-500">按自然月查看客观推进数据，只展示该招聘专员负责且当月有数据的招聘需求</p>
+            <h2 className="text-sm font-semibold text-foreground-900">{panelTitle}</h2>
+            <p className="mt-0.5 truncate text-xs text-foreground-500">{panelDescription}</p>
           </div>
           {performance && <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700">本月合计</span>}
         </div>

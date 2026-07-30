@@ -7,8 +7,13 @@ import {
   type ReactNode,
 } from 'react';
 import { md5 } from './md5';
+import {
+  resolveGatewayRole,
+  VALID_COMPANY_ROLES,
+  type CompanyRole,
+} from './gatewayRoles';
 
-export type CompanyRole = 'admin' | 'manager' | 'recruiter' | 'interviewer';
+export type { CompanyRole } from './gatewayRoles';
 
 export interface CompanyLoginResult {
   token: string;
@@ -55,11 +60,8 @@ export const EMP_CODE_KEY = 'hireinsight_emp_code';
 const NAME_KEY = 'hireinsight_name';
 const ROLE_KEY = 'hireinsight_role';
 const USER_ID_KEY = 'hireinsight_user_id';
-const VALID_ROLES: CompanyRole[] = ['admin', 'manager', 'recruiter', 'interviewer'];
-const ENV_ROLE = ((import.meta.env.VITE_DEFAULT_ROLE ?? 'admin') as string).trim();
-const DEFAULT_ROLE: CompanyRole = VALID_ROLES.includes(ENV_ROLE as CompanyRole)
-  ? (ENV_ROLE as CompanyRole)
-  : 'admin';
+const ENV_ROLE = ((import.meta.env.VITE_DEFAULT_ROLE ?? 'recruiter') as string).trim();
+const GATEWAY_ROLE_MAP = ((import.meta.env.VITE_GATEWAY_ROLE_MAP ?? '') as string).trim();
 
 const OAUTH_BASE = ((import.meta.env.VITE_OAUTH_BASE_URL ?? '/pgs/oauth') as string)
   .trim()
@@ -141,10 +143,10 @@ async function gatewayProfile(token: string): Promise<{
   const userId = Number.isSafeInteger(info.userId) && Number(info.userId) > 0
     ? Number(info.userId)
     : null;
-  const role = info.role && VALID_ROLES.includes(info.role) ? info.role : DEFAULT_ROLE;
   if (!empCode) {
     throw new CompanyAuthError(502, '公司账号缺少工号，请联系系统管理员');
   }
+  const role = resolveGatewayRole(empCode, info.role, GATEWAY_ROLE_MAP, ENV_ROLE);
   return { name, empCode, userId, role };
 }
 
@@ -194,7 +196,7 @@ function loadStoredSession(): CompanySession | null {
     || !empCode
     || !name
     || !role
-    || !VALID_ROLES.includes(role)
+    || !VALID_COMPANY_ROLES.includes(role)
     || (userId !== null && (!Number.isInteger(userId) || userId <= 0))
   ) {
     clearStoredSession();

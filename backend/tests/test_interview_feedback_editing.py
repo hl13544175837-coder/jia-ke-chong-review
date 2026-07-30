@@ -18,7 +18,14 @@ def _auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _seed_assignment(app, owner_id, interviewer_id, *, scheduled_at=None):
+def _seed_assignment(
+    app,
+    owner_id,
+    interviewer_id,
+    *,
+    scheduled_at=None,
+    status="awaiting_feedback",
+):
     with app.app_context():
         job = Job(
             org_id=1,
@@ -66,7 +73,7 @@ def _seed_assignment(app, owner_id, interviewer_id, *, scheduled_at=None):
             primary_slot=1,
             interviewer_id=interviewer_id,
             scheduled_at=scheduled_at,
-            status="awaiting_feedback",
+            status=status,
             created_by=owner_id,
         )
         db.session.add(assignment)
@@ -100,6 +107,36 @@ def test_future_interview_cannot_receive_feedback(client, make_user, app):
     assert response.get_json()["code"] == "interview_not_started"
 
 
+def test_interviewer_cannot_mark_future_interview_conducted(
+    client,
+    make_user,
+    app,
+):
+    hr_id, _ = make_user(
+        "future-conducted-owner@example.com",
+        role="recruiter",
+    )
+    interviewer_id, interviewer_token = make_user(
+        "future-conducted-interviewer@example.com",
+        role="interviewer",
+    )
+    assignment_id = _seed_assignment(
+        app,
+        hr_id,
+        interviewer_id,
+        scheduled_at=utc_now() + timedelta(days=1),
+        status="scheduled",
+    )
+
+    response = client.post(
+        f"/api/interview/assignments/{assignment_id}/mark-conducted",
+        headers=_auth(interviewer_token),
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "interview_not_started"
+
+
 def test_interviewer_submits_satisfaction_and_note(client, make_user, app):
     hr_id, _ = make_user("feedback-owner@example.com", role="recruiter")
     interviewer_id, token = make_user(
@@ -120,6 +157,48 @@ def test_interviewer_submits_satisfaction_and_note(client, make_user, app):
     assert response.status_code == 201
     assert response.get_json()["satisfaction"] == "satisfied"
     assert response.get_json()["note"] == "符合 JD 重点，可继续推进。"
+
+
+def test_interviewer_submits_structured_feedback_in_existing_columns(
+    client, make_user, app
+):
+    hr_id, _ = make_user("structured-owner@example.com", role="recruiter")
+    interviewer_id, token = make_user(
+        "structured-author@example.com", role="interviewer"
+    )
+    assignment_id = _seed_assignment(app, hr_id, interviewer_id)
+    payload = {
+        "assignment_id": assignment_id,
+        "satisfaction": "satisfied",
+        "job_match": "high",
+        "recommendation": "next_round",
+        "strengths": "Python 基础扎实，表达清楚",
+        "concerns": "分布式项目经验需要二面确认",
+        "note": "建议进入二面",
+    }
+
+    response = client.post(
+        "/api/interview/feedback",
+        headers=_auth(token),
+        json=payload,
+    )
+
+    assert response.status_code == 201
+    result = response.get_json()
+    assert result["job_match"] == "high"
+    assert result["recommendation"] == "next_round"
+    assert result["strengths"] == payload["strengths"]
+    assert result["concerns"] == payload["concerns"]
+    with app.app_context():
+        from app.models import InterviewFeedback
+
+        stored = InterviewFeedback.query.filter_by(
+            assignment_id=assignment_id
+        ).one()
+        assert stored.strengths == payload["strengths"]
+        assert stored.concerns == payload["concerns"]
+        assert stored.evaluation_json["job_match"] == "high"
+        assert stored.evaluation_json["recommendation"] == "next_round"
 
 
 def test_original_interviewer_can_edit_feedback_with_audit(client, make_user, app):
@@ -160,9 +239,20 @@ def test_original_interviewer_can_edit_feedback_with_audit(client, make_user, ap
         event = Event.query.filter_by(
             action="interview.feedback_updated", entity_id=feedback_id
         ).one()
-        assert event.payload["before"]["satisfaction"] == "satisfied"
+        assert event.payload["before"] == {
+            "satisfaction": "satisfied",
+            "job_match": "",
+            "recommendation": "",
+            "strengths": "",
+            "concerns": "",
+            "note": "初次评价",
+        }
         assert event.payload["after"] == {
             "satisfaction": "pending",
+            "job_match": "",
+            "recommendation": "",
+            "strengths": "",
+            "concerns": "",
             "note": "补充观察",
         }
 
@@ -180,6 +270,98 @@ def test_simple_feedback_validation(client, make_user, app, payload, field):
     )
     interviewer_id, token = make_user(
         f"feedback-validation-author-{field}@example.com", role="interviewer"
+    )
+    assignment_id = _seed_assignment(app, hr_id, interviewer_id)
+
+    response = client.post(
+        "/api/interview/feedback",
+        headers=_auth(token),
+        json={"assignment_id": assignment_id, **payload},
+    )
+
+    assert response.status_code == 400
+    assert field in response.get_json()["fields"]
+
+
+@pytest.mark.parametrize(
+    ("payload", "field"),
+    [
+        (
+            {
+                "satisfaction": "satisfied",
+                "job_match": "high",
+                "recommendation": "next_round",
+                "strengths": "",
+                "concerns": "待确认",
+                "note": "建议推进",
+            },
+            "strengths",
+        ),
+        (
+            {
+                "satisfaction": "unsatisfied",
+                "job_match": "low",
+                "recommendation": "reject",
+                "strengths": "有相关经验",
+                "concerns": "",
+                "note": "不建议推进",
+            },
+            "concerns",
+        ),
+        (
+            {
+                "satisfaction": "pending",
+                "job_match": "medium",
+                "recommendation": "hold",
+                "strengths": "表达清楚",
+                "concerns": "经验待核实",
+                "note": "",
+            },
+            "note",
+        ),
+        (
+            {
+                "satisfaction": "satisfied",
+                "job_match": "unknown",
+                "recommendation": "next_round",
+                "strengths": "优势",
+                "concerns": "",
+                "note": "",
+            },
+            "job_match",
+        ),
+        (
+            {
+                "satisfaction": "satisfied",
+                "job_match": "high",
+                "recommendation": "skip",
+                "strengths": "优势",
+                "concerns": "",
+                "note": "",
+            },
+            "recommendation",
+        ),
+        (
+            {
+                "satisfaction": "satisfied",
+                "job_match": "high",
+                "recommendation": "next_round",
+                "strengths": "过" * 1001,
+                "concerns": "",
+                "note": "",
+            },
+            "strengths",
+        ),
+    ],
+)
+def test_structured_feedback_validation(
+    client, make_user, app, payload, field
+):
+    hr_id, _ = make_user(
+        f"structured-validation-owner-{field}@example.com", role="recruiter"
+    )
+    interviewer_id, token = make_user(
+        f"structured-validation-author-{field}@example.com", role="interviewer"
     )
     assignment_id = _seed_assignment(app, hr_id, interviewer_id)
 

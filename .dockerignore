@@ -39,6 +39,8 @@ tmp
 **/.vite
 outputs
 minutes
+diagrams
+docs/acceptance-assets
 
 # Local dependency and build artifacts
 frontend/node_modules

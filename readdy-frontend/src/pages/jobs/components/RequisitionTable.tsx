@@ -477,15 +477,13 @@ export default function RequisitionTable({
                             </button>
                           )}
                           {headcountReached && (
-                            <button
-                              type="button"
-                              disabled
+                            <span
                               title="该需求 HC 已满，请确认完成需求或在需求详情调整 HC"
                               className="flex cursor-not-allowed items-center gap-1 whitespace-nowrap rounded-md bg-background-100 px-2.5 py-1.5 text-xs font-medium text-foreground-400"
                             >
                               <i className="ri-user-add-line text-sm"></i>
                               HC已满
-                            </button>
+                            </span>
                           )}
                           {isClosedOrCompleted && (
                             <button

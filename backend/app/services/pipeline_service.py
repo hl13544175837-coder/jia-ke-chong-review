@@ -21,6 +21,7 @@ from ..models import (
     OfferRecord,
     PipelineStage,
     RecruitmentDemand,
+    UploadBatch,
     User,
     VALID_STAGES,
 )
@@ -200,6 +201,12 @@ def _require_candidate(candidate_id, org_id):
     candidate = _locked_candidate(candidate_id, org_id)
     if candidate is None:
         raise PipelineServiceError("候选人不存在", 404, "candidate_not_found")
+    if candidate.parse_status in {"pending", "processing", "failed"}:
+        raise PipelineServiceError(
+            "该简历尚未确认，请先确认原件、重新上传或手动补录",
+            409,
+            "resume_confirmation_required",
+        )
     return candidate
 
 
@@ -759,6 +766,8 @@ def offer_payload(offer, *, demand, candidate_id, include_history=True):
             "request_no": demand.request_no,
             "salary_range": "",
             "onboard_date": None,
+            "source_channel": "未记录来源",
+            "recruitment_days": None,
             "approval_status": "draft",
             "status": "draft",
             "note": "",
@@ -769,10 +778,17 @@ def offer_payload(offer, *, demand, candidate_id, include_history=True):
         org_id=offer.org_id,
         deleted_at=None,
     ).first()
+    batch = db.session.get(UploadBatch, candidate.upload_batch_id) if candidate and candidate.upload_batch_id else None
     job = db.session.get(Job, offer.job_id)
     creator = db.session.get(User, offer.created_by) if offer.created_by else None
     approver = db.session.get(User, offer.approver_id) if offer.approver_id else None
     status = offer.approval_status or "draft"
+    start_date = demand.accepted_at or demand.requested_at or (
+        demand.created_at.date() if demand.created_at else None
+    )
+    actual_onboard_date = offer.onboard_date or (
+        offer.onboarded_at.date() if offer.onboarded_at else None
+    )
     return {
         "id": offer.id,
         "candidate_id": offer.candidate_id,
@@ -784,6 +800,11 @@ def offer_payload(offer, *, demand, candidate_id, include_history=True):
         "request_no": demand.request_no,
         "salary_range": offer.salary_range or "",
         "onboard_date": offer.onboard_date.isoformat() if offer.onboard_date else None,
+        "source_channel": ((batch.source_channel or "").strip() if batch else "") or "未记录来源",
+        "recruitment_days": (
+            max(0, (actual_onboard_date - start_date).days)
+            if actual_onboard_date and start_date else None
+        ),
         "approval_status": status,
         "status": status,
         "note": offer.note or "",

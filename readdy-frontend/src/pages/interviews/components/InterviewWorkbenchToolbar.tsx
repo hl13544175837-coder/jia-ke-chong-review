@@ -1,6 +1,7 @@
 import { CalendarDays, List, Search, SlidersHorizontal } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
+import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import {
   activeInterviewFilterCount,
   type InterviewFilters,
@@ -68,20 +69,13 @@ export default function InterviewWorkbenchToolbar({
 
   return (
     <div className="flex min-w-0 flex-nowrap items-center gap-3 border-b border-background-200 pb-3" data-ui="interview-single-row-toolbar">
-      <div role="tablist" aria-label="面试任务状态" className="flex min-w-0 max-w-[54%] shrink overflow-x-auto rounded-lg bg-background-50 p-1">
-        {statusTabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab.key}
-            onClick={() => onTabChange(tab.key)}
-            className={`shrink-0 rounded-md px-3 py-2 text-xs font-medium transition ${activeTab === tab.key ? 'bg-primary-500 text-white shadow-sm' : 'text-foreground-500 hover:bg-white hover:text-foreground-800'}`}
-          >
-            {tab.label}<span className="ml-1 opacity-75">{counts[tab.key]}</span>
-          </button>
-        ))}
-      </div>
+      <WorkspaceTabs
+        items={statusTabs.map((tab) => ({ ...tab, count: counts[tab.key] }))}
+        value={activeTab}
+        onChange={onTabChange}
+        ariaLabel="面试任务状态"
+        className="max-w-[54%] shrink flex-nowrap"
+      />
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <label className="relative w-[clamp(180px,20vw,280px)]">

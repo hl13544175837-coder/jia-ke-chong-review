@@ -109,7 +109,8 @@ def test_failed_resume_upload_keeps_retryable_candidate(client, make_user, app, 
 
     assert response.status_code == 202
     body = response.get_json()
-    assert body["results"][0]["status"] == "error"
+    assert body["results"][0]["status"] == "needs_confirmation"
+    assert body["results"][0]["reason"] == "AI 未能识别该简历，请确认原文件或重新上传"
     assert body["results"][0]["candidate_id"]
 
     candidate_id = body["results"][0]["candidate_id"]

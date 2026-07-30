@@ -1,74 +1,72 @@
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  directorKpis,
-  hcDetails,
-  teamPerformance,
-  directorTrends,
-  aiInsightSummary,
-} from '@/mocks/director';
+import PageHeader from '@/components/ui/PageHeader';
+import { analyticsApi } from '@/features/analytics/api';
+import type { AnalyticsOverview } from '@/features/analytics/types';
+import { buildDirectorData } from '../data';
 
 type DrillKey = string | null;
-type TrendMode = 'hires' | 'offers' | 'cost' | 'cycle';
-const trendData = directorTrends;
+type TrendMode = 'hires' | 'offers';
 
 export default function DirectorCockpitPage() {
+  const [data, setData] = useState<AnalyticsOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [drillDown, setDrillDown] = useState<DrillKey>(null);
   const [trendMode, setTrendMode] = useState<TrendMode>('hires');
   const [deptFilter, setDeptFilter] = useState<string>('all');
-  const [timeRange, setTimeRange] = useState<string>('month');
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setData(await analyticsApi.overview());
+    } catch {
+      setError('管理驾驶舱暂时无法读取，请稍后重试。');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const view = useMemo(() => data ? buildDirectorData(data) : null, [data]);
+  const directorKpis = useMemo(() => view?.directorKpis ?? [], [view]);
+  const hcDetails = useMemo(() => view?.hcDetails ?? [], [view]);
+  const teamPerformance = useMemo(() => view?.teamPerformance ?? [], [view]);
+  const trendData = useMemo(() => view?.directorTrends ?? [], [view]);
+  const aiInsightSummary = view?.insightSummary ?? { summary: '正在读取本地招聘数据。', alerts: [] };
 
   const departments = useMemo(() => {
     const set = new Set(teamPerformance.map(t => t.department));
     return ['all', ...Array.from(set)];
-  }, []);
+  }, [teamPerformance]);
 
   const filteredTeam = useMemo(() => {
     if (deptFilter === 'all') return teamPerformance;
     return teamPerformance.filter(t => t.department === deptFilter);
-  }, [deptFilter]);
+  }, [deptFilter, teamPerformance]);
 
   const trendMaxVal = useMemo(() => {
-    if (trendMode === 'cycle') return Math.max(...trendData.map(d => d.cycle));
-    if (trendMode === 'cost') return Math.max(...trendData.map(d => d.cost));
-    if (trendMode === 'offers') return Math.max(...trendData.map(d => d.offers));
-    return Math.max(...trendData.map(d => d.hires));
-  }, [trendMode]);
-
-  const trendTotal = useMemo(() => {
-    if (trendMode === 'cycle') return (trendData.reduce((s, d) => s + d.cycle, 0) / trendData.length).toFixed(1);
-    return trendData.reduce((s, d) => {
-      if (trendMode === 'cost') return s + d.cost;
-      if (trendMode === 'offers') return s + d.offers;
-      return s + d.hires;
-    }, 0).toString();
-  }, [trendMode]);
+    const values = trendData.map((item) => trendMode === 'offers' ? item.offers : item.hires);
+    return values.length ? Math.max(...values) : 0;
+  }, [trendData, trendMode]);
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-foreground-900">管理驾驶舱</h1>
-          <p className="text-sm text-foreground-500 mt-1">全局招聘数据总览 · 实时更新 · 只读模式</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center bg-background-100 rounded-lg p-0.5">
-            {(['month', 'quarter', 'year'] as const).map(k => (
-              <button
-                key={k}
-                onClick={() => setTimeRange(k)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-                  timeRange === k ? 'bg-white text-foreground-900 shadow-sm' : 'text-foreground-500 hover:text-foreground-700'
-                }`}
-              >
-                {k === 'month' ? '本月' : k === 'quarter' ? '本季度' : '年度'}
-              </button>
-            ))}
-          </div>
-          <span className="text-xs text-foreground-400">数据截止 2026.07.19</span>
-        </div>
-      </div>
+      <PageHeader
+        title="管理驾驶舱"
+        description="本地数据库招聘总览 · 只读模式"
+        actions={<div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-foreground-400">数据更新于 {data?.generated_at ? new Date(data.generated_at).toLocaleString('zh-CN') : '读取中'}</span>
+          <button type="button" onClick={() => void loadData()} disabled={loading} className="rounded-lg border border-background-200 bg-white px-3 py-2 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-50">刷新</button>
+        </div>}
+      />
+
+      {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button type="button" onClick={() => void loadData()} className="font-medium underline">重新加载</button></div>}
+      {loading && !data && <div className="rounded-xl border border-background-200 bg-white px-5 py-10 text-center text-sm text-foreground-500">正在读取本地统计...</div>}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -94,20 +92,17 @@ export default function DirectorCockpitPage() {
                 <span className="text-2xl font-bold text-foreground-900">{card.value}</span>
                 {card.unit && <span className="text-xs text-foreground-400">{card.unit}</span>}
               </div>
-              <p className={`text-xs mt-1 ${card.changeType === 'up' ? 'text-primary-600' : card.changeType === 'down' ? 'text-accent-600' : 'text-foreground-400'}`}>
-                <i className={`${card.changeType === 'up' ? 'ri-arrow-up-s-line' : card.changeType === 'down' ? 'ri-arrow-down-s-line' : 'ri-subtract-line'} mr-0.5`}></i>
-                {card.change} {timeRange === 'month' ? '环比' : '同比'}
-              </p>
+              <p className="mt-1 text-xs text-foreground-400">{card.note}</p>
             </button>
           );
         })}
       </div>
 
-      {/* AI Insight Bar */}
+      {/* Rule-based data summary */}
       <div className="bg-secondary-50 border border-secondary-200 rounded-xl p-4">
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 rounded-lg bg-accent-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <i className="ri-robot-2-line text-white text-sm"></i>
+            <i className="ri-line-chart-line text-white text-sm"></i>
           </div>
           <div className="flex-1">
             <p className="text-sm text-foreground-800 leading-relaxed">{aiInsightSummary.summary}</p>
@@ -116,13 +111,9 @@ export default function DirectorCockpitPage() {
                 <button
                   key={i}
                   onClick={() => setDrillDown(a.drillKey)}
-                  className={`text-xs px-2 py-1 rounded-full font-medium cursor-pointer whitespace-nowrap ${
-                    a.type === 'danger' ? 'bg-accent-100 text-accent-700' :
-                    a.type === 'warning' ? 'bg-secondary-100 text-secondary-800' :
-                    'bg-primary-50 text-primary-700'
-                  }`}
+                  className="cursor-pointer whitespace-nowrap rounded-full bg-secondary-100 px-2 py-1 text-xs font-medium text-secondary-800"
                 >
-                  <i className={`${a.type === 'danger' ? 'ri-error-warning-line' : a.type === 'warning' ? 'ri-alert-line' : 'ri-information-line'} mr-1`}></i>
+                  <i className="ri-alert-line mr-1"></i>
                   {a.text}
                 </button>
               ))}
@@ -145,10 +136,10 @@ export default function DirectorCockpitPage() {
               <div key={dept.department} className="flex items-center gap-4">
                 <span className="text-sm text-foreground-700 w-28 flex-shrink-0 whitespace-nowrap">{dept.department}</span>
                 <div className="flex-1 h-7 bg-background-100 rounded-full overflow-hidden flex">
-                  <div className="bg-primary-500 flex items-center pl-2 transition-all duration-500" style={{ width: `${Math.max((dept.hired / dept.headcount) * 100, dept.hired > 0 ? 4 : 0)}%` }}>
+                  <div className="bg-primary-500 flex items-center pl-2 transition-all duration-500" style={{ width: `${dept.headcount > 0 ? Math.max((dept.hired / dept.headcount) * 100, dept.hired > 0 ? 4 : 0) : 0}%` }}>
                     {dept.hired > 0 && <span className="text-[10px] font-semibold text-white whitespace-nowrap">入职 {dept.hired}</span>}
                   </div>
-                  <div className="bg-accent-300 flex items-center pl-2 transition-all duration-500" style={{ width: `${Math.max((dept.inProgress / dept.headcount) * 100, dept.inProgress > 0 ? 4 : 0)}%` }}>
+                  <div className="bg-accent-300 flex items-center pl-2 transition-all duration-500" style={{ width: `${dept.headcount > 0 ? Math.max((dept.inProgress / dept.headcount) * 100, dept.inProgress > 0 ? 4 : 0) : 0}%` }}>
                     {dept.inProgress > 0 && <span className="text-[10px] font-semibold text-white whitespace-nowrap">在途 {dept.inProgress}</span>}
                   </div>
                 </div>
@@ -167,7 +158,7 @@ export default function DirectorCockpitPage() {
       {drillDown === 'team' && (
         <div className="bg-white rounded-xl border border-background-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-background-200 flex items-center justify-between">
-            <h3 className="font-bold text-foreground-900">团队招聘表现 · 专员健康度</h3>
+            <h3 className="font-bold text-foreground-900">团队招聘完成情况</h3>
             <div className="flex items-center gap-3">
               <div className="relative">
                 <select
@@ -198,7 +189,7 @@ export default function DirectorCockpitPage() {
                   <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">平均周期</th>
                   <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">Offer率</th>
                   <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">阻塞数</th>
-                  <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">健康度</th>
+                  <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">HC完成度</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-background-100">
@@ -217,7 +208,7 @@ export default function DirectorCockpitPage() {
                     <td className="px-5 py-3.5 text-sm font-semibold text-foreground-900 text-center">{t.hiresMonth}</td>
                     <td className="px-5 py-3.5 text-sm text-foreground-600 text-center">{t.hiresQuarter}</td>
                     <td className="px-5 py-3.5 text-sm text-center">
-                      <span className={t.avgCycle > 24 ? 'text-accent-600 font-semibold' : 'text-foreground-700'}>{t.avgCycle}天</span>
+                      <span className={t.avgCycle !== null && t.avgCycle > 24 ? 'text-accent-600 font-semibold' : 'text-foreground-700'}>{t.avgCycle === null ? '—' : `${t.avgCycle}天`}</span>
                     </td>
                     <td className="px-5 py-3.5 text-sm text-center">
                       <span className={t.offerRate >= 80 ? 'text-primary-600 font-semibold' : 'text-secondary-600'}>{t.offerRate}%</span>
@@ -232,11 +223,11 @@ export default function DirectorCockpitPage() {
                     <td className="px-5 py-3.5 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          t.healthScore >= 80 ? 'bg-primary-50' : t.healthScore >= 60 ? 'bg-secondary-50' : 'bg-accent-50'
+                          t.completionRate >= 80 ? 'bg-primary-50' : t.completionRate >= 60 ? 'bg-secondary-50' : 'bg-accent-50'
                         }`}>
                           <span className={`text-xs font-bold ${
-                            t.healthScore >= 80 ? 'text-primary-600' : t.healthScore >= 60 ? 'text-secondary-600' : 'text-accent-600'
-                          }`}>{t.healthScore}</span>
+                            t.completionRate >= 80 ? 'text-primary-600' : t.completionRate >= 60 ? 'text-secondary-600' : 'text-accent-600'
+                          }`}>{t.completionRate}</span>
                         </div>
                       </div>
                     </td>
@@ -271,8 +262,6 @@ export default function DirectorCockpitPage() {
               {([
                 { key: 'hires' as const, label: '入职' },
                 { key: 'offers' as const, label: 'Offer' },
-                { key: 'cost' as const, label: '成本' },
-                { key: 'cycle' as const, label: '周期' },
               ]).map(item => (
                 <button
                   key={item.key}
@@ -288,14 +277,12 @@ export default function DirectorCockpitPage() {
           </div>
           <div className="flex items-end gap-2 h-48">
             {trendData.map((m, idx) => {
-              const val = trendMode === 'cost' ? m.cost : trendMode === 'cycle' ? m.cycle : trendMode === 'offers' ? m.offers : m.hires;
+              const val = trendMode === 'offers' ? m.offers : m.hires;
               const heightPct = trendMaxVal > 0 ? (val / trendMaxVal) * 100 : 0;
               const isLatest = idx === trendData.length - 1;
               return (
                 <div key={m.month} className="flex-1 flex flex-col items-center gap-1.5">
-                  <span className="text-xs font-semibold text-foreground-800">
-                    {trendMode === 'cost' ? `${val}` : trendMode === 'cycle' ? val : val}
-                  </span>
+                  <span className="text-xs font-semibold text-foreground-800">{val}</span>
                   <div className="w-full flex flex-col items-center">
                     <div
                       className={`w-full max-w-[48px] rounded-t-md transition-all duration-500 ${
@@ -313,7 +300,9 @@ export default function DirectorCockpitPage() {
             <span>累计入职 <strong className="text-foreground-900">{trendData.reduce((s, m) => s + m.hires, 0)}</strong> 人</span>
             <span>累计Offer <strong className="text-foreground-900">{trendData.reduce((s, m) => s + m.offers, 0)}</strong> 个</span>
             <span>Offer入职转化率 <strong className="text-foreground-900">
-              {Math.round((trendData.reduce((s, m) => s + m.hires, 0) / trendData.reduce((s, m) => s + m.offers, 0)) * 100)}%
+              {trendData.reduce((s, m) => s + m.offers, 0) > 0
+                ? `${Math.round((trendData.reduce((s, m) => s + m.hires, 0) / trendData.reduce((s, m) => s + m.offers, 0)) * 100)}%`
+                : '—'}
             </strong></span>
           </div>
         </div>
@@ -374,7 +363,7 @@ export default function DirectorCockpitPage() {
             </div>
             <div>
               <p className="text-sm font-semibold text-foreground-900">审批与风险</p>
-              <p className="text-xs text-foreground-500">待审批 14 项</p>
+              <p className="text-xs text-foreground-500">待关注 {data?.summary.attention_count ?? 0} 项</p>
             </div>
             <i className="ri-arrow-right-line text-foreground-300 ml-auto group-hover:text-secondary-500"></i>
           </div>

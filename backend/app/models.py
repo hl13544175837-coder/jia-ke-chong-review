@@ -17,7 +17,7 @@ class User(db.Model):
     org_id = db.Column(db.Integer, default=1, nullable=False)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
-    role = db.Column(db.String(20), nullable=False, default="recruiter")  # admin/manager/recruiter/interviewer
+    role = db.Column(db.String(20), nullable=False, default="recruiter")  # admin/manager/recruiter/interviewer/hr_director
     department = db.Column(db.String(120), default="", nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now)
@@ -27,6 +27,13 @@ class User(db.Model):
 
 class Candidate(db.Model):
     __tablename__ = "candidates"
+    __table_args__ = (
+        db.Index(
+            "ix_candidates_org_resume_sha256",
+            "org_id",
+            "resume_sha256",
+        ),
+    )
     id = db.Column(db.Integer, primary_key=True)
     org_id = db.Column(db.Integer, default=1, nullable=False)
     owner_hr_id = db.Column(db.Integer, db.ForeignKey("users.id"))
@@ -41,6 +48,7 @@ class Candidate(db.Model):
     phone_masked = db.Column(db.String(30))
     resume_json = db.Column(db.JSON, nullable=False)
     raw_file_path = db.Column(db.Text)
+    resume_sha256 = db.Column(db.String(64))
     created_at = db.Column(db.DateTime, default=utc_now)
     deleted_at = db.Column(db.DateTime)
     deleted_by = db.Column(db.Integer, db.ForeignKey("users.id"))
@@ -51,6 +59,55 @@ class Candidate(db.Model):
     stages = db.relationship("PipelineStage", backref="candidate")
     current_demand = db.relationship("RecruitmentDemand", foreign_keys=[current_demand_id])
     demand_flows = db.relationship("CandidateDemandFlow", back_populates="candidate")
+    resume_versions = db.relationship(
+        "CandidateResumeVersion",
+        backref="candidate",
+        cascade="all,delete-orphan",
+        order_by="CandidateResumeVersion.version_no.desc()",
+    )
+
+
+class CandidateResumeVersion(db.Model):
+    """A read-only snapshot retained before the current resume is replaced."""
+
+    __tablename__ = "candidate_resume_versions"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "org_id",
+            "candidate_id",
+            "version_no",
+            name="uq_candidate_resume_versions_org_candidate_no",
+        ),
+        db.Index(
+            "ix_candidate_resume_versions_org_candidate_created",
+            "org_id",
+            "candidate_id",
+            "created_at",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, default=1, nullable=False)
+    candidate_id = db.Column(
+        db.Integer,
+        db.ForeignKey("candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    version_no = db.Column(db.Integer, nullable=False)
+    name_masked = db.Column(db.String(100))
+    email_masked = db.Column(db.String(100))
+    phone_masked = db.Column(db.String(30))
+    resume_json = db.Column(db.JSON, nullable=False, default=dict)
+    raw_file_path = db.Column(db.Text)
+    resume_sha256 = db.Column(db.String(64))
+    parse_status = db.Column(db.String(20), nullable=False, default="ok")
+    parse_error = db.Column(db.Text)
+    reason = db.Column(db.String(80), nullable=False, default="manual_replace")
+    created_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+    )
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
 
 class UploadBatch(db.Model):
@@ -628,6 +685,63 @@ class InterviewAssignment(db.Model):
     status = db.Column(db.String(40), default="scheduled")
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=utc_now)
+
+
+class InterviewRescheduleRequest(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_interview_reschedule_org_assignment_status",
+            "org_id",
+            "assignment_id",
+            "status",
+        ),
+        db.Index(
+            "ix_interview_reschedule_org_candidate_demand_round",
+            "org_id",
+            "candidate_id",
+            "demand_id",
+            "round_sequence",
+        ),
+    )
+
+    __tablename__ = "interview_reschedule_requests"
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, default=1, nullable=False)
+    assignment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("interview_assignments.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    replacement_assignment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("interview_assignments.id", ondelete="RESTRICT"),
+    )
+    candidate_id = db.Column(db.Integer, db.ForeignKey("candidates.id"), nullable=False)
+    job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"), nullable=False)
+    demand_id = db.Column(
+        db.Integer,
+        db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    round = db.Column(db.String(30), nullable=False)
+    round_sequence = db.Column(db.Integer, default=1, nullable=False)
+    source = db.Column(db.String(30), nullable=False)
+    status = db.Column(db.String(30), nullable=False)
+    requested_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    requested_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    reason = db.Column(db.Text, nullable=False)
+    proposed_times = db.Column(db.JSON, nullable=False, default=list)
+    original_interviewer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    original_scheduled_at = db.Column(db.DateTime)
+    original_location = db.Column(db.String(240), default="", nullable=False)
+    final_interviewer_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    final_scheduled_at = db.Column(db.DateTime)
+    final_location = db.Column(db.String(240), default="", nullable=False)
+    processed_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    processed_at = db.Column(db.DateTime)
+    processor_note = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
 
 class Event(db.Model):

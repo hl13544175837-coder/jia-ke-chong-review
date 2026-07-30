@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, LoaderCircle, Trash2, X } from 'lucide-react';
 import type {
   InterviewAssignmentInput,
@@ -21,6 +21,12 @@ const roundOptions = [
   { value: 'additional', label: '加面' },
 ];
 
+const fixedRoundSequenceByType: Record<string, number> = {
+  round_1: 1,
+  round_2: 2,
+  round_3: 3,
+};
+
 function currentLocalMinute() {
   const now = new Date();
   now.setSeconds(0, 0);
@@ -34,6 +40,7 @@ interface ScheduleInterviewModalProps {
   saving: boolean;
   error: string;
   isPrimary?: boolean;
+  allowCancel?: boolean;
   onClose: () => void;
   onSave: (payload: InterviewAssignmentInput | InterviewAssignmentUpdateInput) => void;
   onCancelAssignment: (reason: string) => void;
@@ -45,17 +52,23 @@ export default function ScheduleInterviewModal({
   saving,
   error,
   isPrimary = true,
+  allowCancel = true,
   onClose,
   onSave,
   onCancelAssignment,
 }: ScheduleInterviewModalProps) {
   const editing = row.assignment_id !== null;
-  const [round, setRound] = useState(row.round || 'round_1');
-  const [roundSequence, setRoundSequence] = useState(row.round_sequence || 1);
+  const initialRound = row.round || 'round_1';
+  const passedRoundSequence = row.round_sequence || 1;
+  const [round, setRound] = useState(initialRound);
+  const [roundSequence, setRoundSequence] = useState(
+    editing ? passedRoundSequence : fixedRoundSequenceByType[initialRound] ?? passedRoundSequence,
+  );
   const [interviewerId, setInterviewerId] = useState(row.interviewer_id || 0);
   const [scheduledAt, setScheduledAt] = useState(interviewDateTimeToLocalInput(row.scheduled_at));
   const [location, setLocation] = useState(row.location || '');
   const [note, setNote] = useState(row.note || '');
+  const [changeReason, setChangeReason] = useState(row.reschedule_request?.reason || '');
   const [showCancel, setShowCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [minimumInterviewTime] = useState(currentLocalMinute);
@@ -68,9 +81,16 @@ export default function ScheduleInterviewModal({
     () => interviewerId > 0
       && Boolean(scheduledAt)
       && scheduledAt >= minimumInterviewTime
-      && Boolean(location.trim()),
-    [interviewerId, location, minimumInterviewTime, scheduledAt],
+      && Boolean(location.trim())
+      && (!editing || Boolean(changeReason.trim())),
+    [changeReason, editing, interviewerId, location, minimumInterviewTime, scheduledAt],
   );
+
+  const handleRoundChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const nextRound = event.target.value;
+    setRound(nextRound);
+    setRoundSequence(fixedRoundSequenceByType[nextRound] ?? passedRoundSequence);
+  };
 
   const submit = () => {
     if (!canSave) return;
@@ -79,6 +99,7 @@ export default function ScheduleInterviewModal({
       scheduled_at: localInterviewInputToUtc(scheduledAt),
       location: location.trim(),
       note: note.trim(),
+      change_reason: changeReason.trim(),
     };
     onSave(editing ? editable : {
       ...editable,
@@ -107,13 +128,15 @@ export default function ScheduleInterviewModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-medium text-foreground-700">
               面试轮次
-              <select value={round} onChange={(event) => setRound(event.target.value)} disabled={editing || saving} className="mt-2 h-10 w-full rounded-lg border border-background-300 bg-white px-3 text-sm disabled:bg-background-50">
+              <select value={round} onChange={handleRoundChange} disabled={editing || saving} className="mt-2 h-10 w-full rounded-lg border border-background-300 bg-white px-3 text-sm disabled:bg-background-50">
                 {roundOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
               </select>
             </label>
             <label className="text-sm font-medium text-foreground-700">
-              第几轮
-              <input type="number" min={1} max={20} value={roundSequence} onChange={(event) => setRoundSequence(Math.max(1, Number(event.target.value) || 1))} disabled={editing || saving} className="mt-2 h-10 w-full rounded-lg border border-background-300 px-3 text-sm disabled:bg-background-50" />
+              轮次序号
+              <span aria-label="面试轮次序号" aria-readonly="true" className="mt-2 flex h-10 w-full items-center rounded-lg border border-background-300 bg-background-50 px-3 text-sm text-foreground-700">
+                第 {roundSequence} 轮
+              </span>
             </label>
           </div>
 
@@ -124,6 +147,21 @@ export default function ScheduleInterviewModal({
               {interviewers.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.email}</option>)}
             </select>
           </label>
+
+          {editing && allowCancel && (
+            <label className="block text-sm font-medium text-foreground-700">
+              调整原因 <span className="text-red-500">*</span>
+              <textarea
+                value={changeReason}
+                onChange={(event) => setChangeReason(event.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="说明为什么调整，下一位面试官可以看到这条记录"
+                className="mt-2 w-full resize-none rounded-lg border border-background-300 px-3 py-2 text-sm"
+              />
+            </label>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-medium text-foreground-700">
@@ -150,7 +188,7 @@ export default function ScheduleInterviewModal({
           </label>
 
           <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-800">
-            保存后会创建真实站内日程和待办；企业微信日历与外部提醒仍待接入。
+            保存后会创建本地站内日程和待办。
           </div>
 
           {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

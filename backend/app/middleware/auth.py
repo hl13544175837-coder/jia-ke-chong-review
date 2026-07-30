@@ -28,15 +28,27 @@ def _provision_gateway_user(emp_code):
     工号以合成邮箱 `<工号>@gateway.local` 作为唯一键，避免加库表列。
     """
     from ..models import User
+    from ..services.gateway_role_service import (
+        normalize_employee_code,
+        resolve_gateway_role,
+    )
 
-    email = f"{emp_code}@gateway.local"
+    normalized_code = normalize_employee_code(emp_code)
+    email = f"{normalized_code.lower()}@gateway.local"
+    role, explicitly_mapped = resolve_gateway_role(
+        normalized_code,
+        current_app.config.get("AUTH_GATEWAY_ROLE_MAP"),
+        current_app.config.get("AUTH_GATEWAY_USER_ROLE"),
+    )
     user = User.query.filter_by(email=email).first()
     if user is not None:
+        if explicitly_mapped and user.role != role:
+            user.role = role
+            db.session.commit()
         return user
 
-    role = (current_app.config.get("AUTH_GATEWAY_USER_ROLE") or "admin").strip() or "admin"
     user = User(
-        name=emp_code,
+        name=normalized_code,
         email=email,
         role=role,
         password_hash="!gateway-managed",  # 非法哈希：该账号不能用密码登录

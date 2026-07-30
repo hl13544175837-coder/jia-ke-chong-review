@@ -212,7 +212,16 @@ def test_repeated_resume_upload_reuses_first_result(client, make_user, app, monk
     assert first.status_code == 202
     assert second.status_code == 200
     assert second.get_json()["deduplicated"] is True
-    assert second.get_json()["results"] == first.get_json()["results"]
+    assert second.get_json()["results"] == [
+        {
+            "file": "same.pdf",
+            "status": "duplicate",
+            "reason": "导入失败：系统中已存在重复简历",
+            "existing_candidate_id": first.get_json()["results"][0]["candidate_id"],
+            "existing_candidate_name": "重复上传候选人",
+            "match_basis": "文件内容一致",
+        }
+    ]
     assert len(calls) == 1
     with app.app_context():
         from app.models import Candidate, UploadBatch

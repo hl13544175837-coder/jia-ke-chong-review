@@ -15,6 +15,7 @@ from ..models import (
     Event,
     InterviewAssignment,
     InterviewFeedback,
+    InterviewRescheduleRequest,
     Job,
     Notification,
     PipelineStage,
@@ -260,6 +261,21 @@ def interview_management_rows(*, user_id, role, org_id):
                 ),
             }
         )
+    if rows:
+        from .interview_reschedule_service import (
+            open_requests_for_rows,
+            serialize_reschedule_request,
+        )
+
+        pair_set = {(row["candidate_id"], row["demand_id"]) for row in rows}
+        open_requests = open_requests_for_rows(
+            org_id=org_id,
+            candidate_demand_pairs=pair_set,
+        )
+        for row in rows:
+            open_request = open_requests.get((row["candidate_id"], row["demand_id"]))
+            if open_request is not None:
+                row["reschedule_request"] = serialize_reschedule_request(open_request)
     return rows
 
 

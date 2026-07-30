@@ -31,6 +31,17 @@ from ..services.interview_management_service import (
     remind_interview_feedback,
     update_interview_assignment,
 )
+from ..services.interview_reschedule_service import (
+    InterviewRescheduleError,
+    adjust_assignment_directly,
+    create_replacement_assignment,
+    create_reschedule_request,
+    history_for_assignment,
+    load_request_for_update,
+    pending_request_for_assignment,
+    resolve_reschedule_request,
+    serialize_reschedule_request,
+)
 from ..services.pipeline_service import normalize_pipeline_stage
 from ..services.demand_context_service import (
     DemandContextError,
@@ -39,7 +50,15 @@ from ..services.demand_context_service import (
     visible_demand_query,
 )
 from .. import db
-from ..models import Candidate, Interview, InterviewAssignment, Job, Notification, User
+from ..models import (
+    Candidate,
+    Interview,
+    InterviewAssignment,
+    InterviewRescheduleRequest,
+    Job,
+    Notification,
+    User,
+)
 from ..time_utils import utc_now
 from .access import (
     same_org,
@@ -139,8 +158,17 @@ def _simple_feedback_fields(feedback):
     updated_at = getattr(feedback, "updated_at", None)
     updated_by = getattr(feedback, "updated_by", None)
     updated_user = db.session.get(User, updated_by) if updated_by else None
+    evaluation = (
+        feedback.evaluation_json
+        if isinstance(feedback.evaluation_json, dict)
+        else {}
+    )
     return {
         "satisfaction": feedback_satisfaction(feedback),
+        "job_match": str(evaluation.get("job_match") or ""),
+        "recommendation": str(evaluation.get("recommendation") or ""),
+        "strengths": feedback.strengths or "",
+        "concerns": feedback.concerns or "",
         "note": feedback.note or "",
         "updated_by": updated_by,
         "updated_by_name": updated_user.name if updated_user else None,
@@ -287,7 +315,7 @@ def _assignment_payload(item):
         and scheduled_at < utc_now()
         and not feedback_submitted
     )
-    return {
+    payload = {
         "id": item.id,
         "candidate_id": item.candidate_id,
         "name_masked": candidate.name_masked if candidate else None,
@@ -336,6 +364,15 @@ def _assignment_payload(item):
         "created_by_name": creator.name if creator else None,
         "created_at": item.created_at.isoformat() if item.created_at else None,
     }
+    history = history_for_assignment(item)
+    if history:
+        payload["reschedule_history"] = [
+            serialize_reschedule_request(record) for record in history
+        ]
+    pending = pending_request_for_assignment(item)
+    if pending is not None:
+        payload["pending_reschedule"] = serialize_reschedule_request(pending)
+    return payload
 
 
 def _context_error_response(exc):
@@ -348,6 +385,12 @@ def _assignment_workflow_error_response(exc):
         "code": exc.code,
         **exc.details,
     }), exc.status_code
+
+
+def _reschedule_error_response(exc):
+    if isinstance(exc, InterviewRescheduleError):
+        return jsonify(exc.as_payload()), exc.status_code
+    return _assignment_workflow_error_response(exc)
 
 
 def _load_managed_assignment(assignment_id):
@@ -715,9 +758,19 @@ def submit_feedback():
 
     evaluation = _sanitize_evaluation(data.get("evaluation"))
     note = data.get("note")
+    strengths = data.get("strengths")
+    concerns = data.get("concerns")
     if simple_feedback is not None:
-        satisfaction, note = simple_feedback
-        evaluation["satisfaction"] = satisfaction
+        note = simple_feedback["note"]
+        strengths = simple_feedback["strengths"]
+        concerns = simple_feedback["concerns"]
+        evaluation["satisfaction"] = simple_feedback["satisfaction"]
+        if any(
+            key in data
+            for key in ("job_match", "recommendation", "strengths", "concerns")
+        ):
+            evaluation["job_match"] = simple_feedback["job_match"]
+            evaluation["recommendation"] = simple_feedback["recommendation"]
     fb = InterviewFeedback(
         candidate_id=candidate_id, job_id=context.job.id,
         demand_id=context.demand_id,
@@ -725,7 +778,7 @@ def submit_feedback():
         org_id=g.org_id,
         round=round_name, interviewer_id=g.user_id,
         score=score, passed=data.get("passed"),
-        strengths=data.get("strengths"), concerns=data.get("concerns"),
+        strengths=strengths, concerns=concerns,
         reason_tags=_sanitize_reason_tags(data.get("reason_tags")),
         evaluation_json=evaluation,
         note=note)
@@ -766,7 +819,9 @@ def submit_feedback():
                 "score": data.get("score"),
                 "passed": data.get("passed"),
                 "satisfaction": (
-                    simple_feedback[0] if simple_feedback is not None else None
+                    simple_feedback["satisfaction"]
+                    if simple_feedback is not None
+                    else None
                 ),
             },
             commit=False,
@@ -1030,6 +1085,218 @@ def list_assignments():
     return jsonify([_assignment_payload(item) for item in rows])
 
 
+@bp.post("/interview/assignments/<int:assignment_id>/reschedule-requests")
+@require_auth
+def request_assignment_reschedule(assignment_id):
+    if g.role != "interviewer":
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    assignment = InterviewAssignment.query.filter_by(
+        id=assignment_id,
+        org_id=g.org_id,
+    ).one_or_none()
+    if assignment is None:
+        return jsonify({
+            "error": "面试任务不存在",
+            "code": "assignment_not_found",
+        }), 404
+    if assignment.interviewer_id != g.user_id:
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+
+    data = request.get_json(silent=True) or {}
+    raw_times = data.get("proposed_times")
+    parsed_times = []
+    if isinstance(raw_times, list):
+        parsed_times = [_parse_datetime(value) for value in raw_times]
+    try:
+        item = create_reschedule_request(
+            assignment=assignment,
+            requested_by=g.user_id,
+            reason=data.get("reason"),
+            proposed_times=parsed_times,
+        )
+    except (InterviewRescheduleError, InterviewAssignmentWorkflowError) as exc:
+        return _reschedule_error_response(exc)
+    return jsonify(serialize_reschedule_request(item)), 201
+
+
+@bp.get("/interview/assignments/<int:assignment_id>/reschedule-history")
+@require_auth
+def assignment_reschedule_history(assignment_id):
+    assignment = InterviewAssignment.query.filter_by(
+        id=assignment_id,
+        org_id=g.org_id,
+    ).one_or_none()
+    if assignment is None:
+        return jsonify({
+            "error": "面试任务不存在",
+            "code": "assignment_not_found",
+        }), 404
+    if g.role == "interviewer":
+        if assignment.interviewer_id != g.user_id:
+            return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    elif g.role in {"recruiter", "manager", "admin"}:
+        try:
+            demand = resolve_demand_context(
+                org_id=g.org_id,
+                demand_id=assignment.demand_id,
+                job_id=assignment.job_id,
+            )
+        except DemandContextError as exc:
+            return _context_error_response(exc)
+        if not can_manage_demand(g.user_id, g.role, g.org_id, demand):
+            return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    else:
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    return jsonify([
+        serialize_reschedule_request(item)
+        for item in history_for_assignment(assignment)
+    ])
+
+
+@bp.patch("/interview/reschedule-requests/<int:request_id>")
+@require_auth
+def process_reschedule_request(request_id):
+    if g.role not in {"recruiter", "manager", "admin"}:
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    item = load_request_for_update(org_id=g.org_id, request_id=request_id)
+    if item is None:
+        db.session.rollback()
+        return jsonify({
+            "error": "改约申请不存在",
+            "code": "reschedule_request_not_found",
+        }), 404
+    try:
+        demand = resolve_demand_context(
+            org_id=g.org_id,
+            demand_id=item.demand_id,
+            job_id=item.job_id,
+        )
+    except DemandContextError as exc:
+        db.session.rollback()
+        return _context_error_response(exc)
+    if not can_manage_demand(g.user_id, g.role, g.org_id, demand):
+        db.session.rollback()
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+
+    data = request.get_json(silent=True) or {}
+    action = str(data.get("action") or "").strip()
+    interviewer_id = data.get("interviewer_id")
+    scheduled_at = None
+    if action == "approve":
+        if (
+            isinstance(interviewer_id, bool)
+            or not isinstance(interviewer_id, int)
+            or interviewer_id < 1
+        ):
+            db.session.rollback()
+            return jsonify({"error": "请选择最终面试官"}), 400
+        interviewer = User.query.filter_by(
+            id=interviewer_id,
+            org_id=g.org_id,
+            is_active=True,
+        ).one_or_none()
+        if interviewer is None or interviewer.role not in {"interviewer", "manager", "admin"}:
+            db.session.rollback()
+            return jsonify({"error": "面试官不存在、未启用或角色不正确"}), 400
+        scheduled_at = _parse_datetime(data.get("scheduled_at"))
+        if scheduled_at is None:
+            db.session.rollback()
+            return jsonify({
+                "error": "请选择有效的最终面试时间",
+                "code": "reschedule_final_schedule_required",
+            }), 400
+    try:
+        item = resolve_reschedule_request(
+            item=item,
+            action=action,
+            processed_by=g.user_id,
+            processor_note=data.get("processor_note"),
+            interviewer_id=interviewer_id,
+            scheduled_at=scheduled_at,
+            location=data.get("location", ""),
+            note=data.get("note", ""),
+        )
+    except (InterviewRescheduleError, InterviewAssignmentWorkflowError) as exc:
+        return _reschedule_error_response(exc)
+    return jsonify(serialize_reschedule_request(item)), 200
+
+
+@bp.post("/interview/reschedule-requests/<int:request_id>/replacement")
+@require_auth
+def replace_cancelled_reschedule_assignment(request_id):
+    if g.role not in {"recruiter", "manager", "admin"}:
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    reference = InterviewRescheduleRequest.query.filter_by(
+        id=request_id,
+        org_id=g.org_id,
+    ).one_or_none()
+    if reference is None:
+        return jsonify({
+            "error": "改约申请不存在",
+            "code": "reschedule_request_not_found",
+        }), 404
+    try:
+        context = resolve_interview_context(
+            org_id=g.org_id,
+            candidate_id=reference.candidate_id,
+            demand_id=reference.demand_id,
+            job_id=reference.job_id,
+            open_only=True,
+            require_current=True,
+            lock=True,
+        )
+    except DemandContextError as exc:
+        return _context_error_response(exc)
+    if not can_manage_interview_context(g.user_id, g.role, g.org_id, context):
+        db.session.rollback()
+        return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
+    item = load_request_for_update(org_id=g.org_id, request_id=request_id)
+    if item is None:
+        db.session.rollback()
+        return jsonify({
+            "error": "改约申请已变化，请刷新后重试",
+            "code": "reschedule_request_changed",
+        }), 409
+
+    data = request.get_json(silent=True) or {}
+    interviewer_id = data.get("interviewer_id")
+    if (
+        isinstance(interviewer_id, bool)
+        or not isinstance(interviewer_id, int)
+        or interviewer_id < 1
+    ):
+        db.session.rollback()
+        return jsonify({"error": "请选择面试官"}), 400
+    interviewer = User.query.filter_by(
+        id=interviewer_id,
+        org_id=g.org_id,
+        is_active=True,
+    ).one_or_none()
+    if interviewer is None or interviewer.role not in {"interviewer", "manager", "admin"}:
+        db.session.rollback()
+        return jsonify({"error": "面试官不存在、未启用或角色不正确"}), 400
+    scheduled_at = _parse_datetime(data.get("scheduled_at"))
+    if scheduled_at is None:
+        db.session.rollback()
+        return jsonify({"error": "请选择有效的面试时间"}), 400
+    try:
+        assignment, item = create_replacement_assignment(
+            item=item,
+            context=context,
+            interviewer_id=interviewer_id,
+            scheduled_at=scheduled_at,
+            location=data.get("location", ""),
+            note=data.get("note", ""),
+            processed_by=g.user_id,
+        )
+    except (InterviewRescheduleError, InterviewAssignmentWorkflowError) as exc:
+        return _reschedule_error_response(exc)
+    return jsonify({
+        "assignment": _assignment_payload(assignment),
+        "reschedule_request": serialize_reschedule_request(item),
+    }), 201
+
+
 @bp.post("/interview/assignments")
 @require_auth
 def create_assignment():
@@ -1084,6 +1351,13 @@ def create_assignment():
         or round_sequence < 1
     ):
         return jsonify({"error": "round_sequence 必须是正整数"}), 400
+    fixed_round_sequence = {"round_1": 1, "round_2": 2, "round_3": 3}
+    expected_sequence = fixed_round_sequence.get(data["round"])
+    if expected_sequence is not None and round_sequence != expected_sequence:
+        return jsonify({
+            "error": f"{data['round']} 必须对应第 {expected_sequence} 轮",
+            "code": "round_sequence_mismatch",
+        }), 400
     is_primary = data.get("is_primary", True)
     if not isinstance(is_primary, bool):
         return jsonify({"error": "is_primary 必须是布尔值"}), 400
@@ -1153,15 +1427,17 @@ def update_assignment(assignment_id):
     else:
         scheduled_at = assignment.scheduled_at
     try:
-        assignment, deduplicated = update_interview_assignment(
+        assignment, deduplicated, _ = adjust_assignment_directly(
             assignment=assignment,
+            actor_id=g.user_id,
+            reason=data.get("change_reason") or "招聘专员调整排期",
             interviewer_id=interviewer_id,
             scheduled_at=scheduled_at,
             location=data.get("location", assignment.location),
             note=data.get("note", assignment.note),
         )
-    except InterviewAssignmentWorkflowError as exc:
-        return _assignment_workflow_error_response(exc)
+    except (InterviewRescheduleError, InterviewAssignmentWorkflowError) as exc:
+        return _reschedule_error_response(exc)
     payload = _assignment_payload(assignment)
     payload["deduplicated"] = deduplicated
     return jsonify(payload), 200
@@ -1170,11 +1446,20 @@ def update_assignment(assignment_id):
 @bp.post("/interview/assignments/<int:assignment_id>/mark-conducted")
 @require_auth
 def mark_assignment_conducted(assignment_id):
-    if g.role not in {"recruiter", "manager", "admin"}:
+    if g.role == "interviewer":
+        assignment = InterviewAssignment.query.filter_by(
+            id=assignment_id,
+            org_id=g.org_id,
+            interviewer_id=g.user_id,
+        ).filter(active_assignment_filter()).one_or_none()
+        if assignment is None:
+            return jsonify({"error": "Forbidden"}), 403
+    elif g.role in {"recruiter", "manager", "admin"}:
+        assignment, error = _load_managed_assignment(assignment_id)
+        if error is not None:
+            return error
+    else:
         return jsonify({"error": "Forbidden"}), 403
-    assignment, error = _load_managed_assignment(assignment_id)
-    if error is not None:
-        return error
     try:
         assignment, deduplicated = mark_interview_conducted(
             assignment=assignment

@@ -88,7 +88,7 @@ python seed_dev.py
 ```bash
 cd backend
 alembic upgrade head
-alembic current  # 当前收口候选应为 20260728_10
+alembic current  # 当前收口候选应为 20260729_11
 python scripts/audit_demand_scope.py --database <local-sqlite-fixture> \
   --output <audit-report.json> --manifest-output <mapping-to-review.json>
 # 必须由 Product/Data Owner 将审批后的条目标记 approved=true
@@ -132,8 +132,20 @@ BOSS 账号通过浏览器 Cookie 导入，Cookie 会写入 `boss_accounts` 表�
 | 招聘专员 | `recruiter` | hr02@mvp.local | 招聘专员02 |
 | 招聘专员 | `recruiter` | hr03@mvp.local | 招聘专员03 |
 | 面试官 | `interviewer` | interviewer01@mvp.local | 面试官01 |
+| 面试官 | `interviewer` | interviewer02@mvp.local | 面试官02 |
+| 人力资源总监 | `hr_director` | director01@mvp.local | 人力资源总监01 |
 
-> 权限口径只认 `admin` / `manager` / `recruiter` / `interviewer` 四类技术角色。“招聘负责人”是 `manager` 的业务展示名，不代表新增一类权限。
+现有本地数据库如果缺少面试官02或人力资源总监01，禁止重新运行会清空演示数据的 `seed_dev.py`。先预览，再显式应用只新增账号的安全命令：
+
+```bash
+cd backend
+DATABASE_URL="sqlite:////Users/yenns/Documents/新版招聘/zhipin-mvp/runtime/zhipin-demo.db" ../.venv/bin/python scripts/ensure_local_trial_accounts.py
+DATABASE_URL="sqlite:////Users/yenns/Documents/新版招聘/zhipin-mvp/runtime/zhipin-demo.db" ../.venv/bin/python scripts/ensure_local_trial_accounts.py --apply
+```
+
+重复执行 `--apply` 必须返回 `unchanged`；发现同邮箱账号角色不正确时命令会拒绝修改。
+
+> 权限口径只认 `admin` / `manager` / `recruiter` / `interviewer` / `hr_director` 五类技术角色。“招聘负责人”是 `manager` 的业务展示名，不代表新增一类权限；`hr_director` 只访问只读管理分析页面。
 
 推荐给招聘专员一人一个账号。系统会把当前流程负责人、上传人、流程推进人和面试反馈人记录到具体用户 ID，用于找到当前责任与留痕。BI 只服务于进度、卡点和责任协同，不作个人绩效排名或奖金结算。
 
@@ -143,13 +155,17 @@ BOSS 账号通过浏览器 Cookie 导入，Cookie 会写入 `boss_accounts` 表�
 
 `demand_id` 目标看板按每条 Demand 解释当前阶段、停滞、待补反馈、Offer 和 HC；数字必须能下钻到候选人与业务事实。招聘专员只能看自己可管理的 Demand 及候选人，不能通过改 ID 查看别人数据。
 
-面试官账号 **interviewer01@mvp.local** 只保留工作台和“我的面试”主入口。面试官可以从面试任务进入候选人详情查看材料并填写反馈；不会显示“推进 Offer/淘汰”等流程按钮，也不开放全量简历库、候选人流程、AI 助手主入口、岗位级 BI 或专员级 BI。
+面试官账号 **interviewer01@mvp.local** 和 **interviewer02@mvp.local** 只保留工作台和“我的面试”主入口。`interviewer01` 可用于一面，`interviewer02` 可用于二面承接验收；面试到点后所属面试官可以自己确认并填写本轮评价。二面账号提交本人评价前看不到一面文字结论，提交后可只读查看但不能修改一面反馈。两个账号都不会显示“推进 Offer/淘汰”等流程按钮，也不开放全量简历库、候选人流程、AI 助手主入口、岗位级 BI 或专员级 BI。
 
 管理员账号用于创建账号、重置密码和管理角色。管理员重置密码、修改角色/启停状态或用户自己修改密码后，旧登录态会立刻失效，需要重新登录。当前 MVP 还不是完整企业管理员后台，暂未提供全量数据导出审批、导出水印、字段级权限等企业治理能力；但候选人详情查看、候选人 CSV 导出、删除、负责人转派、流程推进、Demand 关闭/恢复、角色变更、AI 解析产物落库/基线遗留写事件和越权 403 都会进入审计日志；P0 不允许 AI 写主流程。
 
 右上角只保留通知和账号菜单。修改密码、退出登录都在账号菜单里，侧边栏不再重复显示个人信息卡片，避免试用人员把账户操作误认为招聘主流程。
 
 招聘专员工作台里的「今日待办」会直接带到对应页面：业务待反馈、面试中跟进、Offer 跟进会进入候选人流程的对应阶段；待补反馈会进入面试任务页的待处理列表。工作台首屏 KPI 数字也可以点击下钻：候选人总数进简历库，需求/岗位总数进招聘管理，面试中进对应阶段流程。候选人流程首次打开时会优先展示有候选人且更需要处理的阶段，不会默认停在空的“待筛选”。
+
+面试官工作台的紧急顺序是“待评价 → 超时待确认 → 两小时内开始 → 其他任务”，这是前端根据本地真实任务即时计算的提示，不写 Notification 表。评价弹窗包含岗位匹配、建议结论、优势、顾虑和补充备注；旧评价仍可打开。招聘专员从工作台进入待安排面试时，只有一条任务会直接打开安排弹窗，多条保留列表，零条显示明确空状态。
+
+面试官详情使用“面试信息、候选人简历、历史评价”三个页签，底部固定任务状态和评价按钮。候选人列表的“相同文件 / 同名”只做人工提示；“隐藏本地演示数据”只过滤当前页，不会删除、合并或覆盖任何记录。登录页品牌统一为“智聘”，本地账号或服务错误会显示中文提示。
 
 AI 助手首页的示例问题会按角色变化：招聘专员看到自己负责候选人的卡点和待反馈问题，经理/负责人看到团队漏斗和专员推进问题，管理员看到审计、权限和 AI 边界问题。
 
@@ -204,7 +220,7 @@ cd backend
 python seed_dev.py
 ```
 
-清空并重新写入本地验收数据：7 个试用账号、10 个候选人、4 个岗位、4 个开放 Demand、10 条 Demand Flow、1 条面试官待反馈任务和 5 条 Demand-scoped Offer。Offer 覆盖 1 条草稿、1 条待审批（存储状态 `pending`，已写 `submitted_at`）和 3 条已入职；每条已入职 Offer 都带提交、审批、发送、候选人接受和入职时间，以及对应的 OfferEvent 生命周期。所有演示 Pipeline / Interview / Offer 均带明确且一致的 `org_id`、`job_id`、`demand_id` 与候选人关联。重复执行 seed 会先清空再写回同一组验收数据。不需要 LLM Key。
+清空并重新写入本地验收数据：9 个试用账号、10 个候选人、4 个岗位、4 个开放 Demand、10 条 Demand Flow、两名面试官的一面/二面承接场景和 5 条 Demand-scoped Offer。Offer 覆盖 1 条草稿、1 条待审批（存储状态 `pending`，已写 `submitted_at`）和 3 条已入职；每条已入职 Offer 都带提交、审批、发送、候选人接受和入职时间，以及对应的 OfferEvent 生命周期。所有演示 Pipeline / Interview / Offer 均带明确且一致的 `org_id`、`job_id`、`demand_id` 与候选人关联。重复执行 seed 会先清空再写回同一组验收数据。不需要 LLM Key。
 
 如果准备给真实 HR 小范围试点，不要用 `seed_dev.py` 重置。先 dry-run 看清理范围：
 
@@ -283,7 +299,7 @@ npm run dev:local-acceptance
 # 打开 http://127.0.0.1:5174
 ```
 
-`dev:local-acceptance` 会显式把业务 `/api` 指向本地 `:5001`，避免 `frontend/.env.development` 把本地验收误接到远端 SIT。登录账号填写 `admin01`、`manager01`、`hr01` 或 `interviewer01`，密码仍为 `Zhipin2026`。正式构建和 SIT 不使用这两个本地命令，仍走公司网关及原冻结链路。
+`dev:local-acceptance` 会显式把业务 `/api` 指向本地 `:5001`，避免 `frontend/.env.development` 把本地验收误接到远端 SIT。登录账号填写 `admin01`、`manager01`、`hr01`、`interviewer01` 或 `director01`，密码仍为 `Zhipin2026`。正式构建和 SIT 不使用这两个本地命令，仍走公司网关及原冻结链路。
 
 ## 临时外链试用
 

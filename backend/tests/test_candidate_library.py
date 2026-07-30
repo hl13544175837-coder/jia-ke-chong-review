@@ -83,6 +83,126 @@ def test_candidate_library_list_includes_resume_summary_and_top_tags(client, mak
     assert offer_candidates.get_json()["candidates"][0]["current_stage"] == "offer"
 
 
+def test_candidate_library_adds_scoped_read_only_duplicate_and_local_demo_hints(
+    client,
+    make_user,
+    app,
+):
+    manager_id, token = make_user(
+        "candidate-hygiene-manager@example.com",
+        role="manager",
+        org_id=1,
+    )
+    foreign_owner_id, _ = make_user(
+        "candidate-hygiene-foreign@example.com",
+        role="recruiter",
+        org_id=2,
+    )
+
+    with app.app_context():
+        from app import db
+        from app.models import Candidate
+        from app.time_utils import utc_now
+
+        primary = Candidate(
+            org_id=1,
+            owner_hr_id=manager_id,
+            name_masked=" 张 三 ",
+            resume_json={},
+            resume_sha256="same-resume-hash",
+        )
+        same_record = Candidate(
+            org_id=1,
+            owner_hr_id=manager_id,
+            name_masked="张三",
+            resume_json={},
+            resume_sha256="same-resume-hash",
+        )
+        deleted_duplicate = Candidate(
+            org_id=1,
+            owner_hr_id=manager_id,
+            name_masked="张三",
+            resume_json={},
+            resume_sha256="same-resume-hash",
+            deleted_at=utc_now(),
+        )
+        foreign_duplicate = Candidate(
+            org_id=2,
+            owner_hr_id=foreign_owner_id,
+            name_masked="张三",
+            resume_json={},
+            resume_sha256="same-resume-hash",
+        )
+        local_demo_candidates = [
+            Candidate(org_id=1, owner_hr_id=manager_id, name_masked=name, resume_json={})
+            for name in (
+                "候选人123",
+                "验收候选人-001",
+                "面试演示-二面",
+                "需求演示-后端工程师",
+                "Offer演示-待发放",
+            )
+        ]
+        ordinary_candidates = [
+            Candidate(org_id=1, owner_hr_id=manager_id, name_masked=name, resume_json={})
+            for name in (
+                "候选人12",
+                "普通演示候选人",
+                "普通候选人",
+            )
+        ]
+        db.session.add_all([
+            primary,
+            same_record,
+            deleted_duplicate,
+            foreign_duplicate,
+            *local_demo_candidates,
+            *ordinary_candidates,
+        ])
+        db.session.commit()
+        primary_id = primary.id
+        same_record_id = same_record.id
+        deleted_id = deleted_duplicate.id
+        foreign_id = foreign_duplicate.id
+        local_demo_ids = {candidate.id for candidate in local_demo_candidates}
+        ordinary_ids = {candidate.id for candidate in ordinary_candidates}
+        candidate_count_before = Candidate.query.count()
+
+    app.config["LOCAL_SCHEMA_COMPAT"] = True
+    response = client.get(
+        "/api/candidates?page=1&per_page=100",
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 200
+    items = {item["id"]: item for item in response.get_json()["candidates"]}
+    assert items[primary_id]["identical_resume_count"] == 2
+    assert items[same_record_id]["identical_resume_count"] == 2
+    assert items[primary_id]["same_name_count"] == 2
+    assert items[same_record_id]["same_name_count"] == 2
+    assert deleted_id not in items
+    assert foreign_id not in items
+    assert all(items[candidate_id]["is_local_demo_record"] for candidate_id in local_demo_ids)
+    assert all(not items[candidate_id]["is_local_demo_record"] for candidate_id in ordinary_ids)
+    assert all(items[candidate_id]["identical_resume_count"] == 0 for candidate_id in ordinary_ids)
+
+    app.config["LOCAL_SCHEMA_COMPAT"] = False
+    non_local_response = client.get(
+        "/api/candidates?page=1&per_page=100",
+        headers=_auth(token),
+    )
+    assert non_local_response.status_code == 200
+    assert all(
+        item["is_local_demo_record"] is False
+        for item in non_local_response.get_json()["candidates"]
+    )
+
+    with app.app_context():
+        from app.models import Candidate
+
+        assert Candidate.query.count() == candidate_count_before
+
+
 def test_full_headcount_blocks_new_candidate_from_joining_demand(client, make_user, app):
     owner_id, token = make_user("full-hc-owner@example.com", role="recruiter")
     with app.app_context():

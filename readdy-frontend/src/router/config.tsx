@@ -33,6 +33,7 @@ import type { ProductRole } from '@/auth/productRoleModel';
 const dashboardRoles: ProductRole[] = ['admin', 'manager', 'recruiter'];
 const hrRoles: ProductRole[] = ['recruiter', 'manager', 'admin'];
 const managerRoles: ProductRole[] = ['manager', 'admin'];
+const analyticsRoles: ProductRole[] = ['recruiter', 'manager', 'admin', 'interviewer', 'hr_director'];
 const adminRoles: ProductRole[] = ['admin'];
 const interviewerRoles: ProductRole[] = ['interviewer'];
 const businessReviewerRoles: ProductRole[] = ['interviewer', 'manager', 'admin'];
@@ -100,7 +101,7 @@ const routes: RouteObject[] = [
       },
       {
         path: '/analytics',
-        element: <RequireCompanyRole allow={managerRoles}><AnalyticsPage /></RequireCompanyRole>,
+        element: <RequireCompanyRole allow={analyticsRoles}><AnalyticsPage /></RequireCompanyRole>,
       },
       {
         path: '/ai-assistant',

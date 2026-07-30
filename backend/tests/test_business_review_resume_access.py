@@ -102,6 +102,10 @@ def test_assigned_reviewer_can_view_preview_and_download_resume_only(
     task_detail = client.get(
         f"/api/business-reviews/{task['id']}", headers=_auth(reviewer_token)
     )
+    journey = client.get(
+        f"/api/candidates/{case['candidate_id']}/journey?demand_id={case['demand_id']}",
+        headers=_auth(reviewer_token),
+    )
     resume = client.get(
         f"/api/resume/{case['candidate_id']}", headers=_auth(reviewer_token)
     )
@@ -115,6 +119,7 @@ def test_assigned_reviewer_can_view_preview_and_download_resume_only(
     )
 
     assert task_detail.status_code == 200
+    assert journey.status_code == 200
     original_metadata = task_detail.get_json()["candidate"]["original_resume"]
     assert original_metadata == {
         "available": True,
@@ -201,7 +206,11 @@ def test_unrelated_reviewer_cannot_read_task_or_any_resume_representation(
             f"/api/resume/{case['candidate_id']}/original/download",
             headers=_auth(unrelated_token),
         ),
+        client.get(
+            f"/api/candidates/{case['candidate_id']}/journey?demand_id={case['demand_id']}",
+            headers=_auth(unrelated_token),
+        ),
     ]
 
-    assert [response.status_code for response in responses] == [403] * 4
+    assert [response.status_code for response in responses] == [403] * 5
     assert all(response.data != b"%PDF-1.4\nprivate" for response in responses)

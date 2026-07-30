@@ -117,6 +117,37 @@ def candidate_identity_keys(candidate):
     return keys
 
 
+def find_existing_candidate_by_identity(candidate):
+    """Return an active same-org candidate with the same strong identity.
+
+    Names are intentionally excluded because same-name candidates are common.
+    """
+
+    candidate_keys = candidate_identity_keys(candidate)
+    if not candidate_keys:
+        return None, None
+
+    existing_candidates = (
+        Candidate.query.filter(
+            Candidate.org_id == (candidate.org_id or 1),
+            Candidate.id != candidate.id,
+            Candidate.deleted_at.is_(None),
+        )
+        .order_by(Candidate.id.asc())
+        .all()
+    )
+    for existing in existing_candidates:
+        shared = candidate_keys & candidate_identity_keys(existing)
+        if not shared:
+            continue
+        kinds = {kind for kind, _value in shared}
+        if "phone" in kinds:
+            return existing, "手机号一致"
+        if "email" in kinds:
+            return existing, "邮箱一致"
+    return None, None
+
+
 BUSINESS_HISTORY_MODELS = (
     BusinessReviewTask,
     CandidateDemandFlow,

@@ -8,6 +8,12 @@ import {
 } from '@/auth/companyAuth';
 import { homePathForRole } from '@/auth/productRoleModel';
 
+const loginErrorCopy = (message: string) => {
+  if (/invalid credentials/i.test(message)) return '账号或密码错误';
+  if (/network|fetch/i.test(message)) return '本地登录服务暂不可用，请确认服务已启动';
+  return message || '登录失败，请重试';
+};
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,11 +40,10 @@ export default function LoginPage() {
       const requestedPath = (location.state as { from?: string } | null)?.from;
       navigate(requestedPath || homePathForRole(result.role), { replace: true });
     } catch (loginError) {
-      setError(
-        loginError instanceof CompanyAuthError
-          ? loginError.message
-          : '登录失败，请检查公司网络后重试',
-      );
+      const message = loginError instanceof CompanyAuthError || loginError instanceof Error
+        ? loginError.message
+        : '';
+      setError(loginErrorCopy(message));
     } finally {
       setLoading(false);
     }
@@ -61,7 +66,7 @@ export default function LoginPage() {
               <i className="ri-briefcase-line text-white text-2xl"></i>
             </div>
             <h1 className="text-4xl font-heading font-bold text-white leading-tight mb-4">
-              TalentFlow
+              智聘
             </h1>
             <p className="text-lg text-white/70 leading-relaxed max-w-md">
               智能招聘管理系统 — 让招聘流程更高效、更透明。从需求到入职，一站式协作平台。
@@ -98,7 +103,7 @@ export default function LoginPage() {
             <div className="w-12 h-12 rounded-xl bg-primary-500 flex items-center justify-center mx-auto mb-4">
               <i className="ri-briefcase-line text-white text-2xl"></i>
             </div>
-            <h1 className="text-3xl font-heading font-bold text-foreground-900">TalentFlow</h1>
+            <h1 className="text-3xl font-heading font-bold text-foreground-900">智聘</h1>
           </div>
 
           <div className="mb-8">

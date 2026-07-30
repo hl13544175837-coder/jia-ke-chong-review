@@ -29,6 +29,7 @@ class Config:
     LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
     LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
     LLM_API_URL = os.environ.get("LLM_API_URL", "")
+    RESUME_AI_ENABLED = os.environ.get("RESUME_AI_ENABLED", "true").lower() == "true"
     AI_RECRUITMENT_COMPLIANCE_ACK = os.environ.get("AI_RECRUITMENT_COMPLIANCE_ACK", "false").lower() == "true"
     CANDIDATE_PRIVACY_NOTICE_URL = os.environ.get("CANDIDATE_PRIVACY_NOTICE_URL", "")
     AI_HUMAN_REVIEW_REQUIRED = os.environ.get("AI_HUMAN_REVIEW_REQUIRED", "true").lower() == "true"
@@ -59,8 +60,10 @@ class Config:
     # 一个后端用户；没有工号头时才回退到下面的默认账号。
     # 回退账号：留空则取库中第一个在职 admin（否则第一个在职用户）。
     AUTH_DISABLED_USER_EMAIL = os.environ.get("AUTH_DISABLED_USER_EMAIL", "")
-    # 按工号自动建号时给的角色（真实角色/组织后续随身份集成对接）。
-    AUTH_GATEWAY_USER_ROLE = os.environ.get("AUTH_GATEWAY_USER_ROLE", "admin")
+    # 按工号自动建号时给的兜底角色。Test 默认最小权限 recruiter；指定人员
+    # 通过 EMP001:admin,EMP002:interviewer 形式的映射获得明确角色。
+    AUTH_GATEWAY_USER_ROLE = os.environ.get("AUTH_GATEWAY_USER_ROLE", "recruiter")
+    AUTH_GATEWAY_ROLE_MAP = os.environ.get("AUTH_GATEWAY_ROLE_MAP", "")
 
     # CORS 允许来源：逗号分隔的域名白名单；留空表示不限制（仅限开发）
     CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]

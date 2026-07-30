@@ -79,9 +79,11 @@ def seed():
         hr2     = User(name="招聘专员02", email="hr02@mvp.local", role="recruiter", password_hash=pw, created_at=_dt(50))
         hr3     = User(name="招聘专员03", email="hr03@mvp.local", role="recruiter", password_hash=pw, created_at=_dt(45))
         ivr     = User(name="面试官01", email="interviewer01@mvp.local", role="interviewer", password_hash=pw, created_at=_dt(40))
+        ivr2    = User(name="面试官02", email="interviewer02@mvp.local", role="interviewer", password_hash=pw, created_at=_dt(39))
+        director = User(name="人力资源总监01", email="director01@mvp.local", role="hr_director", department="人力资源部", password_hash=pw, created_at=_dt(60))
         adm     = User(name="系统管理员", email="admin01@mvp.local", role="admin", password_hash=pw, created_at=_dt(60))
 
-        db.session.add_all([manager, lead, hr1, hr2, hr3, ivr, adm])
+        db.session.add_all([manager, lead, hr1, hr2, hr3, ivr, ivr2, director, adm])
         db.session.flush()  # get IDs
 
         # ── 2. JOBS ───────────────────────────────────────────────────────────
@@ -758,6 +760,23 @@ def seed():
             created_by=hr1.id,
             created_at=_dt(3),
         )
+        second_round_assignment = InterviewAssignment(
+            org_id=1,
+            candidate_id=c14.id,
+            job_id=job3.id,
+            demand_id=demands_by_job_id[job3.id].id,
+            round="round_2",
+            round_sequence=2,
+            is_primary=True,
+            primary_slot=2,
+            interviewer_id=ivr2.id,
+            scheduled_at=_dt(-1),
+            location="本地验收会议室 E",
+            note="二面账号可只读承接一面评价",
+            status="scheduled",
+            created_by=hr1.id,
+            created_at=_dt(0),
+        )
         started_assignment = InterviewAssignment(
             org_id=1,
             candidate_id=c15.id,
@@ -779,6 +798,7 @@ def seed():
             scheduled_assignment,
             awaiting_feedback_assignment,
             completed_assignment,
+            second_round_assignment,
             started_assignment,
         ])
         db.session.flush()
@@ -996,6 +1016,7 @@ def seed():
             ("recruiter",   "hr02@mvp.local",          "招聘专员02"),
             ("recruiter",   "hr03@mvp.local",          "招聘专员03"),
             ("interviewer", "interviewer01@mvp.local", "面试官01"),
+            ("interviewer", "interviewer02@mvp.local", "面试官02"),
         ]
         for role, email, name in creds:
             print(f"  {role:<12} {email:<30} {name}")

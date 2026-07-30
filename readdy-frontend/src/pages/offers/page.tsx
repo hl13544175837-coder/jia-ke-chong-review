@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useProductRole } from '@/auth/productRole';
+import PageHeader from '@/components/ui/PageHeader';
+import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { offersApi } from '@/features/offers/api';
@@ -320,14 +322,13 @@ export default function OffersPage() {
 
   return (
     <div className="space-y-5 p-6" data-ui="real-offer-lifecycle">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          {fromDashboard && !requestedDemandId && <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>}
-          <div>
-          <p className="mt-1 text-sm text-foreground-500">确认方案、登记发放、跟进回复和确认入职</p>
-          </div>
-        </div>
-        {(role === 'recruiter' || role === 'admin') && (
+      <PageHeader
+        title="Offer 管理"
+        description="确认方案、登记发放、跟进回复和确认入职"
+        leading={fromDashboard && !requestedDemandId ? (
+          <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>
+        ) : undefined}
+        actions={(role === 'recruiter' || role === 'admin') ? (
           <button
             type="button"
             onClick={openCreate}
@@ -337,8 +338,8 @@ export default function OffersPage() {
             <i className="ri-add-line text-base" aria-hidden="true"></i>
             {demandsLoading ? '加载需求中' : '新建 Offer'}
           </button>
-        )}
-      </header>
+        ) : undefined}
+      />
 
       {requestedDemandId && (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-200 bg-primary-50/60 px-4 py-3" aria-label="当前岗位 Offer">
@@ -377,18 +378,13 @@ export default function OffersPage() {
       )}
 
       <section className="overflow-hidden rounded-lg border border-background-200 bg-white">
-        <div className="flex overflow-x-auto border-b border-background-200 px-3">
-          {OFFER_WORKBENCH_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => selectTab(tab.key)}
-              className={`relative shrink-0 px-4 py-3 text-sm font-medium ${activeTab === tab.key ? 'text-primary-600' : 'text-foreground-500 hover:text-foreground-800'}`}
-            >
-              {tab.label}<span className="ml-1.5 text-xs">{counts[tab.key]}</span>
-              {activeTab === tab.key && <span className="absolute inset-x-3 bottom-0 h-0.5 bg-primary-500"></span>}
-            </button>
-          ))}
+        <div className="border-b border-background-200 p-3">
+          <WorkspaceTabs
+            items={OFFER_WORKBENCH_TABS.map((tab) => ({ ...tab, count: counts[tab.key] }))}
+            value={activeTab}
+            onChange={selectTab}
+            ariaLabel="Offer 状态"
+          />
         </div>
 
         <form

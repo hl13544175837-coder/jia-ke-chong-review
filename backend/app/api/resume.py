@@ -3,6 +3,7 @@ import mimetypes
 import os, uuid, zipfile
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
 from flask import current_app
 from flask import Blueprint, request, jsonify, g, send_file
 from werkzeug.utils import secure_filename
@@ -15,6 +16,7 @@ from ..middleware.auth import require_auth, require_role
 from ..middleware.rate_limit import rate_limit
 from ..middleware.events import record_event
 from ..services.resume_service import ResumeBatchService
+from ..services.candidate_library_service import find_existing_candidate_by_identity
 from image_resume_parser import (
     IMAGE_RESUME_EXTENSIONS,
     IMAGE_RESUME_MAX_FILE_SIZE,
@@ -29,7 +31,7 @@ from ..services.demand_context_service import (
 from ..services.pipeline_service import PipelineServiceError, move_candidate
 from ..source_channels import normalize_resume_source_channel
 from .. import db
-from ..models import Candidate, Event, UploadBatch
+from ..models import Candidate, CandidateResumeVersion, Event, UploadBatch
 from ..time_utils import utc_now
 from .access import can_access_candidate, same_org
 
@@ -73,6 +75,9 @@ ORIGINAL_RESUME_MIME_TYPES = {
     ".webp": "image/webp",
     ".gif": "image/gif",
 }
+RESUME_AI_DISABLED_MESSAGE = (
+    "当前测试环境未启用模型解析，原始简历已保留，请手动补录基础信息。"
+)
 
 
 def _ext(filename):
@@ -274,6 +279,174 @@ def _file_fingerprints(files):
     return sorted(fingerprints, key=lambda item: (item["filename"], item["sha256"]))
 
 
+def _file_sha256(file_path):
+    digest = hashlib.sha256()
+    with open(file_path, "rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _remove_uploaded_file(file_path):
+    try:
+        Path(file_path).unlink(missing_ok=True)
+    except OSError:
+        current_app.logger.warning("重复简历临时文件清理失败: %s", file_path)
+
+
+def _duplicate_upload_result(display_name, existing, match_basis):
+    result = {
+        "file": display_name,
+        "status": "duplicate",
+        "reason": "导入失败：系统中已存在重复简历",
+        "match_basis": match_basis,
+    }
+    if can_access_candidate(g.user_id, g.role, existing.id):
+        result.update({
+            "existing_candidate_id": existing.id,
+            "existing_candidate_name": existing.name_masked or "未命名候选人",
+        })
+    else:
+        result["existing_candidate_name"] = "当前组织已有候选人"
+    return result
+
+
+def _resume_detail_payload(candidate):
+    return {
+        "id": candidate.id,
+        "candidate_id": candidate.id,
+        "name_masked": candidate.name_masked,
+        "owner_hr_id": candidate.owner_hr_id,
+        "resume_json": candidate.resume_json,
+        "tags": [{"tag": tag.tag, "score": tag.score} for tag in candidate.tags],
+        "parse_status": candidate.parse_status,
+        "parse_error": candidate.parse_error,
+        "original_resume": _original_resume_payload(candidate),
+        "source": _candidate_source_payload(candidate),
+        "created_at": candidate.created_at.isoformat(),
+        "resume_versions": [
+            _resume_version_payload(version)
+            for version in CandidateResumeVersion.query.filter_by(
+                org_id=candidate.org_id or 1,
+                candidate_id=candidate.id,
+            ).order_by(CandidateResumeVersion.version_no.desc()).all()
+        ],
+    }
+
+
+def _actionable_parse_failure_message(error):
+    raw = str(error or "")
+    lowered = raw.casefold()
+    if any(marker in lowered for marker in (
+        "403",
+        "forbidden",
+        "model",
+        "模型",
+        "百炼",
+        "dashscope",
+    )):
+        return "模型暂时不可用，可先手动补录；原始文件已保留。"
+    return "重新解析仍未成功，可先手动补录；原始文件已保留。"
+
+
+def _resume_version_payload(version):
+    available = False
+    if version.raw_file_path:
+        upload_root = current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER
+        try:
+            available = resolve_stored_upload_path(
+                version.raw_file_path,
+                upload_root,
+            ).is_file()
+        except RuntimePathError:
+            available = False
+    return {
+        "id": version.id,
+        "version_no": version.version_no,
+        "name_masked": version.name_masked or "未命名候选人",
+        "parse_status": version.parse_status,
+        "reason": version.reason,
+        "created_at": version.created_at.isoformat(),
+        "available": available,
+        "is_current": False,
+        "download_url": (
+            f"/api/resume/{version.candidate_id}/versions/{version.id}/download"
+            if available
+            else None
+        ),
+    }
+
+
+def _archive_current_resume(candidate, *, reason):
+    latest = (
+        CandidateResumeVersion.query
+        .filter_by(org_id=candidate.org_id or 1, candidate_id=candidate.id)
+        .order_by(CandidateResumeVersion.version_no.desc())
+        .first()
+    )
+    version = CandidateResumeVersion(
+        org_id=candidate.org_id or 1,
+        candidate_id=candidate.id,
+        version_no=(latest.version_no if latest else 0) + 1,
+        name_masked=candidate.name_masked,
+        email_masked=candidate.email_masked,
+        phone_masked=candidate.phone_masked,
+        resume_json=(dict(candidate.resume_json) if isinstance(candidate.resume_json, dict) else {}),
+        raw_file_path=candidate.raw_file_path,
+        resume_sha256=candidate.resume_sha256,
+        parse_status=candidate.parse_status or "ok",
+        parse_error=candidate.parse_error,
+        reason=reason,
+        created_by=g.user_id,
+    )
+    db.session.add(version)
+    db.session.flush()
+    return version
+
+
+def _editable_resume_candidate(candidate_id):
+    candidate = db.session.get(Candidate, candidate_id)
+    if candidate is None or not same_org(candidate, g.org_id) or candidate.deleted_at is not None:
+        return None, (jsonify({"error": "候选人不存在"}), 404)
+    if g.role == "interviewer" or not can_access_candidate(g.user_id, g.role, candidate_id):
+        return None, (jsonify({"error": "Forbidden"}), 403)
+    return candidate, None
+
+
+def _candidate_like_parse_result(candidate, parse_result):
+    info = parse_result.get("extracted_info", {}) if isinstance(parse_result, dict) else {}
+    return SimpleNamespace(
+        id=candidate.id,
+        org_id=candidate.org_id,
+        email_masked=str(info.get("email") or "")[:100],
+        phone_masked=str(info.get("phone") or "")[:30],
+        resume_json=parse_result if isinstance(parse_result, dict) else {},
+    )
+
+
+def _record_duplicate_upload(
+    existing,
+    display_name,
+    match_basis,
+    target_demand_id,
+    attempted_candidate_id=None,
+):
+    payload = {
+        "file": display_name,
+        "match_basis": match_basis,
+    }
+    if attempted_candidate_id is not None:
+        payload["attempted_candidate_id"] = attempted_candidate_id
+    record_event(
+        "resume.upload.duplicate_blocked",
+        entity_id=existing.id,
+        entity_type="candidate",
+        demand_id=target_demand_id,
+        payload=payload,
+        commit=False,
+    )
+
+
 def _upload_dedup_key(files, target_demand_id, target_job_id):
     source_channel = normalize_resume_source_channel(request.form.get("source_channel"))
     source_link = (request.form.get("source_link") or "").strip()
@@ -394,6 +567,52 @@ def _process_resume(
 ):
     """解析单份简历并入库，把结果（成功/失败）追加到 results。
     display_name 用于结果展示（zip 内文件会带 "xxx.zip → 文件名" 前缀）。"""
+    content_sha256 = _file_sha256(fpath)
+    existing_by_file = Candidate.query.filter(
+        Candidate.org_id == g.org_id,
+        Candidate.resume_sha256 == content_sha256,
+        Candidate.deleted_at.is_(None),
+    ).order_by(Candidate.id.asc()).first()
+    if existing_by_file is not None:
+        _record_duplicate_upload(
+            existing_by_file, display_name, "文件内容一致", target_demand_id
+        )
+        db.session.commit()
+        _remove_uploaded_file(fpath)
+        results.append(
+            _duplicate_upload_result(
+                display_name, existing_by_file, "文件内容一致"
+            )
+        )
+        return
+
+    if not current_app.config.get("RESUME_AI_ENABLED", True):
+        candidate = svc.create_failed_candidate(
+            fpath,
+            owner_hr_id=g.user_id,
+            display_name=display_name,
+            error=RuntimeError(RESUME_AI_DISABLED_MESSAGE),
+            upload_batch_id=upload_batch_id,
+        )
+        candidate.org_id = g.org_id
+        candidate.resume_sha256 = content_sha256
+        db.session.commit()
+        record_event(
+            "resume.parse_skipped",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            demand_id=target_demand_id,
+            payload={"file": display_name, "reason": "resume_ai_disabled"},
+        )
+        results.append({
+            "file": display_name,
+            "status": "needs_confirmation",
+            "candidate_id": candidate.id,
+            "reason": RESUME_AI_DISABLED_MESSAGE,
+            "parse_error": RESUME_AI_DISABLED_MESSAGE,
+        })
+        return
+
     try:
         candidate = svc.parse_and_save(
             fpath,
@@ -410,6 +629,7 @@ def _process_resume(
             upload_batch_id=upload_batch_id,
         )
         candidate.org_id = g.org_id
+        candidate.resume_sha256 = content_sha256
         db.session.commit()
         record_event(
             "resume.parse_failed",
@@ -420,15 +640,35 @@ def _process_resume(
         )
         results.append({
             "file": display_name,
-            "status": "error",
+            "status": "needs_confirmation",
             "candidate_id": candidate.id,
-            "reason": str(e),
+            "reason": "AI 未能识别该简历，请确认原文件或重新上传",
+            "parse_error": str(e)[:500],
         })
         return
 
     # Parsing succeeded. Audit/storage/pipeline failures are infrastructure
     # errors and must not create a second, falsely "parse failed" candidate.
     candidate.org_id = g.org_id
+    candidate.resume_sha256 = content_sha256
+    existing_by_identity, match_basis = find_existing_candidate_by_identity(candidate)
+    if existing_by_identity is not None:
+        attempted_candidate_id = candidate.id
+        db.session.delete(candidate)
+        _record_duplicate_upload(
+            existing_by_identity,
+            display_name,
+            match_basis,
+            target_demand_id,
+            attempted_candidate_id=attempted_candidate_id,
+        )
+        db.session.commit()
+        _remove_uploaded_file(fpath)
+        results.append(
+            _duplicate_upload_result(display_name, existing_by_identity, match_basis)
+        )
+        return
+
     from ..models import CandidateTag
     CandidateTag.query.filter_by(candidate_id=candidate.id).update({"org_id": g.org_id})
     db.session.commit()
@@ -666,10 +906,37 @@ def upload():
     upload_key = _upload_dedup_key(files, target_demand_id, target_job_id)
     previous_upload = _recent_completed_upload(upload_key)
     if previous_upload is not None:
+        repeated_results = []
+        for stored_result in previous_upload.get("results", []):
+            candidate_id = stored_result.get("candidate_id")
+            existing = db.session.get(Candidate, candidate_id) if candidate_id else None
+            if (
+                stored_result.get("status") == "ok"
+                and existing is not None
+                and existing.org_id == g.org_id
+                and existing.deleted_at is None
+            ):
+                display_name = stored_result.get("file") or "简历"
+                _record_duplicate_upload(
+                    existing,
+                    display_name,
+                    "文件内容一致",
+                    target_demand_id,
+                )
+                repeated_results.append(
+                    _duplicate_upload_result(
+                        display_name,
+                        existing,
+                        "文件内容一致",
+                    )
+                )
+            else:
+                repeated_results.append(stored_result)
+        db.session.commit()
         return jsonify({
             "batch_id": previous_upload.get("batch_id"),
             "total": previous_upload.get("total", 0),
-            "results": previous_upload.get("results", []),
+            "results": repeated_results,
             "deduplicated": True,
         }), 200
 
@@ -845,18 +1112,7 @@ def get_resume(candidate_id):
         entity_type="candidate",
         payload={"view": "resume_detail"},
     )
-    return jsonify({
-        "id": c.id,
-        "name_masked": c.name_masked,
-        "owner_hr_id": c.owner_hr_id,
-        "resume_json": c.resume_json,
-        "tags": [{"tag": t.tag, "score": t.score} for t in c.tags],
-        "parse_status": c.parse_status,
-        "parse_error": c.parse_error,
-        "original_resume": _original_resume_payload(c),
-        "source": _candidate_source_payload(c),
-        "created_at": c.created_at.isoformat(),
-    })
+    return jsonify(_resume_detail_payload(c))
 
 
 @bp.get("/resume/<int:candidate_id>/original/preview")
@@ -869,6 +1125,208 @@ def preview_original_resume(candidate_id):
 @require_auth
 def download_original_resume(candidate_id):
     return _serve_original_resume(candidate_id, as_attachment=True)
+
+
+@bp.get("/resume/<int:candidate_id>/versions")
+@require_auth
+def resume_versions(candidate_id):
+    candidate, error_response = _original_resume_candidate(candidate_id)
+    if error_response is not None:
+        return error_response
+    versions = (
+        CandidateResumeVersion.query
+        .filter_by(org_id=g.org_id, candidate_id=candidate.id)
+        .order_by(CandidateResumeVersion.version_no.desc())
+        .all()
+    )
+    return jsonify({
+        "candidate_id": candidate.id,
+        "versions": [_resume_version_payload(version) for version in versions],
+    })
+
+
+@bp.get("/resume/<int:candidate_id>/versions/<int:version_id>/download")
+@require_auth
+def download_resume_version(candidate_id, version_id):
+    candidate, error_response = _original_resume_candidate(candidate_id)
+    if error_response is not None:
+        return error_response
+    version = CandidateResumeVersion.query.filter_by(
+        id=version_id,
+        org_id=g.org_id,
+        candidate_id=candidate.id,
+    ).first()
+    if version is None:
+        return jsonify({"error": "历史简历版本不存在"}), 404
+    if not version.raw_file_path:
+        return jsonify({"error": "历史简历原件不可用"}), 404
+
+    upload_root = current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER
+    try:
+        resolved = resolve_stored_upload_path(version.raw_file_path, upload_root)
+    except RuntimePathError:
+        return jsonify({"error": "历史简历原件不可用"}), 404
+    if not resolved.is_file():
+        return jsonify({"error": "历史简历原件不可用"}), 404
+
+    suffix = resolved.suffix.lower()
+    mime_type = ORIGINAL_RESUME_MIME_TYPES.get(suffix)
+    if mime_type is None:
+        guessed, _ = mimetypes.guess_type(resolved.name)
+        if guessed not in ORIGINAL_RESUME_MIME_TYPES.values():
+            return jsonify({"error": "该历史简历格式暂不支持下载"}), 400
+        mime_type = guessed
+
+    record_event(
+        "resume.version.downloaded",
+        entity_id=candidate.id,
+        entity_type="candidate",
+        payload={"version_id": version.id, "version_no": version.version_no},
+    )
+    response = send_file(
+        resolved,
+        mimetype=mime_type,
+        as_attachment=True,
+        download_name=f"candidate-{candidate.id}-resume-v{version.version_no}{suffix}",
+        conditional=True,
+        max_age=0,
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+@bp.post("/resume/<int:candidate_id>/confirm-original")
+@require_auth
+def confirm_original_resume(candidate_id):
+    candidate, error_response = _editable_resume_candidate(candidate_id)
+    if error_response is not None:
+        return error_response
+    if candidate.parse_status == "original_confirmed":
+        return jsonify({
+            **_resume_detail_payload(candidate),
+            "status_label": "原件有效，结构化信息待补全",
+        })
+    if candidate.parse_status != "failed":
+        return jsonify({"error": "只有待确认的简历才能确认原件"}), 400
+
+    resolved, _reason = _resolve_original_resume(candidate)
+    if resolved is None:
+        return jsonify({"error": "原始简历文件不可用，请重新上传"}), 409
+
+    candidate.parse_status = "original_confirmed"
+    db.session.commit()
+    record_event(
+        "resume.original_confirmed",
+        entity_id=candidate.id,
+        entity_type="candidate",
+        payload={"parse_error": candidate.parse_error or ""},
+    )
+    return jsonify({
+        **_resume_detail_payload(candidate),
+        "status_label": "原件有效，结构化信息待补全",
+    })
+
+
+@bp.post("/resume/<int:candidate_id>/replace")
+@require_auth
+@rate_limit("resume.upload")
+def replace_resume(candidate_id):
+    candidate, error_response = _editable_resume_candidate(candidate_id)
+    if error_response is not None:
+        return error_response
+
+    file_storage = request.files.get("file")
+    if file_storage is None or not file_storage.filename:
+        return jsonify({"error": "请选择一份新简历"}), 400
+    if not _is_resume(file_storage.filename) or _ext(file_storage.filename) in BLOCKED_RESUME_EXTS:
+        return jsonify({"error": "请上传 PDF、DOCX、JPG、PNG、WebP 或 GIF 简历"}), 400
+    invalid_reason = _validate_upload_file(file_storage)
+    if invalid_reason:
+        return jsonify({"error": invalid_reason}), 400
+
+    folder = current_app.config.get("UPLOAD_FOLDER") or str(DEFAULT_UPLOAD_FOLDER)
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    new_path = str(Path(folder) / f"{uuid.uuid4()}_{secure_filename(file_storage.filename)}")
+    file_storage.save(new_path)
+    content_sha256 = _file_sha256(new_path)
+
+    existing_by_file = Candidate.query.filter(
+        Candidate.org_id == g.org_id,
+        Candidate.id != candidate.id,
+        Candidate.resume_sha256 == content_sha256,
+        Candidate.deleted_at.is_(None),
+    ).order_by(Candidate.id.asc()).first()
+    if existing_by_file is not None:
+        _remove_uploaded_file(new_path)
+        return jsonify({
+            "error": "这份简历已属于其他候选人，未覆盖当前档案",
+            **_duplicate_upload_result(file_storage.filename, existing_by_file, "文件内容一致"),
+        }), 409
+
+    service = ResumeBatchService()
+    try:
+        parse_result = service.parse_file(new_path)
+    except Exception as error:
+        archived = _archive_current_resume(candidate, reason="manual_replace")
+        candidate = service.mark_replacement_parse_failed(
+            candidate,
+            file_path=new_path,
+            content_sha256=content_sha256,
+            display_name=file_storage.filename,
+            error=error,
+        )
+        record_event(
+            "resume.replaced_parse_failed",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            payload={
+                "file": file_storage.filename,
+                "reason": str(error)[:500],
+                "archived_version_id": archived.id,
+            },
+        )
+        return jsonify({
+            **_resume_detail_payload(candidate),
+            "status": "needs_confirmation",
+            "reason": "新原件已覆盖，但 AI 未能识别，请确认原件或手动补录",
+            "replaced": True,
+            "archived_version_id": archived.id,
+        }), 202
+
+    existing_by_identity, match_basis = find_existing_candidate_by_identity(
+        _candidate_like_parse_result(candidate, parse_result)
+    )
+    if existing_by_identity is not None:
+        _remove_uploaded_file(new_path)
+        return jsonify({
+            "error": "新简历与其他候选人的身份信息重复，未覆盖当前档案",
+            **_duplicate_upload_result(file_storage.filename, existing_by_identity, match_basis),
+        }), 409
+
+    archived = _archive_current_resume(candidate, reason="manual_replace")
+    candidate = service.replace_candidate_resume(
+        candidate,
+        file_path=new_path,
+        content_sha256=content_sha256,
+        parse_result=parse_result,
+    )
+    rematched_jobs = _refresh_related_job_matches(candidate)
+    record_event(
+        "resume.replaced",
+        entity_id=candidate.id,
+        entity_type="candidate",
+        payload={
+            "file": file_storage.filename,
+            "rematched_job_ids": [job["id"] for job in rematched_jobs],
+            "archived_version_id": archived.id,
+        },
+    )
+    return jsonify({
+        **_resume_detail_payload(candidate),
+        "replaced": True,
+        "rematched_jobs": rematched_jobs,
+        "archived_version_id": archived.id,
+    })
 
 
 @bp.patch("/resume/<int:candidate_id>/profile")
@@ -906,16 +1364,7 @@ def update_resume_profile(candidate_id):
         },
     )
     return jsonify({
-        "id": candidate.id,
-        "name_masked": candidate.name_masked,
-        "owner_hr_id": candidate.owner_hr_id,
-        "resume_json": candidate.resume_json,
-        "tags": [{"tag": t.tag, "score": t.score} for t in candidate.tags],
-        "parse_status": candidate.parse_status,
-        "parse_error": candidate.parse_error,
-        "original_resume": _original_resume_payload(candidate),
-        "source": _candidate_source_payload(candidate),
-        "created_at": candidate.created_at.isoformat(),
+        **_resume_detail_payload(candidate),
         "rematched_jobs": rematched_jobs,
     })
 
@@ -934,15 +1383,22 @@ def retry_parse(candidate_id):
         return jsonify({"error": "Forbidden"}), 403
     if candidate.parse_status != "failed":
         return jsonify({"error": "只有解析失败的简历才能重试"}), 400
+    if not current_app.config.get("RESUME_AI_ENABLED", True):
+        return jsonify({
+            **_resume_detail_payload(candidate),
+            "error": RESUME_AI_DISABLED_MESSAGE,
+            "code": "resume_ai_disabled",
+        }), 409
 
     svc = ResumeBatchService()
     try:
         candidate = svc.reparse_candidate(candidate)
     except Exception as e:
+        failed_candidate = db.session.get(Candidate, candidate_id)
         return jsonify({
-            "candidate_id": candidate_id,
-            "parse_status": "failed",
-            "parse_error": str(e)[:500],
+            **_resume_detail_payload(failed_candidate),
+            "error": _actionable_parse_failure_message(e),
+            "code": "resume_parse_unavailable",
         }), 422
 
     record_event(
@@ -950,14 +1406,7 @@ def retry_parse(candidate_id):
         entity_id=candidate.id,
         entity_type="candidate",
     )
-    return jsonify({
-        "candidate_id": candidate.id,
-        "name_masked": candidate.name_masked,
-        "parse_status": candidate.parse_status,
-        "parse_error": candidate.parse_error,
-        "resume_json": candidate.resume_json,
-        "tags": [{"tag": t.tag, "score": t.score} for t in candidate.tags],
-    })
+    return jsonify(_resume_detail_payload(candidate))
 
 
 def _candidate_source_payload(candidate):

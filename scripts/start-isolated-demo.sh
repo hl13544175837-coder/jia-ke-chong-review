@@ -119,7 +119,7 @@ nohup env \
   "LOCAL_OAUTH_BRIDGE_PORT=$OAUTH_PORT" \
   "LOCAL_OAUTH_BACKEND_BASE=http://127.0.0.1:$BACKEND_PORT/api" \
   "LOCAL_OAUTH_FRONTEND_ORIGIN=http://127.0.0.1:$FRONTEND_PORT" \
-  "$NODE_BIN" "$APP_ROOT/frontend/scripts/local-oauth-bridge.mjs" \
+  "$NODE_BIN" "$APP_ROOT/scripts/local-oauth-bridge.mjs" \
   >"$LOG_ROOT/oauth.log" 2>&1 &
 printf '%s\n' "$!" >"$OAUTH_PID_FILE"
 wait_for_url "http://127.0.0.1:$OAUTH_PORT/health" "登录桥"

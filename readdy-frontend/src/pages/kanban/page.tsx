@@ -11,6 +11,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError } from '@/lib/api';
+import PageHeader from '@/components/ui/PageHeader';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { pipelineApi } from '@/features/pipeline/api';
@@ -31,6 +32,13 @@ const stages: Array<{ key: PipelineStage; label: string; tone: string }> = [
 ];
 
 const stageLabels = Object.fromEntries(stages.map((item) => [item.key, item.label])) as Record<string, string>;
+const KANBAN_DEMAND_MEMORY_KEY = 'zhipin.kanban.last-demand';
+
+function rememberedKanbanDemandId() {
+  if (typeof window === 'undefined') return null;
+  const value = Number(sessionStorage.getItem(KANBAN_DEMAND_MEMORY_KEY));
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
 
 function moveTargets(stage: PipelineStage): PipelineStage[] {
   if (stage === 'pending') return ['ai_screen', 'business_review', 'rejected'];
@@ -129,13 +137,17 @@ function MoveDialog({ candidate, initialTarget, busy, error, onClose, onSubmit }
 }
 
 export default function KanbanPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
   const requestedTarget = searchParams.get('target') === 'rejected' ? 'rejected' : null;
+  const requestedDetailCandidateId = Number(searchParams.get('detailCandidate')) || null;
   const handledCandidateId = useRef<number | null>(null);
+  const handledDetailCandidateId = useRef<number | null>(null);
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
-  const [demandId, setDemandId] = useState<number | null>(requestedDemandId);
+  const [demandId, setDemandId] = useState<number | null>(
+    () => requestedDemandId ?? rememberedKanbanDemandId(),
+  );
   const [board, setBoard] = useState<PipelineBoard | null>(null);
   const [loadingDemands, setLoadingDemands] = useState(true);
   const [loadingBoard, setLoadingBoard] = useState(false);
@@ -197,18 +209,54 @@ export default function KanbanPage() {
   }, [demandId, loadBoard]);
 
   useEffect(() => {
-    if (!board || !requestedCandidateId || handledCandidateId.current === requestedCandidateId) return;
-    const candidate = board.candidates.find((item) => item.candidate_id === requestedCandidateId);
-    if (!candidate) return;
-    handledCandidateId.current = requestedCandidateId;
-    setMoveCandidate(candidate);
-  }, [board, requestedCandidateId]);
+    if (demandId) sessionStorage.setItem(KANBAN_DEMAND_MEMORY_KEY, String(demandId));
+    else sessionStorage.removeItem(KANBAN_DEMAND_MEMORY_KEY);
+  }, [demandId]);
 
-  const openHistory = async (candidate: PipelineBoardCandidate) => {
+  const rememberDetailCandidate = useCallback((candidateId: number | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (candidateId) {
+      if (demandId) next.set('demand', String(demandId));
+      next.set('detailCandidate', String(candidateId));
+      next.delete('candidate');
+      next.delete('target');
+    } else {
+      next.delete('detailCandidate');
+    }
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [demandId, searchParams, setSearchParams]);
+
+  const changeDemand = useCallback((nextDemandId: number | null) => {
+    setSelectedCandidate(null);
+    setHistory(null);
+    setHistoryError('');
+    setMoveCandidate(null);
+    setMoveError('');
+    handledCandidateId.current = null;
+    handledDetailCandidateId.current = null;
+
+    const next = new URLSearchParams(searchParams);
+    if (nextDemandId) next.set('demand', String(nextDemandId));
+    else next.delete('demand');
+    next.delete('detailCandidate');
+    next.delete('candidate');
+    next.delete('target');
+    setSearchParams(next, { replace: true });
+    setDemandId(nextDemandId);
+  }, [searchParams, setSearchParams]);
+
+  const openHistory = useCallback(async (
+    candidate: PipelineBoardCandidate,
+    updateAddress = true,
+  ) => {
     if (!demandId) return;
+    handledDetailCandidateId.current = candidate.candidate_id;
     setSelectedCandidate(candidate);
     setHistory(null);
     setHistoryError('');
+    if (updateAddress) rememberDetailCandidate(candidate.candidate_id);
     setHistoryLoading(true);
     try {
       setHistory(await pipelineApi.getHistory(demandId, candidate.candidate_id));
@@ -217,7 +265,44 @@ export default function KanbanPage() {
     } finally {
       setHistoryLoading(false);
     }
-  };
+  }, [demandId, rememberDetailCandidate]);
+
+  const closeHistory = useCallback(() => {
+    setSelectedCandidate(null);
+    setHistory(null);
+    setHistoryError('');
+    handledDetailCandidateId.current = null;
+    rememberDetailCandidate(null);
+  }, [rememberDetailCandidate]);
+
+  const closeMoveDialog = useCallback(() => {
+    setMoveCandidate(null);
+    setMoveError('');
+    const next = new URLSearchParams(searchParams);
+    next.delete('candidate');
+    next.delete('target');
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!(board && requestedCandidateId && requestedTarget)
+      || handledCandidateId.current === requestedCandidateId) return;
+    const candidate = board.candidates.find((item) => item.candidate_id === requestedCandidateId);
+    if (!candidate) return;
+    handledCandidateId.current = requestedCandidateId;
+    setMoveCandidate(candidate);
+  }, [board, requestedCandidateId, requestedTarget]);
+
+  useEffect(() => {
+    if (!board || !requestedDetailCandidateId
+      || handledDetailCandidateId.current === requestedDetailCandidateId) return;
+    const candidate = board.candidates.find((item) => item.candidate_id === requestedDetailCandidateId);
+    if (!candidate) return;
+    handledDetailCandidateId.current = requestedDetailCandidateId;
+    void openHistory(candidate, false);
+  }, [board, openHistory, requestedDetailCandidateId]);
 
   const submitMove = async (target: PipelineStage, reason: string) => {
     if (!demandId || !moveCandidate) return;
@@ -232,10 +317,11 @@ export default function KanbanPage() {
           ? { reason, enter_talent_pool: true, note: reason }
           : undefined,
       });
-      setMoveCandidate(null);
+      const movedCandidateId = moveCandidate.candidate_id;
+      closeMoveDialog();
       await loadBoard(demandId);
-      if (selectedCandidate?.candidate_id === moveCandidate.candidate_id) {
-        setSelectedCandidate(null);
+      if (selectedCandidate?.candidate_id === movedCandidateId) {
+        closeHistory();
       }
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
@@ -263,27 +349,29 @@ export default function KanbanPage() {
 
   return (
     <div className="space-y-5 p-6" data-ui="real-pipeline-board">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-foreground-900">招聘进度</h1>
-          <p className="mt-1 text-sm text-foreground-500">按招聘需求查看候选人当前阶段并由 HR 确认推进</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => demandId ? void loadBoard(demandId) : void loadDemands()}
-          disabled={loadingDemands || loadingBoard}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-background-200 bg-white px-3 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-60"
-        >
-          <RefreshCw size={15} className={loadingDemands || loadingBoard ? 'animate-spin' : ''} /> 刷新
-        </button>
-      </div>
+      <PageHeader
+        title="招聘进度"
+        description="按招聘需求查看候选人当前阶段并由 HR 确认推进"
+        actions={(
+          <button
+            type="button"
+            onClick={() => demandId ? void loadBoard(demandId) : void loadDemands()}
+            disabled={loadingDemands || loadingBoard}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-background-200 bg-white px-3 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-60"
+          >
+            <RefreshCw size={15} className={loadingDemands || loadingBoard ? 'animate-spin' : ''} /> 刷新
+          </button>
+        )}
+      />
 
       <div className="flex flex-wrap items-end gap-4 rounded-lg border border-background-200 bg-white p-4">
         <label className="min-w-[280px] flex-1 text-sm font-medium text-foreground-700">
           招聘需求
           <select
             value={demandId ?? ''}
-            onChange={(event) => setDemandId(event.target.value ? Number(event.target.value) : null)}
+            onChange={(event) => {
+              changeDemand(event.target.value ? Number(event.target.value) : null);
+            }}
             disabled={loadingDemands}
             className="mt-2 h-10 w-full rounded-md border border-background-200 bg-white px-3 text-sm outline-none focus:border-primary-400"
           >
@@ -368,21 +456,28 @@ export default function KanbanPage() {
 
       {selectedCandidate && (
         <>
-          <button type="button" aria-label="关闭历史" onClick={() => setSelectedCandidate(null)} className="fixed inset-0 z-40 bg-foreground-900/40" />
-          <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[480px] flex-col bg-white shadow-2xl">
+          <button type="button" aria-label="关闭历史" onClick={closeHistory} className="workspace-detail-backdrop fixed inset-0 z-40 bg-foreground-900/40 lg:left-[var(--workspace-sidebar-width)] lg:top-14" />
+          <aside role="dialog" aria-label="候选人流程历史" data-ui="pipeline-history-drawer" className="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-[480px] flex-col bg-white shadow-2xl lg:top-14">
             <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
               <div>
                 <h2 className="text-lg font-bold text-foreground-900">{selectedCandidate.name_masked}</h2>
                 <p className="mt-1 text-sm text-foreground-500">当前阶段：{stageLabels[selectedCandidate.stage] || selectedCandidate.stage}</p>
               </div>
-              <button type="button" onClick={() => setSelectedCandidate(null)} aria-label="关闭" className="rounded-md p-2 text-foreground-400 hover:bg-background-100"><X size={18} /></button>
+              <button type="button" onClick={closeHistory} aria-label="关闭" className="rounded-md p-2 text-foreground-400 hover:bg-background-100"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900"><History size={16} /> 流程历史</h3>
               {historyLoading ? (
                 <RefreshCw size={18} className="mx-auto mt-16 animate-spin text-foreground-400" />
               ) : historyError ? (
-                <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{historyError}</p>
+                <div className="mt-4 rounded-md bg-red-50 px-3 py-3 text-sm text-red-700">
+                  <p>{historyError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void openHistory(selectedCandidate, false)}
+                    className="mt-3 rounded-md border border-red-200 bg-white px-3 py-1.5 font-medium text-red-700"
+                  >重新加载</button>
+                </div>
               ) : (
                 <div className="mt-4 space-y-3">
                   {(history?.timeline || []).map((item, index) => (
@@ -411,7 +506,7 @@ export default function KanbanPage() {
           initialTarget={requestedTarget}
           busy={moveBusy}
           error={moveError}
-          onClose={() => !moveBusy && setMoveCandidate(null)}
+          onClose={() => !moveBusy && closeMoveDialog()}
           onSubmit={(stage, reason) => void submitMove(stage, reason)}
         />
       )}

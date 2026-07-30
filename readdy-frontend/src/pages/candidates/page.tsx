@@ -37,6 +37,8 @@ import {
 import { useProductRole } from '@/auth/productRole';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
+import PageHeader from '@/components/ui/PageHeader';
+import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import { apiRequest } from '@/lib/api';
 import { candidatesApi } from '@/features/candidates/api';
 import type {
@@ -67,10 +69,15 @@ import PushToReviewerModal, {
 import { canEnterBusinessReview, isActionableBusinessReviewResult } from '@/features/businessReviews/stages';
 import AddToPipelineModal from './components/AddToPipelineModal';
 import DuplicateCandidatesModal from './components/DuplicateCandidatesModal';
+import ResumeRecoveryPanel from './components/ResumeRecoveryPanel';
 
 const PER_PAGE = 20;
 const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif|zip)$/i;
+const supportedReplacementPattern = /\.(pdf|docx|jpe?g|png|webp|gif)$/i;
 const supportedResumeAccept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,.zip,image/jpeg,image/png,image/webp,image/gif,application/zip';
+
+type ResumeUploadResult = ResumeUploadResponse['results'][number];
+type UploadRowAction = 'keeping' | 'replacing' | 'replaced' | 'retrying' | 'retry_failed';
 
 const emptyCandidateResponse: CandidateListResponse = {
   candidates: [],
@@ -84,7 +91,8 @@ const parseStatusMeta = {
   pending: { label: '待解析', className: 'border-amber-200 bg-amber-50 text-amber-700' },
   processing: { label: '解析中', className: 'border-blue-200 bg-blue-50 text-blue-700' },
   ok: { label: '已解析', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  failed: { label: '解析失败', className: 'border-red-200 bg-red-50 text-red-700' },
+  failed: { label: '待确认', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+  original_confirmed: { label: '原件已确认', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
 } as const;
 
 const stageLabels: Record<CandidateStage, string> = {
@@ -113,6 +121,13 @@ const candidateStageOptions: CandidateStage[] = [
   'transferred',
 ];
 
+const candidateScopeTabs: ReadonlyArray<{ key: CandidateLibraryScope; label: string }> = [
+  { key: 'all', label: '全部候选人' },
+  { key: 'in_pipeline', label: '招聘流程中' },
+  { key: 'talent_pool', label: '公司人才库' },
+  { key: 'favorite', label: '我的收藏' },
+];
+
 const businessReviewStatusMeta: Record<BusinessReviewStatus, { label: string; className: string }> = {
   pending: { label: '等待业务负责人', className: 'border-amber-200 bg-amber-50 text-amber-700' },
   approved: { label: '已通过', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
@@ -133,7 +148,11 @@ function isCandidateStage(value: string): value is CandidateStage {
 }
 
 function isParseStatus(value: string): value is ParseStatus {
-  return value === 'pending' || value === 'processing' || value === 'ok' || value === 'failed';
+  return value === 'pending' || value === 'processing' || value === 'ok' || value === 'failed' || value === 'original_confirmed';
+}
+
+function candidateResumeReady(candidate: CandidateListItem) {
+  return candidate.parse_status === 'ok' || candidate.parse_status === 'original_confirmed';
 }
 
 function isPipelineStatus(value: string): value is Exclude<PipelineStatusFilter, ''> {
@@ -176,6 +195,9 @@ function candidateFromReviewTask(task: BusinessReviewTask): CandidateListItem {
     current_demand_id: task.demand_id,
     latest_demand_id: task.demand_id,
     is_favorite: false,
+    identical_resume_count: 0,
+    same_name_count: 0,
+    is_local_demo_record: false,
     created_at: task.created_at,
     parse_status: parseStatus,
     tag_count: 0,
@@ -335,6 +357,7 @@ export default function CandidatesPage() {
   const [candidateResponse, setCandidateResponse] = useState<CandidateListResponse>(emptyCandidateResponse);
   const [candidatesLoading, setCandidatesLoading] = useState(true);
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
+  const [hideLocalDemoRecords, setHideLocalDemoRecords] = useState(false);
   const candidateRequestId = useRef(0);
 
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
@@ -363,6 +386,8 @@ export default function CandidatesPage() {
   const [uploadSourceChannel, setUploadSourceChannel] = useState('');
   const [uploadNote, setUploadNote] = useState('');
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [lastSubmittedFiles, setLastSubmittedFiles] = useState<File[]>([]);
+  const [uploadRowActions, setUploadRowActions] = useState<Record<string, UploadRowAction>>({});
   const [uploadResponse, setUploadResponse] = useState<ResumeUploadResponse | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
@@ -461,9 +486,21 @@ export default function CandidatesPage() {
     [activeDemands],
   );
 
+  const visibleCandidates = useMemo(
+    () => hideLocalDemoRecords
+      ? candidateResponse.candidates.filter((candidate) => !candidate.is_local_demo_record)
+      : candidateResponse.candidates,
+    [candidateResponse.candidates, hideLocalDemoRecords],
+  );
+
+  const localDemoRecordCount = useMemo(
+    () => candidateResponse.candidates.filter((candidate) => candidate.is_local_demo_record).length,
+    [candidateResponse.candidates],
+  );
+
   const selectedCandidates = useMemo(
-    () => candidateResponse.candidates.filter((candidate) => selectedIds.has(candidate.id)),
-    [candidateResponse.candidates, selectedIds],
+    () => visibleCandidates.filter((candidate) => selectedIds.has(candidate.id)),
+    [selectedIds, visibleCandidates],
   );
 
   const loadCandidates = useCallback(async () => {
@@ -617,6 +654,7 @@ export default function CandidatesPage() {
     setScoreFilter('0');
     setSortBy('created_at');
     setSortOrder('desc');
+    setHideLocalDemoRecords(false);
     setOpenColumnFilter(null);
     setSelectedIds(new Set());
     setPage(1);
@@ -635,7 +673,8 @@ export default function CandidatesPage() {
     || stageFilter
     || scoreFilter !== '0'
     || sortBy !== 'created_at'
-    || sortOrder !== 'desc',
+    || sortOrder !== 'desc'
+    || hideLocalDemoRecords,
   );
 
   const toggleColumnFilter = (column: CandidateColumnFilter) => {
@@ -643,6 +682,11 @@ export default function CandidatesPage() {
   };
 
   const toggleCandidate = (candidateId: number) => {
+    const candidate = candidateResponse.candidates.find((item) => item.id === candidateId);
+    if (!candidate || !candidateResumeReady(candidate)) {
+      showToast('简历待确认，处理后才能加入流程');
+      return;
+    }
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(candidateId)) next.delete(candidateId);
@@ -652,9 +696,10 @@ export default function CandidatesPage() {
   };
 
   const toggleAllVisible = () => {
-    const allVisibleSelected = candidateResponse.candidates.length > 0
-      && candidateResponse.candidates.every((candidate) => selectedIds.has(candidate.id));
-    setSelectedIds(allVisibleSelected ? new Set() : new Set(candidateResponse.candidates.map((candidate) => candidate.id)));
+    const selectableCandidates = visibleCandidates.filter(candidateResumeReady);
+    const allVisibleSelected = selectableCandidates.length > 0
+      && selectableCandidates.every((candidate) => selectedIds.has(candidate.id));
+    setSelectedIds(allVisibleSelected ? new Set() : new Set(selectableCandidates.map((candidate) => candidate.id)));
   };
 
   const openUploadDialog = () => {
@@ -667,6 +712,8 @@ export default function CandidatesPage() {
     setUploadSourceChannel('');
     setUploadNote('');
     setUploadFiles([]);
+    setLastSubmittedFiles([]);
+    setUploadRowActions({});
     setUploadResponse(null);
     setUploadError(null);
   };
@@ -702,6 +749,12 @@ export default function CandidatesPage() {
     setUploadSubmitting(true);
     setUploadError(null);
     setUploadResponse(null);
+    setUploadRowActions({});
+    setLastSubmittedFiles((current) => {
+      const files = new Map(current.map((file) => [`${file.name}-${file.size}-${file.lastModified}`, file]));
+      uploadFiles.forEach((file) => files.set(`${file.name}-${file.size}-${file.lastModified}`, file));
+      return Array.from(files.values());
+    });
     try {
       const uploadResponse = await candidatesApi.uploadResumes(uploadFiles, {
         target_demand_id: uploadDemandId || undefined,
@@ -713,7 +766,7 @@ export default function CandidatesPage() {
         uploadFiles
           .filter((sourceFile) => {
             const sourceResults = uploadResponse.results.filter((result) => belongsToSourceFile(result.file, sourceFile.name));
-            return sourceResults.length === 0 || sourceResults.some((result) => result.status !== 'ok');
+            return sourceResults.length === 0 || sourceResults.some((result) => !['ok', 'duplicate', 'needs_confirmation'].includes(result.status));
           })
           .map((file) => file.name),
       );
@@ -721,10 +774,22 @@ export default function CandidatesPage() {
       await loadCandidates();
 
       const successfulCount = uploadResponse.results.filter((result) => result.status === 'ok').length;
-      if (uploadResponse.deduplicated) {
+      const duplicateCount = uploadResponse.results.filter((result) => result.status === 'duplicate').length;
+      const confirmationCount = uploadResponse.results.filter((result) => result.status === 'needs_confirmation').length;
+      if (uploadResponse.deduplicated && duplicateCount > 0) {
+        showToast('导入失败：系统中已存在重复简历，未重复入库');
+      } else if (uploadResponse.deduplicated) {
         showToast('该批文件与近期上传内容重复，已返回原处理结果');
+      } else if (successfulCount > 0 && duplicateCount > 0) {
+        showToast(`简历已处理：成功 ${successfulCount} 份，重复 ${duplicateCount} 份`);
+      } else if (successfulCount > 0 && confirmationCount > 0) {
+        showToast(`简历已处理：成功 ${successfulCount} 份，待确认 ${confirmationCount} 份`);
       } else if (successfulCount > 0) {
         showToast(`简历已处理，成功入库 ${successfulCount} 份`);
+      } else if (confirmationCount > 0) {
+        showToast(`有 ${confirmationCount} 份简历需要确认原件`);
+      } else if (duplicateCount > 0) {
+        showToast('导入失败：系统中已存在重复简历');
       } else {
         showToast('文件处理已完成，但没有成功解析的简历');
       }
@@ -768,6 +833,110 @@ export default function CandidatesPage() {
     openCandidateInUrl(candidate.id);
     void loadCandidateDetail(candidate.id, candidate.current_demand_id ?? candidate.latest_demand_id ?? requestedDemandId);
   }, [loadCandidateDetail, openCandidateInUrl, requestedDemandId]);
+
+  const openExistingCandidateFromUpload = useCallback((
+    result: ResumeUploadResponse['results'][number],
+  ) => {
+    if (!result.existing_candidate_id) return;
+    const existing = candidateResponse.candidates.find(
+      (candidate) => candidate.id === result.existing_candidate_id,
+    ) ?? {
+      id: result.existing_candidate_id,
+      name_masked: result.existing_candidate_name || '已有候选人',
+      owner_hr_id: null,
+      is_favorite: false,
+      created_at: '',
+      parse_status: 'ok' as const,
+      tag_count: 0,
+    };
+    setUploadOpen(false);
+    openCandidateDetail(existing);
+  }, [candidateResponse.candidates, openCandidateDetail]);
+
+  const openConfirmationCandidateFromUpload = useCallback((
+    result: ResumeUploadResponse['results'][number],
+  ) => {
+    if (!result.candidate_id) return;
+    const pending = candidateResponse.candidates.find(
+      (candidate) => candidate.id === result.candidate_id,
+    ) ?? {
+      id: result.candidate_id,
+      name_masked: result.file || '待确认候选人',
+      owner_hr_id: null,
+      is_favorite: false,
+      created_at: '',
+      parse_status: 'failed' as const,
+      tag_count: 0,
+    };
+    setUploadOpen(false);
+    openCandidateDetail(pending);
+  }, [candidateResponse.candidates, openCandidateDetail]);
+
+  const sourceFileForUploadResult = (result: ResumeUploadResult) => (
+    lastSubmittedFiles.find((file) => belongsToSourceFile(result.file, file.name))
+    ?? uploadFiles.find((file) => belongsToSourceFile(result.file, file.name))
+    ?? null
+  );
+
+  const keepExistingResumeVersion = (result: ResumeUploadResult) => {
+    setUploadRowActions((current) => ({ ...current, [result.file]: 'keeping' }));
+  };
+
+  const replaceDuplicateAsCurrentVersion = async (result: ResumeUploadResult) => {
+    const file = sourceFileForUploadResult(result);
+    if (!result.existing_candidate_id || !file || !supportedReplacementPattern.test(file.name)) {
+      setUploadError('该文件来自压缩包或原文件已不可用，请进入已有候选人详情后更换简历');
+      return;
+    }
+    if (!window.confirm('将把这份文件设为候选人的当前简历，现有简历会自动归档为历史版本。确认继续吗？')) return;
+    setUploadRowActions((current) => ({ ...current, [result.file]: 'replacing' }));
+    setUploadError(null);
+    try {
+      await candidatesApi.replaceResume(result.existing_candidate_id, file);
+      setUploadRowActions((current) => ({ ...current, [result.file]: 'replaced' }));
+      showToast('新版简历已启用，旧版已保留在历史版本中');
+      await loadCandidates();
+    } catch (error) {
+      setUploadRowActions((current) => ({ ...current, [result.file]: 'retry_failed' }));
+      setUploadError(errorMessage(error, '设为新版简历失败'));
+    }
+  };
+
+  const retrySingleUploadFile = async (result: ResumeUploadResult) => {
+    const file = sourceFileForUploadResult(result);
+    if (!file) {
+      setUploadError('原文件已不可用，请重新选择该文件');
+      return;
+    }
+    setUploadRowActions((current) => ({ ...current, [result.file]: 'retrying' }));
+    setUploadError(null);
+    try {
+      const response = await candidatesApi.uploadResumes([file], {
+        target_demand_id: uploadDemandId || undefined,
+        source_channel: uploadSourceChannel || undefined,
+        source_note: uploadNote.trim() || undefined,
+      });
+      setUploadResponse((current) => current ? {
+        ...current,
+        results: [
+          ...current.results.filter((item) => !belongsToSourceFile(item.file, file.name)),
+          ...response.results,
+        ],
+      } : response);
+      const stillFailed = response.results.some((item) => !['ok', 'duplicate', 'needs_confirmation'].includes(item.status));
+      setUploadFiles((current) => stillFailed ? current : current.filter((item) => item !== file));
+      setUploadRowActions((current) => {
+        const next = { ...current };
+        delete next[result.file];
+        return next;
+      });
+      await loadCandidates();
+      showToast(stillFailed ? '该文件仍未处理成功，请查看失败原因' : '该文件已重新处理');
+    } catch (error) {
+      setUploadRowActions((current) => ({ ...current, [result.file]: 'retry_failed' }));
+      setUploadError(errorMessage(error, '单个文件重试失败'));
+    }
+  };
 
   const focusedReview = useMemo(() => reviewTasks.find((task) => (
     task.candidate_id === requestedCandidateId
@@ -1108,8 +1277,9 @@ export default function CandidatesPage() {
   };
 
   const initialPushDemandId = demandFilter || null;
-  const allVisibleSelected = candidateResponse.candidates.length > 0
-    && candidateResponse.candidates.every((candidate) => selectedIds.has(candidate.id));
+  const selectableVisibleCandidates = visibleCandidates.filter(candidateResumeReady);
+  const allVisibleSelected = selectableVisibleCandidates.length > 0
+    && selectableVisibleCandidates.every((candidate) => selectedIds.has(candidate.id));
   const selectedAllFavorite = selectedCandidates.length > 0
     && selectedCandidates.every((candidate) => candidate.is_favorite);
   const selectedAllInPipeline = selectedCandidates.length > 0
@@ -1118,6 +1288,9 @@ export default function CandidatesPage() {
     && selectedCandidates.every((candidate) => canEnterBusinessReview(candidate.current_stage));
 
   const renderCandidateBusinessAction = (candidate: CandidateListItem, compact = false) => {
+    if (!candidateResumeReady(candidate)) {
+      return <span className="text-xs font-medium text-amber-700">简历待确认，处理后才能加入流程</span>;
+    }
     const demandId = candidate.current_demand_id;
     const candidateTasks = reviewTasks.filter((task) => (
       task.candidate_id === candidate.id
@@ -1172,29 +1345,23 @@ export default function CandidatesPage() {
 
   return (
     <div className="space-y-5 px-4 pb-6 pt-3 sm:px-6">
-      <header className="flex flex-col gap-3 border-b border-background-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            {(navState?.fromJobs || navState?.fromDashboard) && (
-              <button
-                type="button"
-                onClick={() => navigate(navState.fromDashboard ? '/dashboard' : '/jobs')}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-500 transition-colors hover:bg-background-100 hover:text-foreground-800"
-                aria-label={navState.fromDashboard ? '返回工作台' : '返回招聘需求'}
-                title={navState.fromDashboard ? '返回工作台' : '返回招聘需求'}
-              >
-                <ArrowLeft size={18} aria-hidden="true" />
-              </button>
-            )}
-            <div>
-              {navState?.jobTitle && <h1 className="text-lg font-bold text-foreground-900">当前需求候选人</h1>}
-              <p className="mt-0.5 text-xs text-foreground-500">
-                {navState?.jobTitle ? `${navState.jobTitle} · 已自动带入需求和阶段条件` : '候选人与业务筛选'}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        className="border-b border-background-200 pb-4"
+        title={navState?.jobTitle ? '当前需求候选人' : '简历库'}
+        description={navState?.jobTitle ? `${navState.jobTitle} · 已自动带入需求和阶段条件` : '候选人与业务筛选'}
+        leading={(navState?.fromJobs || navState?.fromDashboard) ? (
+          <button
+            type="button"
+            onClick={() => navigate(navState.fromDashboard ? '/dashboard' : '/jobs')}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-500 transition-colors hover:bg-background-100 hover:text-foreground-800"
+            aria-label={navState.fromDashboard ? '返回工作台' : '返回招聘需求'}
+            title={navState.fromDashboard ? '返回工作台' : '返回招聘需求'}
+          >
+            <ArrowLeft size={18} aria-hidden="true" />
+          </button>
+        ) : undefined}
+        actions={(
+          <>
           <button
             type="button"
             onClick={() => void loadCandidates()}
@@ -1223,8 +1390,9 @@ export default function CandidatesPage() {
             <Upload size={16} aria-hidden="true" />
             导入简历
           </button>
-        </div>
-      </header>
+          </>
+        )}
+      />
 
       {(visibleReviewResults.length > 0 || (requestedCandidateId && reviewTasksError)) && (
         <section className="rounded-lg border border-primary-200 bg-primary-50/40 px-4 py-4" aria-label="待处理的业务筛选反馈">
@@ -1263,26 +1431,12 @@ export default function CandidatesPage() {
       )}
 
       <section className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="候选人库范围">
-          {([
-            ['all', '全部候选人'],
-            ['in_pipeline', '招聘流程中'],
-            ['talent_pool', '公司人才库'],
-            ['favorite', '我的收藏'],
-          ] as const).map(([scope, label]) => (
-            <button
-              key={scope}
-              type="button"
-              role="tab"
-              data-ui="candidate-scope-tab"
-              aria-selected={libraryScope === scope}
-              onClick={() => selectLibraryScope(scope)}
-              className={`inline-flex h-9 items-center rounded-lg border px-3.5 text-sm font-medium transition-colors ${libraryScope === scope ? 'border-primary-500 bg-primary-500 text-white' : 'border-background-200 bg-white text-foreground-600 hover:bg-background-100 hover:text-foreground-800'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <WorkspaceTabs
+          items={candidateScopeTabs}
+          value={libraryScope}
+          onChange={selectLibraryScope}
+          ariaLabel="候选人库范围"
+        />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
             <label className="relative block min-w-0 flex-1 sm:max-w-md">
@@ -1312,8 +1466,23 @@ export default function CandidatesPage() {
               </select>
             </label>
           </div>
-          <div className="shrink-0 text-sm text-foreground-500">
-            共 <span className="font-semibold text-foreground-900">{candidateResponse.total}</span> 位候选人
+          <div className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+            <div className="text-sm text-foreground-500">
+              共 <span className="font-semibold text-foreground-900">{candidateResponse.total}</span> 位候选人
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground-600">
+              <input
+                type="checkbox"
+                checked={hideLocalDemoRecords}
+                onChange={(event) => {
+                  setHideLocalDemoRecords(event.target.checked);
+                  setSelectedIds(new Set());
+                }}
+                className="h-4 w-4 rounded border-background-300 text-primary-500 focus:ring-primary-200"
+              />
+              隐藏本地演示数据{localDemoRecordCount > 0 ? `（当前页 ${localDemoRecordCount} 条）` : ''}
+            </label>
+            <p className="text-[11px] text-foreground-400">仅筛选当前页已加载结果，不会删除数据</p>
           </div>
         </div>
 
@@ -1513,14 +1682,30 @@ export default function CandidatesPage() {
               重试
             </button>
           </div>
-        ) : candidateResponse.candidates.length === 0 ? (
+        ) : visibleCandidates.length === 0 ? (
           <div className="flex min-h-72 flex-col items-center justify-center px-6 text-center">
             <Inbox className="text-foreground-300" size={32} aria-hidden="true" />
-            <p className="mt-3 text-sm font-medium text-foreground-900">暂无候选人</p>
-            <p className="mt-1 text-sm text-foreground-500">
-              {hasActiveFilters ? '当前筛选条件下没有匹配结果' : '导入简历建立公司人才库，再按岗位筛选并加入招聘流程'}
+            <p className="mt-3 text-sm font-medium text-foreground-900">
+              {hideLocalDemoRecords && candidateResponse.candidates.length > 0
+                ? '当前筛选条件下没有候选人'
+                : '暂无候选人'}
             </p>
-            {hasActiveFilters && (
+            <p className="mt-1 text-sm text-foreground-500">
+              {hideLocalDemoRecords && candidateResponse.candidates.length > 0
+                ? '当前页只包含已标记的本地演示数据，数据仍完整保留'
+                : hasActiveFilters
+                  ? '当前筛选条件下没有匹配结果'
+                  : '导入简历建立公司人才库，再按岗位筛选并加入招聘流程'}
+            </p>
+            {hideLocalDemoRecords && candidateResponse.candidates.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setHideLocalDemoRecords(false)}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 px-3 py-2 text-sm font-medium text-foreground-600 hover:bg-background-50"
+              >
+                显示全部数据
+              </button>
+            ) : hasActiveFilters && (
               <button type="button" onClick={resetCandidateFilters} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 px-3 py-2 text-sm font-medium text-foreground-600 hover:bg-background-50">
                 <RotateCcw size={14} aria-hidden="true" />
                 重置筛选
@@ -1702,7 +1887,7 @@ export default function CandidatesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-background-200">
-                {candidateResponse.candidates.map((candidate) => {
+                {visibleCandidates.map((candidate) => {
                   const status = parseStatusMeta[candidate.parse_status];
                   const targetDemand = candidate.current_demand ?? candidate.latest_demand;
                   return (
@@ -1716,8 +1901,9 @@ export default function CandidatesPage() {
                           type="checkbox"
                           checked={selectedIds.has(candidate.id)}
                           onChange={() => toggleCandidate(candidate.id)}
+                          disabled={!candidateResumeReady(candidate)}
                           aria-label={`选择 ${candidate.name_masked}`}
-                          className="h-4 w-4 rounded border-background-300 text-primary-500 focus:ring-primary-200"
+                          className="h-4 w-4 rounded border-background-300 text-primary-500 focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-40"
                         />
                       </td>
                       <td className="px-3 py-3.5">
@@ -1730,6 +1916,23 @@ export default function CandidatesPage() {
                             <p className="mt-0.5 truncate text-xs text-foreground-400">
                               {candidate.phone_masked || candidate.email_masked || '暂无联系方式'}
                             </p>
+                            {(candidate.identical_resume_count > 1 || candidate.same_name_count > 1 || candidate.is_local_demo_record) && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {candidate.identical_resume_count > 1 && (
+                                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                                    相同文件 {candidate.identical_resume_count} 条
+                                  </span>
+                                )}
+                                {candidate.same_name_count > 1 && (
+                                  <span className="rounded bg-background-100 px-1.5 py-0.5 text-[11px] font-medium text-foreground-600">
+                                    同名 {candidate.same_name_count} 条
+                                  </span>
+                                )}
+                                {candidate.is_local_demo_record && (
+                                  <span className="rounded bg-primary-50 px-1.5 py-0.5 text-[11px] font-medium text-primary-700">本地演示</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -1974,14 +2177,62 @@ export default function CandidatesPage() {
                   <div className="max-h-52 space-y-2 overflow-y-auto">
                     {uploadResponse.results.map((result, index) => {
                       const success = result.status === 'ok';
+                      const duplicate = result.status === 'duplicate';
+                      const needsConfirmation = result.status === 'needs_confirmation';
+                      const rowAction = uploadRowActions[result.file];
+                      const sourceFile = sourceFileForUploadResult(result);
+                      const canSetAsVersion = Boolean(
+                        duplicate
+                        && result.existing_candidate_id
+                        && sourceFile
+                        && supportedReplacementPattern.test(sourceFile.name),
+                      );
                       return (
-                        <div key={`${result.file}-${index}`} className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 ${success ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
-                          {success ? <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} aria-hidden="true" /> : <AlertCircle className="mt-0.5 shrink-0 text-red-600" size={16} aria-hidden="true" />}
+                        <div key={`${result.file}-${index}`} className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 ${success ? 'border-emerald-200 bg-emerald-50' : duplicate || needsConfirmation ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'}`}>
+                          {success ? <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} aria-hidden="true" /> : <AlertCircle className={`mt-0.5 shrink-0 ${duplicate || needsConfirmation ? 'text-amber-600' : 'text-red-600'}`} size={16} aria-hidden="true" />}
                           <div className="min-w-0 flex-1">
-                            <p className={`break-words text-sm font-medium ${success ? 'text-emerald-800' : 'text-red-800'}`}>{result.file}</p>
-                            <p className={`mt-0.5 text-xs ${success ? 'text-emerald-700' : 'text-red-700'}`}>
+                            <p className={`break-words text-sm font-medium ${success ? 'text-emerald-800' : duplicate || needsConfirmation ? 'text-amber-800' : 'text-red-800'}`}>{result.file}</p>
+                            <p className={`mt-0.5 text-xs ${success ? 'text-emerald-700' : duplicate || needsConfirmation ? 'text-amber-700' : 'text-red-700'}`}>
                               {success ? '候选人档案已入库' : (result.reason || `处理状态：${result.status}`)}
                             </p>
+                            {duplicate && (
+                              <div className="mt-1.5 space-y-2 text-xs text-amber-800">
+                                <p>已有候选人：{result.existing_candidate_name || '当前组织已有候选人'}{result.match_basis ? ` · ${result.match_basis}` : ''}</p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {result.existing_candidate_id && (
+                                    <button type="button" className="font-medium text-primary-700 hover:text-primary-800" onClick={() => openExistingCandidateFromUpload(result)}>查看已有候选人</button>
+                                  )}
+                                  {rowAction === 'keeping' && <span className="font-medium text-foreground-600">已保留现有版本</span>}
+                                  {rowAction === 'replaced' && <span className="font-medium text-emerald-700">新版简历已启用，旧版已归档</span>}
+                                  {!rowAction && (
+                                    <>
+                                      <button type="button" className="rounded-md border border-background-300 bg-white px-2 py-1 font-medium text-foreground-700 hover:bg-background-50" onClick={() => keepExistingResumeVersion(result)}>保留现有版本</button>
+                                      {canSetAsVersion && (
+                                        <button type="button" className="rounded-md bg-primary-500 px-2 py-1 font-medium text-white hover:bg-primary-600" onClick={() => void replaceDuplicateAsCurrentVersion(result)}>设为新版简历</button>
+                                      )}
+                                    </>
+                                  )}
+                                  {rowAction === 'replacing' && <span className="inline-flex items-center gap-1 font-medium text-primary-700"><LoaderCircle className="animate-spin" size={12} />正在设为新版</span>}
+                                  {rowAction === 'retry_failed' && canSetAsVersion && (
+                                    <button type="button" className="font-medium text-red-700 underline" onClick={() => void replaceDuplicateAsCurrentVersion(result)}>重新尝试设为新版</button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {needsConfirmation && result.candidate_id && (
+                              <button type="button" className="mt-1.5 text-xs font-medium text-primary-700 hover:text-primary-800" onClick={() => openConfirmationCandidateFromUpload(result)}>查看并处理</button>
+                            )}
+                            {!success && !duplicate && !needsConfirmation && sourceFile && (
+                              <button
+                                type="button"
+                                disabled={rowAction === 'retrying'}
+                                className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800 disabled:opacity-50"
+                                onClick={() => void retrySingleUploadFile(result)}
+                              >
+                                {rowAction === 'retrying' && <LoaderCircle className="animate-spin" size={12} />}
+                                {rowAction === 'retrying' ? '正在重试' : '重试此文件'}
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -2099,6 +2350,20 @@ export default function CandidatesPage() {
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>
                   )}
 
+                  <ResumeRecoveryPanel
+                    detail={resumeDetail}
+                    onUpdated={(updated) => {
+                      setResumeDetail(updated);
+                      setDetailCandidate((current) => current ? {
+                        ...current,
+                        name_masked: updated.name_masked,
+                        parse_status: updated.parse_status,
+                        parse_error: updated.parse_error,
+                      } : current);
+                      void loadCandidates();
+                    }}
+                  />
+
                   <section className="grid grid-cols-2 gap-3 border-b border-background-200 pb-5 sm:grid-cols-4">
                     <div>
                       <p className="text-xs text-foreground-400">解析状态</p>
@@ -2118,7 +2383,7 @@ export default function CandidatesPage() {
                     </div>
                   </section>
 
-                  {resumeDetail.parse_error && (
+                  {resumeDetail.parse_error && !['failed', 'original_confirmed'].includes(resumeDetail.parse_status) && (
                     <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
                       <AlertCircle className="mt-0.5 shrink-0" size={16} aria-hidden="true" />
                       <span>{resumeDetail.parse_error}</span>

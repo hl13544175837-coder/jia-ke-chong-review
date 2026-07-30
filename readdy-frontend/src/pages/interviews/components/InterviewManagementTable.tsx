@@ -65,8 +65,11 @@ function HeaderOption({ label, selected, onClick }: { label: string; selected?: 
 function RowActions({ row, actionRowId, onOpenDetails, onSchedule, onConfirmConducted, onRemind }: ActionProps) {
   const status = rowStatus(row);
   const busy = actionRowId === row.assignment_id;
+  if (row.reschedule_request?.status === 'pending') {
+    return <button type="button" onClick={() => onOpenDetails(row)} className={primaryActionClass}>处理改约</button>;
+  }
   if (status === 'unassigned') {
-    return <button type="button" onClick={() => onSchedule(row)} className={primaryActionClass}>安排面试</button>;
+    return <button type="button" onClick={() => onSchedule(row)} className={primaryActionClass}>{row.reschedule_request?.status === 'waiting_reassignment' ? '重新安排' : '安排面试'}</button>;
   }
   if (status === 'awaiting_feedback') {
     return <button type="button" onClick={() => onRemind(row)} disabled={busy} className={primaryActionClass}>催反馈</button>;
@@ -196,7 +199,7 @@ export default function InterviewManagementTable({
                       {menuOpen && (
                         <div role="menu" className="absolute right-0 top-9 z-20 w-32 rounded-lg border border-background-200 bg-white p-1 shadow-xl">
                           <button type="button" role="menuitem" onClick={() => { setOpenMenuKey(null); onOpenDetails(row); }} className="w-full rounded-md px-3 py-2 text-left text-xs text-foreground-700 hover:bg-background-100">查看详情</button>
-                          {status === 'scheduled' && <button type="button" role="menuitem" onClick={() => { setOpenMenuKey(null); onSchedule(row); }} className="w-full rounded-md px-3 py-2 text-left text-xs text-foreground-700 hover:bg-background-100">调整或取消</button>}
+                          {status === 'scheduled' && row.reschedule_request?.status !== 'pending' && <button type="button" role="menuitem" onClick={() => { setOpenMenuKey(null); onSchedule(row); }} className="w-full rounded-md px-3 py-2 text-left text-xs text-foreground-700 hover:bg-background-100">调整或取消</button>}
                         </div>
                       )}
                     </div>

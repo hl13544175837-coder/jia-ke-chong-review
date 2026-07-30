@@ -171,8 +171,8 @@ def test_boss_runtime_auto_install_defaults_off_and_never_executes_pip(
 
 
 def test_frontend_build_and_git_hygiene_are_reproducible():
-    dockerfile = (ROOT / "frontend" / "Dockerfile").read_text(encoding="utf-8")
-    package_json = (ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    dockerfile = (ROOT / "readdy-frontend" / "Dockerfile").read_text(encoding="utf-8")
+    package_json = (ROOT / "readdy-frontend" / "package.json").read_text(encoding="utf-8")
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
     backend_dockerfile = (ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
 

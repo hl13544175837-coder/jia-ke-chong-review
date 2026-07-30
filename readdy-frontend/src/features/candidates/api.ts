@@ -1,4 +1,4 @@
-import { apiMultipart, apiRequest } from '@/lib/api';
+import { apiBlob, apiMultipart, apiRequest } from '@/lib/api';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { CreateBusinessReviewInput, BusinessReviewTask } from '@/features/businessReviews/types';
 import type {
@@ -12,6 +12,8 @@ import type {
   CandidatePipelineAddResult,
   CandidateJourney,
   CandidateResumeDetail,
+  CandidateProfileUpdate,
+  ResumeVersionResponse,
   ResumeUploadResponse,
   ResumeUploadSource,
 } from './types';
@@ -39,6 +41,29 @@ export const candidatesApi = {
   },
   getResume(candidateId: number): Promise<CandidateResumeDetail> {
     return apiRequest(`/resume/${candidateId}`);
+  },
+  getResumeVersions(candidateId: number): Promise<ResumeVersionResponse> {
+    return apiRequest(`/resume/${candidateId}/versions`);
+  },
+  downloadResumeVersion(candidateId: number, versionId: number): Promise<Blob> {
+    return apiBlob(`/resume/${candidateId}/versions/${versionId}/download`);
+  },
+  confirmOriginal(candidateId: number): Promise<CandidateResumeDetail> {
+    return apiRequest(`/resume/${candidateId}/confirm-original`, { method: 'POST' });
+  },
+  retryParse(candidateId: number): Promise<CandidateResumeDetail> {
+    return apiRequest(`/resume/${candidateId}/retry-parse`, { method: 'POST' });
+  },
+  replaceResume(candidateId: number, file: File): Promise<CandidateResumeDetail> {
+    const form = new FormData();
+    form.append('file', file);
+    return apiMultipart(`/resume/${candidateId}/replace`, form);
+  },
+  updateProfile(candidateId: number, payload: CandidateProfileUpdate): Promise<CandidateResumeDetail> {
+    return apiRequest(`/resume/${candidateId}/profile`, {
+      method: 'PATCH',
+      body: payload,
+    });
   },
   getJourney(candidateId: number, demandId: number): Promise<CandidateJourney> {
     return apiRequest(`/candidates/${candidateId}/journey?demand_id=${demandId}`);

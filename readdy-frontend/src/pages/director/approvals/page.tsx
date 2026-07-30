@@ -1,19 +1,19 @@
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  approvalItems,
-  riskAiInsight,
-  type ApprovalType,
-} from '@/mocks/director';
+import PageHeader from '@/components/ui/PageHeader';
+import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
+import { analyticsApi } from '@/features/analytics/api';
+import type { AnalyticsOverview } from '@/features/analytics/types';
+import { buildDirectorData, type ApprovalType } from '../data';
 
-const typeTabs: { key: ApprovalType | 'all'; label: string; icon: string }[] = [
-  { key: 'all', label: '全部', icon: 'ri-list-check-3' },
-  { key: 'requisition', label: '需求审批', icon: 'ri-file-list-3-line' },
-  { key: 'offer', label: 'Offer审批', icon: 'ri-mail-send-line' },
-  { key: 'budget', label: '超预算', icon: 'ri-money-cny-circle-line' },
-  { key: 'overdue', label: '长期未招满', icon: 'ri-timer-line' },
-  { key: 'feedback', label: '反馈超时', icon: 'ri-chat-1-line' },
-  { key: 'expiring', label: '即将到期', icon: 'ri-alarm-line' },
+const typeTabs: Array<{ key: ApprovalType | 'all'; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'requisition', label: '需求审批' },
+  { key: 'offer', label: 'Offer审批' },
+  { key: 'budget', label: '超预算' },
+  { key: 'overdue', label: '长期未招满' },
+  { key: 'feedback', label: '反馈超时' },
+  { key: 'expiring', label: '即将到期' },
 ];
 
 const typeLabelMap: Record<string, string> = {
@@ -37,8 +37,30 @@ const typeColorMap: Record<string, string> = {
 export default function DirectorApprovalsPage() {
   const [activeTab, setActiveTab] = useState<ApprovalType | 'all'>('all');
   const [urgenyFilter, setUrgencyFilter] = useState('all');
-  const [showAiDetail, setShowAiDetail] = useState(false);
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
+  const [data, setData] = useState<AnalyticsOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setData(await analyticsApi.overview());
+    } catch {
+      setError('审批与风险暂时无法读取，请稍后重试。');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const view = useMemo(() => data ? buildDirectorData(data) : null, [data]);
+  const approvalItems = useMemo(() => view?.approvalItems ?? [], [view]);
+  const riskAiInsight = view?.riskSummary ?? { summary: '正在读取本地审批与风险数据。', alerts: [] };
 
   const filtered = useMemo(() => {
     let items = [...approvalItems];
@@ -49,7 +71,7 @@ export default function DirectorApprovalsPage() {
       return urgOrder[a.urgency] - urgOrder[b.urgency];
     });
     return items;
-  }, [activeTab, urgenyFilter]);
+  }, [activeTab, approvalItems, urgenyFilter]);
 
   const counts = useMemo(() => {
     const map: Record<string, number> = { all: approvalItems.length };
@@ -57,28 +79,24 @@ export default function DirectorApprovalsPage() {
       map[i.type] = (map[i.type] || 0) + 1;
     });
     return map;
-  }, []);
+  }, [approvalItems]);
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-foreground-900">审批与风险</h1>
-          <p className="text-sm text-foreground-500 mt-1">
-            {approvalItems.length} 项待处理 · {approvalItems.filter(i => i.urgency === 'urgent').length} 项紧急 · 只读分析模式
-          </p>
-        </div>
-        <Link to="/director/cockpit" className="flex items-center gap-1 text-sm text-foreground-500 hover:text-foreground-800 transition-colors cursor-pointer whitespace-nowrap">
-          <i className="ri-arrow-left-line"></i> 返回驾驶舱
-        </Link>
-      </div>
+      <PageHeader
+        title="审批与风险"
+        description={`${approvalItems.length} 项待处理 · ${approvalItems.filter(i => i.urgency === 'urgent').length} 项紧急 · 只读分析模式`}
+        actions={<><button type="button" onClick={() => void loadData()} disabled={loading} className="rounded-lg border border-background-200 bg-white px-3 py-2 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-50">刷新</button><Link to="/director/cockpit" className="flex items-center gap-1 text-sm text-foreground-500 hover:text-foreground-800 transition-colors cursor-pointer whitespace-nowrap"><i className="ri-arrow-left-line"></i> 返回驾驶舱</Link></>}
+      />
 
-      {/* AI Risk Insight */}
+      {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button type="button" onClick={() => void loadData()} className="font-medium underline">重新加载</button></div>}
+      {loading && !data && <div className="rounded-xl border border-background-200 bg-white px-5 py-10 text-center text-sm text-foreground-500">正在读取本地风险事项...</div>}
+
+      {/* Rule-based risk summary */}
       <div className="bg-secondary-50 border border-secondary-200 rounded-xl p-4">
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 rounded-lg bg-accent-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <i className="ri-robot-2-line text-white text-sm"></i>
+            <i className="ri-alert-line text-white text-sm"></i>
           </div>
           <div className="flex-1">
             <p className="text-sm text-foreground-800 leading-relaxed">{riskAiInsight.summary}</p>
@@ -86,12 +104,10 @@ export default function DirectorApprovalsPage() {
               {riskAiInsight.alerts.map((a, i) => (
                 <button
                   key={i}
-                  onClick={() => setActiveTab(a.drillKey === 'overdue' ? 'overdue' : a.drillKey === 'expiring' ? 'expiring' : 'feedback')}
-                  className={`text-xs px-2 py-1 rounded-full font-medium cursor-pointer whitespace-nowrap ${
-                    a.type === 'danger' ? 'bg-accent-100 text-accent-700' : 'bg-secondary-100 text-secondary-800'
-                  }`}
+                  onClick={() => setActiveTab(a.drillKey as ApprovalType)}
+                  className="cursor-pointer whitespace-nowrap rounded-full bg-secondary-100 px-2 py-1 text-xs font-medium text-secondary-800"
                 >
-                  <i className={`${a.type === 'danger' ? 'ri-error-warning-line' : 'ri-alert-line'} mr-1`}></i>
+                  <i className="ri-alert-line mr-1"></i>
                   {a.text}
                 </button>
               ))}
@@ -100,30 +116,18 @@ export default function DirectorApprovalsPage() {
         </div>
       </div>
 
-      {/* Type Tabs */}
-      <div className="flex items-center gap-1 bg-background-100 rounded-full p-1 w-fit overflow-x-auto">
-        {typeTabs.map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => { setActiveTab(tab.key); setDetailItemId(null); }}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === tab.key
-                ? 'bg-white text-foreground-900 shadow-sm'
-                : 'text-foreground-500 hover:text-foreground-700'
-            }`}
-          >
-            <i className={`${tab.icon} text-sm`}></i>
-            {tab.label}
-            {counts[tab.key] > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                activeTab === tab.key ? 'bg-primary-50 text-primary-600' : 'bg-background-200 text-foreground-500'
-              }`}>
-                {counts[tab.key]}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <WorkspaceTabs<ApprovalType | 'all'>
+        items={typeTabs.map((tab) => ({
+          ...tab,
+          count: counts[tab.key] || undefined,
+        }))}
+        value={activeTab}
+        onChange={(value) => {
+          setActiveTab(value);
+          setDetailItemId(null);
+        }}
+        ariaLabel="审批与风险分类"
+      />
 
       {/* Urgency filter */}
       <div className="flex items-center gap-2">
@@ -192,14 +196,6 @@ export default function DirectorApprovalsPage() {
                       <span>申请人：{item.applicant}</span>
                       <span>·</span>
                       <span>{item.submittedAt}</span>
-                      {item.amount && (
-                        <>
-                          <span>·</span>
-                          <span className={item.type === 'budget' ? 'text-accent-600 font-medium' : 'text-foreground-600'}>
-                            ¥{item.amount.toLocaleString()}
-                          </span>
-                        </>
-                      )}
                       {item.daysRemaining !== undefined && (
                         <>
                           <span>·</span>
@@ -222,7 +218,7 @@ export default function DirectorApprovalsPage() {
                       <div className="mt-3 p-3 bg-accent-50 rounded-lg border border-accent-100">
                         <p className="text-xs text-accent-700">
                           <i className="ri-error-warning-line mr-1"></i>
-                          AI建议：此岗位已严重超期，建议考虑：①放宽经验年限要求扩大候选人漏斗；②调整薪资预算增加竞争力；③启动猎头定向挖猎。
+                          此岗位已超期，请结合岗位详情复核招聘条件、预算和推进责任人。
                         </p>
                       </div>
                     )}
@@ -230,7 +226,7 @@ export default function DirectorApprovalsPage() {
                       <div className="mt-3 p-3 bg-secondary-50 rounded-lg border border-secondary-100">
                         <p className="text-xs text-secondary-700">
                           <i className="ri-alert-line mr-1"></i>
-                          AI建议：距截止日期不足{item.daysRemaining}天，建议HRBP与招聘专员立即召开加速会议，明确每日推进计划。
+                          距截止日期不足{item.daysRemaining}天，请尽快确认剩余 HC 和下一步安排。
                         </p>
                       </div>
                     )}
@@ -238,7 +234,7 @@ export default function DirectorApprovalsPage() {
                       <div className="mt-3 p-3 bg-secondary-50 rounded-lg border border-secondary-100">
                         <p className="text-xs text-secondary-700">
                           <i className="ri-information-line mr-1"></i>
-                          AI建议：建议向该面试官发送自动提醒，并考虑将反馈SLA从48小时缩短至24小时。
+                          该面试反馈仍待补充，请尽快联系对应面试官确认。
                         </p>
                       </div>
                     )}

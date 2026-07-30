@@ -9,6 +9,7 @@ from app.models import (
     BusinessReviewTask,
     CandidateFavorite,
     CandidateMerge,
+    CandidateResumeVersion,
     InterviewFeedback,
     RecruitmentDemand,
 )
@@ -29,6 +30,16 @@ def test_pilot_schema_contains_review_workflow(app):
         }
         task_columns = {
             item["name"] for item in inspector.get_columns("business_review_tasks")
+        }
+        candidate_columns = {
+            item["name"] for item in inspector.get_columns("candidates")
+        }
+        candidate_indexes = {
+            item["name"]: tuple(item["column_names"])
+            for item in inspector.get_indexes("candidates")
+        }
+        resume_version_columns = {
+            item["name"] for item in inspector.get_columns("candidate_resume_versions")
         }
 
     assert {
@@ -59,7 +70,93 @@ def test_pilot_schema_contains_review_workflow(app):
     assert BusinessReviewTask.__tablename__ == "business_review_tasks"
     assert CandidateFavorite.__tablename__ == "candidate_favorites"
     assert CandidateMerge.__tablename__ == "candidate_merges"
+    assert CandidateResumeVersion.__tablename__ == "candidate_resume_versions"
     assert InterviewFeedback.updated_at is not None
+    assert "resume_sha256" in candidate_columns
+    assert candidate_indexes["ix_candidates_org_resume_sha256"] == (
+        "org_id",
+        "resume_sha256",
+    )
+    assert {"candidate_id", "version_no", "raw_file_path", "resume_json"}.issubset(
+        resume_version_columns
+    )
+
+
+def test_revision_11_adds_candidate_resume_fingerprint_without_backfilling_history(
+    tmp_path,
+):
+    database_url = f"sqlite:///{tmp_path / 'candidate-resume-fingerprint.db'}"
+    engine = create_engine(database_url)
+    db.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(text("DROP INDEX ix_candidates_org_resume_sha256"))
+        connection.execute(text("ALTER TABLE candidates DROP COLUMN resume_sha256"))
+    engine.dispose()
+
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("sqlalchemy.url", database_url)
+    command.stamp(config, "20260728_10")
+    command.upgrade(config, "head")
+
+    engine = create_engine(database_url)
+    try:
+        inspector = inspect(engine)
+        assert "resume_sha256" in {
+            item["name"] for item in inspector.get_columns("candidates")
+        }
+        assert {
+            item["name"]: tuple(item["column_names"])
+            for item in inspector.get_indexes("candidates")
+        }["ix_candidates_org_resume_sha256"] == ("org_id", "resume_sha256")
+        with engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalar_one() == "20260730_13"
+    finally:
+        engine.dispose()
+
+
+def test_revision_12_adds_candidate_resume_version_history_additively(tmp_path):
+    database_url = f"sqlite:///{tmp_path / 'candidate-resume-versions.db'}"
+    engine = create_engine(database_url)
+    db.metadata.create_all(bind=engine)
+    CandidateResumeVersion.__table__.drop(bind=engine)
+    engine.dispose()
+
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("sqlalchemy.url", database_url)
+    command.stamp(config, "20260729_11")
+    command.upgrade(config, "head")
+
+    engine = create_engine(database_url)
+    try:
+        inspector = inspect(engine)
+        assert "candidate_resume_versions" in inspector.get_table_names()
+        assert {
+            "org_id",
+            "candidate_id",
+            "version_no",
+            "resume_json",
+            "raw_file_path",
+            "created_by",
+        }.issubset({
+            item["name"]
+            for item in inspector.get_columns("candidate_resume_versions")
+        })
+        assert "ix_candidate_resume_versions_org_candidate_created" in {
+            item["name"]
+            for item in inspector.get_indexes("candidate_resume_versions")
+        }
+        assert "uq_candidate_resume_versions_org_candidate_no" in {
+            item["name"]
+            for item in inspector.get_unique_constraints("candidate_resume_versions")
+        }
+        with engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalar_one() == "20260730_13"
+    finally:
+        engine.dispose()
 
 
 def test_revisions_08_and_09_accept_preexisting_orm_contract(tmp_path):
@@ -80,7 +177,7 @@ def test_revisions_08_and_09_accept_preexisting_orm_contract(tmp_path):
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260728_10"
+            ).scalar_one() == "20260730_13"
     finally:
         engine.dispose()
 
@@ -125,6 +222,6 @@ def test_revision_09_creates_candidate_talent_pool_tables(tmp_path):
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260728_10"
+            ).scalar_one() == "20260730_13"
     finally:
         engine.dispose()

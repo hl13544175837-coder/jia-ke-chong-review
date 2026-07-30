@@ -40,6 +40,7 @@ import type {
 } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import type { PushTarget } from '@/pages/candidates/components/PushToReviewerModal';
+import ResumeRecoveryPanel from '@/pages/candidates/components/ResumeRecoveryPanel';
 
 interface DemandCandidateDrawerProps {
   demand: RecruitmentDemand;
@@ -79,7 +80,8 @@ const parseStatusOptions: Array<{ value: '' | ParseStatus; label: string }> = [
   { value: 'pending', label: '待解析' },
   { value: 'processing', label: '解析中' },
   { value: 'ok', label: '已解析' },
-  { value: 'failed', label: '解析失败' },
+  { value: 'failed', label: '待确认' },
+  { value: 'original_confirmed', label: '原件已确认' },
 ];
 
 function messageOf(error: unknown, fallback: string) {
@@ -92,6 +94,15 @@ function candidateStatus(
   match?: CandidateMatchResult,
   tasks: BusinessReviewTask[] = [],
 ) {
+  if (['pending', 'processing', 'failed'].includes(candidate.parse_status)) {
+    return {
+      label: candidate.parse_status === 'failed' ? '简历待确认' : '简历解析中',
+      selectable: false,
+      action: 'blocked' as const,
+      task: null,
+      tone: 'text-amber-700 bg-amber-50',
+    };
+  }
   if (candidate.current_demand_id === demandId) {
     const demandTasks = tasks.filter((task) => task.candidate_id === candidate.id && task.demand_id === demandId);
     const pendingTask = demandTasks.find((task) => task.status === 'pending') ?? null;
@@ -303,6 +314,22 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
     } finally {
       setResumeLoading(false);
     }
+  };
+
+  const openDuplicateCandidate = (result: ResumeUploadResponse['results'][number]) => {
+    if (!result.existing_candidate_id) return;
+    const existing = candidateResponse.candidates.find(
+      (candidate) => candidate.id === result.existing_candidate_id,
+    ) ?? {
+      id: result.existing_candidate_id,
+      name_masked: result.existing_candidate_name || '已有候选人',
+      owner_hr_id: null,
+      is_favorite: false,
+      created_at: '',
+      parse_status: 'ok' as const,
+      tag_count: 0,
+    };
+    void openResume(existing);
   };
 
   const openOriginalResume = async (mode: 'preview' | 'download') => {
@@ -561,7 +588,25 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
               <button type="button" onClick={() => uploadInputRef.current?.click()} disabled={uploading} className="mt-3 rounded-lg border border-background-300 bg-white px-3 py-2 text-sm text-foreground-700 disabled:opacity-50">选择文件</button>
             </div>
             {uploadError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{uploadError}</p>}
-            {uploadResponse && <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-800"><p className="flex items-center gap-2 font-medium"><CheckCircle2 size={15} />已处理 {uploadResponse.total} 份文件</p><p className="mt-1">成功 {uploadResponse.results.filter((item) => item.status === 'ok').length} 份，失败 {uploadResponse.results.filter((item) => item.status !== 'ok').length} 份。</p></div>}
+            {uploadResponse && (
+              <div className="mt-3 rounded-lg border border-background-200 bg-white px-3 py-3 text-xs text-foreground-700">
+                    <p className="flex items-center gap-2 font-medium"><CheckCircle2 size={15} />已处理 {uploadResponse.total} 份文件</p>
+                    <p className="mt-1">成功 {uploadResponse.results.filter((item) => item.status === 'ok').length} 份，待确认 {uploadResponse.results.filter((item) => item.status === 'needs_confirmation').length} 份，重复 {uploadResponse.results.filter((item) => item.status === 'duplicate').length} 份，其他失败 {uploadResponse.results.filter((item) => !['ok', 'duplicate', 'needs_confirmation'].includes(item.status)).length} 份。</p>
+                {uploadResponse.results.filter((item) => item.status === 'duplicate').map((item) => (
+                  <div key={item.file} className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800">
+                    <p className="font-medium">{item.reason || '导入失败：系统中已存在重复简历'}</p>
+                    <p className="mt-0.5">已有候选人：{item.existing_candidate_name || '当前组织已有候选人'}{item.match_basis ? ` · ${item.match_basis}` : ''}</p>
+                    {item.existing_candidate_id && <button type="button" onClick={() => openDuplicateCandidate(item)} className="mt-1 font-medium text-primary-700">查看已有候选人</button>}
+                  </div>
+                    ))}
+                    {uploadResponse.results.filter((item) => item.status === 'needs_confirmation').map((item) => (
+                      <div key={item.file} className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800">
+                        <p className="font-medium">{item.reason || 'AI 未能识别该简历，请确认原文件'}</p>
+                        {item.candidate_id && <button type="button" onClick={() => void openResume({ id: item.candidate_id as number, name_masked: item.file, owner_hr_id: null, is_favorite: false, created_at: '', parse_status: 'failed', tag_count: 0 })} className="mt-1 font-medium text-primary-700">查看并处理</button>}
+                      </div>
+                    ))}
+              </div>
+            )}
           </section>
         </div>
 
@@ -580,8 +625,22 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
                       </span>
                     )}
                   </div>
-                  {resumeFileError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{resumeFileError}</p>}
-                  <StructuredResumeView resume={resumeDetail.resume_json} />
+                      {resumeFileError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{resumeFileError}</p>}
+                      <ResumeRecoveryPanel
+                        detail={resumeDetail}
+                        onUpdated={(updated) => {
+                          setResumeDetail(updated);
+                          setResumeCandidate((current) => current ? {
+                            ...current,
+                            name_masked: updated.name_masked,
+                            parse_status: updated.parse_status,
+                            parse_error: updated.parse_error,
+                          } : current);
+                          void loadCandidates();
+                          onChanged();
+                        }}
+                      />
+                      <StructuredResumeView resume={resumeDetail.resume_json} />
                 </div>
               ) : null}
             </aside>

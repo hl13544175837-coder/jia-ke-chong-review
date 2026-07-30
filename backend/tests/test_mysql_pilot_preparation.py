@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Index,
     Integer,
+    JSON,
     MetaData,
     String,
     Table,
@@ -22,7 +23,7 @@ from scripts import audit_mysql_pilot_schema, backup_pilot_data, prepare_mysql_p
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPECTED_REVISION = "20260728_10"
+EXPECTED_REVISION = "20260730_13"
 
 
 def _sqlite_schema(
@@ -61,6 +62,88 @@ def _sqlite_schema(
         Column("id", Integer, primary_key=True),
         Column("updated_by", Integer),
         Column("updated_at", DateTime, nullable=False),
+    )
+    candidates = Table(
+        "candidates",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("org_id", Integer, nullable=False),
+        Column("resume_sha256", String(64)),
+    )
+    Index(
+        "ix_candidates_org_resume_sha256",
+        candidates.c.org_id,
+        candidates.c.resume_sha256,
+    )
+    resume_versions = Table(
+        "candidate_resume_versions",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("org_id", Integer, nullable=False),
+        Column("candidate_id", Integer, nullable=False),
+        Column("version_no", Integer, nullable=False),
+        Column("resume_json", JSON, nullable=False),
+        Column("raw_file_path", Text),
+        Column("resume_sha256", String(64)),
+        Column("parse_status", String(20), nullable=False),
+        Column("reason", String(80), nullable=False),
+        Column("created_by", Integer),
+        Column("created_at", DateTime, nullable=False),
+        UniqueConstraint(
+            "org_id",
+            "candidate_id",
+            "version_no",
+            name="uq_candidate_resume_versions_org_candidate_no",
+        ),
+    )
+    Index(
+        "ix_candidate_resume_versions_org_candidate_created",
+        resume_versions.c.org_id,
+        resume_versions.c.candidate_id,
+        resume_versions.c.created_at,
+    )
+    reschedule_requests = Table(
+        "interview_reschedule_requests",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("org_id", Integer, nullable=False),
+        Column("assignment_id", Integer, nullable=False),
+        Column("replacement_assignment_id", Integer),
+        Column("candidate_id", Integer, nullable=False),
+        Column("job_id", Integer, nullable=False),
+        Column("demand_id", Integer, nullable=False),
+        Column("round", String(30), nullable=False),
+        Column("round_sequence", Integer, nullable=False),
+        Column("source", String(30), nullable=False),
+        Column("status", String(30), nullable=False),
+        Column("requested_by", Integer, nullable=False),
+        Column("requested_at", DateTime, nullable=False),
+        Column("reason", Text, nullable=False),
+        Column("proposed_times", JSON, nullable=False),
+        Column("original_interviewer_id", Integer, nullable=False),
+        Column("original_scheduled_at", DateTime),
+        Column("original_location", String(240), nullable=False),
+        Column("final_interviewer_id", Integer),
+        Column("final_scheduled_at", DateTime),
+        Column("final_location", String(240), nullable=False),
+        Column("processed_by", Integer),
+        Column("processed_at", DateTime),
+        Column("processor_note", Text),
+        Column("created_at", DateTime, nullable=False),
+        Column("updated_at", DateTime, nullable=False),
+    )
+    Index(
+        "ix_interview_reschedule_org_assignment_status",
+        reschedule_requests.c.org_id,
+        reschedule_requests.c.assignment_id,
+        reschedule_requests.c.status,
+    )
+    Index(
+        "ix_interview_reschedule_org_candidate_demand_round",
+        reschedule_requests.c.org_id,
+        reschedule_requests.c.candidate_id,
+        reschedule_requests.c.demand_id,
+        reschedule_requests.c.round_sequence,
     )
     tasks = Table(
         "business_review_tasks",

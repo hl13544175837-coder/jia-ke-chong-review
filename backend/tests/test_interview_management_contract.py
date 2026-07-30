@@ -1040,18 +1040,20 @@ def test_mark_conducted_is_explicit_idempotent_and_never_advances_pipeline(
             ).all()
         ]
 
-    interviewer_forbidden = client.post(endpoint, headers=_auth(interviewer_token))
+    interviewer_confirmed = client.post(endpoint, headers=_auth(interviewer_token))
     other_owner_forbidden = client.post(endpoint, headers=_auth(other_owner_token))
-    first = client.post(endpoint, headers=_auth(owner_token))
-    second = client.post(endpoint, headers=_auth(owner_token))
+    recruiter_repeated = client.post(endpoint, headers=_auth(owner_token))
+    interviewer_repeated = client.post(endpoint, headers=_auth(interviewer_token))
 
-    assert interviewer_forbidden.status_code == 403
+    assert interviewer_confirmed.status_code == 200
+    assert interviewer_confirmed.get_json()["status"] == "awaiting_feedback"
+    assert interviewer_confirmed.get_json()["deduplicated"] is False
     assert other_owner_forbidden.status_code == 403
-    assert first.status_code == second.status_code == 200
-    assert first.get_json()["status"] == "awaiting_feedback"
-    assert first.get_json()["deduplicated"] is False
-    assert second.get_json()["status"] == "awaiting_feedback"
-    assert second.get_json()["deduplicated"] is True
+    assert recruiter_repeated.status_code == interviewer_repeated.status_code == 200
+    assert recruiter_repeated.get_json()["status"] == "awaiting_feedback"
+    assert recruiter_repeated.get_json()["deduplicated"] is True
+    assert interviewer_repeated.get_json()["status"] == "awaiting_feedback"
+    assert interviewer_repeated.get_json()["deduplicated"] is True
     with app.app_context():
         assignment = db.session.get(InterviewAssignment, seeded["assignment_id"])
         assert assignment.status == "awaiting_feedback"

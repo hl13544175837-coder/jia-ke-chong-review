@@ -51,6 +51,8 @@ export function statusLabel(status: Exclude<InterviewStatusTab, 'all'>) {
 }
 
 export function statusLabelForRow(row: InterviewManagementRow) {
+  if (row.reschedule_request?.status === 'pending') return '待处理改约';
+  if (row.reschedule_request?.status === 'waiting_reassignment') return '因改约待重新安排';
   const status = rowStatus(row);
   if (status === 'scheduled' && interviewHasStarted(row.scheduled_at)) return '待确认已面试';
   return statusLabel(status);

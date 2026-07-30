@@ -9,6 +9,7 @@ import {
   type TalentNode,
 } from '@/mocks/talentMap';
 import NodeEditModal from '@/pages/talent-map/components/NodeEditModal';
+import PageHeader from '@/components/ui/PageHeader';
 
 export default function TalentMapPage() {
   const navigate = useNavigate();
@@ -322,20 +323,23 @@ export default function TalentMapPage() {
           </span>
         </div>
 
-        {/* Title + Add Company */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <h1 className="text-2xl font-bold text-foreground-900">人才地图</h1>
-          <button
-            onClick={() => {
-              setNewCompanyForm((prev) => ({ ...prev, industry: activeIndustry }));
-              setAddCompanyOpen(true);
-            }}
-            className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
-          >
-            <i className="ri-building-2-line"></i>
-            新增公司
-          </button>
-        </div>
+        <PageHeader
+          className="mb-6"
+          title="人才地图"
+          description="按行业和公司沉淀人才分布与组织信息"
+          actions={(
+            <button
+              onClick={() => {
+                setNewCompanyForm((prev) => ({ ...prev, industry: activeIndustry }));
+                setAddCompanyOpen(true);
+              }}
+              className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+            >
+              <i className="ri-building-2-line"></i>
+              新增公司
+            </button>
+          )}
+        />
 
         {/* Industry Tabs */}
         <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">

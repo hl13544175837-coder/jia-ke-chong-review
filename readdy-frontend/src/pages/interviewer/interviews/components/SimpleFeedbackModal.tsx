@@ -3,7 +3,10 @@ import { useEffect, useState } from 'react';
 import type {
   InterviewAssignment,
   InterviewFeedback,
+  InterviewRecommendation,
+  JobMatch,
   Satisfaction,
+  StructuredInterviewFeedbackValues,
 } from '@/features/interviews/types';
 
 interface SimpleFeedbackModalProps {
@@ -12,7 +15,7 @@ interface SimpleFeedbackModalProps {
   saving: boolean;
   error: string;
   onClose: () => void;
-  onSave: (satisfaction: Satisfaction, note: string) => void;
+  onSave: (payload: StructuredInterviewFeedbackValues) => void;
 }
 
 const choices: Array<{
@@ -41,6 +44,31 @@ const choices: Array<{
   },
 ];
 
+const jobMatchOptions: Array<{ value: JobMatch; label: string }> = [
+  { value: 'high', label: '高匹配' },
+  { value: 'medium', label: '基本匹配' },
+  { value: 'low', label: '低匹配' },
+];
+
+const recommendationOptions: Array<{
+  value: InterviewRecommendation;
+  label: string;
+}> = [
+  { value: 'next_round', label: '进入下一轮' },
+  { value: 'offer', label: '建议进入 Offer' },
+  { value: 'hold', label: '暂缓，待补充确认' },
+  { value: 'reject', label: '不建议继续' },
+];
+
+function evaluationValue<T extends string>(
+  feedback: InterviewFeedback | null,
+  key: string,
+  allowed: readonly T[],
+): T | '' {
+  const value = feedback?.evaluation?.[key];
+  return typeof value === 'string' && allowed.includes(value as T) ? value as T : '';
+}
+
 export default function SimpleFeedbackModal({
   assignment,
   existingFeedback,
@@ -52,12 +80,47 @@ export default function SimpleFeedbackModal({
   const [satisfaction, setSatisfaction] = useState<Satisfaction | null>(
     existingFeedback?.satisfaction ?? null,
   );
+  const [jobMatch, setJobMatch] = useState<JobMatch | ''>(() => evaluationValue(
+    existingFeedback,
+    'job_match',
+    jobMatchOptions.map((item) => item.value),
+  ));
+  const [recommendation, setRecommendation] = useState<InterviewRecommendation | ''>(
+    () => evaluationValue(
+      existingFeedback,
+      'recommendation',
+      recommendationOptions.map((item) => item.value),
+    ),
+  );
+  const [strengths, setStrengths] = useState(existingFeedback?.strengths ?? '');
+  const [concerns, setConcerns] = useState(existingFeedback?.concerns ?? '');
   const [note, setNote] = useState(existingFeedback?.note ?? '');
 
   useEffect(() => {
     setSatisfaction(existingFeedback?.satisfaction ?? null);
+    setJobMatch(evaluationValue(
+      existingFeedback,
+      'job_match',
+      jobMatchOptions.map((item) => item.value),
+    ));
+    setRecommendation(evaluationValue(
+      existingFeedback,
+      'recommendation',
+      recommendationOptions.map((item) => item.value),
+    ));
+    setStrengths(existingFeedback?.strengths ?? '');
+    setConcerns(existingFeedback?.concerns ?? '');
     setNote(existingFeedback?.note ?? '');
   }, [existingFeedback, assignment.id]);
+
+  const canSave = Boolean(
+    satisfaction
+    && jobMatch
+    && recommendation
+    && (satisfaction !== 'satisfied' || strengths.trim())
+    && (satisfaction !== 'unsatisfied' || concerns.trim())
+    && (satisfaction !== 'pending' || note.trim()),
+  );
 
   return (
     <div
@@ -68,7 +131,7 @@ export default function SimpleFeedbackModal({
       onClick={saving ? undefined : onClose}
     >
       <div
-        className="w-full max-w-[560px] overflow-hidden rounded-lg bg-white shadow-2xl"
+        className="flex max-h-[92vh] w-full max-w-[620px] flex-col overflow-hidden rounded-lg bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
@@ -91,7 +154,7 @@ export default function SimpleFeedbackModal({
           </button>
         </div>
 
-        <div className="space-y-5 px-6 py-5">
+        <div className="space-y-5 overflow-y-auto px-6 py-5">
           <fieldset>
             <legend className="mb-2 text-sm font-semibold text-foreground-800">满意程度</legend>
             <div className="grid grid-cols-3 gap-2">
@@ -117,14 +180,64 @@ export default function SimpleFeedbackModal({
             </div>
           </fieldset>
 
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-semibold text-foreground-800">岗位匹配 <span className="text-red-500">*</span></span>
+              <select
+                value={jobMatch}
+                onChange={(event) => setJobMatch(event.target.value as JobMatch)}
+                className="mt-2 h-10 w-full rounded-md border border-background-200 bg-white px-3 text-sm text-foreground-800 outline-none focus:border-primary-400"
+              >
+                <option value="">请选择</option>
+                {jobMatchOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-foreground-800">建议结论 <span className="text-red-500">*</span></span>
+              <select
+                value={recommendation}
+                onChange={(event) => setRecommendation(event.target.value as InterviewRecommendation)}
+                className="mt-2 h-10 w-full rounded-md border border-background-200 bg-white px-3 text-sm text-foreground-800 outline-none focus:border-primary-400"
+              >
+                <option value="">请选择</option>
+                {recommendationOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-semibold text-foreground-800">优势{satisfaction === 'satisfied' && <span className="text-red-500"> *</span>}</span>
+              <textarea
+                value={strengths}
+                onChange={(event) => setStrengths(event.target.value.slice(0, 1000))}
+                rows={4}
+                maxLength={1000}
+                placeholder="记录与岗位相关的能力亮点"
+                className="mt-2 w-full resize-none rounded-md border border-background-200 px-3 py-2 text-sm leading-6 outline-none focus:border-primary-400"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-foreground-800">顾虑{satisfaction === 'unsatisfied' && <span className="text-red-500"> *</span>}</span>
+              <textarea
+                value={concerns}
+                onChange={(event) => setConcerns(event.target.value.slice(0, 1000))}
+                rows={4}
+                maxLength={1000}
+                placeholder="记录需要复核或不匹配的地方"
+                className="mt-2 w-full resize-none rounded-md border border-background-200 px-3 py-2 text-sm leading-6 outline-none focus:border-primary-400"
+              />
+            </label>
+          </div>
+
           <label className="block">
-            <span className="text-sm font-semibold text-foreground-800">面试备注</span>
+            <span className="text-sm font-semibold text-foreground-800">补充备注{satisfaction === 'pending' && <span className="text-red-500"> *</span>}</span>
             <textarea
               value={note}
               onChange={(event) => setNote(event.target.value.slice(0, 1000))}
               rows={7}
               maxLength={1000}
-              placeholder="记录与岗位 JD 相关的观察、优势和顾虑"
+              placeholder="补充需要后续确认的信息"
               className="mt-2 w-full resize-none rounded-md border border-background-200 px-3 py-2.5 text-sm leading-6 text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-50"
             />
             <span className="mt-1 block text-right text-xs text-foreground-400">{note.length}/1000</span>
@@ -150,8 +263,18 @@ export default function SimpleFeedbackModal({
           </button>
           <button
             type="button"
-            onClick={() => satisfaction && onSave(satisfaction, note.trim())}
-            disabled={!satisfaction || saving}
+            onClick={() => {
+              if (!satisfaction || !jobMatch || !recommendation) return;
+              onSave({
+                satisfaction,
+                job_match: jobMatch,
+                recommendation,
+                strengths: strengths.trim(),
+                concerns: concerns.trim(),
+                note: note.trim(),
+              });
+            }}
+            disabled={!canSave || saving}
             className="inline-flex min-w-28 items-center justify-center gap-2 rounded-md bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-background-300"
           >
             <Save size={16} />

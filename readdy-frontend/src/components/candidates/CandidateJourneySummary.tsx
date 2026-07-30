@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, CalendarClock, CheckCircle2, CircleDot, FileCheck2, MessageSquareText } from 'lucide-react';
+import { BriefcaseBusiness, CalendarClock, CheckCircle2, CircleDot, FileCheck2, MessageSquareText, XCircle } from 'lucide-react';
 import type { CandidateJourney } from '@/features/candidates/types';
 
 const approvalLabels: Record<string, string> = {
@@ -27,6 +27,14 @@ const offerLabels: Record<string, string> = {
   onboarded: '已入职',
 };
 
+const interviewStatusLabels: Record<string, string> = {
+  scheduled: '已安排',
+  awaiting_feedback: '待反馈',
+  feedback_submitted: '评价已提交',
+  completed: '已完成',
+  cancelled: '已取消',
+};
+
 function formatDate(value: string | null) {
   if (!value) return '时间未记录';
   const parsed = new Date(value);
@@ -47,20 +55,26 @@ function statusTone(value: string) {
   return 'bg-amber-50 text-amber-700';
 }
 
-export default function CandidateJourneySummary({ journey }: { journey: CandidateJourney }) {
+export default function CandidateJourneySummary({
+  journey,
+  interviewOnly = false,
+}: {
+  journey: CandidateJourney;
+  interviewOnly?: boolean;
+}) {
   const approval = journey.demand_approval;
   return (
     <section data-ui="candidate-journey-summary" className="rounded-lg border border-background-200 bg-white px-4 py-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900"><BriefcaseBusiness size={16} />完整招聘过程</h3>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900"><BriefcaseBusiness size={16} />{interviewOnly ? '历史面试评价' : '完整招聘过程'}</h3>
           <p className="mt-1 text-xs text-foreground-500">{journey.job_title || '岗位未显示'} · 只读记录</p>
         </div>
         <span className="rounded-full bg-background-100 px-2.5 py-1 text-xs text-foreground-600">需求 #{journey.demand_id}</span>
       </div>
 
       <div className="mt-4 space-y-4">
-        <div className="rounded-lg bg-background-50 px-3 py-3">
+        {!interviewOnly && <div className="rounded-lg bg-background-50 px-3 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground-700"><FileCheck2 size={14} />需求审核记录</p>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(approval.status)}`}>{approvalLabels[approval.status] || approval.status}</span>
@@ -70,9 +84,9 @@ export default function CandidateJourneySummary({ journey }: { journey: Candidat
             <p>审核：{approval.reviewed_by_name || '尚未审核'} · {formatDate(approval.reviewed_at)}</p>
           </div>
           {approval.reason && <p className="mt-2 text-xs text-foreground-600">审核说明：{approval.reason}</p>}
-        </div>
+        </div>}
 
-        <div>
+        {!interviewOnly && <div>
           <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground-700"><MessageSquareText size={14} />业务筛选</p>
           {journey.business_reviews.length > 0 ? (
             <div className="mt-2 space-y-2">
@@ -85,24 +99,51 @@ export default function CandidateJourneySummary({ journey }: { journey: Candidat
               ))}
             </div>
           ) : <p className="mt-2 text-xs text-foreground-400">暂无业务筛选记录</p>}
-        </div>
+        </div>}
 
         <div>
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground-700"><CalendarClock size={14} />面试过程</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground-700"><CalendarClock size={14} />面试过程</p>
+            <p className="text-[11px] text-foreground-400">各轮评价独立提交，提交后可只读参考</p>
+          </div>
           {journey.interview_rounds.length > 0 ? (
             <div className="mt-2 space-y-2">
-              {journey.interview_rounds.map((item) => (
-                <div key={item.assignment_id} className="grid gap-2 rounded-lg border border-background-100 px-3 py-2.5 text-xs text-foreground-600 sm:grid-cols-[80px_minmax(0,1fr)_auto] sm:items-start">
-                  <span className="font-medium text-foreground-800">第 {item.round_sequence} 轮</span>
-                  <div><p>{item.interviewer_name || '面试官未记录'} · {formatDate(item.scheduled_at)}</p><p className="mt-1 text-foreground-500">{item.location || '地点未记录'}{item.feedback?.note ? ` · 评价：${item.feedback.note}` : ''}</p></div>
-                  <span className={`w-fit rounded-full px-2 py-0.5 ${statusTone(item.feedback ? 'completed' : item.status)}`}>{item.feedback ? '已评价' : item.status === 'awaiting_feedback' ? '待反馈' : item.status === 'scheduled' ? '已安排' : item.status}</span>
-                </div>
-              ))}
+              {journey.interview_rounds.map((item) => {
+                const feedbackFailed = item.feedback?.passed === false;
+                const feedbackPassed = item.feedback?.passed === true;
+                const RoundIcon = feedbackFailed ? XCircle : item.feedback ? CheckCircle2 : CircleDot;
+                const resultLabel = feedbackFailed
+                  ? '未通过'
+                  : feedbackPassed
+                    ? '通过'
+                    : item.feedback
+                      ? '已评价'
+                      : item.status === 'awaiting_feedback'
+                        ? '待反馈'
+                        : item.status === 'scheduled'
+                          ? '已安排'
+                          : item.status === 'completed'
+                            ? '已完成'
+                            : interviewStatusLabels[item.status] || item.status || '状态未记录';
+                return (
+                  <div data-ui="interview-round-node" key={item.assignment_id} className="grid gap-2 rounded-lg border border-background-200 bg-white px-3 py-3 text-xs text-foreground-600 sm:grid-cols-[92px_minmax(0,1fr)_auto] sm:items-start">
+                    <span className="flex items-center gap-1.5 font-medium text-foreground-800"><RoundIcon size={14} className={feedbackFailed ? 'text-red-500' : item.feedback ? 'text-emerald-600' : 'text-amber-500'} />第 {item.round_sequence} 轮</span>
+                    <div>
+                      <p>{item.interviewer_name || '面试官未记录'} · {formatDate(item.scheduled_at)}</p>
+                      <p className="mt-1 text-foreground-500">{item.location || '地点未记录'}{item.feedback?.note ? ` · 评价：${item.feedback.note}` : ''}</p>
+                      {item.feedback_locked && (
+                        <p className="mt-1 text-amber-700">提交本轮评价后可查看此前面试结论</p>
+                      )}
+                    </div>
+                    <span className={`w-fit rounded-full px-2 py-0.5 ${feedbackFailed ? 'bg-red-50 text-red-700' : statusTone(item.feedback ? 'completed' : item.status)}`}>{resultLabel}</span>
+                  </div>
+                );
+              })}
             </div>
           ) : <p className="mt-2 text-xs text-foreground-400">暂无面试记录</p>}
         </div>
 
-        <div>
+        {!interviewOnly && <div>
           <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground-700"><CheckCircle2 size={14} />Offer</p>
           {journey.offers.length > 0 ? (
             <div className="mt-2 space-y-2">
@@ -123,7 +164,7 @@ export default function CandidateJourneySummary({ journey }: { journey: Candidat
               </div>
             </details>
           )}
-        </div>
+        </div>}
       </div>
     </section>
   );

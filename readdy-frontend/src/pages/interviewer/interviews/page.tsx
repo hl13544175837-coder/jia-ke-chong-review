@@ -1,19 +1,15 @@
 import {
   CalendarDays,
   Clock3,
-  Download,
-  FileSearch,
-  FileText,
   MapPin,
   MessageSquareText,
   RefreshCw,
   Search,
-  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import StructuredResumeView from '@/components/candidates/StructuredResumeView';
-import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
+import PageHeader from '@/components/ui/PageHeader';
+import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { candidatesApi } from '@/features/candidates/api';
 import type { CandidateJourney, CandidateResumeDetail } from '@/features/candidates/types';
@@ -24,8 +20,13 @@ import { formatInterviewDateTime, interviewHasStarted } from '@/features/intervi
 import type {
   InterviewAssignment,
   InterviewFeedback,
-  Satisfaction,
+  InterviewRescheduleRequest,
+  InterviewRescheduleRequestInput,
+  StructuredInterviewFeedbackValues,
 } from '@/features/interviews/types';
+import InterviewerInterviewDetailDrawer from './components/InterviewerInterviewDetailDrawer';
+import type { DetailActionLabel } from './components/InterviewerInterviewDetailDrawer';
+import RescheduleRequestModal from './components/RescheduleRequestModal';
 import SimpleFeedbackModal from './components/SimpleFeedbackModal';
 
 type TabKey = 'all' | 'upcoming' | 'feedback' | 'completed';
@@ -36,12 +37,6 @@ const tabs: Array<{ key: TabKey; label: string }> = [
   { key: 'feedback', label: '待反馈' },
   { key: 'completed', label: '已完成' },
 ];
-
-const satisfactionLabels: Record<Satisfaction, string> = {
-  satisfied: '满意',
-  pending: '待定',
-  unsatisfied: '不满意',
-};
 
 function assignmentBucket(item: InterviewAssignment): Exclude<TabKey, 'all'> {
   if (item.feedback_submitted || ['completed', 'feedback_submitted'].includes(item.status)) {
@@ -58,11 +53,21 @@ function canSubmitFeedback(item: InterviewAssignment) {
   );
 }
 
-function feedbackActionLabel(item: InterviewAssignment) {
+function canSelfConfirm(item: InterviewAssignment) {
+  return !item.feedback_submitted
+    && item.status === 'scheduled'
+    && interviewHasStarted(item.scheduled_at);
+}
+
+function feedbackActionLabel(item: InterviewAssignment): DetailActionLabel {
   if (item.feedback_submitted) return '修改评价';
   if (!interviewHasStarted(item.scheduled_at)) return '面试尚未开始';
-  if (item.status !== 'awaiting_feedback') return '等待招聘专员确认';
+  if (canSelfConfirm(item)) return '确认已面试并填写评价';
   return '填写评价';
+}
+
+function interviewTabFromQuery(value: string | null): TabKey {
+  return tabs.some((tab) => tab.key === value) ? value as TabKey : 'all';
 }
 
 function latestCandidateAssignment(
@@ -86,7 +91,7 @@ function latestCandidateAssignment(
 }
 
 export default function InterviewerInterviewsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
   const requestedAssignmentId = Number(searchParams.get('assignment')) || null;
@@ -94,8 +99,8 @@ export default function InterviewerInterviewsPage() {
   const [assignments, setAssignments] = useState<InterviewAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [activeTab, setActiveTab] = useState<TabKey>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const activeTab = interviewTabFromQuery(searchParams.get('tab'));
+  const searchQuery = searchParams.get('q') ?? '';
   const [selected, setSelected] = useState<InterviewAssignment | null>(null);
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
   const [selectedResume, setSelectedResume] = useState<CandidateResumeDetail | null>(null);
@@ -107,12 +112,22 @@ export default function InterviewerInterviewsPage() {
   const [feedbackAssignment, setFeedbackAssignment] = useState<InterviewAssignment | null>(null);
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
+  const [confirmationError, setConfirmationError] = useState('');
+  const [selectedRescheduleHistory, setSelectedRescheduleHistory] = useState<InterviewRescheduleRequest[]>([]);
+  const [rescheduleAssignment, setRescheduleAssignment] = useState<InterviewAssignment | null>(null);
+  const [rescheduleSaving, setRescheduleSaving] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState('');
+  const [rescheduleSuccess, setRescheduleSuccess] = useState('');
 
   const loadAssignments = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     try {
-      setAssignments(await interviewsApi.listMyAssignments());
+      const rows = await interviewsApi.listMyAssignments();
+      setAssignments(rows);
+      setSelected((current) => (
+        current ? rows.find((item) => item.id === current.id) ?? current : null
+      ));
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : '加载面试任务失败');
     } finally {
@@ -126,6 +141,32 @@ export default function InterviewerInterviewsPage() {
     window.addEventListener('focus', refreshAssignments);
     return () => window.removeEventListener('focus', refreshAssignments);
   }, [loadAssignments]);
+
+  const changeListState = useCallback((tab: TabKey, query: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    if (query) next.set('q', query);
+    else next.delete('q');
+    next.delete('candidate');
+    next.delete('assignment');
+    next.delete('demand');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const rememberInterviewDetail = useCallback((assignment: InterviewAssignment | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (assignment) {
+      next.set('candidate', String(assignment.candidate_id));
+      next.set('assignment', String(assignment.id));
+      if (assignment.demand_id) next.set('demand', String(assignment.demand_id));
+      else next.delete('demand');
+    } else {
+      next.delete('candidate');
+      next.delete('assignment');
+      next.delete('demand');
+    }
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const filtered = useMemo(() => assignments.filter((item) => {
     if (activeTab !== 'all' && assignmentBucket(item) !== activeTab) return false;
@@ -143,15 +184,20 @@ export default function InterviewerInterviewsPage() {
     completed: assignments.filter((item) => assignmentBucket(item) === 'completed').length,
   }), [assignments]);
 
-  const openDetail = useCallback(async (assignment: InterviewAssignment) => {
+  const openDetail = useCallback(async (assignment: InterviewAssignment, updateAddress = true) => {
     setSelected(assignment);
     setSelectedDemand(null);
     setSelectedResume(null);
     setSelectedJourney(null);
+    setSelectedRescheduleHistory(assignment.reschedule_history || []);
     setJourneyError('');
     setSelectedFeedback(null);
     setDetailLoading(true);
     setDetailError('');
+    if (updateAddress) {
+      handledDeepLink.current = `${assignment.candidate_id}:${assignment.id}`;
+      rememberInterviewDetail(assignment);
+    }
     try {
       const journeyPromise = assignment.demand_id
         ? candidatesApi.getJourney(assignment.candidate_id, assignment.demand_id).catch((error) => {
@@ -159,7 +205,7 @@ export default function InterviewerInterviewsPage() {
           return null;
         })
         : Promise.resolve(null);
-      const [resume, feedbackRows, demand, journey] = await Promise.all([
+      const [resume, feedbackRows, demand, journey, rescheduleHistory] = await Promise.all([
         candidatesApi.getResume(assignment.candidate_id),
         interviewsApi.listFeedback({
           candidateId: assignment.candidate_id,
@@ -169,10 +215,14 @@ export default function InterviewerInterviewsPage() {
           ? demandsApi.getDemand(assignment.demand_id)
           : Promise.resolve(null),
         journeyPromise,
+        interviewsApi.listRescheduleHistory(assignment.id).catch(
+          () => assignment.reschedule_history || [],
+        ),
       ]);
       setSelectedResume(resume);
       setSelectedDemand(demand);
       setSelectedJourney(journey);
+      setSelectedRescheduleHistory(rescheduleHistory);
       setSelectedFeedback(
         feedbackRows.find((item) => item.assignment_id === assignment.id)
           ?? feedbackRows.find((item) => item.round === assignment.round)
@@ -183,7 +233,22 @@ export default function InterviewerInterviewsPage() {
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [rememberInterviewDetail]);
+
+  const closeDetail = useCallback(() => {
+    handledDeepLink.current = '';
+    setSelected(null);
+    setSelectedDemand(null);
+    setSelectedResume(null);
+    setSelectedJourney(null);
+    setSelectedRescheduleHistory([]);
+    setSelectedFeedback(null);
+    setDetailError('');
+    setJourneyError('');
+    setRescheduleAssignment(null);
+    setRescheduleError('');
+    rememberInterviewDetail(null);
+  }, [rememberInterviewDetail]);
 
   useEffect(() => {
     const deepLinkKey = `${requestedCandidateId || ''}:${requestedAssignmentId || ''}`;
@@ -196,7 +261,7 @@ export default function InterviewerInterviewsPage() {
     );
     if (!assignment) return;
     handledDeepLink.current = deepLinkKey;
-    void openDetail(assignment);
+    void openDetail(assignment, false);
   }, [assignments, loading, openDetail, requestedAssignmentId, requestedCandidateId, requestedDemandId]);
 
   const openOriginalResume = async (download: boolean) => {
@@ -235,22 +300,67 @@ export default function InterviewerInterviewsPage() {
     setFeedbackAssignment(assignment);
   };
 
-  const saveFeedback = async (satisfaction: Satisfaction, note: string) => {
+  const confirmAndStartFeedback = async (item: InterviewAssignment) => {
+    setFeedbackError('');
+    setConfirmationError('');
+    try {
+      const confirmed = await interviewsApi.markConducted(item.id);
+      setAssignments((current) => current.map((assignment) => (
+        assignment.id === confirmed.id ? confirmed : assignment
+      )));
+      if (selected?.id !== item.id) {
+        await openDetail(confirmed);
+      } else {
+        setSelected(confirmed);
+      }
+      setFeedbackAssignment(confirmed);
+    } catch (error) {
+      setConfirmationError(error instanceof Error ? error.message : '确认面试完成失败');
+    }
+  };
+
+  const submitRescheduleRequest = async (payload: InterviewRescheduleRequestInput) => {
+    if (!rescheduleAssignment) return;
+    setRescheduleSaving(true);
+    setRescheduleError('');
+    setRescheduleSuccess('');
+    try {
+      await interviewsApi.requestReschedule(rescheduleAssignment.id, payload);
+      const rows = await interviewsApi.listMyAssignments();
+      const refreshed = rows.find((item) => item.id === rescheduleAssignment.id) ?? rescheduleAssignment;
+      const history = await interviewsApi.listRescheduleHistory(rescheduleAssignment.id);
+      setAssignments(rows);
+      setSelected(refreshed);
+      setSelectedRescheduleHistory(history);
+      setRescheduleAssignment(null);
+      setRescheduleSuccess('改约申请已提交，当前安排在招聘专员确认前仍然有效');
+    } catch (error) {
+      setRescheduleError(error instanceof Error ? error.message : '提交改约申请失败');
+    } finally {
+      setRescheduleSaving(false);
+    }
+  };
+
+  const saveFeedback = async (payload: StructuredInterviewFeedbackValues) => {
     if (!feedbackAssignment) return;
     setFeedbackSaving(true);
     setFeedbackError('');
     try {
       if (selectedFeedback?.assignment_id === feedbackAssignment.id) {
-        await interviewsApi.updateFeedback(selectedFeedback.id, { satisfaction, note });
+        await interviewsApi.updateFeedback(selectedFeedback.id, payload);
       } else {
         await interviewsApi.saveFeedback({
           assignment_id: feedbackAssignment.id,
-          satisfaction,
-          note,
+          ...payload,
         });
       }
+      const completedAssignment: InterviewAssignment = {
+        ...feedbackAssignment,
+        status: feedbackAssignment.is_primary ? 'completed' : 'feedback_submitted',
+        feedback_submitted: true,
+      };
       setFeedbackAssignment(null);
-      await Promise.all([loadAssignments(), openDetail(feedbackAssignment)]);
+      await Promise.all([loadAssignments(), openDetail(completedAssignment)]);
     } catch (error) {
       setFeedbackError(error instanceof Error ? error.message : '保存面试评价失败');
     } finally {
@@ -260,47 +370,50 @@ export default function InterviewerInterviewsPage() {
 
   return (
     <div className="space-y-5 p-6" data-ui="real-interviewer-assignments">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-foreground-900">我的面试</h1>
-          <p className="mt-1 text-sm text-foreground-500">查看已分配任务并提交每轮评价</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void loadAssignments()}
-          disabled={loading}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-background-200 bg-white px-3 text-sm text-foreground-600 hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-          刷新
-        </button>
-      </div>
+      <PageHeader
+        title="我的面试"
+        description="查看已分配任务并提交每轮评价"
+        actions={(
+          <button
+            type="button"
+            onClick={() => void loadAssignments()}
+            disabled={loading}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-background-200 bg-white px-3 text-sm text-foreground-600 hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            刷新
+          </button>
+        )}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
-              activeTab === tab.key
-                ? 'border-primary-500 bg-primary-500 text-white'
-                : 'border-background-200 bg-white text-foreground-600 hover:bg-background-50'
-            }`}
-          >
-            {tab.label} <span className="ml-1 text-xs opacity-80">{counts[tab.key]}</span>
-          </button>
-        ))}
+        <WorkspaceTabs<TabKey>
+          items={tabs.map((tab) => ({ ...tab, count: counts[tab.key] }))}
+          value={activeTab}
+          onChange={(tab) => changeListState(tab, searchQuery)}
+          ariaLabel="我的面试状态"
+        />
         <label className="relative ml-auto min-w-[220px] flex-1 sm:max-w-xs">
           <Search size={15} className="pointer-events-none absolute left-3 top-2.5 text-foreground-400" />
           <input
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={(event) => changeListState(activeTab, event.target.value)}
             placeholder="搜索候选人、岗位或部门"
             className="h-9 w-full rounded-md border border-background-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-primary-400"
           />
         </label>
       </div>
+
+      {confirmationError && (
+        <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {confirmationError}
+        </div>
+      )}
+      {rescheduleSuccess && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {rescheduleSuccess}
+        </div>
+      )}
 
       {loading ? (
         <div className="rounded-lg border border-background-200 bg-white py-16 text-center text-sm text-foreground-500">
@@ -365,9 +478,13 @@ export default function InterviewerInterviewsPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => void startFeedback(item)}
-                    disabled={!canSubmitFeedback(item)}
-                    title={!canSubmitFeedback(item) ? actionLabel : undefined}
+                    onClick={() => void (
+                      canSelfConfirm(item)
+                        ? confirmAndStartFeedback(item)
+                        : startFeedback(item)
+                    )}
+                    disabled={!canSubmitFeedback(item) && !canSelfConfirm(item)}
+                    title={!canSubmitFeedback(item) && !canSelfConfirm(item) ? actionLabel : undefined}
                     className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground-900 px-3 text-sm font-medium text-white hover:bg-foreground-800 disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500"
                   >
                     <MessageSquareText size={15} />
@@ -381,120 +498,33 @@ export default function InterviewerInterviewsPage() {
       )}
 
       {selected && (
-        <>
-          <button
-            type="button"
-            aria-label="关闭详情"
-            onClick={() => setSelected(null)}
-            className="fixed inset-0 z-40 bg-foreground-900/40"
-          />
-          <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[620px] flex-col bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
-              <div className="min-w-0">
-                <h2 className="truncate text-lg font-bold text-foreground-900">
-                  {selected.name_masked || `候选人 #${selected.candidate_id}`}
-                </h2>
-                <p className="mt-1 truncate text-sm text-foreground-500">
-                  {selected.job_title || `岗位 #${selected.job_id}`} · 第 {selected.round_sequence} 轮
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelected(null)}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-foreground-400 hover:bg-background-100"
-                aria-label="关闭"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
-              {detailLoading ? (
-                <div className="py-16 text-center text-sm text-foreground-500">
-                  <RefreshCw size={18} className="mx-auto mb-2 animate-spin" />
-                  正在加载面试详情...
-                </div>
-              ) : detailError ? (
-                <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{detailError}</div>
-              ) : (
-                <>
-                  <section>
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
-                      <FileText size={16} /> 岗位 JD
-                    </h3>
-                    <div className="mt-2 whitespace-pre-wrap rounded-md bg-background-50 p-4 text-sm leading-6 text-foreground-700">
-                      {selectedDemand?.jd_text || '未填写岗位 JD'}
-                    </div>
-                  </section>
-
-                  {selectedJourney && <CandidateJourneySummary journey={selectedJourney} />}
-                  {journeyError && <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>}
-
-                  <section>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
-                        <FileSearch size={16} /> 候选人简历
-                      </h3>
-                      {selectedResume?.original_resume.available && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void openOriginalResume(false)}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-background-200 px-3 py-1.5 text-xs font-medium text-foreground-600 hover:bg-background-50"
-                          >
-                            <FileText size={14} /> 查看原版
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void openOriginalResume(true)}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-background-200 px-3 py-1.5 text-xs font-medium text-foreground-600 hover:bg-background-50"
-                          >
-                            <Download size={14} /> 下载
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    {!selectedResume?.original_resume.available && (
-                      <p className="mt-2 rounded-md border border-background-200 bg-background-50 px-3 py-2 text-xs text-foreground-500">当前没有原版文件，以下为系统解析信息</p>
-                    )}
-                    <div className="mt-3"><StructuredResumeView resume={selectedResume?.resume_json || {}} compact /></div>
-                  </section>
-
-                  <section>
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
-                      <MessageSquareText size={16} /> 本轮评价
-                    </h3>
-                    <div className="mt-2 rounded-md border border-background-200 p-4">
-                      {selectedFeedback ? (
-                        <>
-                          <span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">
-                            {selectedFeedback.satisfaction
-                              ? satisfactionLabels[selectedFeedback.satisfaction]
-                              : '已提交'}
-                          </span>
-                          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground-700">
-                            {selectedFeedback.note || '未填写备注'}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-foreground-500">尚未提交本轮评价</p>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => canSubmitFeedback(selected) && setFeedbackAssignment(selected)}
-                        disabled={!canSubmitFeedback(selected)}
-                        className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-foreground-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500"
-                      >
-                        <MessageSquareText size={15} />
-                        {selectedFeedback ? '修改评价' : feedbackActionLabel(selected)}
-                      </button>
-                    </div>
-                  </section>
-                </>
-              )}
-            </div>
-          </aside>
-        </>
+        <InterviewerInterviewDetailDrawer
+          assignment={selected}
+          demand={selectedDemand}
+          resume={selectedResume}
+          journey={selectedJourney}
+          feedback={selectedFeedback}
+          detailLoading={detailLoading}
+          detailError={detailError}
+          journeyError={journeyError}
+          confirmationError={confirmationError}
+          actionLabel={selectedFeedback ? '修改评价' : feedbackActionLabel(selected)}
+          canSubmit={canSubmitFeedback(selected)}
+          canSelfConfirm={canSelfConfirm(selected)}
+          canRequestReschedule={selected.status === 'scheduled' && !selected.feedback_submitted && !selected.pending_reschedule}
+          rescheduleHistory={selectedRescheduleHistory}
+          escapeDisabled={feedbackAssignment !== null || rescheduleAssignment !== null}
+          onClose={closeDetail}
+          onRetry={() => void openDetail(selected, false)}
+          onViewOriginal={() => void openOriginalResume(false)}
+          onDownloadOriginal={() => void openOriginalResume(true)}
+          onStartFeedback={() => void startFeedback(selected)}
+          onConfirmAndStartFeedback={() => void confirmAndStartFeedback(selected)}
+          onRequestReschedule={() => {
+            setRescheduleError('');
+            setRescheduleAssignment(selected);
+          }}
+        />
       )}
 
       {feedbackAssignment && (
@@ -506,7 +536,17 @@ export default function InterviewerInterviewsPage() {
           saving={feedbackSaving}
           error={feedbackError}
           onClose={() => !feedbackSaving && setFeedbackAssignment(null)}
-          onSave={(satisfaction, note) => void saveFeedback(satisfaction, note)}
+          onSave={(payload) => void saveFeedback(payload)}
+        />
+      )}
+
+      {rescheduleAssignment && (
+        <RescheduleRequestModal
+          assignment={rescheduleAssignment}
+          saving={rescheduleSaving}
+          error={rescheduleError}
+          onClose={() => !rescheduleSaving && setRescheduleAssignment(null)}
+          onSubmit={(payload) => void submitRescheduleRequest(payload)}
         />
       )}
     </div>

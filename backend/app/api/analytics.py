@@ -12,14 +12,14 @@ bp = Blueprint("analytics", __name__)
 
 @bp.get("/analytics/overview")
 @require_auth
-@require_role("manager", "admin")
+@require_role("manager", "admin", "hr_director")
 def overview():
     return jsonify(build_analytics_overview(g.org_id))
 
 
 @bp.get("/analytics/export")
 @require_auth
-@require_role("manager", "admin")
+@require_role("manager", "admin", "hr_director")
 def export_overview():
     payload = build_analytics_overview(g.org_id)
     record_event(

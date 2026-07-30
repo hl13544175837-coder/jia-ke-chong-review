@@ -8,6 +8,10 @@ import type {
   InterviewFeedbackMutationResult,
   InterviewFeedbackUpdateInput,
   InterviewManagementRow,
+  InterviewReplacementInput,
+  InterviewRescheduleProcessInput,
+  InterviewRescheduleRequest,
+  InterviewRescheduleRequestInput,
   InterviewerOption,
 } from './types';
 
@@ -49,6 +53,36 @@ export const interviewsApi = {
     return apiRequest(`/interview/assignments/${assignmentId}/cancel`, {
       method: 'PATCH',
       body: { reason },
+    });
+  },
+  requestReschedule(
+    assignmentId: number,
+    payload: InterviewRescheduleRequestInput,
+  ): Promise<InterviewRescheduleRequest> {
+    return apiRequest(`/interview/assignments/${assignmentId}/reschedule-requests`, {
+      method: 'POST',
+      body: payload,
+    });
+  },
+  listRescheduleHistory(assignmentId: number): Promise<InterviewRescheduleRequest[]> {
+    return apiRequest(`/interview/assignments/${assignmentId}/reschedule-history`);
+  },
+  processRescheduleRequest(
+    requestId: number,
+    payload: InterviewRescheduleProcessInput,
+  ): Promise<InterviewRescheduleRequest> {
+    return apiRequest(`/interview/reschedule-requests/${requestId}`, {
+      method: 'PATCH',
+      body: payload,
+    });
+  },
+  createReplacementAssignment(
+    requestId: number,
+    payload: InterviewReplacementInput,
+  ): Promise<{ assignment: InterviewAssignment; reschedule_request: InterviewRescheduleRequest }> {
+    return apiRequest(`/interview/reschedule-requests/${requestId}/replacement`, {
+      method: 'POST',
+      body: payload,
     });
   },
   listMyAssignments(): Promise<InterviewAssignment[]> {

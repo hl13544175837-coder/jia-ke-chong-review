@@ -3,6 +3,8 @@
 # Environment variables that can be overridden by GitLab CI
 PKG_TAG ?= RC
 PKG_VERSION ?= $(shell date +%Y%m%d%H%M)
+VITE_DEFAULT_ROLE ?= recruiter
+VITE_GATEWAY_ROLE_MAP ?=
 
 ifeq ($(strip $(PKG_TAG)),)
 	override PKG_TAG := RC
@@ -55,7 +57,7 @@ clean: cleanfrontend cleanserver
 
 buildfrontend:
 	@echo "Building zhipin-frontend image: $(ZHIPIN_FRONTEND_IMAGE)"
-	sudo docker build -t $(ZHIPIN_FRONTEND_IMAGE) -f frontend/Dockerfile .
+	sudo docker build --build-arg VITE_DEFAULT_ROLE=$(VITE_DEFAULT_ROLE) --build-arg VITE_GATEWAY_ROLE_MAP="$(VITE_GATEWAY_ROLE_MAP)" -t $(ZHIPIN_FRONTEND_IMAGE) -f readdy-frontend/Dockerfile .
 
 pushfrontend:
 	@echo "Pushing zhipin-frontend image: $(ZHIPIN_FRONTEND_IMAGE)"

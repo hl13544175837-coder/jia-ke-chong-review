@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useProductRole } from '@/auth/productRole';
+import PageHeader from '@/components/ui/PageHeader';
 import { candidatesApi } from '@/features/candidates/api';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewTask } from '@/features/businessReviews/types';
@@ -467,14 +468,15 @@ export default function JobsPage() {
         </button>
       )}
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="mt-1 text-sm text-foreground-500">审核需求、寻找候选人并跟进每个岗位的招聘进度</p>
-        </div>
-        <button type="button" onClick={() => { setCreateErrors({}); setFormOpen(true); }} className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-primary-600">
-          <i className="ri-add-line text-base"></i>新建招聘需求
-        </button>
-      </div>
+      <PageHeader
+        title="招聘需求"
+        description="审核需求、寻找候选人并跟进每个岗位的招聘进度"
+        actions={(
+          <button type="button" onClick={() => { setCreateErrors({}); setFormOpen(true); }} className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-primary-600">
+            <i className="ri-add-line text-base"></i>新建招聘需求
+          </button>
+        )}
+      />
 
       <RequisitionTabs activeTab={activeTab} onTabChange={setActiveTab} />
 

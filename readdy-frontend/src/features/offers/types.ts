@@ -49,6 +49,8 @@ export interface OfferRecord {
   request_no: string;
   salary_range: string;
   onboard_date: string | null;
+  source_channel: string;
+  recruitment_days: number | null;
   approval_status: OfferStatus;
   status: OfferStatus;
   note: string;

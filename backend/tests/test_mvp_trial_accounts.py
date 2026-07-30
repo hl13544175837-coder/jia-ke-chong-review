@@ -19,6 +19,8 @@ def test_seed_uses_neutral_mvp_trial_accounts():
         "hr02@mvp.local",
         "hr03@mvp.local",
         "interviewer01@mvp.local",
+        "interviewer02@mvp.local",
+        "director01@mvp.local",
     ]:
         assert email in seed_text
 

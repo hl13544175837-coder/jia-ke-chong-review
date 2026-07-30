@@ -1,6 +1,69 @@
 import type { OriginalResumeInfo } from '@/features/businessReviews/types';
 
 export type Satisfaction = 'satisfied' | 'pending' | 'unsatisfied';
+export type JobMatch = 'high' | 'medium' | 'low';
+export type InterviewRecommendation = 'next_round' | 'offer' | 'hold' | 'reject';
+export type InterviewRescheduleStatus = 'pending' | 'approved' | 'rejected' | 'waiting_reassignment' | 'resolved';
+
+export interface InterviewRescheduleRequest {
+  id: number;
+  assignment_id: number;
+  replacement_assignment_id: number | null;
+  candidate_id: number;
+  job_id: number;
+  demand_id: number;
+  round: string;
+  round_sequence: number;
+  source: 'interviewer_request' | 'recruiter_direct';
+  status: InterviewRescheduleStatus;
+  requested_by: number;
+  requester_name: string | null;
+  requested_at: string | null;
+  reason: string;
+  proposed_times: string[];
+  original_interviewer_id: number;
+  original_interviewer_name: string | null;
+  original_scheduled_at: string | null;
+  original_location: string;
+  final_interviewer_id: number | null;
+  final_interviewer_name: string | null;
+  final_scheduled_at: string | null;
+  final_location: string;
+  processed_by: number | null;
+  processor_name: string | null;
+  processed_at: string | null;
+  processor_note: string;
+}
+
+export interface InterviewRescheduleRequestInput {
+  reason: string;
+  proposed_times: string[];
+}
+
+export interface InterviewRescheduleProcessInput {
+  action: 'approve' | 'reject' | 'cancel_and_wait';
+  interviewer_id?: number;
+  scheduled_at?: string;
+  location?: string;
+  note?: string;
+  processor_note?: string;
+}
+
+export interface InterviewReplacementInput {
+  interviewer_id: number;
+  scheduled_at: string;
+  location: string;
+  note: string;
+}
+
+export interface StructuredInterviewFeedbackValues {
+  satisfaction: Satisfaction;
+  job_match: JobMatch;
+  recommendation: InterviewRecommendation;
+  strengths: string;
+  concerns: string;
+  note: string;
+}
 
 export interface InterviewManagementRow {
   candidate_id: number;
@@ -28,6 +91,7 @@ export interface InterviewManagementRow {
   feedback_result: 'passed' | 'not_passed' | 'pending' | null;
   disposition_reason: string;
   enter_talent_pool: boolean | null;
+  reschedule_request?: InterviewRescheduleRequest;
 }
 
 export interface InterviewerOption {
@@ -54,6 +118,7 @@ export interface InterviewAssignmentUpdateInput {
   scheduled_at: string | null;
   location: string;
   note: string;
+  change_reason: string;
 }
 
 export interface InterviewAssignment {
@@ -82,6 +147,8 @@ export interface InterviewAssignment {
   jd_text?: string;
   focus_points?: string[];
   original_resume?: OriginalResumeInfo;
+  pending_reschedule?: InterviewRescheduleRequest;
+  reschedule_history?: InterviewRescheduleRequest[];
 }
 
 export interface InterviewFeedback {
@@ -95,6 +162,8 @@ export interface InterviewFeedback {
   interviewer_name: string | null;
   satisfaction: Satisfaction | null;
   evaluation: Record<string, unknown>;
+  strengths: string;
+  concerns: string;
   note: string;
   created_at: string | null;
   updated_by: number | null;
@@ -102,20 +171,19 @@ export interface InterviewFeedback {
   updated_at: string | null;
 }
 
-export interface InterviewFeedbackInput {
+export interface InterviewFeedbackInput extends StructuredInterviewFeedbackValues {
   assignment_id: number;
-  satisfaction: Satisfaction;
-  note: string;
 }
 
-export interface InterviewFeedbackUpdateInput {
-  satisfaction: Satisfaction;
-  note: string;
-}
+export type InterviewFeedbackUpdateInput = StructuredInterviewFeedbackValues;
 
 export interface InterviewFeedbackMutationResult {
   id: number;
   satisfaction: Satisfaction | null;
+  job_match: JobMatch | '';
+  recommendation: InterviewRecommendation | '';
+  strengths: string;
+  concerns: string;
   note: string;
   updated_by: number | null;
   updated_by_name: string | null;

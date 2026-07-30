@@ -152,7 +152,22 @@ def test_journey_includes_demand_review_business_review_interview_round_and_offe
         headers=_auth(interviewer_token),
     )
     assert interviewer_response.status_code == 200
-    assert interviewer_response.get_json()["demand_approval"]["reviewed_by_name"] == "李经理"
+    interviewer_journey = interviewer_response.get_json()
+    assert interviewer_journey["demand_approval"] == {
+        "status": "approved",
+        "submitted_by_name": None,
+        "submitted_at": None,
+        "reviewed_by_name": None,
+        "reviewed_at": None,
+        "reason": "",
+        "history": [],
+    }
+    assert interviewer_journey["business_reviews"] == []
+    assert interviewer_journey["timeline"] == []
+    assert interviewer_journey["ai_interviews"] == []
+    assert interviewer_journey["dispositions"] == []
+    assert interviewer_journey["offers"] == []
+    assert "25k-32k" not in str(interviewer_journey)
 
     _, unrelated_interviewer_token = make_user(
         "journey-unrelated@x.com", role="interviewer", name="无关面试官"
@@ -162,6 +177,77 @@ def test_journey_includes_demand_review_business_review_interview_round_and_offe
         headers=_auth(unrelated_interviewer_token),
     )
     assert forbidden.status_code == 403
+
+
+def test_business_reviewer_without_interview_assignment_cannot_see_interview_results(
+    client, make_user, app
+):
+    owner_id, _ = make_user(
+        "journey-review-owner@x.com", role="recruiter", name="招聘专员"
+    )
+    reviewer_id, reviewer_token = make_user(
+        "journey-business-only@x.com", role="interviewer", name="仅业务筛选人"
+    )
+    interviewer_id, _ = make_user(
+        "journey-assigned-interviewer@x.com", role="interviewer", name="实际面试官"
+    )
+    _, demand_id, candidate_id = _seed(app, owner_id)
+
+    with app.app_context():
+        from app import db
+        from app.models import (
+            BusinessReviewTask,
+            InterviewAssignment,
+            InterviewFeedback,
+            RecruitmentDemand,
+        )
+
+        demand = db.session.get(RecruitmentDemand, demand_id)
+        db.session.add(BusinessReviewTask(
+            org_id=demand.org_id,
+            demand_id=demand_id,
+            candidate_id=candidate_id,
+            reviewer_id=reviewer_id,
+            created_by=owner_id,
+            status="approved",
+            business_note="只负责业务筛选",
+        ))
+        assignment = InterviewAssignment(
+            org_id=demand.org_id,
+            demand_id=demand_id,
+            job_id=demand.job_id,
+            candidate_id=candidate_id,
+            interviewer_id=interviewer_id,
+            created_by=owner_id,
+            round="round_1",
+            round_sequence=1,
+            status="completed",
+        )
+        db.session.add(assignment)
+        db.session.flush()
+        db.session.add(InterviewFeedback(
+            org_id=demand.org_id,
+            demand_id=demand_id,
+            job_id=demand.job_id,
+            candidate_id=candidate_id,
+            assignment_id=assignment.id,
+            interviewer_id=interviewer_id,
+            round="round_1",
+            score=5,
+            passed=True,
+            note="不应被业务筛选人看到",
+        ))
+        db.session.commit()
+
+    response = client.get(
+        f"/api/candidates/{candidate_id}/journey?demand_id={demand_id}",
+        headers=_auth(reviewer_token),
+    )
+    assert response.status_code == 200
+    journey = response.get_json()
+    assert journey["interview_rounds"] == []
+    assert journey["feedback"] == []
+    assert "不应被业务筛选人看到" not in str(journey)
 
 def test_journey_requires_job_id(client, make_user, app):
     uid, token = make_user("hr@x.com", role="recruiter")

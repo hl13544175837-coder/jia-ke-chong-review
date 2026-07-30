@@ -31,6 +31,14 @@ from .pipeline_service import can_enter_interview
 CANCELLED_ASSIGNMENT_STATUSES = {"cancelled", "canceled"}
 INTERVIEW_SLOT_DURATION = timedelta(hours=1)
 SATISFACTION_VALUES = {"satisfied", "pending", "unsatisfied"}
+JOB_MATCH_VALUES = {"high", "medium", "low"}
+RECOMMENDATION_VALUES = {"next_round", "offer", "hold", "reject"}
+STRUCTURED_FEEDBACK_FIELDS = {
+    "job_match",
+    "recommendation",
+    "strengths",
+    "concerns",
+}
 
 
 class FeedbackValidationError(Exception):
@@ -68,14 +76,43 @@ class InterviewAssignmentWorkflowError(Exception):
 
 def normalize_simple_feedback(data):
     satisfaction = str(data.get("satisfaction") or "").strip()
+    job_match = str(data.get("job_match") or "").strip()
+    recommendation = str(data.get("recommendation") or "").strip()
+    strengths = str(data.get("strengths") or "").strip()
+    concerns = str(data.get("concerns") or "").strip()
     note = str(data.get("note") or "").strip()
+    fields = {}
     if satisfaction not in SATISFACTION_VALUES:
-        raise FeedbackValidationError(
-            {"satisfaction": "请选择满意、待定或不满意"}
-        )
-    if len(note) > 1000:
-        raise FeedbackValidationError({"note": "面试备注不能超过 1000 字"})
-    return satisfaction, note
+        fields["satisfaction"] = "请选择满意、待定或不满意"
+    structured = any(key in data for key in STRUCTURED_FEEDBACK_FIELDS)
+    if structured:
+        if job_match not in JOB_MATCH_VALUES:
+            fields["job_match"] = "请选择岗位匹配程度"
+        if recommendation not in RECOMMENDATION_VALUES:
+            fields["recommendation"] = "请选择建议结论"
+        if satisfaction == "satisfied" and not strengths:
+            fields["strengths"] = "满意时请填写候选人优势"
+        if satisfaction == "unsatisfied" and not concerns:
+            fields["concerns"] = "不满意时请填写主要顾虑"
+        if satisfaction == "pending" and not note:
+            fields["note"] = "待定时请填写需要继续确认的内容"
+    for key, value, label in (
+        ("strengths", strengths, "优势"),
+        ("concerns", concerns, "顾虑"),
+        ("note", note, "补充备注"),
+    ):
+        if len(value) > 1000:
+            fields[key] = f"{label}不能超过 1000 字"
+    if fields:
+        raise FeedbackValidationError(fields)
+    return {
+        "satisfaction": satisfaction,
+        "job_match": job_match,
+        "recommendation": recommendation,
+        "strengths": strengths,
+        "concerns": concerns,
+        "note": note,
+    }
 
 
 def feedback_satisfaction(feedback):
@@ -89,7 +126,8 @@ def feedback_satisfaction(feedback):
 def update_interview_feedback(*, org_id, feedback_id, actor_id, actor_role, data):
     """Lock and update only the editable simple-feedback fields."""
 
-    satisfaction, note = normalize_simple_feedback(data)
+    normalized = normalize_simple_feedback(data)
+    structured = any(key in data for key in STRUCTURED_FEEDBACK_FIELDS)
     feedback = db.session.execute(
         select(InterviewFeedback)
         .where(
@@ -116,21 +154,37 @@ def update_interview_feedback(*, org_id, feedback_id, actor_id, actor_role, data
             status_code=403,
         )
 
-    before = {
-        "satisfaction": feedback_satisfaction(feedback),
-        "note": feedback.note or "",
-    }
     evaluation = (
         dict(feedback.evaluation_json)
         if isinstance(feedback.evaluation_json, dict)
         else {}
     )
-    evaluation["satisfaction"] = satisfaction
+    before = {
+        "satisfaction": feedback_satisfaction(feedback),
+        "job_match": str(evaluation.get("job_match") or ""),
+        "recommendation": str(evaluation.get("recommendation") or ""),
+        "strengths": feedback.strengths or "",
+        "concerns": feedback.concerns or "",
+        "note": feedback.note or "",
+    }
+    evaluation["satisfaction"] = normalized["satisfaction"]
+    if structured:
+        evaluation["job_match"] = normalized["job_match"]
+        evaluation["recommendation"] = normalized["recommendation"]
+        feedback.strengths = normalized["strengths"]
+        feedback.concerns = normalized["concerns"]
     feedback.evaluation_json = evaluation
-    feedback.note = note
+    feedback.note = normalized["note"]
     feedback.updated_by = actor_id
     feedback.updated_at = utc_now()
-    after = {"satisfaction": satisfaction, "note": note}
+    after = {
+        "satisfaction": feedback_satisfaction(feedback),
+        "job_match": str(evaluation.get("job_match") or ""),
+        "recommendation": str(evaluation.get("recommendation") or ""),
+        "strengths": feedback.strengths or "",
+        "concerns": feedback.concerns or "",
+        "note": feedback.note or "",
+    }
 
     try:
         record_event(
@@ -333,6 +387,7 @@ def create_interview_assignment(
     location,
     note,
     created_by,
+    commit=True,
 ):
     """Create or deduplicate an active assignment in one service transaction."""
 
@@ -472,7 +527,8 @@ def create_interview_assignment(
             },
             commit=False,
         )
-        db.session.commit()
+        if commit:
+            db.session.commit()
     except IntegrityError:
         db.session.rollback()
         if primary_slot is not None:

@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
+import PageHeader from '@/components/ui/PageHeader';
+import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import { demandsApi } from '@/features/demands/api';
 import type {
   ApprovalStatus,
@@ -13,6 +16,7 @@ import { jobsApi } from '@/features/jobs/api';
 import type { JobTemplateDetail, JobTemplateSummary } from '@/features/jobs/types';
 import { useToast } from '@/hooks/useToast';
 import { ApiError } from '@/lib/api';
+import InterviewerDemandDetailDrawer from './components/InterviewerDemandDetailDrawer';
 
 type DemandFormMode = { kind: 'create' } | { kind: 'resubmit'; demand: RecruitmentDemand };
 
@@ -107,13 +111,21 @@ function formatDateTime(value: string | null) {
   return value.replace('T', ' ').slice(0, 16);
 }
 
+function approvalTabFromQuery(value: string | null): ApprovalStatus {
+  return approvalTabs.some((tab) => tab.key === value) ? value as ApprovalStatus : 'pending';
+}
+
 export default function InterviewerJobsPage() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDemandId = Number(searchParams.get('demand')) || null;
+  const handledDemandId = useRef<number | null>(null);
   const { name, userId } = useCompanyAuth();
   const { showToast } = useToast();
   const [templates, setTemplates] = useState<JobTemplateSummary[]>([]);
   const [owners, setOwners] = useState<DemandOwnerOption[]>([]);
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
-  const [activeTab, setActiveTab] = useState<ApprovalStatus>('pending');
+  const activeTab = approvalTabFromQuery(searchParams.get('tab'));
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -123,6 +135,9 @@ export default function InterviewerJobsPage() {
   const [templateLoading, setTemplateLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
 
   const loadPage = useCallback(async () => {
     setLoading(true);
@@ -161,6 +176,50 @@ export default function InterviewerJobsPage() {
     () => demands.filter((demand) => demand.approval_status === activeTab),
     [activeTab, demands],
   );
+
+  const rememberDemand = useCallback((demandId: number | null, tab: ApprovalStatus = activeTab) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    if (demandId) next.set('demand', String(demandId));
+    else next.delete('demand');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [activeTab, searchParams, setSearchParams]);
+
+  const changeActiveTab = useCallback((tab: ApprovalStatus) => {
+    handledDemandId.current = null;
+    setSelectedDemand(null);
+    setDetailError('');
+    rememberDemand(null, tab);
+  }, [rememberDemand]);
+
+  const openDemandDetail = useCallback(async (demand: RecruitmentDemand, updateUrl = true) => {
+    handledDemandId.current = demand.id;
+    setSelectedDemand(demand);
+    setDetailLoading(true);
+    setDetailError('');
+    if (updateUrl) rememberDemand(demand.id, demand.approval_status);
+    try {
+      setSelectedDemand(await demandsApi.getDemand(demand.id));
+    } catch (error) {
+      setDetailError(error instanceof Error ? error.message : '招聘需求详情加载失败');
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [rememberDemand]);
+
+  const closeDemandDetail = useCallback(() => {
+    handledDemandId.current = null;
+    setSelectedDemand(null);
+    setDetailError('');
+    rememberDemand(null);
+  }, [rememberDemand]);
+
+  useEffect(() => {
+    if (loading || !requestedDemandId || handledDemandId.current === requestedDemandId) return;
+    const demand = demands.find((item) => item.id === requestedDemandId);
+    if (!demand) return;
+    void openDemandDetail(demand);
+  }, [demands, loading, openDemandDetail, requestedDemandId]);
 
   const loadTemplate = async (jobId: number, applyDefaults: boolean) => {
     setTemplateLoading(true);
@@ -280,7 +339,7 @@ export default function InterviewerJobsPage() {
       }
 
       setFormOpen(false);
-      setActiveTab('pending');
+      rememberDemand(null, 'pending');
       await loadPage();
     } catch (error) {
       if (error instanceof ApiError) {
@@ -297,34 +356,28 @@ export default function InterviewerJobsPage() {
 
   return (
     <div className="space-y-5 p-6" data-ui="business-demand-page">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-foreground-900">招聘需求</h1>
-          <p className="mt-1 text-sm text-foreground-500">{name || '业务负责人'}</p>
-        </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          disabled={loading || templates.length === 0}
-          className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <i className="ri-add-line text-base"></i>
-          提交需求
-        </button>
-      </header>
-
-      <nav className="flex flex-wrap gap-2" aria-label="需求审核状态">
-        {approvalTabs.map((tab) => (
+      <PageHeader
+        title="招聘需求"
+        description={name || '业务负责人'}
+        actions={(
           <button
-            key={tab.key}
             type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={`rounded-md border px-3.5 py-1.5 text-sm font-medium ${activeTab === tab.key ? 'border-primary-500 bg-primary-500 text-white' : 'border-background-200 bg-white text-foreground-600 hover:bg-background-50'}`}
+            onClick={openCreate}
+            disabled={loading || templates.length === 0}
+            className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {tab.label} {counts[tab.key]}
+            <i className="ri-add-line text-base"></i>
+            提交需求
           </button>
-        ))}
-      </nav>
+        )}
+      />
+
+      <WorkspaceTabs<ApprovalStatus>
+        items={approvalTabs.map((tab) => ({ ...tab, count: counts[tab.key] }))}
+        value={activeTab}
+        onChange={changeActiveTab}
+        ariaLabel="需求审核状态"
+      />
 
       {loading ? (
         <div className="rounded-lg border border-background-200 bg-white py-16 text-center text-sm text-foreground-500">
@@ -347,7 +400,13 @@ export default function InterviewerJobsPage() {
           </div>
           <div className="divide-y divide-background-100">
             {visibleDemands.map((demand) => (
-              <article key={demand.id} className="grid gap-4 px-5 py-4 md:grid-cols-[minmax(220px,2fr)_minmax(160px,1fr)_110px_150px] md:items-start">
+              <button
+                key={demand.id}
+                type="button"
+                data-ui="interviewer-demand-row"
+                onClick={() => void openDemandDetail(demand)}
+                className="grid w-full gap-4 px-5 py-4 text-left transition hover:bg-primary-50/30 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-200 md:grid-cols-[minmax(220px,2fr)_minmax(160px,1fr)_110px_150px] md:items-start"
+              >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="truncate text-sm font-semibold text-foreground-900">{demand.job_title}</h2>
@@ -369,16 +428,28 @@ export default function InterviewerJobsPage() {
                 </div>
                 <div className="flex flex-col items-start gap-2">
                   <span className={`rounded-md border px-2 py-1 text-xs font-medium ${approvalStyles[demand.approval_status]}`}>{approvalLabels[demand.approval_status]}</span>
-                  {demand.approval_status === 'rejected' && (
-                    <button type="button" onClick={() => openResubmit(demand)} className="flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700">
-                      <i className="ri-edit-line"></i>修改并重新提交
-                    </button>
-                  )}
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-primary-700">查看详情 <i className="ri-arrow-right-s-line text-base" /></span>
                 </div>
-              </article>
+              </button>
             ))}
           </div>
         </div>
+      )}
+
+      {selectedDemand && (
+        <InterviewerDemandDetailDrawer
+          demand={selectedDemand}
+          loading={detailLoading}
+          error={detailError}
+          onClose={closeDemandDetail}
+          onRetry={() => void openDemandDetail(selectedDemand, false)}
+          onResubmit={() => {
+            const demand = selectedDemand;
+            closeDemandDetail();
+            openResubmit(demand);
+          }}
+          onOpenScreening={() => navigate(`/interviewer/screening?demand=${selectedDemand.id}`)}
+        />
       )}
 
       {formOpen && (

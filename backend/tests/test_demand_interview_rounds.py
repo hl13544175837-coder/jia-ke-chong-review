@@ -981,6 +981,47 @@ def test_assignment_rejects_coerced_primary_and_round_sequence_values(
         ).count() == 0
 
 
+def test_assignment_rejects_fixed_round_name_sequence_mismatch(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "iv-fixed-round-owner@example.com", role="recruiter"
+    )
+    interviewer_id, _ = make_user(
+        "iv-fixed-round-interviewer@example.com", role="interviewer"
+    )
+    _, demand_id, candidate_id = _seed_demand_flow(app, owner_id, "FIXED-ROUND")
+    base = {
+        "candidate_id": candidate_id,
+        "demand_id": demand_id,
+        "interviewer_id": interviewer_id,
+    }
+
+    for round_name, round_sequence in (
+        ("round_1", 2),
+        ("round_2", 1),
+        ("round_3", 2),
+    ):
+        response = client.post(
+            "/api/interview/assignments",
+            headers=_auth(owner_token),
+            json={
+                **base,
+                "round": round_name,
+                "round_sequence": round_sequence,
+            },
+        )
+        assert response.status_code == 400
+        assert response.get_json()["code"] == "round_sequence_mismatch"
+
+    accepted = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={**base, "round": "round_2", "round_sequence": 2},
+    )
+    assert accepted.status_code == 201
+
+
 def test_mixed_case_cancelled_assignment_grants_no_candidate_or_pipeline_access(
     client, make_user, app
 ):

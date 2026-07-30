@@ -21,7 +21,7 @@ if str(BACKEND_DIR) not in sys.path:
 from database_urls import normalize_database_url
 
 
-EXPECTED_REVISION = "20260728_10"
+EXPECTED_REVISION = "20260730_13"
 KNOWN_PREDECESSOR_REVISIONS = {
     "20260710_01",
     "20260711_02",
@@ -31,9 +31,57 @@ KNOWN_PREDECESSOR_REVISIONS = {
     "20260721_06",
     "20260722_07",
     "20260724_08",
+    "20260726_09",
+    "20260728_10",
+    "20260729_11",
+    "20260729_12",
 }
 
 EXPECTED_COLUMNS = {
+    "candidates": {
+        "resume_sha256": {"family": "string", "length": 64, "nullable": True},
+    },
+    "candidate_resume_versions": {
+        "id": {"family": "integer", "nullable": False, "primary_key": True},
+        "org_id": {"family": "integer", "nullable": False},
+        "candidate_id": {"family": "integer", "nullable": False},
+        "version_no": {"family": "integer", "nullable": False},
+        "resume_json": {"family": "json", "nullable": False},
+        "raw_file_path": {"family": "text", "nullable": True},
+        "resume_sha256": {"family": "string", "length": 64, "nullable": True},
+        "parse_status": {"family": "string", "length": 20, "nullable": False},
+        "reason": {"family": "string", "length": 80, "nullable": False},
+        "created_by": {"family": "integer", "nullable": True},
+        "created_at": {"family": "datetime", "nullable": False},
+    },
+    "interview_reschedule_requests": {
+        "id": {"family": "integer", "nullable": False, "primary_key": True},
+        "org_id": {"family": "integer", "nullable": False},
+        "assignment_id": {"family": "integer", "nullable": False},
+        "replacement_assignment_id": {"family": "integer", "nullable": True},
+        "candidate_id": {"family": "integer", "nullable": False},
+        "job_id": {"family": "integer", "nullable": False},
+        "demand_id": {"family": "integer", "nullable": False},
+        "round": {"family": "string", "length": 30, "nullable": False},
+        "round_sequence": {"family": "integer", "nullable": False},
+        "source": {"family": "string", "length": 30, "nullable": False},
+        "status": {"family": "string", "length": 30, "nullable": False},
+        "requested_by": {"family": "integer", "nullable": False},
+        "requested_at": {"family": "datetime", "nullable": False},
+        "reason": {"family": "text", "nullable": False},
+        "proposed_times": {"family": "json", "nullable": False},
+        "original_interviewer_id": {"family": "integer", "nullable": False},
+        "original_scheduled_at": {"family": "datetime", "nullable": True},
+        "original_location": {"family": "string", "length": 240, "nullable": False},
+        "final_interviewer_id": {"family": "integer", "nullable": True},
+        "final_scheduled_at": {"family": "datetime", "nullable": True},
+        "final_location": {"family": "string", "length": 240, "nullable": False},
+        "processed_by": {"family": "integer", "nullable": True},
+        "processed_at": {"family": "datetime", "nullable": True},
+        "processor_note": {"family": "text", "nullable": True},
+        "created_at": {"family": "datetime", "nullable": False},
+        "updated_at": {"family": "datetime", "nullable": False},
+    },
     "recruitment_demands": {
         "approval_status": {
             "family": "string",
@@ -90,6 +138,28 @@ EXPECTED_COLUMNS = {
 }
 
 EXPECTED_INDEXES = {
+    "candidates": {
+        "ix_candidates_org_resume_sha256": {
+            "columns": ("org_id", "resume_sha256"),
+            "unique": False,
+        },
+    },
+    "candidate_resume_versions": {
+        "ix_candidate_resume_versions_org_candidate_created": {
+            "columns": ("org_id", "candidate_id", "created_at"),
+            "unique": False,
+        },
+    },
+    "interview_reschedule_requests": {
+        "ix_interview_reschedule_org_assignment_status": {
+            "columns": ("org_id", "assignment_id", "status"),
+            "unique": False,
+        },
+        "ix_interview_reschedule_org_candidate_demand_round": {
+            "columns": ("org_id", "candidate_id", "demand_id", "round_sequence"),
+            "unique": False,
+        },
+    },
     "business_review_tasks": {
         "ix_business_reviews_org_reviewer_status": {
             "columns": ("org_id", "reviewer_id", "status"),
@@ -124,6 +194,13 @@ EXPECTED_INDEXES = {
 }
 
 EXPECTED_UNIQUE_CONSTRAINTS = {
+    "candidate_resume_versions": {
+        "uq_candidate_resume_versions_org_candidate_no": (
+            "org_id",
+            "candidate_id",
+            "version_no",
+        ),
+    },
     "candidate_favorites": {
         "uq_candidate_favorites_org_user_candidate": (
             "org_id",

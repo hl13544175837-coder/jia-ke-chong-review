@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowRight,
-  BriefcaseBusiness,
   CheckCircle2,
   CircleHelp,
   Clock3,
@@ -21,6 +20,8 @@ import type {
   BusinessReviewTask,
 } from '@/features/businessReviews/types';
 import { useToast } from '@/hooks/useToast';
+import PageHeader from '@/components/ui/PageHeader';
+import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import ReviewActionModal from '@/pages/interviewer/dashboard/components/ReviewActionModal';
 import BusinessReviewDetail from './components/BusinessReviewDetail';
 
@@ -74,12 +75,17 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '业务筛选任务读取失败';
 }
 
+function reviewTabFromQuery(value: string | null): BusinessReviewStatus {
+  return tabs.some((tab) => tab.key === value) ? value as BusinessReviewStatus : 'pending';
+}
+
 export default function InterviewerScreeningPage() {
   const { showToast } = useToast();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedTaskId = Number(searchParams.get('task'));
+  const requestedDemandId = Number(searchParams.get('demand')) || null;
   const handledTaskId = useRef<number | null>(null);
-  const [activeTab, setActiveTab] = useState<BusinessReviewStatus>('pending');
+  const activeTab = reviewTabFromQuery(searchParams.get('tab'));
   const [tasks, setTasks] = useState<BusinessReviewTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -108,15 +114,44 @@ export default function InterviewerScreeningPage() {
     return () => window.removeEventListener('focus', refreshTasks);
   }, [loadTasks]);
 
+  const rememberTask = useCallback((taskId: number | null, tab: BusinessReviewStatus = activeTab) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    if (taskId) next.set('task', String(taskId));
+    else next.delete('task');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [activeTab, searchParams, setSearchParams]);
+
+  const openTaskDetail = useCallback((task: BusinessReviewTask) => {
+    handledTaskId.current = task.id;
+    setSelectedTask(task);
+    rememberTask(task.id, task.status);
+  }, [rememberTask]);
+
+  const closeTaskDetail = useCallback(() => {
+    handledTaskId.current = null;
+    setSelectedTask(null);
+    rememberTask(null);
+  }, [rememberTask]);
+
+  const changeActiveTab = useCallback((tab: BusinessReviewStatus) => {
+    handledTaskId.current = null;
+    setSelectedTask(null);
+    rememberTask(null, tab);
+  }, [rememberTask]);
+
   useEffect(() => {
     if (!Number.isInteger(requestedTaskId) || requestedTaskId <= 0) return;
     if (handledTaskId.current === requestedTaskId) return;
     const requestedTask = tasks.find((task) => task.id === requestedTaskId);
     if (!requestedTask) return;
-    handledTaskId.current = requestedTaskId;
-    setActiveTab(requestedTask.status);
-    setSelectedTask(requestedTask);
-  }, [requestedTaskId, tasks]);
+    openTaskDetail(requestedTask);
+  }, [openTaskDetail, requestedTaskId, tasks]);
+
+  const scopedTasks = useMemo(
+    () => requestedDemandId ? tasks.filter((task) => task.demand_id === requestedDemandId) : tasks,
+    [requestedDemandId, tasks],
+  );
 
   const tabCounts = useMemo(() => {
     const counts: Record<BusinessReviewStatus, number> = {
@@ -125,16 +160,18 @@ export default function InterviewerScreeningPage() {
       rejected: 0,
       needs_info: 0,
     };
-    tasks.forEach((task) => {
+    scopedTasks.forEach((task) => {
       counts[task.status] += 1;
     });
     return counts;
-  }, [tasks]);
+  }, [scopedTasks]);
 
   const visibleTasks = useMemo(
-    () => tasks.filter((task) => task.status === activeTab),
-    [activeTab, tasks],
+    () => scopedTasks.filter((task) => task.status === activeTab),
+    [activeTab, scopedTasks],
   );
+
+  const scopedDemand = scopedTasks[0]?.demand ?? tasks.find((task) => task.demand_id === requestedDemandId)?.demand;
 
   const openReview = useCallback((task: BusinessReviewTask) => {
     setDecisionError('');
@@ -150,80 +187,49 @@ export default function InterviewerScreeningPage() {
       const label = statusMeta[decision].label;
       showToast(`已提交「${reviewTask.candidate.name_masked}」的筛选结果：${label}`);
       setReviewTask(null);
-      setSelectedTask(null);
+      closeTaskDetail();
       await loadTasks(false);
     } catch (submitError) {
       setDecisionError(errorMessage(submitError));
     } finally {
       setSubmitting(false);
     }
-  }, [loadTasks, reviewTask, showToast]);
+  }, [closeTaskDetail, loadTasks, reviewTask, showToast]);
 
   return (
     <div className="space-y-5 p-4 sm:p-6">
-      <header className="flex flex-col gap-4 border-b border-background-200 pb-5 sm:flex-row sm:items-center">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
-            <BriefcaseBusiness size={20} aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-xl font-heading font-bold text-foreground-900">待业务筛选</h1>
-            <p className="mt-0.5 text-sm text-foreground-500">
-              招聘专员推送的简历，由业务负责人决定是否进入一面
-            </p>
-          </div>
-        </div>
-        <div className="sm:ml-auto">
+      <PageHeader
+        title="待面试官筛选"
+        description="招聘专员推送的简历，由业务负责人决定是否进入一面"
+        actions={(
+          <div>
           <p className="text-xs text-foreground-500">当前待处理</p>
           <p className="mt-0.5 text-2xl font-bold text-amber-600">{tabCounts.pending}</p>
-        </div>
-      </header>
+          </div>
+        )}
+      />
 
-      <section aria-label="业务筛选状态概览" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {tabs.map(({ key, label, icon: Icon }) => (
+      <WorkspaceTabs<BusinessReviewStatus>
+        items={tabs.map(({ key, label }) => ({ key, label, count: tabCounts[key] }))}
+        value={activeTab}
+        onChange={changeActiveTab}
+        ariaLabel="业务筛选状态"
+      />
+
+      {requestedDemandId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-100 bg-primary-50/40 px-4 py-3 text-sm">
+          <span className="text-foreground-600">当前仅显示：{scopedDemand?.job_title || `需求 #${requestedDemandId}`}</span>
           <button
-            key={key}
             type="button"
-            aria-pressed={activeTab === key}
-            onClick={() => setActiveTab(key)}
-            className={`flex min-h-20 items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
-              activeTab === key
-                ? 'border-primary-300 bg-primary-50/50'
-                : 'border-background-200 bg-white hover:border-background-300 hover:bg-background-50'
-            }`}
-          >
-            <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border ${statusMeta[key].badge}`}>
-              <Icon size={17} aria-hidden="true" />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-xl font-bold text-foreground-900">{tabCounts[key]}</span>
-              <span className="block text-xs font-medium text-foreground-600">{label}</span>
-            </span>
-          </button>
-        ))}
-      </section>
-
-      <div className="overflow-x-auto border-b border-background-200" role="tablist" aria-label="业务筛选状态">
-        <div className="flex min-w-max gap-1">
-          {tabs.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === key}
-              onClick={() => setActiveTab(key)}
-              className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-                activeTab === key
-                  ? 'border-primary-500 text-primary-700'
-                  : 'border-transparent text-foreground-500 hover:text-foreground-800'
-              }`}
-            >
-              {label}
-              <span className="ml-2 text-xs text-foreground-400">{tabCounts[key]}</span>
-            </button>
-          ))}
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('demand');
+              setSearchParams(next, { replace: true });
+            }}
+            className="font-medium text-primary-700 hover:text-primary-800"
+          >查看全部任务</button>
         </div>
-      </div>
+      )}
 
       <section aria-live="polite" aria-busy={loading}>
         {loading ? (
@@ -263,7 +269,7 @@ export default function InterviewerScreeningPage() {
                 <article key={task.id} className="rounded-lg border border-background-200 bg-white hover:border-background-300">
                   <button
                     type="button"
-                    onClick={() => setSelectedTask(task)}
+                    onClick={() => openTaskDetail(task)}
                     className="w-full px-4 py-4 text-left sm:px-5"
                   >
                     <div className="flex items-start gap-3">
@@ -321,16 +327,17 @@ export default function InterviewerScreeningPage() {
       </section>
 
       {selectedTask && (
-        <div className="fixed inset-0 z-40 flex justify-end bg-black/35" role="presentation">
+        <div className="workspace-detail-backdrop fixed inset-0 z-40 flex justify-end bg-black/35 lg:left-[var(--workspace-sidebar-width)] lg:top-14" role="presentation">
           <button
             type="button"
             aria-label="关闭业务筛选详情"
             className="absolute inset-0 cursor-default"
-            onClick={() => setSelectedTask(null)}
+            onClick={closeTaskDetail}
           />
           <aside
+            role="dialog"
             aria-label={`${selectedTask.candidate.name_masked}的业务筛选详情`}
-            className="relative h-full w-full max-w-3xl overflow-y-auto bg-white shadow-xl"
+            className="workspace-detail-panel relative h-full w-full max-w-3xl overflow-y-auto bg-white shadow-xl"
           >
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-background-200 bg-white px-5 py-4">
               <div>
@@ -341,7 +348,7 @@ export default function InterviewerScreeningPage() {
                 type="button"
                 title="关闭详情"
                 aria-label="关闭详情"
-                onClick={() => setSelectedTask(null)}
+                onClick={closeTaskDetail}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-500 hover:bg-background-100 hover:text-foreground-800"
               >
                 <X size={18} aria-hidden="true" />

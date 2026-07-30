@@ -927,3 +927,31 @@ def test_cleanup_demo_data_confirm_backs_up_then_deletes_only_referenced_upload(
     assert list(backend_uploads.glob("*")) == []
     assert [path.name for path in root_uploads.glob("*")] == ["demo-root.pdf"]
     assert list((tmp_path / "backups").glob("*"))
+
+
+def test_small_team_sit_release_uses_safe_roles_manual_resume_and_clean_context():
+    frontend_dockerfile = (ROOT / "readdy-frontend" / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    sit_template = (ROOT / "backend" / "sit-team-trial.env.example").read_text(
+        encoding="utf-8"
+    )
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
+    deployment = (ROOT / "DEPLOYMENT.md").read_text(encoding="utf-8")
+
+    assert "ARG VITE_DEFAULT_ROLE=recruiter" in frontend_dockerfile
+    assert "ARG VITE_GATEWAY_ROLE_MAP=" in frontend_dockerfile
+    assert "VITE_GATEWAY_ROLE_MAP" in makefile
+    assert "AUTH_GATEWAY_USER_ROLE=recruiter" in sit_template
+    assert "AUTH_GATEWAY_ROLE_MAP=" in sit_template
+    assert "RESUME_AI_ENABLED=false" in sit_template
+    assert "DATABASE_URL=mysql+pymysql://" in sit_template
+    assert "UPLOAD_FOLDER=/var/lib/zhipin/uploads" in sit_template
+    assert "/diagrams/" in gitignore
+    assert "/docs/acceptance-assets/" in gitignore
+    assert "diagrams" in dockerignore
+    assert "docs/acceptance-assets" in dockerignore
+    assert "20260730_13" in deployment
+    assert "AUTH_GATEWAY_ROLE_MAP" in deployment

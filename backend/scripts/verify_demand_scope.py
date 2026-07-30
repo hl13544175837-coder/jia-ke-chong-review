@@ -22,7 +22,7 @@ except ImportError:  # Direct execution: python backend/scripts/verify_demand_sc
     from audit_demand_scope import FACT_SPECS, fact_context
 
 
-EXPECTED_REVISION = "20260728_10"
+EXPECTED_REVISION = "20260730_13"
 EXPECTED_COLUMNS = {
     "recruitment_demands": {
         "approval_status",
@@ -40,7 +40,7 @@ EXPECTED_COLUMNS = {
         "reviewed_by",
         "submitted_at",
     },
-    "candidates": {"current_demand_id"},
+    "candidates": {"current_demand_id", "resume_sha256"},
     "pipeline_stages": {"demand_id"},
     "interviews": {"demand_id"},
     "interview_assignments": {
@@ -48,6 +48,33 @@ EXPECTED_COLUMNS = {
         "round_sequence",
         "is_primary",
         "primary_slot",
+    },
+    "interview_reschedule_requests": {
+        "org_id",
+        "assignment_id",
+        "replacement_assignment_id",
+        "candidate_id",
+        "job_id",
+        "demand_id",
+        "round",
+        "round_sequence",
+        "source",
+        "status",
+        "requested_by",
+        "requested_at",
+        "reason",
+        "proposed_times",
+        "original_interviewer_id",
+        "original_scheduled_at",
+        "original_location",
+        "final_interviewer_id",
+        "final_scheduled_at",
+        "final_location",
+        "processed_by",
+        "processed_at",
+        "processor_note",
+        "created_at",
+        "updated_at",
     },
     "interview_feedback": {
         "demand_id",
@@ -183,6 +210,12 @@ EXPECTED_UNIQUE_INDEXES = {
     },
 }
 EXPECTED_INDEXES = {
+    "candidates": {
+        "ix_candidates_org_resume_sha256": (
+            "org_id",
+            "resume_sha256",
+        ),
+    },
     "recruitment_demands": {
         "ix_recruitment_demands_org_default_interviewer": (
             "org_id",

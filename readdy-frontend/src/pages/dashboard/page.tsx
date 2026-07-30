@@ -10,6 +10,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useCompanyAuth } from '@/auth/companyAuth';
+import PageHeader from '@/components/ui/PageHeader';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { demandsApi } from '@/features/demands/api';
 import { interviewsApi } from '@/features/interviews/api';
@@ -17,11 +18,6 @@ import { offersApi } from '@/features/offers/api';
 import type { OfferStatus } from '@/features/offers/types';
 import { useToast } from '@/hooks/useToast';
 import { buildDashboardSummary, type DashboardFacts, type DemandRiskLevel } from './summary';
-import {
-  dashboardStageDrilldown,
-  type DashboardStage,
-} from './stageDrilldown';
-import MonthlyPerformancePanel from './components/MonthlyPerformancePanel';
 
 const emptyFacts: DashboardFacts = {
   demands: [],
@@ -350,26 +346,14 @@ export default function DashboardPage() {
     navigate(`/offers?demand=${item.demand.id}${tab}&from=dashboard`);
   };
 
-  const openStage = (stage: DashboardStage) => {
-    const destination = dashboardStageDrilldown(stage);
-    if (destination.kind === 'candidate') {
-      navigate('/candidates', { state: destination.state });
-      return;
-    }
-    navigate(destination.to);
-  };
-
   return (
     <div className="min-h-full bg-[#faf9f7] px-4 pb-8 pt-5 sm:px-6" data-ui="real-recruitment-dashboard">
       <div className="mx-auto max-w-[1540px] space-y-4">
-        <header>
-          <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-end 2xl:justify-between">
-            <div>
-              <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground-900">
-                {greeting()}，{name || (role === 'manager' ? '招聘经理' : '招聘专员')}。
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+        <PageHeader
+          title={`${greeting()}，${name || (role === 'manager' ? '招聘经理' : '招聘专员')}。`}
+          description="查看今天最需要推进的招聘任务和整体进度"
+          actions={(
+            <>
               <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-600">
                 <CalendarDays size={15} aria-hidden="true" />
                 {currentMonthLabel()}
@@ -405,9 +389,9 @@ export default function DashboardPage() {
               >
                 <RefreshCw size={15} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
               </button>
-            </div>
-          </div>
-        </header>
+            </>
+          )}
+        />
 
         {errors.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -442,24 +426,30 @@ export default function DashboardPage() {
               {taskItems.slice(0, 4).map((item) => {
                 const tone = taskToneClasses[item.tone];
                 return (
-                  <article key={item.key} className="grid min-h-[66px] grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition hover:bg-background-50/70">
+                  <button
+                    key={item.key}
+                    type="button"
+                    data-ui="dashboard-task-row"
+                    onClick={item.action}
+                    className="group grid min-h-[66px] w-full grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition hover:bg-background-50/70 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-200"
+                  >
                     <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tone.icon}`} aria-hidden="true">
                       <i className={item.tone === 'red' ? 'ri-error-warning-line' : item.tone === 'amber' ? 'ri-file-list-3-line' : item.tone === 'blue' ? 'ri-user-search-line' : 'ri-checkbox-circle-line'} />
                     </span>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0">
+                      <span className="flex flex-wrap items-center gap-2">
                         <span className={`rounded px-2 py-0.5 text-[11px] font-medium ${tone.badge}`}>{item.tag}</span>
-                        <p className="truncate text-sm font-semibold text-foreground-900">{item.title}</p>
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground-500">
+                        <span className="truncate text-sm font-semibold text-foreground-900">{item.title}</span>
+                      </span>
+                      <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground-500">
                         <span>{item.detail}</span>
                         <span>{item.time}</span>
-                      </div>
-                    </div>
-                    <button type="button" onClick={item.action} className="inline-flex h-8 items-center gap-1 rounded-lg border border-primary-300 bg-white px-3 text-xs font-medium text-primary-700 transition hover:bg-primary-50">
+                      </span>
+                    </span>
+                    <span className="inline-flex h-8 items-center gap-1 rounded-lg border border-primary-300 bg-white px-3 text-xs font-medium text-primary-700 transition group-hover:bg-primary-50">
                       {item.actionLabel}<ChevronRight size={13} aria-hidden="true" />
-                    </button>
-                  </article>
+                    </span>
+                  </button>
                 );
               })}
               {!loading && taskItems.length === 0 && (
@@ -527,7 +517,18 @@ export default function DashboardPage() {
                 <tbody className="divide-y divide-background-100">
                   {summary.demandProgress.slice(0, 5).map((item) => (
                     <tr key={item.demand.id} className="h-[52px] hover:bg-background-50/70">
-                      <td className="px-4 py-2.5"><button type="button" onClick={() => navigate(`/jobs?demand=${item.demand.id}`)} className="max-w-[220px] truncate text-left text-sm font-semibold text-foreground-900 hover:text-primary-700">{item.demand.job_title}</button><p className="mt-0.5 text-[11px] text-foreground-400">{item.demand.job_department} · {item.demand.job_city}</p></td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          type="button"
+                          data-ui="dashboard-demand-detail-link"
+                          onClick={() => navigate(`/jobs?demand=${item.demand.id}`)}
+                          className="group flex max-w-[250px] items-center gap-2 text-left"
+                        >
+                          <span className="truncate text-sm font-semibold text-foreground-900 group-hover:text-primary-700">{item.demand.job_title}</span>
+                          <span className="inline-flex shrink-0 items-center text-[11px] font-medium text-primary-700">查看需求<ChevronRight size={12} /></span>
+                        </button>
+                        <p className="mt-0.5 text-[11px] text-foreground-400">{item.demand.job_department} · {item.demand.job_city}</p>
+                      </td>
                       <td className="px-3 py-2.5 text-center text-sm font-medium text-foreground-800">{item.demand.metrics.onboarded_count}/{item.demand.headcount}</td>
                       <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-business-review" disabled={item.demand.metrics.business_review_count <= 0} onClick={() => openDemandMetric(item, 'business-review')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.business_review_count}</button></td>
                       <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-interview" disabled={item.demand.metrics.interview_count <= 0} onClick={() => openDemandMetric(item, 'interview')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.interview_count}</button></td>
@@ -559,8 +560,6 @@ export default function DashboardPage() {
             </SectionCard>
           </div>
         </div>
-
-        <MonthlyPerformancePanel onStageClick={openStage} />
       </div>
     </div>
   );

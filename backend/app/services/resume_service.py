@@ -94,6 +94,51 @@ class ResumeBatchService:
                 db.session.commit()
             raise
 
+    def parse_file(self, file_path: str) -> dict:
+        """解析一份新文件，但不立即改候选人数据。
+
+        替换简历时先用这个结果做重复身份检查，只有确认可写入后
+        才覆盖旧档案，避免一半成功一半失败。
+        """
+        return self.parser.parse_resume(file_path)
+
+    def replace_candidate_resume(
+        self,
+        candidate: Candidate,
+        *,
+        file_path: str,
+        content_sha256: str,
+        parse_result: dict,
+    ) -> Candidate:
+        """用新原件和新解析结果覆盖简历档案，保留候选人 ID 和业务历史。"""
+        candidate.raw_file_path = file_path
+        candidate.resume_sha256 = content_sha256
+        self._apply_parse_result(candidate, parse_result)
+        db.session.commit()
+        return candidate
+
+    def mark_replacement_parse_failed(
+        self,
+        candidate: Candidate,
+        *,
+        file_path: str,
+        content_sha256: str,
+        display_name: str,
+        error: Exception,
+    ) -> Candidate:
+        """新原件解析失败时，保留新原件供人工确认，不留用旧结构化内容。"""
+        candidate.raw_file_path = file_path
+        candidate.resume_sha256 = content_sha256
+        candidate.name_masked = display_name[:100]
+        candidate.email_masked = ""
+        candidate.phone_masked = ""
+        candidate.resume_json = {}
+        candidate.parse_status = "failed"
+        candidate.parse_error = str(error)[:500]
+        self._replace_candidate_tags(candidate, [])
+        db.session.commit()
+        return candidate
+
     def _apply_parse_result(self, candidate: Candidate, result: dict) -> None:
         info = result.get("extracted_info", {}) if isinstance(result, dict) else {}
         candidate.name_masked = info.get("name", "")[:100] if info.get("name") else ""
@@ -144,6 +189,7 @@ class ResumeBatchService:
             "summary": 2000,
             "intent_city": 80,
             "target_position": 120,
+            "work_years": 40,
             "additional_info": 4000,
         }
         list_fields = {

@@ -1,6 +1,6 @@
 import type { OriginalResumeInfo } from '@/features/businessReviews/types';
 
-export type ParseStatus = 'pending' | 'processing' | 'ok' | 'failed';
+export type ParseStatus = 'pending' | 'processing' | 'ok' | 'failed' | 'original_confirmed';
 export type CandidateStage =
   | 'pending'
   | 'ai_screen'
@@ -40,6 +40,9 @@ export interface CandidateListItem {
   current_demand?: CandidateDemandSummary | null;
   latest_demand?: CandidateDemandSummary | null;
   is_favorite: boolean;
+  identical_resume_count?: number;
+  same_name_count?: number;
+  is_local_demo_record?: boolean;
   created_at: string;
   parse_status: ParseStatus;
   parse_error?: string | null;
@@ -58,8 +61,14 @@ export interface CandidateListItem {
   source?: CandidateSourceInfo | null;
 }
 
+export type CandidateListApiItem = CandidateListItem & {
+  identical_resume_count: number;
+  same_name_count: number;
+  is_local_demo_record: boolean;
+};
+
 export interface CandidateListResponse {
-  candidates: CandidateListItem[];
+  candidates: CandidateListApiItem[];
   total: number;
   page: number;
   per_page: number;
@@ -94,6 +103,24 @@ export interface CandidateResumeDetail {
   parse_error: string | null;
   original_resume: OriginalResumeInfo;
   created_at: string;
+  resume_versions: ResumeVersion[];
+}
+
+export interface ResumeVersion {
+  id: number;
+  version_no: number;
+  name_masked: string;
+  parse_status: ParseStatus;
+  reason: string;
+  created_at: string;
+  available: boolean;
+  is_current: false;
+  download_url: string | null;
+}
+
+export interface ResumeVersionResponse {
+  candidate_id: number;
+  versions: ResumeVersion[];
 }
 
 export interface CandidateJourneyFeedback {
@@ -147,6 +174,7 @@ export interface CandidateJourney {
     status: string;
     note: string;
     feedback: CandidateJourneyFeedback | null;
+    feedback_locked: boolean;
   }>;
   offers: Array<{
     id: number;
@@ -168,11 +196,28 @@ export interface ResumeUploadResponse {
   deduplicated?: boolean;
   results: Array<{
     file: string;
-    status: string;
+    status: 'ok' | 'duplicate' | 'needs_confirmation' | 'error' | 'skipped';
     reason?: string;
+    parse_error?: string;
     candidate_id?: number;
     name_masked?: string;
+    existing_candidate_id?: number;
+    existing_candidate_name?: string;
+    match_basis?: string;
   }>;
+}
+
+export interface CandidateProfileUpdate {
+  profile: {
+    name: string;
+    phone: string;
+    email: string;
+    target_position: string;
+    intent_city: string;
+    work_years: string;
+    education?: Array<{ degree: string }>;
+  };
+  skills?: Array<{ tag: string; score: number }>;
 }
 
 export interface ResumeUploadSource {

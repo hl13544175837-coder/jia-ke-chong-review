@@ -1,24 +1,54 @@
-import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  allPositionProgress,
-  directorFunnel,
-  blockageDistribution,
-  highRiskPositions,
-} from '@/mocks/director';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import PageHeader from '@/components/ui/PageHeader';
+import ReadOnlyDetailDrawer from '@/components/ui/ReadOnlyDetailDrawer';
+import { analyticsApi } from '@/features/analytics/api';
+import type { AnalyticsOverview } from '@/features/analytics/types';
+import { buildDirectorData, type PositionProgress } from '../data';
 
 type SortKey = 'daysOpen' | 'risk' | 'department';
 
+function percent(value: number, total: number) {
+  return total > 0 ? Math.round((value / total) * 100) : 0;
+}
+
 export default function DirectorProgressPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedPositionId = searchParams.get('position');
   const [deptFilter, setDeptFilter] = useState('all');
   const [riskFilter, setRiskFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<SortKey>('daysOpen');
   const [activeFunnelStage, setActiveFunnelStage] = useState<string | null>(null);
+  const [data, setData] = useState<AnalyticsOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setData(await analyticsApi.overview());
+    } catch {
+      setError('招聘进展暂时无法读取，请稍后重试。');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const view = useMemo(() => data ? buildDirectorData(data) : null, [data]);
+  const allPositionProgress = useMemo(() => view?.allPositionProgress ?? [], [view]);
+  const directorFunnel = useMemo(() => view?.directorFunnel ?? { resumes: 0, screened: 0, interviewed: 0, offered: 0, hired: 0 }, [view]);
+  const blockageDistribution = useMemo(() => view?.blockageDistribution ?? [], [view]);
+  const highRiskPositions = useMemo(() => view?.highRiskPositions ?? [], [view]);
 
   const departments = useMemo(() => {
     const set = new Set(allPositionProgress.map(p => p.department));
     return ['all', ...Array.from(set)];
-  }, []);
+  }, [allPositionProgress]);
 
   const filtered = useMemo(() => {
     let res = [...allPositionProgress];
@@ -33,37 +63,54 @@ export default function DirectorProgressPage() {
       return a.department.localeCompare(b.department);
     });
     return res;
-  }, [deptFilter, riskFilter, sortBy]);
+  }, [allPositionProgress, deptFilter, riskFilter, sortBy]);
 
   const funnel = useMemo(() => {
     const stages = [
       { key: 'resumes', label: '简历收取', value: directorFunnel.resumes, pct: 100 },
-      { key: 'screened', label: '初筛通过', value: directorFunnel.screened, pct: Math.round((directorFunnel.screened / directorFunnel.resumes) * 100) },
-      { key: 'interviewed', label: '进入面试', value: directorFunnel.interviewed, pct: Math.round((directorFunnel.interviewed / directorFunnel.resumes) * 100) },
-      { key: 'offered', label: '发放Offer', value: directorFunnel.offered, pct: Math.round((directorFunnel.offered / directorFunnel.resumes) * 100) },
-      { key: 'hired', label: '成功入职', value: directorFunnel.hired, pct: Math.round((directorFunnel.hired / directorFunnel.resumes) * 100) },
+      { key: 'screened', label: '初筛通过', value: directorFunnel.screened, pct: percent(directorFunnel.screened, directorFunnel.resumes) },
+      { key: 'interviewed', label: '进入面试', value: directorFunnel.interviewed, pct: percent(directorFunnel.interviewed, directorFunnel.resumes) },
+      { key: 'offered', label: '发放Offer', value: directorFunnel.offered, pct: percent(directorFunnel.offered, directorFunnel.resumes) },
+      { key: 'hired', label: '成功入职', value: directorFunnel.hired, pct: percent(directorFunnel.hired, directorFunnel.resumes) },
     ];
     return stages;
-  }, []);
+  }, [directorFunnel]);
 
   const totalBlocked = useMemo(() => {
     return allPositionProgress.reduce((s, p) => s + p.blocked, 0);
-  }, []);
+  }, [allPositionProgress]);
+
+  const selectedPosition = useMemo(
+    () => allPositionProgress.find((position) => position.id === requestedPositionId) || null,
+    [allPositionProgress, requestedPositionId],
+  );
+
+  const openPosition = useCallback((position: PositionProgress) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('position', position.id);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const closePosition = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('position');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const riskLabel = (risk: PositionProgress['risk']) => (
+    risk === 'high' ? '高风险' : risk === 'medium' ? '需关注' : '正常'
+  );
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-foreground-900">招聘进展</h1>
-          <p className="text-sm text-foreground-500 mt-1">
-            {allPositionProgress.length} 个在招岗位 · {highRiskPositions.length} 个高风险 · {totalBlocked} 人阻塞中 · 只读模式
-          </p>
-        </div>
-        <Link to="/director/cockpit" className="flex items-center gap-1 text-sm text-foreground-500 hover:text-foreground-800 transition-colors cursor-pointer whitespace-nowrap">
-          <i className="ri-arrow-left-line"></i> 返回驾驶舱
-        </Link>
-      </div>
+      <PageHeader
+        title="招聘进展"
+        description={`${allPositionProgress.length} 个在招岗位 · ${highRiskPositions.length} 个高风险 · ${totalBlocked} 人阻塞中 · 只读模式`}
+        actions={<><button type="button" onClick={() => void loadData()} disabled={loading} className="rounded-lg border border-background-200 bg-white px-3 py-2 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-50">刷新</button><Link to="/director/cockpit" className="flex items-center gap-1 text-sm text-foreground-500 hover:text-foreground-800 transition-colors cursor-pointer whitespace-nowrap"><i className="ri-arrow-left-line"></i> 返回驾驶舱</Link></>}
+      />
+
+      {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button type="button" onClick={() => void loadData()} className="font-medium underline">重新加载</button></div>}
+      {loading && !data && <div className="rounded-xl border border-background-200 bg-white px-5 py-10 text-center text-sm text-foreground-500">正在读取本地招聘进展...</div>}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -81,7 +128,7 @@ export default function DirectorProgressPage() {
         </div>
         <div className="bg-white rounded-xl border border-background-200 p-4">
           <p className="text-xs text-foreground-500 mb-1">Offer转化率</p>
-          <p className="text-2xl font-bold text-foreground-900">{Math.round((directorFunnel.hired / directorFunnel.offered) * 100)}%</p>
+          <p className="text-2xl font-bold text-foreground-900">{directorFunnel.offered > 0 ? `${percent(directorFunnel.hired, directorFunnel.offered)}%` : '—'}</p>
         </div>
         <div className={`rounded-xl border p-4 ${totalBlocked > 0 ? 'bg-accent-50/30 border-accent-200' : 'bg-white border-background-200'}`}>
           <p className="text-xs text-foreground-500 mb-1">当前阻塞</p>
@@ -125,15 +172,15 @@ export default function DirectorProgressPage() {
           <div className="mt-4 pt-3 border-t border-background-100 grid grid-cols-3 gap-2 text-xs">
             <div>
               <span className="text-foreground-500">简历→入职转化率 </span>
-              <strong className="text-foreground-900">{Math.round((directorFunnel.hired / directorFunnel.resumes) * 100)}%</strong>
+              <strong className="text-foreground-900">{directorFunnel.resumes > 0 ? `${percent(directorFunnel.hired, directorFunnel.resumes)}%` : '—'}</strong>
             </div>
             <div>
               <span className="text-foreground-500">面试→Offer </span>
-              <strong className="text-foreground-900">{Math.round((directorFunnel.offered / directorFunnel.interviewed) * 100)}%</strong>
+              <strong className="text-foreground-900">{directorFunnel.interviewed > 0 ? `${percent(directorFunnel.offered, directorFunnel.interviewed)}%` : '—'}</strong>
             </div>
             <div>
               <span className="text-foreground-500">Offer接受率 </span>
-              <strong className="text-foreground-900">{Math.round((directorFunnel.hired / directorFunnel.offered) * 100)}%</strong>
+              <strong className="text-foreground-900">{directorFunnel.offered > 0 ? `${percent(directorFunnel.hired, directorFunnel.offered)}%` : '—'}</strong>
             </div>
           </div>
         </div>
@@ -153,6 +200,7 @@ export default function DirectorProgressPage() {
                 </div>
               </div>
             ))}
+            {blockageDistribution.length === 0 && <p className="py-8 text-center text-sm text-foreground-500">当前没有已识别的阻塞原因。</p>}
           </div>
         </div>
       </div>
@@ -171,7 +219,13 @@ export default function DirectorProgressPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {highRiskPositions.map(pos => (
-              <div key={pos.id} className="bg-white rounded-lg border border-accent-200 p-4">
+              <button
+                key={pos.id}
+                type="button"
+                data-ui="director-risk-position"
+                onClick={() => openPosition(pos)}
+                className="bg-white rounded-lg border border-accent-200 p-4 text-left transition hover:border-accent-300 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-200"
+              >
                 <div className="flex items-start justify-between mb-2">
                   <div>
                     <p className="text-sm font-semibold text-foreground-900">{pos.title}</p>
@@ -192,7 +246,8 @@ export default function DirectorProgressPage() {
                     ))}
                   </div>
                 )}
-              </div>
+                <span className="mt-3 inline-flex items-center text-xs font-medium text-accent-700">查看只读详情 <i className="ri-arrow-right-s-line"></i></span>
+              </button>
             ))}
           </div>
         </div>
@@ -246,7 +301,21 @@ export default function DirectorProgressPage() {
             </thead>
             <tbody className="divide-y divide-background-100">
               {filtered.map(pos => (
-                <tr key={pos.id} className="hover:bg-background-50/50 transition-colors">
+                <tr
+                  key={pos.id}
+                  data-ui="director-position-row"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`查看${pos.title}只读详情`}
+                  onClick={() => openPosition(pos)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openPosition(pos);
+                    }
+                  }}
+                  className="cursor-pointer transition-colors hover:bg-background-50/80 focus:bg-primary-50/60 focus:outline-none"
+                >
                   <td className="px-5 py-3.5 text-sm font-medium text-foreground-900">{pos.title}</td>
                   <td className="px-5 py-3.5 text-sm text-foreground-600">{pos.department}</td>
                   <td className="px-5 py-3.5 text-sm text-center">
@@ -277,10 +346,74 @@ export default function DirectorProgressPage() {
                   </td>
                 </tr>
               ))}
+              {filtered.length === 0 && <tr><td colSpan={9} className="px-5 py-12 text-center text-sm text-foreground-500">当前筛选条件下没有在招岗位。</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
+
+      {selectedPosition && (
+        <ReadOnlyDetailDrawer
+          title={selectedPosition.title}
+          description={`${selectedPosition.department} · 负责人：${selectedPosition.recruiter} · 只读详情`}
+          onClose={closePosition}
+        >
+          <div data-ui="director-position-detail" className="space-y-5">
+            <div className="rounded-lg border border-primary-100 bg-primary-50/60 px-4 py-3 text-sm text-primary-800">
+              当前为本地数据库真实记录的只读详情，只帮助管理层判断风险，不会修改招聘流程。
+            </div>
+
+            <section>
+              <h3 className="text-sm font-semibold text-foreground-900">岗位概况</h3>
+              <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                {[
+                  ['风险状态', riskLabel(selectedPosition.risk)],
+                  ['招聘目标', `${selectedPosition.filled}/${selectedPosition.headcount} 人`],
+                  ['开放时间', `${selectedPosition.daysOpen} 天`],
+                  ['截止日期', selectedPosition.deadline],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg border border-background-200 bg-background-50 px-3 py-3">
+                    <dt className="text-xs text-foreground-500">{label}</dt>
+                    <dd className="mt-1 font-medium text-foreground-900">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-semibold text-foreground-900">当前招聘进度</h3>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  ['筛选中', selectedPosition.screening],
+                  ['面试中', selectedPosition.interview],
+                  ['Offer', selectedPosition.offer],
+                  ['待入职', selectedPosition.onboarding],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg border border-background-200 px-3 py-3 text-center">
+                    <p className="text-xl font-bold text-foreground-900">{value}</p>
+                    <p className="mt-1 text-xs text-foreground-500">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-semibold text-foreground-900">阻塞原因</h3>
+              {selectedPosition.blockReasons.length > 0 ? (
+                <ul className="mt-3 space-y-2">
+                  {selectedPosition.blockReasons.map((reason) => (
+                    <li key={reason} className="flex items-start gap-2 rounded-lg border border-accent-100 bg-accent-50/40 px-3 py-2.5 text-sm text-foreground-700">
+                      <i className="ri-error-warning-line mt-0.5 text-accent-600"></i>{reason}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 rounded-lg bg-background-50 px-3 py-4 text-sm text-foreground-500">当前没有已记录的阻塞原因。</p>
+              )}
+            </section>
+          </div>
+        </ReadOnlyDetailDrawer>
+      )}
     </div>
   );
 }

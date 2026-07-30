@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import re
+import unicodedata
 from datetime import timedelta
 from pathlib import Path
 
@@ -218,9 +219,15 @@ def _candidate_library_item(
     stage_context=None,
     favorite=False,
     demands_by_id=None,
+    data_hygiene=None,
 ):
     info = _resume_info(candidate)
     demands_by_id = demands_by_id or {}
+    data_hygiene = data_hygiene or {
+        "identical_resume_count": 0,
+        "same_name_count": 0,
+        "is_local_demo_record": False,
+    }
     latest_demand_id = stage_context["demand_id"] if stage_context else None
     tags = sorted(
         [{"tag": t.tag, "score": t.score or 0} for t in candidate.tags if t.tag],
@@ -251,6 +258,7 @@ def _candidate_library_item(
         "latest_experience": _latest_experience(info),
         "education_summary": _education_summary(info),
         "source": _candidate_source_payload(candidate),
+        **data_hygiene,
     }
 
 
@@ -306,9 +314,67 @@ def _candidate_favorite_ids(candidates):
     }
 
 
+LOCAL_DEMO_NAME_PREFIXES = (
+    "验收候选人-",
+    "面试演示-",
+    "需求演示-",
+    "Offer演示-",
+)
+
+
+def _normalized_candidate_name(value):
+    text = unicodedata.normalize("NFKC", str(value or ""))
+    return re.sub(r"\s+", "", text).casefold()
+
+
+def _is_local_demo_candidate_name(value):
+    if not current_app.config.get("LOCAL_SCHEMA_COMPAT", False):
+        return False
+    text = str(value or "").strip()
+    return bool(re.fullmatch(r"候选人[0-9]{3}", text)) or text.startswith(
+        LOCAL_DEMO_NAME_PREFIXES
+    )
+
+
+def _candidate_data_hygiene_by_id():
+    rows = (
+        db.session.query(
+            Candidate.id,
+            Candidate.name_masked,
+            Candidate.resume_sha256,
+        )
+        .filter(
+            Candidate.org_id == g.org_id,
+            Candidate.deleted_at.is_(None),
+        )
+        .all()
+    )
+    resume_counts = {}
+    name_counts = {}
+    normalized_rows = []
+    for candidate_id, name_masked, resume_sha256 in rows:
+        resume_key = str(resume_sha256 or "").strip()
+        name_key = _normalized_candidate_name(name_masked)
+        normalized_rows.append((candidate_id, name_masked, resume_key, name_key))
+        if resume_key:
+            resume_counts[resume_key] = resume_counts.get(resume_key, 0) + 1
+        if name_key:
+            name_counts[name_key] = name_counts.get(name_key, 0) + 1
+
+    return {
+        candidate_id: {
+            "identical_resume_count": resume_counts.get(resume_key, 0) if resume_key else 0,
+            "same_name_count": name_counts.get(name_key, 0) if name_key else 0,
+            "is_local_demo_record": _is_local_demo_candidate_name(name_masked),
+        }
+        for candidate_id, name_masked, resume_key, name_key in normalized_rows
+    }
+
+
 def _candidate_library_payload(candidates, demand_id=None):
     stages = _candidate_stage_context(candidates, demand_id=demand_id)
     favorites = _candidate_favorite_ids(candidates)
+    data_hygiene_by_id = _candidate_data_hygiene_by_id()
     demand_ids = {
         candidate.current_demand_id
         for candidate in candidates
@@ -331,6 +397,7 @@ def _candidate_library_payload(candidates, demand_id=None):
             stage_context=stages.get(candidate.id),
             favorite=candidate.id in favorites,
             demands_by_id=demands_by_id,
+            data_hygiene=data_hygiene_by_id.get(candidate.id),
         )
         for candidate in candidates
     ]
@@ -520,7 +587,7 @@ def list_candidates():
             .filter(UploadBatch.source_channel.in_(channel_values or [source_channel]))
         )
 
-    if parse_status in {"pending", "processing", "ok", "failed"}:
+    if parse_status in {"pending", "processing", "ok", "failed", "original_confirmed"}:
         query = query.filter(Candidate.parse_status == parse_status)
 
     if pipeline_status in {"in_pipeline", "not_in_pipeline"}:
@@ -921,15 +988,26 @@ def candidate_journey(candidate_id):
         )
     except DemandContextError as error:
         return jsonify(error.as_payload()), error.status_code
+    viewer_assignment = None
     if g.role == "interviewer":
         assigned = InterviewAssignment.query.filter_by(
             org_id=g.org_id,
             interviewer_id=g.user_id,
             candidate_id=candidate_id,
             demand_id=demand.id,
-        ).filter(active_assignment_filter()).first()
-        if assigned is None:
+        ).filter(active_assignment_filter()).order_by(
+            InterviewAssignment.round_sequence.desc(),
+            InterviewAssignment.id.desc(),
+        ).first()
+        business_review = BusinessReviewTask.query.filter_by(
+            org_id=g.org_id,
+            reviewer_id=g.user_id,
+            candidate_id=candidate_id,
+            demand_id=demand.id,
+        ).first()
+        if assigned is None and business_review is None:
             return jsonify({"error": "Forbidden"}), 403
+        viewer_assignment = assigned
     elif not can_read_demand(g.user_id, g.role, g.org_id, demand):
         return jsonify({"error": "Forbidden"}), 403
     job = demand.job
@@ -1039,6 +1117,10 @@ def candidate_journey(candidate_id):
     } for f, u in fb_rows]
 
     feedback_by_assignment = {item["assignment_id"]: item for item in feedback if item.get("assignment_id")}
+    viewer_has_submitted_feedback = bool(
+        viewer_assignment
+        and feedback_by_assignment.get(viewer_assignment.id)
+    )
     assignment_rows = (
         db.session.query(InterviewAssignment, User)
         .outerjoin(User, User.id == InterviewAssignment.interviewer_id)
@@ -1050,6 +1132,29 @@ def candidate_journey(candidate_id):
         .order_by(InterviewAssignment.round_sequence.asc(), InterviewAssignment.id.asc())
         .all()
     )
+    visible_assignment_rows = (
+        [
+            row
+            for row in assignment_rows
+            if row[0].round_sequence <= viewer_assignment.round_sequence
+        ]
+        if viewer_assignment is not None
+        else []
+        if g.role == "interviewer"
+        else assignment_rows
+    )
+    visible_assignment_ids = {
+        assignment.id for assignment, _ in visible_assignment_rows
+    }
+    locked_assignment_ids = {
+        assignment.id
+        for assignment, _ in visible_assignment_rows
+        if (
+            viewer_assignment is not None
+            and not viewer_has_submitted_feedback
+            and assignment.round_sequence < viewer_assignment.round_sequence
+        )
+    }
     interview_rounds = [{
         "assignment_id": assignment.id,
         "round": assignment.round,
@@ -1059,8 +1164,24 @@ def candidate_journey(candidate_id):
         "location": assignment.location or "",
         "status": assignment.status,
         "note": assignment.note or "",
-        "feedback": feedback_by_assignment.get(assignment.id),
-    } for assignment, interviewer in assignment_rows]
+        "feedback": (
+            None
+            if assignment.id in locked_assignment_ids
+            else feedback_by_assignment.get(assignment.id)
+        ),
+        "feedback_locked": assignment.id in locked_assignment_ids,
+    } for assignment, interviewer in visible_assignment_rows]
+    visible_feedback = [
+        item
+        for item in feedback
+        if (
+            item.get("assignment_id") not in locked_assignment_ids
+            and (
+                g.role != "interviewer"
+                or item.get("assignment_id") in visible_assignment_ids
+            )
+        )
+    ]
 
     disposition_rows = (db.session.query(CandidateDisposition, User)
                         .outerjoin(User, User.id == CandidateDisposition.created_by)
@@ -1100,21 +1221,49 @@ def candidate_journey(candidate_id):
         "rejection_reason": item.rejection_reason or "",
     } for item in offer_rows]
 
+    interviewer_only = g.role == "interviewer"
+    response_demand_approval = demand_approval
+    response_business_reviews = business_reviews
+    response_timeline = timeline
+    response_ai_interviews = ai_interviews
+    response_dispositions = dispositions
+    response_offers = offers
+    if interviewer_only:
+        response_demand_approval = {
+            "status": demand_approval["status"],
+            "submitted_by_name": None,
+            "submitted_at": None,
+            "reviewed_by_name": None,
+            "reviewed_at": None,
+            "reason": "",
+            "history": [],
+        }
+        response_business_reviews = []
+        response_timeline = []
+        response_ai_interviews = []
+        response_dispositions = []
+        response_offers = []
+
     return jsonify({
         "candidate_id": candidate_id,
         "name_masked": cand.name_masked,
         "demand_id": demand.id,
         "job_id": job_id,
         "job_title": job.title if job else None,
-        "demand_approval": demand_approval,
-        "business_reviews": business_reviews,
-        "timeline": timeline,
-        "ai_interviews": ai_interviews,
+        "demand_approval": response_demand_approval,
+        "business_reviews": response_business_reviews,
+        "timeline": response_timeline,
+        "ai_interviews": response_ai_interviews,
         "interview_rounds": interview_rounds,
-        "feedback": feedback,
-        "dispositions": dispositions,
-        "offers": offers,
-        "decision_summary": _decision_summary(timeline, ai_interviews, feedback, dispositions),
+        "feedback": visible_feedback,
+        "dispositions": response_dispositions,
+        "offers": response_offers,
+        "decision_summary": _decision_summary(
+            response_timeline,
+            response_ai_interviews,
+            visible_feedback,
+            response_dispositions,
+        ),
     })
 
 

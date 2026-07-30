@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useCompanyPermissions } from '@/auth/companyPermissions';
@@ -30,6 +30,7 @@ const hrNavItems: NavItem[] = [
   { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['recruiter', 'manager', 'admin'], menuCode: 'interviews' },
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['recruiter', 'manager', 'admin'], menuCode: 'pipeline' },
   { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['recruiter', 'manager', 'admin'], menuCode: 'candidates' },
+  { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['recruiter', 'manager', 'admin'], menuCode: 'bi' },
 ];
 
 const directorNavItems: NavItem[] = [
@@ -37,13 +38,15 @@ const directorNavItems: NavItem[] = [
   { path: '/director/progress', icon: 'ri-bar-chart-grouped-line', label: '招聘进展', roles: ['hr_director'], menuCode: 'bi' },
   { path: '/director/insights', icon: 'ri-organization-chart', label: '人才储备', roles: ['hr_director'], menuCode: 'bi' },
   { path: '/director/approvals', icon: 'ri-shield-check-line', label: '审批与风险', roles: ['hr_director'], menuCode: 'pipeline' },
+  { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['hr_director'], menuCode: 'bi' },
 ];
 
 const interviewerNavItems: NavItem[] = [
   { path: '/interviewer/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['interviewer'], menuCode: 'index' },
   { path: '/interviewer/jobs', icon: 'ri-briefcase-line', label: '招聘需求', roles: ['interviewer'], menuCode: 'demands' },
-  { path: '/interviewer/screening', icon: 'ri-file-search-line', label: '待业务筛选', roles: ['interviewer'], menuCode: 'interviews' },
+  { path: '/interviewer/screening', icon: 'ri-file-search-line', label: '待面试官筛选', roles: ['interviewer'], menuCode: 'interviews' },
   { path: '/interviewer/interviews', icon: 'ri-calendar-event-line', label: '我的面试', roles: ['interviewer'], menuCode: 'interviews' },
+  { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['interviewer'], menuCode: 'bi' },
 ];
 
 const bottomNavItems: NavItem[] = [
@@ -217,7 +220,10 @@ export default function MainLayout() {
   };
 
   return (
-    <div className="min-h-screen flex bg-background-50">
+    <div
+      className="min-h-screen flex bg-background-50"
+      style={{ '--workspace-sidebar-width': sidebarCollapsed ? '5rem' : '14rem' } as CSSProperties}
+    >
       {/* Mobile overlay */}
       {mobileMenuOpen && (
         <div
@@ -245,7 +251,7 @@ export default function MainLayout() {
             <i className="ri-briefcase-line text-white text-sm"></i>
           </div>
           {!sidebarCollapsed && (
-            <span className="font-heading font-bold text-base text-foreground-900 whitespace-nowrap">智聘</span>
+            <span data-ui="app-brand-title" className="font-heading text-lg font-bold leading-none text-foreground-900 whitespace-nowrap">智聘</span>
           )}
         </div>
 
@@ -279,8 +285,8 @@ export default function MainLayout() {
             {visibleBottomNavItems.map((item) => (
               <Link
                 key={item.path}
-                to={item.path}
-                onClick={() => setMobileMenuOpen(false)}
+                to={rememberedNavTarget(item.path)}
+                onClick={() => { rememberCurrentPage(); setMobileMenuOpen(false); }}
                 className={`
                   flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap
                   ${sidebarCollapsed ? 'justify-center px-0' : ''}
