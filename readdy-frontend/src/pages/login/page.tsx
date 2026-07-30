@@ -7,6 +7,7 @@ import {
   useCompanyAuth,
 } from '@/auth/companyAuth';
 import { homePathForRole } from '@/auth/productRoleModel';
+import { formatBuildLabel } from '@/config/buildInfo';
 
 const loginErrorCopy = (message: string) => {
   if (/invalid credentials/i.test(message)) return '账号或密码错误';
@@ -194,6 +195,9 @@ export default function LoginPage() {
 
           <p className="mt-8 text-center text-xs text-foreground-400">
             仅限公司内部人员使用 · 如有问题请联系 IT 支持
+            <span className="mt-1 block" aria-label="当前构建版本">
+              {formatBuildLabel()}
+            </span>
           </p>
         </div>
       </div>

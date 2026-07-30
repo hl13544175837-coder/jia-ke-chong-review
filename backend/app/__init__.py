@@ -8,6 +8,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from runtime_paths import DEFAULT_UPLOAD_FOLDER, RuntimePathError, resolve_upload_folder
 
+from .build_info import public_build_info
 from .config_validation import validate_cors_origins
 
 db = SQLAlchemy()
@@ -95,12 +96,7 @@ def _register_healthcheck(app):
 
     @app.get("/actuator/info")
     def actuator_info():
-        return jsonify({
-            "app": {
-                "name": "zhipin-server",
-                "description": "智聘 · AI 招聘管理系统",
-            }
-        })
+        return jsonify({"app": public_build_info()})
 
 
 def _register_security_headers(app):

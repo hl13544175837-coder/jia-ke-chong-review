@@ -5,6 +5,8 @@ PKG_TAG ?= RC
 PKG_VERSION ?= $(shell date +%Y%m%d%H%M)
 VITE_DEFAULT_ROLE ?= recruiter
 VITE_GATEWAY_ROLE_MAP ?=
+BUILD_VERSION ?= $(shell git rev-parse --short=12 HEAD)
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 ifeq ($(strip $(PKG_TAG)),)
 	override PKG_TAG := RC
@@ -17,6 +19,7 @@ endif
 # Release policy is derived from the validated package tag and cannot be
 # replaced by a command-line variable assignment.
 override RELEASE_CHANNEL := $(PKG_TAG)
+override BUILD_CHANNEL := $(PKG_TAG)
 
 # Determine registry based on PKG_TAG
 ifeq ($(PKG_TAG),GA)
@@ -59,7 +62,7 @@ clean: cleanfrontend cleanserver
 
 buildfrontend:
 	@echo "Building zhipin-frontend image: $(ZHIPIN_FRONTEND_IMAGE)"
-	sudo docker build --build-arg VITE_DEFAULT_ROLE=$(VITE_DEFAULT_ROLE) --build-arg VITE_GATEWAY_ROLE_MAP="$(VITE_GATEWAY_ROLE_MAP)" -t $(ZHIPIN_FRONTEND_IMAGE) -f readdy-frontend/Dockerfile .
+	sudo docker build --build-arg VITE_DEFAULT_ROLE=$(VITE_DEFAULT_ROLE) --build-arg VITE_GATEWAY_ROLE_MAP="$(VITE_GATEWAY_ROLE_MAP)" --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_CHANNEL=$(BUILD_CHANNEL) --build-arg BUILD_TIME=$(BUILD_TIME) -t $(ZHIPIN_FRONTEND_IMAGE) -f readdy-frontend/Dockerfile .
 
 pushfrontend:
 	@echo "Pushing zhipin-frontend image: $(ZHIPIN_FRONTEND_IMAGE)"
@@ -71,7 +74,7 @@ cleanfrontend:
 
 buildserver:
 	@echo "Building zhipin-server image: $(ZHIPIN_SERVER_IMAGE)"
-	sudo docker build --build-arg RELEASE_CHANNEL=$(RELEASE_CHANNEL) --build-arg AUTO_MIGRATE_DATABASE=$(AUTO_MIGRATE_DATABASE) --build-arg ALLOW_EMPTY_DATABASE_BOOTSTRAP=$(ALLOW_EMPTY_DATABASE_BOOTSTRAP) --build-arg ALLOW_INSECURE_SIT_STARTUP=$(ALLOW_INSECURE_SIT_STARTUP) --build-arg SECURITY_HEADERS_ENABLED=$(SECURITY_HEADERS_ENABLED) --build-arg RATE_LIMIT_ENABLED=$(RATE_LIMIT_ENABLED) --build-arg ALLOW_PUBLIC_REGISTRATION=$(ALLOW_PUBLIC_REGISTRATION) --build-arg RESUME_AI_ENABLED=$(RESUME_AI_ENABLED) -t $(ZHIPIN_SERVER_IMAGE) -f backend/Dockerfile .
+	sudo docker build --build-arg RELEASE_CHANNEL=$(RELEASE_CHANNEL) --build-arg AUTO_MIGRATE_DATABASE=$(AUTO_MIGRATE_DATABASE) --build-arg ALLOW_EMPTY_DATABASE_BOOTSTRAP=$(ALLOW_EMPTY_DATABASE_BOOTSTRAP) --build-arg ALLOW_INSECURE_SIT_STARTUP=$(ALLOW_INSECURE_SIT_STARTUP) --build-arg SECURITY_HEADERS_ENABLED=$(SECURITY_HEADERS_ENABLED) --build-arg RATE_LIMIT_ENABLED=$(RATE_LIMIT_ENABLED) --build-arg ALLOW_PUBLIC_REGISTRATION=$(ALLOW_PUBLIC_REGISTRATION) --build-arg RESUME_AI_ENABLED=$(RESUME_AI_ENABLED) --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_CHANNEL=$(BUILD_CHANNEL) --build-arg BUILD_TIME=$(BUILD_TIME) -t $(ZHIPIN_SERVER_IMAGE) -f backend/Dockerfile .
 
 pushserver:
 	@echo "Pushing zhipin-server image: $(ZHIPIN_SERVER_IMAGE)"

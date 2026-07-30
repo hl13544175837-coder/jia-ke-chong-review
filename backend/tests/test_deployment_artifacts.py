@@ -968,3 +968,39 @@ def test_python_dependency_audit_is_pinned_and_not_in_runtime_image():
 
     assert audit_requirements.strip() == "pip-audit==2.10.1"
     assert "requirements-audit.txt" not in dockerfile
+
+
+def test_frontend_and_backend_images_receive_the_same_build_identity():
+    frontend_dockerfile = (ROOT / "readdy-frontend" / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    backend_dockerfile = (ROOT / "backend" / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    for name in ("BUILD_VERSION", "BUILD_CHANNEL", "BUILD_TIME"):
+        assert name in frontend_dockerfile
+        assert name in backend_dockerfile
+        assert name in makefile
+
+    dry_run = subprocess.run(
+        [
+            "make",
+            "-n",
+            "build",
+            "PKG_TAG=RC",
+            "PKG_VERSION=identity-test",
+            "BUILD_VERSION=abc123def456",
+            "BUILD_TIME=2026-07-30T12:00:00Z",
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert dry_run.returncode == 0
+    assert dry_run.stdout.count("BUILD_VERSION=abc123def456") == 2
+    assert dry_run.stdout.count("BUILD_CHANNEL=RC") == 2
+    assert dry_run.stdout.count("BUILD_TIME=2026-07-30T12:00:00Z") == 2
