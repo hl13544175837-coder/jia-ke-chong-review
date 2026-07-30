@@ -29,10 +29,10 @@
 
 ### 4.1 JavaScript 依赖安全收口
 
-- 升级 React Router 到审计工具认可的修复版本，并保持现有 `BrowserRouter` 路由行为。
+- 升级 React Router 到当前最新稳定版本，并保持现有 `BrowserRouter` 路由行为。若 npm 在上游尚无修复版本时仍报告仅影响未启用 RSC 模式的公告，只允许按公告编号建立单条、有代码证据的例外；任何新公告仍必须失败。
 - 升级或重解析 ESLint 工具链中的高危间接依赖。
 - 不直接使用不可审查的 `npm audit fix --force`；任何大版本变化都必须经过测试、类型检查、Lint 和生产构建。
-- 发布门禁要求线上依赖没有高危结果；开发依赖若上游暂时无兼容修复，必须形成明确、可复现、不会进入运行镜像的例外记录，不能静默忽略。
+- 发布门禁要求开发依赖没有未处理高危结果；线上依赖只允许机器可核对的 `GHSA-qwww-vcr4-c8h2` 单条例外，因为当前应用只使用 `BrowserRouter`，没有 RSC 路由、Server Action 或服务端 Router handler。例外必须在扫描输出中明确显示，不能静默忽略；出现任何其他高危公告都必须失败。
 
 ### 4.2 Python 依赖安全收口
 
@@ -96,7 +96,7 @@
 - 后端 `backend/tests` 与 `base_agent/tests` 全量通过。
 - 前端 `readdy-frontend/tests/*.test.mjs` 全量通过。
 - 前端类型检查、Lint 和正式构建通过。
-- JavaScript 线上依赖无高危审计结果；开发依赖无未解释高危结果。
+- JavaScript 开发依赖无高危审计结果；线上依赖除明确且机器校验的 `GHSA-qwww-vcr4-c8h2` RSC 非适用例外外，不得有其他高危结果。
 - Python 依赖审计可重复执行，结果已处理或明确记录。
 - Alembic 只有一个 head，且为 `20260730_13`。
 - Test/SIT 自检能通过安全样例测试，并稳定拒绝占位值和危险配置。

@@ -76,6 +76,13 @@ export default [
         'warn',
         { allowConstantExport: true },
       ],
+      // React Hooks 7 enables compiler-oriented rules that would require a
+      // broad behavioral refactor across the existing app. Keep the previous
+      // lint contract during this security-only dependency upgrade; those
+      // refactors belong in a separately reviewed change.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/purity': 'off',
       '@typescript-eslint/no-namespace': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',

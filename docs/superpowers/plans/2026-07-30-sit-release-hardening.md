@@ -13,6 +13,7 @@
 ## File map
 
 - `readdy-frontend/package.json`, `readdy-frontend/package-lock.json`: patched JavaScript dependencies.
+- `scripts/check-frontend-audit.mjs`: fail on every high-severity npm advisory except the single reviewed RSC-only exception.
 - `backend/requirements-audit.txt`: pinned audit-only Python tool; not included in the runtime image.
 - `backend/scripts/check_pilot_readiness.py`: shared production and Test/SIT configuration checks.
 - `backend/tests/test_config_validation.py`: behavior tests for the Test/SIT profile and redaction.
@@ -47,29 +48,28 @@ Expected: non-zero results identifying the React Router runtime chain and the ES
 
 - [ ] **Step 2: Apply compatible dependency updates**
 
-Use the newest stable 7.x version below the advisory's affected range, and
-override only the vulnerable ESLint transitive branch rather than forcing an
-ESLint major upgrade:
+Use the current stable Router and the current ESLint major so historical
+runtime and tooling advisories are fixed:
 
 ```bash
 cd readdy-frontend
-npm install --save-exact react-router-dom@7.11.0
+npm install --save-exact react-router-dom@7.18.2
+npm install --save-dev eslint@^10.8.0 @eslint/js@^10.0.1 eslint-plugin-react-hooks@^7.1.1
 ```
 
-Add this exact package override, then run `npm install` to refresh the lock:
+React Hooks 7 enables compiler-oriented lint rules that would require a broad
+behavioral refactor. Preserve the previous lint contract in
+`readdy-frontend/eslint.config.ts` during this security-only upgrade:
 
-```json
-"overrides": {
-  "minimatch@3.1.5": {
-    "brace-expansion": "1.1.18"
-  }
-}
+```typescript
+'react-hooks/set-state-in-effect': 'off',
+'react-hooks/refs': 'off',
+'react-hooks/purity': 'off',
 ```
 
 Review `package.json` and `package-lock.json`; do not accept a Node engine
-change outside the existing supported range. The Router pin is deliberate:
-the current advisory marks `7.12.0` and later affected, while this application
-uses BrowserRouter rather than RSC actions.
+change outside the existing supported range. Code search must show BrowserRouter
+usage and no RSC router, Server Action or server-side Router handler.
 
 - [ ] **Step 3: Verify audits are green**
 
@@ -81,7 +81,11 @@ npm audit --audit-level=high
 npm audit --omit=dev --audit-level=high
 ```
 
-Expected: exit 0 with no high-severity vulnerability.
+Expected: the full and runtime audits report only
+`GHSA-qwww-vcr4-c8h2`. This upstream advisory affects RSC action processing;
+the repository must continue to have no RSC entrypoint. Task 5 adds the strict
+machine-readable checker that allows only this one reviewed advisory and fails
+on every other high-severity result.
 
 - [ ] **Step 4: Verify frontend compatibility**
 
@@ -100,7 +104,7 @@ Expected: every command exits 0; BrowserRouter navigation remains unchanged.
 - [ ] **Step 5: Commit the dependency fix**
 
 ```bash
-git add readdy-frontend/package.json readdy-frontend/package-lock.json
+git add docs/superpowers/specs/2026-07-30-sit-release-hardening-design.md docs/superpowers/plans/2026-07-30-sit-release-hardening.md readdy-frontend/package.json readdy-frontend/package-lock.json readdy-frontend/eslint.config.ts
 git commit -m "fix: patch frontend dependency vulnerabilities"
 ```
 
@@ -423,6 +427,7 @@ git commit -m "feat: expose traceable SIT build identity"
 ### Task 5: Add one repository-level release gate
 
 **Files:**
+- Create: `scripts/check-frontend-audit.mjs`
 - Create: `scripts/check-sit-release.sh`
 - Modify: `backend/tests/test_deployment_artifacts.py`
 
@@ -450,6 +455,11 @@ def test_sit_release_gate_runs_required_checks_without_mutating_release_state():
     for forbidden in ["git push", "git commit", "alembic upgrade", "npm audit fix", "rm -rf"]:
         assert forbidden not in script
 ```
+
+Also require `scripts/check-frontend-audit.mjs` to execute `npm audit --json`,
+collect all high/critical advisory IDs, allow only
+`GHSA-qwww-vcr4-c8h2`, verify the frontend source contains no RSC entrypoint,
+print that exception explicitly, and exit non-zero for any additional ID.
 
 - [ ] **Step 2: Run the contract and verify red**
 
