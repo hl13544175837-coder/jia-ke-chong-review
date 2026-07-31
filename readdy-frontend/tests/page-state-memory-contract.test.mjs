@@ -51,8 +51,29 @@ test('招聘专员页面只恢复筛选条件，不重新弹出旧详情或操�
     '/interviews?status=awaiting_feedback',
   );
   assert.equal(
-    safeRememberedHref('/offers', '/offers?tab=pending&q=java&offer=3'),
-    '/offers?tab=pending&q=java',
+    safeRememberedHref('/offers', '/offers?demand=17&candidate=8&from=jobs&tab=pending&q=java&offer=3'),
+    '/offers?demand=17&tab=pending&q=java',
+  );
+});
+
+test('数据看板和总监页面恢复滚动位置但不重新打开旧下钻详情', async () => {
+  const moduleUrl = pathToFileURL(path.join(root, 'src/features/navigation/pageMemory.ts'));
+  const { memoryKeyForPath, safeRememberedHref } = await import(moduleUrl);
+
+  assert.equal(memoryKeyForPath('/dashboard'), '/dashboard');
+  assert.equal(memoryKeyForPath('/analytics'), '/analytics');
+  assert.equal(memoryKeyForPath('/director/cockpit'), '/director/cockpit');
+  assert.equal(memoryKeyForPath('/director/progress'), '/director/progress');
+  assert.equal(memoryKeyForPath('/director/insights'), '/director/insights');
+  assert.equal(memoryKeyForPath('/director/approvals'), '/director/approvals');
+
+  assert.equal(
+    safeRememberedHref('/analytics', '/analytics?insight=remaining-hc'),
+    '/analytics',
+  );
+  assert.equal(
+    safeRememberedHref('/director/progress', '/director/progress?position=demand-17'),
+    '/director/progress',
   );
 });
 

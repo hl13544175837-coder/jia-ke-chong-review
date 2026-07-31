@@ -4,14 +4,20 @@ export interface PageMemoryEntry {
 }
 
 const rememberedModulePaths = [
+  '/dashboard',
   '/jobs',
   '/candidates',
   '/interviews',
   '/offers',
   '/kanban',
+  '/analytics',
   '/interviewer/jobs',
   '/interviewer/screening',
   '/interviewer/interviews',
+  '/director/cockpit',
+  '/director/progress',
+  '/director/insights',
+  '/director/approvals',
 ] as const;
 
 type RememberedModulePath = (typeof rememberedModulePaths)[number];
@@ -20,11 +26,13 @@ const transientSearchParams: Partial<Record<RememberedModulePath, readonly strin
   '/jobs': ['demand'],
   '/candidates': ['candidate'],
   '/interviews': ['candidate', 'assignment', 'schedule', 'quickSchedule', 'from'],
-  '/offers': ['offer'],
+  '/offers': ['candidate', 'offer', 'from'],
   '/kanban': ['detailCandidate', 'candidate', 'target'],
+  '/analytics': ['insight'],
   '/interviewer/jobs': ['demand'],
   '/interviewer/screening': ['task'],
   '/interviewer/interviews': ['candidate', 'assignment', 'demand'],
+  '/director/progress': ['position'],
 };
 
 export function memoryKeyForPath(pathname: string): RememberedModulePath | null {
