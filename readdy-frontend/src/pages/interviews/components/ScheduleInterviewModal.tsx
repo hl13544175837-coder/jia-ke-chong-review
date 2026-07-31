@@ -1,5 +1,6 @@
-import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, LoaderCircle, Trash2, X } from 'lucide-react';
+import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 import type {
   InterviewAssignmentInput,
   InterviewAssignmentUpdateInput,
@@ -57,6 +58,7 @@ export default function ScheduleInterviewModal({
   onSave,
   onCancelAssignment,
 }: ScheduleInterviewModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
   const editing = row.assignment_id !== null;
   const initialRound = row.round || 'round_1';
   const passedRoundSequence = row.round_sequence || 1;
@@ -76,6 +78,12 @@ export default function ScheduleInterviewModal({
   useEffect(() => {
     if (!interviewerId && interviewers.length === 1) setInterviewerId(interviewers[0].id);
   }, [interviewerId, interviewers]);
+
+  useOverlayLifecycle({
+    canClose: !saving,
+    onClose,
+    initialFocusRef: modalRef,
+  });
 
   const canSave = useMemo(
     () => interviewerId > 0
@@ -113,7 +121,7 @@ export default function ScheduleInterviewModal({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground-900/45 p-4" role="presentation" onMouseDown={saving ? undefined : onClose}>
-      <div className="flex max-h-full w-full max-w-[620px] flex-col overflow-hidden rounded-lg bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="schedule-interview-title" onMouseDown={(event) => event.stopPropagation()}>
+      <div ref={modalRef} tabIndex={-1} className="flex max-h-full w-full max-w-[620px] flex-col overflow-hidden rounded-lg bg-white shadow-2xl outline-none" role="dialog" aria-modal="true" aria-labelledby="schedule-interview-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div>
             <h2 id="schedule-interview-title" className="text-lg font-bold text-foreground-900">{editing ? '调整面试安排' : '安排面试'}</h2>

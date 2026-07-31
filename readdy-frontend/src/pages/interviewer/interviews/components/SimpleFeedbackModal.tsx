@@ -1,5 +1,6 @@
 import { CheckCircle2, CircleHelp, Save, X, XCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 import type {
   InterviewAssignment,
   InterviewFeedback,
@@ -77,6 +78,7 @@ export default function SimpleFeedbackModal({
   onClose,
   onSave,
 }: SimpleFeedbackModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
   const [satisfaction, setSatisfaction] = useState<Satisfaction | null>(
     existingFeedback?.satisfaction ?? null,
   );
@@ -113,6 +115,12 @@ export default function SimpleFeedbackModal({
     setNote(existingFeedback?.note ?? '');
   }, [existingFeedback, assignment.id]);
 
+  useOverlayLifecycle({
+    canClose: !saving,
+    onClose,
+    initialFocusRef: modalRef,
+  });
+
   const canSave = Boolean(
     satisfaction
     && jobMatch
@@ -124,6 +132,8 @@ export default function SimpleFeedbackModal({
 
   return (
     <div
+      ref={modalRef}
+      tabIndex={-1}
       className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground-900/45 p-4"
       role="dialog"
       aria-modal="true"

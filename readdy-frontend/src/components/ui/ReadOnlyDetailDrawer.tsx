@@ -1,5 +1,6 @@
 import { AlertCircle, LoaderCircle, RotateCw, X } from 'lucide-react';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
+import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 
 interface ReadOnlyDetailDrawerProps {
   title: ReactNode;
@@ -25,19 +26,7 @@ export default function ReadOnlyDetailDrawer({
   widthClassName = 'max-w-[640px]',
 }: ReadOnlyDetailDrawerProps) {
   const drawerRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    drawerRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      previous?.focus();
-    };
-  }, [onClose]);
+  useOverlayLifecycle({ onClose, initialFocusRef: drawerRef });
 
   return (
     <>

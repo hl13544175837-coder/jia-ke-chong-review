@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { candidatesApi } from '@/features/candidates/api';
+import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 import type { CandidateListItem } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { offersApi } from '@/features/offers/api';
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function CreateOfferModal({ offer, demands, initialDemandId, initialCandidateId, onClose, onSaved }: Props) {
+  const modalRef = useRef<HTMLElement>(null);
   const [demandId, setDemandId] = useState(offer ? String(offer.demand_id) : initialDemandId ? String(initialDemandId) : '');
   const [candidateId, setCandidateId] = useState(offer ? String(offer.candidate_id) : initialCandidateId ? String(initialCandidateId) : '');
   const [salaryRange, setSalaryRange] = useState(offer?.salary_range ?? '');
@@ -66,6 +68,12 @@ export default function CreateOfferModal({ offer, demands, initialDemandId, init
     return () => { cancelled = true; };
   }, [candidateReloadKey, demandId, initialCandidateId, offer]);
 
+  useOverlayLifecycle({
+    canClose: !saving,
+    onClose,
+    initialFocusRef: modalRef,
+  });
+
   const saveDraft = async () => {
     const selectedDemandId = Number(demandId);
     const selectedCandidateId = Number(candidateId);
@@ -95,6 +103,8 @@ export default function CreateOfferModal({ offer, demands, initialDemandId, init
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground-900/40 p-4" role="presentation" onMouseDown={saving ? undefined : onClose}>
       <section
+        ref={modalRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="offer-form-title"

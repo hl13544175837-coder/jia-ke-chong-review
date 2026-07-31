@@ -1,5 +1,6 @@
 import { CalendarClock, LoaderCircle, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 import { localInterviewInputToUtc } from '@/features/interviews/dateTime';
 import type {
   InterviewAssignment,
@@ -28,6 +29,7 @@ export default function RescheduleRequestModal({
   onClose,
   onSubmit,
 }: RescheduleRequestModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
   const [reason, setReason] = useState('');
   const [firstTime, setFirstTime] = useState('');
   const [secondTime, setSecondTime] = useState('');
@@ -39,13 +41,11 @@ export default function RescheduleRequestModal({
     && (!secondTime || secondTime !== firstTime)
   ), [firstTime, minimumInterviewTime, reason, secondTime]);
 
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !saving) onClose();
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [onClose, saving]);
+  useOverlayLifecycle({
+    canClose: !saving,
+    onClose,
+    initialFocusRef: modalRef,
+  });
 
   const submit = () => {
     if (!canSubmit) return;
@@ -62,6 +62,8 @@ export default function RescheduleRequestModal({
       onMouseDown={saving ? undefined : onClose}
     >
       <div
+        ref={modalRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="reschedule-request-title"

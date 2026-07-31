@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProductRole } from '@/auth/productRoleModel';
+import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 import type { OfferAction, OfferActionInput, OfferRecord, OfferStatus } from '@/features/offers/types';
 import { ApiError } from '@/lib/api';
 import { offerRisk, offerWaitingLabel } from '../workbench';
@@ -98,6 +99,7 @@ export default function OfferDetailDrawer({
   onRunAction,
   onRefresh,
 }: Props) {
+  const drawerRef = useRef<HTMLElement>(null);
   const [action, setAction] = useState<OfferAction | null>(null);
   const [comment, setComment] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
@@ -122,6 +124,12 @@ export default function OfferDetailDrawer({
     setActionError('');
     setConflict(false);
   }, [initialAction, offer.id]);
+
+  useOverlayLifecycle({
+    canClose: !submitting,
+    onClose,
+    initialFocusRef: drawerRef,
+  });
 
   const selectAction = (nextAction: OfferAction) => {
     setAction(nextAction);
@@ -191,6 +199,8 @@ export default function OfferDetailDrawer({
     <>
       <div className="fixed inset-0 z-40 bg-foreground-900/35" onClick={submitting ? undefined : onClose} role="presentation"></div>
       <aside
+        ref={drawerRef}
+        tabIndex={-1}
         className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col bg-white shadow-2xl"
         role="dialog"
         aria-modal="true"

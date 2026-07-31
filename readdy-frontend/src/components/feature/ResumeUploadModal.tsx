@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 import { RESUME_UPLOAD_ACCEPT, RESUME_UPLOAD_CONTRACT } from './resumeUploadContract';
 
 interface ResumeUploadModalProps {
@@ -9,6 +10,7 @@ interface ResumeUploadModalProps {
 
 export default function ResumeUploadModal({ open, onClose, onImported }: ResumeUploadModalProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
@@ -18,14 +20,21 @@ export default function ResumeUploadModal({ open, onClose, onImported }: ResumeU
     [files],
   );
 
-  if (!open) return null;
-
   const resetAndClose = () => {
     if (processing) return;
     setFiles([]);
     setError('');
     onClose();
   };
+
+  useOverlayLifecycle({
+    active: open,
+    canClose: !processing,
+    onClose: resetAndClose,
+    initialFocusRef: modalRef,
+  });
+
+  if (!open) return null;
 
   const handleImport = () => {
     if (files.length === 0) {
@@ -46,7 +55,7 @@ export default function ResumeUploadModal({ open, onClose, onImported }: ResumeU
     <>
       <div className="fixed inset-0 z-[120] bg-foreground-900/40" onClick={resetAndClose}></div>
       <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 pointer-events-none">
-        <section className="w-full max-w-xl rounded-2xl bg-white shadow-2xl pointer-events-auto" role="dialog" aria-modal="true" aria-label="上传新简历">
+        <section ref={modalRef} tabIndex={-1} className="w-full max-w-xl rounded-2xl bg-white shadow-2xl outline-none pointer-events-auto" role="dialog" aria-modal="true" aria-label="上传新简历">
           <header className="flex items-center justify-between border-b border-background-100 px-6 py-4">
             <div>
               <h2 className="text-lg font-bold text-foreground-900">上传新简历</h2>

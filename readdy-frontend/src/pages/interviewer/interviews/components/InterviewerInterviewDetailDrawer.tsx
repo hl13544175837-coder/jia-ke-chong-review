@@ -10,9 +10,10 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
+import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 import type { CandidateJourney, CandidateResumeDetail } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { formatInterviewDateTime } from '@/features/interviews/dateTime';
@@ -124,19 +125,18 @@ export default function InterviewerInterviewDetailDrawer({
   onConfirmAndStartFeedback,
   onRequestReschedule,
 }: InterviewerInterviewDetailDrawerProps) {
+  const drawerRef = useRef<HTMLElement>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('interview');
 
   useEffect(() => {
     setActiveTab('interview');
   }, [assignment.id]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !escapeDisabled) onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [escapeDisabled, onClose]);
+  useOverlayLifecycle({
+    canClose: !escapeDisabled,
+    onClose,
+    initialFocusRef: drawerRef,
+  });
 
   const actionDisabled = detailLoading || (!canSubmit && !canSelfConfirm);
   const jobMatch = feedback ? evaluationText(feedback, 'job_match') : '';
@@ -151,9 +151,11 @@ export default function InterviewerInterviewDetailDrawer({
         className="workspace-detail-backdrop fixed inset-0 z-40 bg-foreground-900/40 lg:left-[var(--workspace-sidebar-width)] lg:top-14"
       />
       <aside
+        ref={drawerRef}
+        tabIndex={-1}
         role="dialog"
         aria-labelledby="interviewer-interview-detail-title"
-        className="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-[680px] flex-col overflow-hidden bg-white shadow-2xl lg:top-14"
+        className="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-[680px] flex-col overflow-hidden bg-white shadow-2xl outline-none lg:top-14"
       >
         <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div className="min-w-0">
