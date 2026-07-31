@@ -14,8 +14,9 @@ test('只读详情抽屉统一提供关闭、键盘、加载、错误和重试�
   assert.doesNotMatch(drawerSource, /aria-modal="true"/);
   assert.match(drawerSource, /workspace-detail-backdrop/);
   assert.match(drawerSource, /workspace-detail-panel/);
-  assert.match(drawerSource, /event\.key === 'Escape'/);
-  assert.match(drawerSource, /window\.addEventListener\('keydown'/);
+  assert.match(drawerSource, /useOverlayLifecycle/);
+  assert.match(drawerSource, /initialFocusRef: drawerRef/);
+  assert.doesNotMatch(drawerSource, /window\.addEventListener\('keydown'/);
   assert.match(drawerSource, /aria-label="关闭详情"/);
   assert.match(drawerSource, /loading/);
   assert.match(drawerSource, /error/);
