@@ -8,6 +8,7 @@ import { ToastProvider } from "@/hooks/useToast";
 import { CompanyAuthProvider, useCompanyAuth } from "@/auth/companyAuth";
 import { CompanyPermissionsProvider } from "@/auth/companyPermissions";
 import { ProductRoleProvider } from "@/auth/productRole";
+import AppErrorBoundary from "@/components/ui/AppErrorBoundary";
 
 type BrowserRouterFutureProps = BrowserRouterProps & {
   future: {
@@ -30,20 +31,22 @@ function CompanySecurityBoundary({ children }: { children: ReactNode }) {
 function App() {
   return (
     <I18nextProvider i18n={i18n}>
-      <FutureBrowserRouter
-        basename={__BASE_PATH__}
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-      >
-        <CompanyAuthProvider>
-          <ProductRoleProvider>
-            <CompanySecurityBoundary>
-              <ToastProvider>
-                <AppRoutes />
-              </ToastProvider>
-            </CompanySecurityBoundary>
-          </ProductRoleProvider>
-        </CompanyAuthProvider>
-      </FutureBrowserRouter>
+      <AppErrorBoundary>
+        <FutureBrowserRouter
+          basename={__BASE_PATH__}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          <CompanyAuthProvider>
+            <ProductRoleProvider>
+              <CompanySecurityBoundary>
+                <ToastProvider>
+                  <AppRoutes />
+                </ToastProvider>
+              </CompanySecurityBoundary>
+            </ProductRoleProvider>
+          </CompanyAuthProvider>
+        </FutureBrowserRouter>
+      </AppErrorBoundary>
     </I18nextProvider>
   );
 }
