@@ -200,6 +200,7 @@ export default function InterviewerScreeningPage() {
     <div className="space-y-5 p-4 sm:p-6">
       <PageHeader
         title="待面试官筛选"
+        visuallyHiddenTitle
         description="招聘专员推送的简历，由业务负责人决定是否进入一面"
         actions={(
           <div>

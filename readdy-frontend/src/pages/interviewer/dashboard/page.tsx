@@ -101,6 +101,7 @@ export default function InterviewerDashboardPage() {
     <div className="space-y-5 p-6" data-ui="real-interviewer-dashboard">
       <PageHeader
         title="工作台"
+        visuallyHiddenTitle
         description={`你好，${name || '面试官'}。这里只展示真实分配给你的任务。`}
         actions={(
           <button type="button" onClick={() => void loadWork()} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-600 disabled:opacity-60">

@@ -324,6 +324,7 @@ export default function OffersPage() {
     <div className="space-y-5 p-6" data-ui="real-offer-lifecycle">
       <PageHeader
         title="Offer 管理"
+        visuallyHiddenTitle
         description="确认方案、登记发放、跟进回复和确认入职"
         leading={fromDashboard && !requestedDemandId ? (
           <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>

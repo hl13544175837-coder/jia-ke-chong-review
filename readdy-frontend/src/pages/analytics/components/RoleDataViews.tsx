@@ -44,6 +44,7 @@ export function RecruiterDataBoard() {
     <DataBoardShell dataUi="recruiter-data-board">
       <PageHeader
         title="数据看板"
+        visuallyHiddenTitle
         description="查看自己的月度招聘进度与转化情况"
         actions={<span className="rounded-lg border border-primary-100 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-700">数据范围：仅本人</span>}
       />
@@ -135,6 +136,7 @@ export function InterviewerDataBoard() {
     <DataBoardShell dataUi="interviewer-data-board">
       <PageHeader
         title="数据看板"
+        visuallyHiddenTitle
         description="查看分配给自己的筛选与面试数据"
         actions={(
           <div className="flex flex-wrap items-center gap-2">

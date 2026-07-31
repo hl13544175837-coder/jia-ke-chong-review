@@ -43,16 +43,40 @@ test('主业务页面统一使用同一个页面标题组件', () => {
   assert.match(layout, /text-lg/);
 });
 
-test('招聘需求页保留无障碍标题但不重复展示左侧菜单名称', () => {
+test('左侧菜单页保留无障碍标题但不重复展示菜单名称', () => {
   const pageHeader = read('src/components/ui/PageHeader.tsx');
-  const jobsPage = read('src/pages/jobs/page.tsx');
+  const pages = [
+    ['src/pages/jobs/page.tsx', '招聘需求'],
+    ['src/pages/interviews/page.tsx', '面试管理'],
+    ['src/pages/offers/page.tsx', 'Offer 管理'],
+    ['src/pages/talent-map/page.tsx', '人才地图'],
+    ['src/pages/analytics/page.tsx', '数据看板'],
+    ['src/pages/interviewer/dashboard/page.tsx', '工作台'],
+    ['src/pages/interviewer/jobs/page.tsx', '招聘需求'],
+    ['src/pages/interviewer/screening/page.tsx', '待面试官筛选'],
+    ['src/pages/interviewer/interviews/page.tsx', '我的面试'],
+    ['src/pages/director/cockpit/page.tsx', '管理驾驶舱'],
+    ['src/pages/director/progress/page.tsx', '招聘进展'],
+    ['src/pages/director/insights/page.tsx', '人才储备'],
+    ['src/pages/director/approvals/page.tsx', '审批与风险'],
+    ['src/pages/settings/page.tsx', '系统设置'],
+  ];
 
   assert.match(pageHeader, /visuallyHiddenTitle/);
   assert.match(pageHeader, /sr-only/);
-  assert.match(
-    jobsPage,
-    /<PageHeader[\s\S]*title="招聘需求"[\s\S]*visuallyHiddenTitle/,
-  );
+  pages.forEach(([path, title]) => {
+    assert.match(
+      read(path),
+      new RegExp(`<PageHeader[\\s\\S]*title="${title}"[\\s\\S]*visuallyHiddenTitle`),
+      path,
+    );
+  });
+
+  const candidatesPage = read('src/pages/candidates/page.tsx');
+  assert.match(candidatesPage, /visuallyHiddenTitle=\{!navState\?\.jobTitle\}/);
+
+  const roleDataViews = read('src/pages/analytics/components/RoleDataViews.tsx');
+  assert.equal((roleDataViews.match(/title="数据看板"[\s\S]{0,180}?visuallyHiddenTitle/g) || []).length, 2);
 });
 
 test('状态页签统一为绿色实心选中态且 Offer 不再使用底部横线', () => {

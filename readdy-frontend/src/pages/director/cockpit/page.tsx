@@ -58,6 +58,7 @@ export default function DirectorCockpitPage() {
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
       <PageHeader
         title="管理驾驶舱"
+        visuallyHiddenTitle
         description="本地数据库招聘总览 · 只读模式"
         actions={<div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-foreground-400">数据更新于 {data?.generated_at ? new Date(data.generated_at).toLocaleString('zh-CN') : '读取中'}</span>

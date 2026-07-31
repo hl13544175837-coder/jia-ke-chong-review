@@ -196,6 +196,7 @@ function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruit
       <div className="mx-auto max-w-[1540px] space-y-4">
       <PageHeader
         title="数据看板"
+        visuallyHiddenTitle
         description={data?.purpose || '读取当前组织的真实招聘数据'}
         actions={<div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-foreground-400">数据更新于 {displayTime(data?.generated_at)}</span>

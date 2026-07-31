@@ -105,6 +105,7 @@ export default function DirectorProgressPage() {
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
       <PageHeader
         title="招聘进展"
+        visuallyHiddenTitle
         description={`${allPositionProgress.length} 个在招岗位 · ${highRiskPositions.length} 个高风险 · ${totalBlocked} 人阻塞中 · 只读模式`}
         actions={<><button type="button" onClick={() => void loadData()} disabled={loading} className="rounded-lg border border-background-200 bg-white px-3 py-2 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-50">刷新</button><Link to="/director/cockpit" className="flex items-center gap-1 text-sm text-foreground-500 hover:text-foreground-800 transition-colors cursor-pointer whitespace-nowrap"><i className="ri-arrow-left-line"></i> 返回驾驶舱</Link></>}
       />

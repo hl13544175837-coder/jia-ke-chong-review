@@ -372,6 +372,7 @@ export default function InterviewerInterviewsPage() {
     <div className="space-y-5 p-6" data-ui="real-interviewer-assignments">
       <PageHeader
         title="我的面试"
+        visuallyHiddenTitle
         description="查看已分配任务并提交每轮评价"
         actions={(
           <button

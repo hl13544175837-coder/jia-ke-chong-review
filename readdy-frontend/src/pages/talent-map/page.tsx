@@ -326,6 +326,7 @@ export default function TalentMapPage() {
         <PageHeader
           className="mb-6"
           title="人才地图"
+          visuallyHiddenTitle
           description="按行业和公司沉淀人才分布与组织信息"
           actions={(
             <button

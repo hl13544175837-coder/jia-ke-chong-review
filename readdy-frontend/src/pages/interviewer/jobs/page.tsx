@@ -358,6 +358,7 @@ export default function InterviewerJobsPage() {
     <div className="space-y-5 p-6" data-ui="business-demand-page">
       <PageHeader
         title="招聘需求"
+        visuallyHiddenTitle
         description={name || '业务负责人'}
         actions={(
           <button

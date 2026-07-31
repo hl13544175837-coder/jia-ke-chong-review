@@ -493,6 +493,7 @@ export default function RecruiterInterviewsPage() {
     <div className="space-y-5 p-6" data-ui="real-recruiter-interview-workbench">
       <PageHeader
         title="面试管理"
+        visuallyHiddenTitle
         description="从安排面试到收回反馈，都在这里处理"
         leading={fromDashboard && !requestedDemandId ? (
           <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>

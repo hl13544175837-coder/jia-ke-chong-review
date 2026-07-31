@@ -1360,6 +1360,7 @@ export default function CandidatesPage() {
       <PageHeader
         className="border-b border-background-200 pb-4"
         title={navState?.jobTitle ? '当前需求候选人' : '简历库'}
+        visuallyHiddenTitle={!navState?.jobTitle}
         description={navState?.jobTitle ? `${navState.jobTitle} · 已自动带入需求和阶段条件` : '候选人与业务筛选'}
         leading={(navState?.fromJobs || navState?.fromDashboard) ? (
           <button
