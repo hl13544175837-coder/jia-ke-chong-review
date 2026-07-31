@@ -1,4 +1,5 @@
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 from PIL import Image
@@ -85,6 +86,74 @@ def test_image_resume_rejects_placeholder_workspace_url(monkeypatch):
 
     with pytest.raises(RuntimeError, match="占位符"):
         DashScopeVisionConfig.from_environment()
+
+
+def test_document_resume_sends_pages_to_vision_model_in_parallel():
+    """多页简历不能按页串行等待，否则会超过网关的等待时间。"""
+    from image_resume_parser import DashScopeVisionConfig, ImageResumeVisionParser
+
+    class FakeResponse:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"name":"并行候选人","experience":[]}'
+                        }
+                    }
+                ]
+            }
+
+    class FakeHttpClient:
+        def __init__(self):
+            self.barrier = Barrier(3, timeout=1)
+            self.calls = 0
+
+        def post(self, url, headers, json, timeout):
+            self.calls += 1
+            self.barrier.wait()
+            return FakeResponse()
+
+    client = FakeHttpClient()
+    parser = ImageResumeVisionParser(
+        config=DashScopeVisionConfig(
+            endpoint="https://workspace.example.com/compatible-mode/v1/chat/completions",
+            api_key="secret",
+            model="qwen3.7-plus",
+            timeout_seconds=120,
+        ),
+        http_client=client,
+    )
+
+    result = parser.parse_document([
+        "data:image/png;base64,cGFnZTE=",
+        "data:image/png;base64,cGFnZTI=",
+        "data:image/png;base64,cGFnZTM=",
+    ])
+
+    assert client.calls == 3
+    assert result.extracted_info["name"] == "并行候选人"
+
+
+def test_empty_document_resume_returns_empty_result_without_starting_workers():
+    from image_resume_parser import DashScopeVisionConfig, ImageResumeVisionParser
+
+    parser = ImageResumeVisionParser(
+        config=DashScopeVisionConfig(
+            endpoint="https://workspace.example.com/compatible-mode/v1/chat/completions",
+            api_key="secret",
+            model="qwen3.7-plus",
+            timeout_seconds=120,
+        )
+    )
+
+    result = parser.parse_document([])
+
+    assert result.extracted_info == {}
+    assert result.skills == []
 
 
 def test_failed_resume_upload_keeps_retryable_candidate(client, make_user, app, monkeypatch, tmp_path):

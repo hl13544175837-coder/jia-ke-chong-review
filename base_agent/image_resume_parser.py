@@ -7,6 +7,7 @@ import io
 import json
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, Mapping
@@ -24,6 +25,7 @@ MODEL_IMAGE_MAX_PIXELS = 16_000_000
 SOURCE_IMAGE_MAX_PIXELS = 64_000_000
 MIN_IMAGE_EDGE = 11
 MAX_IMAGE_ASPECT_RATIO = 200
+DOCUMENT_VISION_MAX_PARALLEL_REQUESTS = 3
 
 _SUPPORTED_PIL_FORMATS = frozenset({"JPEG", "PNG", "WEBP", "GIF"})
 _MIME_TYPES = {
@@ -116,13 +118,30 @@ class ImageResumeVisionParser:
         return _normalize_resume_payload(payload)
 
     def parse_document(self, data_uris: list[str]) -> ImageResumeParseResult:
-        """解析多页文档（PDF/DOCX 已转图片），逐页送给视觉模型再合并结构。"""
+        """解析多页文档（PDF/DOCX 已转图片），并行识别各页后合并结构。"""
         config = self.config or DashScopeVisionConfig.from_environment()
-        all_results: list[dict] = []
-        for page_num, uri in enumerate(data_uris, 1):
+        if not data_uris:
+            return ImageResumeParseResult(extracted_info={}, skills=[])
+
+        def parse_page(page_num: int, uri: str) -> Mapping[str, object]:
             page_prompt = _resume_document_page_prompt(page_num, len(data_uris))
             response = self._post_completion(config, [uri], page_prompt)
-            payload = _parse_json_object(_extract_message_content(response))
+            return _parse_json_object(_extract_message_content(response))
+
+        page_payloads: list[Mapping[str, object] | None] = [None] * len(data_uris)
+        worker_count = min(DOCUMENT_VISION_MAX_PARALLEL_REQUESTS, len(data_uris))
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = {
+                executor.submit(parse_page, page_num, uri): page_num - 1
+                for page_num, uri in enumerate(data_uris, 1)
+            }
+            for future in as_completed(futures):
+                page_payloads[futures[future]] = future.result()
+
+        all_results: list[dict] = []
+        for payload in page_payloads:
+            if payload is None:
+                continue
             # 兼容两种返回：顶层 extracted_info 或平铺字段
             info = payload.get("extracted_info") if isinstance(payload.get("extracted_info"), dict) else payload
             if isinstance(info, dict) and _has_any_value(info):
