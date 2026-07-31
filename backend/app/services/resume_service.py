@@ -1,3 +1,5 @@
+import os
+import socket
 import sys
 from pathlib import Path
 from flask import current_app
@@ -11,6 +13,14 @@ if str(BASE_AGENT_DIR) not in sys.path:
 from resume_parser import ResumeParser
 from .. import db
 from ..models import Candidate, CandidateTag, User
+
+
+def resume_parse_node_id() -> str:
+    return (os.environ.get("HOSTNAME") or socket.gethostname() or "local")[:120]
+
+
+def resume_parse_queue_marker() -> str:
+    return f"queued:{resume_parse_node_id()}"
 
 
 class ResumeBatchService:
@@ -42,6 +52,37 @@ class ResumeBatchService:
         db.session.add(candidate)
         db.session.flush()  # 获取 candidate.id
         self._apply_parse_result(candidate, result)
+        db.session.commit()
+        return candidate
+
+    def create_pending_candidate(
+        self,
+        file_path: str,
+        owner_hr_id: int,
+        display_name: str,
+        upload_batch_id: int = None,
+        org_id: int | None = None,
+        resume_sha256: str | None = None,
+    ) -> Candidate:
+        """先安全落库，模型解析交给后台任务，避免上传请求被网关截断。"""
+        candidate = Candidate(
+            org_id=org_id or self._owner_org_id(owner_hr_id),
+            owner_hr_id=owner_hr_id,
+            upload_batch_id=upload_batch_id,
+            name_masked=display_name[:100],
+            resume_json={},
+            raw_file_path=file_path,
+            resume_sha256=resume_sha256,
+            parse_status="pending",
+            parse_error=resume_parse_queue_marker(),
+        )
+        db.session.add(candidate)
+        db.session.commit()
+        return candidate
+
+    def queue_candidate(self, candidate: Candidate) -> Candidate:
+        candidate.parse_status = "pending"
+        candidate.parse_error = resume_parse_queue_marker()
         db.session.commit()
         return candidate
 

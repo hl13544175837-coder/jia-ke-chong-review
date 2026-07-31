@@ -320,7 +320,7 @@ def _resume_detail_payload(candidate):
         "resume_json": candidate.resume_json,
         "tags": [{"tag": tag.tag, "score": tag.score} for tag in candidate.tags],
         "parse_status": candidate.parse_status,
-        "parse_error": candidate.parse_error,
+        "parse_error": _public_parse_error(candidate),
         "original_resume": _original_resume_payload(candidate),
         "source": _candidate_source_payload(candidate),
         "created_at": candidate.created_at.isoformat(),
@@ -332,6 +332,15 @@ def _resume_detail_payload(candidate):
             ).order_by(CandidateResumeVersion.version_no.desc()).all()
         ],
     }
+
+
+def _public_parse_error(candidate):
+    error = str(candidate.parse_error or "")
+    if candidate.parse_status in {"pending", "processing"} and error.startswith(
+        ("queued:", "worker:")
+    ):
+        return None
+    return candidate.parse_error
 
 
 def _actionable_parse_failure_message(error):
@@ -610,6 +619,30 @@ def _process_resume(
             "candidate_id": candidate.id,
             "reason": RESUME_AI_DISABLED_MESSAGE,
             "parse_error": RESUME_AI_DISABLED_MESSAGE,
+        })
+        return
+
+    if current_app.config.get("RESUME_PARSE_ASYNC_ENABLED", True):
+        candidate = svc.create_pending_candidate(
+            fpath,
+            owner_hr_id=g.user_id,
+            display_name=display_name,
+            upload_batch_id=upload_batch_id,
+            org_id=g.org_id,
+            resume_sha256=content_sha256,
+        )
+        record_event(
+            "resume.parse_queued",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            demand_id=target_demand_id,
+            payload={"file": display_name},
+        )
+        results.append({
+            "file": display_name,
+            "status": "processing",
+            "candidate_id": candidate.id,
+            "reason": "文件已入库，AI 正在后台解析",
         })
         return
 
@@ -1389,6 +1422,16 @@ def retry_parse(candidate_id):
             "error": RESUME_AI_DISABLED_MESSAGE,
             "code": "resume_ai_disabled",
         }), 409
+
+    if current_app.config.get("RESUME_PARSE_ASYNC_ENABLED", True):
+        svc = ResumeBatchService()
+        candidate = svc.queue_candidate(candidate)
+        record_event(
+            "resume.retry_parse_queued",
+            entity_id=candidate.id,
+            entity_type="candidate",
+        )
+        return jsonify(_resume_detail_payload(candidate)), 202
 
     svc = ResumeBatchService()
     try:

@@ -196,7 +196,7 @@ export interface ResumeUploadResponse {
   deduplicated?: boolean;
   results: Array<{
     file: string;
-    status: 'ok' | 'duplicate' | 'needs_confirmation' | 'error' | 'skipped';
+    status: 'ok' | 'processing' | 'duplicate' | 'needs_confirmation' | 'error' | 'skipped';
     reason?: string;
     parse_error?: string;
     candidate_id?: number;

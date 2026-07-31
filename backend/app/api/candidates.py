@@ -213,6 +213,15 @@ def _demand_summary(demand):
     }
 
 
+def _public_parse_error(candidate):
+    error = str(candidate.parse_error or "")
+    if candidate.parse_status in {"pending", "processing"} and error.startswith(
+        ("queued:", "worker:")
+    ):
+        return None
+    return candidate.parse_error
+
+
 def _candidate_library_item(
     candidate,
     *,
@@ -249,7 +258,7 @@ def _candidate_library_item(
         "is_favorite": favorite,
         "created_at": candidate.created_at.isoformat(),
         "parse_status": candidate.parse_status,
-        "parse_error": candidate.parse_error,
+        "parse_error": _public_parse_error(candidate),
         "tag_count": len(candidate.tags),
         "top_tags": tags[:6],
         "max_score": tags[0]["score"] if tags else 0,

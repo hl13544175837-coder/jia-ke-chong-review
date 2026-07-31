@@ -609,6 +609,15 @@ export default function CandidatesPage() {
   }, [loadCandidates]);
 
   useEffect(() => {
+    const hasBackgroundParsing = candidateResponse.candidates.some(
+      (candidate) => ['pending', 'processing'].includes(candidate.parse_status),
+    );
+    if (!hasBackgroundParsing) return undefined;
+    const timer = window.setInterval(() => void loadCandidates(), 3000);
+    return () => window.clearInterval(timer);
+  }, [candidateResponse.candidates, loadCandidates]);
+
+  useEffect(() => {
     void loadDemands();
   }, [loadDemands]);
 
@@ -766,7 +775,7 @@ export default function CandidatesPage() {
         uploadFiles
           .filter((sourceFile) => {
             const sourceResults = uploadResponse.results.filter((result) => belongsToSourceFile(result.file, sourceFile.name));
-            return sourceResults.length === 0 || sourceResults.some((result) => !['ok', 'duplicate', 'needs_confirmation'].includes(result.status));
+            return sourceResults.length === 0 || sourceResults.some((result) => !['ok', 'processing', 'duplicate', 'needs_confirmation'].includes(result.status));
           })
           .map((file) => file.name),
       );
@@ -774,9 +783,12 @@ export default function CandidatesPage() {
       await loadCandidates();
 
       const successfulCount = uploadResponse.results.filter((result) => result.status === 'ok').length;
+      const processingCount = uploadResponse.results.filter((result) => result.status === 'processing').length;
       const duplicateCount = uploadResponse.results.filter((result) => result.status === 'duplicate').length;
       const confirmationCount = uploadResponse.results.filter((result) => result.status === 'needs_confirmation').length;
-      if (uploadResponse.deduplicated && duplicateCount > 0) {
+      if (processingCount > 0) {
+        showToast(`已上传 ${processingCount} 份，AI 正在后台解析，完成后列表会自动刷新`);
+      } else if (uploadResponse.deduplicated && duplicateCount > 0) {
         showToast('导入失败：系统中已存在重复简历，未重复入库');
       } else if (uploadResponse.deduplicated) {
         showToast('该批文件与近期上传内容重复，已返回原处理结果');
@@ -923,7 +935,7 @@ export default function CandidatesPage() {
           ...response.results,
         ],
       } : response);
-      const stillFailed = response.results.some((item) => !['ok', 'duplicate', 'needs_confirmation'].includes(item.status));
+      const stillFailed = response.results.some((item) => !['ok', 'processing', 'duplicate', 'needs_confirmation'].includes(item.status));
       setUploadFiles((current) => stillFailed ? current : current.filter((item) => item !== file));
       setUploadRowActions((current) => {
         const next = { ...current };
@@ -2177,6 +2189,7 @@ export default function CandidatesPage() {
                   <div className="max-h-52 space-y-2 overflow-y-auto">
                     {uploadResponse.results.map((result, index) => {
                       const success = result.status === 'ok';
+                      const processing = result.status === 'processing';
                       const duplicate = result.status === 'duplicate';
                       const needsConfirmation = result.status === 'needs_confirmation';
                       const rowAction = uploadRowActions[result.file];
@@ -2188,12 +2201,12 @@ export default function CandidatesPage() {
                         && supportedReplacementPattern.test(sourceFile.name),
                       );
                       return (
-                        <div key={`${result.file}-${index}`} className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 ${success ? 'border-emerald-200 bg-emerald-50' : duplicate || needsConfirmation ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'}`}>
-                          {success ? <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} aria-hidden="true" /> : <AlertCircle className={`mt-0.5 shrink-0 ${duplicate || needsConfirmation ? 'text-amber-600' : 'text-red-600'}`} size={16} aria-hidden="true" />}
+                        <div key={`${result.file}-${index}`} className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 ${success ? 'border-emerald-200 bg-emerald-50' : processing ? 'border-blue-200 bg-blue-50' : duplicate || needsConfirmation ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'}`}>
+                          {success ? <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} aria-hidden="true" /> : processing ? <LoaderCircle className="mt-0.5 shrink-0 animate-spin text-blue-600" size={16} aria-hidden="true" /> : <AlertCircle className={`mt-0.5 shrink-0 ${duplicate || needsConfirmation ? 'text-amber-600' : 'text-red-600'}`} size={16} aria-hidden="true" />}
                           <div className="min-w-0 flex-1">
-                            <p className={`break-words text-sm font-medium ${success ? 'text-emerald-800' : duplicate || needsConfirmation ? 'text-amber-800' : 'text-red-800'}`}>{result.file}</p>
-                            <p className={`mt-0.5 text-xs ${success ? 'text-emerald-700' : duplicate || needsConfirmation ? 'text-amber-700' : 'text-red-700'}`}>
-                              {success ? '候选人档案已入库' : (result.reason || `处理状态：${result.status}`)}
+                            <p className={`break-words text-sm font-medium ${success ? 'text-emerald-800' : processing ? 'text-blue-800' : duplicate || needsConfirmation ? 'text-amber-800' : 'text-red-800'}`}>{result.file}</p>
+                            <p className={`mt-0.5 text-xs ${success ? 'text-emerald-700' : processing ? 'text-blue-700' : duplicate || needsConfirmation ? 'text-amber-700' : 'text-red-700'}`}>
+                              {success ? '候选人档案已入库' : processing ? '文件已入库，AI 正在后台解析' : (result.reason || `处理状态：${result.status}`)}
                             </p>
                             {duplicate && (
                               <div className="mt-1.5 space-y-2 text-xs text-amber-800">
@@ -2222,7 +2235,7 @@ export default function CandidatesPage() {
                             {needsConfirmation && result.candidate_id && (
                               <button type="button" className="mt-1.5 text-xs font-medium text-primary-700 hover:text-primary-800" onClick={() => openConfirmationCandidateFromUpload(result)}>查看并处理</button>
                             )}
-                            {!success && !duplicate && !needsConfirmation && sourceFile && (
+                            {!success && !processing && !duplicate && !needsConfirmation && sourceFile && (
                               <button
                                 type="button"
                                 disabled={rowAction === 'retrying'}

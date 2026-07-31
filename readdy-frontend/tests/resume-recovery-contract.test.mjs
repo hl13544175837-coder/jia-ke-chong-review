@@ -38,9 +38,21 @@ test('简历异常处理对用户提供完整补救入口', () => {
 test('批量导入把待确认视为已落库待处理，不会再次重复上传', () => {
   const page = read('src/pages/candidates/page.tsx');
 
-  assert.match(page, /\['ok', 'duplicate', 'needs_confirmation'\]\.includes\(result\.status\)/);
+  assert.match(page, /\['ok', 'processing', 'duplicate', 'needs_confirmation'\]\.includes\(result\.status\)/);
   assert.match(page, /result\.status === 'needs_confirmation'/);
   assert.match(page, /查看并处理/);
+});
+
+test('后台解析上传立即显示处理中并自动刷新候选人状态', () => {
+  const types = read('src/features/candidates/types.ts');
+  const page = read('src/pages/candidates/page.tsx');
+  const drawer = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
+
+  assert.match(types, /status: 'ok' \| 'processing'/);
+  assert.match(page, /result\.status === 'processing'/);
+  assert.match(page, /AI 正在后台解析/);
+  assert.match(page, /window\.setInterval\(\(\) => void loadCandidates\(\), 3000\)/);
+  assert.match(drawer, /后台解析/);
 });
 
 test('重复简历允许明确保留旧版或设为新版，失败文件可单独重试', () => {

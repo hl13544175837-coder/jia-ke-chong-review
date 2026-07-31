@@ -40,6 +40,10 @@ class Config:
     LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
     LLM_API_URL = os.environ.get("LLM_API_URL", "")
     RESUME_AI_ENABLED = _resume_ai_enabled()
+    # 模型解析可能超过公司网关等待时间；生产默认落库后由后台任务解析。
+    RESUME_PARSE_ASYNC_ENABLED = os.environ.get(
+        "RESUME_PARSE_ASYNC_ENABLED", "true"
+    ).lower() == "true"
     AI_RECRUITMENT_COMPLIANCE_ACK = os.environ.get("AI_RECRUITMENT_COMPLIANCE_ACK", "false").lower() == "true"
     CANDIDATE_PRIVACY_NOTICE_URL = os.environ.get("CANDIDATE_PRIVACY_NOTICE_URL", "")
     AI_HUMAN_REVIEW_REQUIRED = os.environ.get("AI_HUMAN_REVIEW_REQUIRED", "true").lower() == "true"
@@ -132,3 +136,5 @@ class TestingConfig(Config):
     # 测试保留公开注册以覆盖既有 register 用例；生产默认关闭
     ALLOW_PUBLIC_REGISTRATION = True
     RATE_LIMIT_ENABLED = False
+    # 既有接口测试继续覆盖同步兼容路径；异步测试会显式开启。
+    RESUME_PARSE_ASYNC_ENABLED = False

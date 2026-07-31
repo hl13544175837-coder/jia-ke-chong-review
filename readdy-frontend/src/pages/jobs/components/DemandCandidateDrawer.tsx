@@ -591,7 +591,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
             {uploadResponse && (
               <div className="mt-3 rounded-lg border border-background-200 bg-white px-3 py-3 text-xs text-foreground-700">
                     <p className="flex items-center gap-2 font-medium"><CheckCircle2 size={15} />已处理 {uploadResponse.total} 份文件</p>
-                    <p className="mt-1">成功 {uploadResponse.results.filter((item) => item.status === 'ok').length} 份，待确认 {uploadResponse.results.filter((item) => item.status === 'needs_confirmation').length} 份，重复 {uploadResponse.results.filter((item) => item.status === 'duplicate').length} 份，其他失败 {uploadResponse.results.filter((item) => !['ok', 'duplicate', 'needs_confirmation'].includes(item.status)).length} 份。</p>
+                    <p className="mt-1">后台解析 {uploadResponse.results.filter((item) => item.status === 'processing').length} 份，成功 {uploadResponse.results.filter((item) => item.status === 'ok').length} 份，待确认 {uploadResponse.results.filter((item) => item.status === 'needs_confirmation').length} 份，重复 {uploadResponse.results.filter((item) => item.status === 'duplicate').length} 份，其他失败 {uploadResponse.results.filter((item) => !['ok', 'processing', 'duplicate', 'needs_confirmation'].includes(item.status)).length} 份。</p>
                 {uploadResponse.results.filter((item) => item.status === 'duplicate').map((item) => (
                   <div key={item.file} className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800">
                     <p className="font-medium">{item.reason || '导入失败：系统中已存在重复简历'}</p>

@@ -37,6 +37,12 @@ from app.config_validation import safe_database_label
 
 app = create_app()
 
+# 简历模型调用可能超过公司网关等待时间，必须在请求之外后台处理。
+if app.config.get("RESUME_PARSE_ASYNC_ENABLED", True):
+    from app.services.resume_parse_worker import start_resume_parse_worker
+
+    start_resume_parse_worker(app)
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
