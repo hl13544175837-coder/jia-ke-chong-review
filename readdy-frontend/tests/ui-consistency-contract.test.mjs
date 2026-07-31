@@ -102,3 +102,36 @@ test('状态页签统一为绿色实心选中态且 Offer 不再使用底部横�
   const offers = read('src/pages/offers/page.tsx');
   assert.doesNotMatch(offers, /absolute inset-x-3 bottom-0 h-0\.5 bg-primary-500/);
 });
+
+test('常见桌面尺寸下标题、页签、表格和核心弹窗允许换行或滚动', () => {
+  const pageHeader = read('src/components/ui/PageHeader.tsx');
+  const tabs = read('src/components/ui/WorkspaceTabs.tsx');
+  assert.match(pageHeader, /flex flex-col gap-4 sm:flex-row/);
+  assert.match(pageHeader, /flex flex-wrap items-center gap-2/);
+  assert.match(tabs, /flex-wrap/);
+  assert.match(tabs, /overflow-x-auto/);
+  assert.match(tabs, /shrink-0/);
+
+  const scrollableTables = [
+    'src/pages/jobs/components/RequisitionTable.tsx',
+    'src/pages/candidates/page.tsx',
+    'src/pages/interviews/components/InterviewManagementTable.tsx',
+    'src/pages/offers/components/OfferTable.tsx',
+    'src/pages/director/progress/page.tsx',
+    'src/pages/director/insights/page.tsx',
+  ];
+  scrollableTables.forEach((path) => {
+    assert.match(read(path), /overflow-x-auto/, path);
+  });
+
+  const boundedOverlays = [
+    'src/pages/jobs/page.tsx',
+    'src/pages/interviewer/jobs/page.tsx',
+    'src/pages/interviewer/interviews/components/SimpleFeedbackModal.tsx',
+    'src/pages/offers/components/CreateOfferModal.tsx',
+  ];
+  boundedOverlays.forEach((path) => {
+    assert.match(read(path), /max-h-\[/, path);
+    assert.match(read(path), /overflow-(?:hidden|y-auto)/, path);
+  });
+});
