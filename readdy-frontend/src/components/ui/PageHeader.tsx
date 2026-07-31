@@ -5,6 +5,7 @@ interface PageHeaderProps {
   description?: ReactNode;
   leading?: ReactNode;
   actions?: ReactNode;
+  visuallyHiddenTitle?: boolean;
   className?: string;
 }
 
@@ -13,6 +14,7 @@ export default function PageHeader({
   description,
   leading,
   actions,
+  visuallyHiddenTitle = false,
   className = '',
 }: PageHeaderProps) {
   return (
@@ -25,7 +27,9 @@ export default function PageHeader({
         <div className="min-w-0">
           <h1
             data-ui="page-header-title"
-            className="font-heading text-2xl font-bold leading-tight tracking-tight text-foreground-900"
+            className={visuallyHiddenTitle
+              ? 'sr-only'
+              : 'font-heading text-2xl font-bold leading-tight tracking-tight text-foreground-900'}
           >
             {title}
           </h1>

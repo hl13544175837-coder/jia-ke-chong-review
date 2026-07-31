@@ -43,6 +43,18 @@ test('主业务页面统一使用同一个页面标题组件', () => {
   assert.match(layout, /text-lg/);
 });
 
+test('招聘需求页保留无障碍标题但不重复展示左侧菜单名称', () => {
+  const pageHeader = read('src/components/ui/PageHeader.tsx');
+  const jobsPage = read('src/pages/jobs/page.tsx');
+
+  assert.match(pageHeader, /visuallyHiddenTitle/);
+  assert.match(pageHeader, /sr-only/);
+  assert.match(
+    jobsPage,
+    /<PageHeader[\s\S]*title="招聘需求"[\s\S]*visuallyHiddenTitle/,
+  );
+});
+
 test('状态页签统一为绿色实心选中态且 Offer 不再使用底部横线', () => {
   const tabs = read('src/components/ui/WorkspaceTabs.tsx');
   assert.match(tabs, /data-ui="workspace-tabs"/);

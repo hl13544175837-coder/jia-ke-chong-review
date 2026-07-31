@@ -470,6 +470,7 @@ export default function JobsPage() {
 
       <PageHeader
         title="招聘需求"
+        visuallyHiddenTitle
         description="审核需求、寻找候选人并跟进每个岗位的招聘进度"
         actions={(
           <button type="button" onClick={() => { setCreateErrors({}); setFormOpen(true); }} className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-primary-600">
