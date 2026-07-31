@@ -1,27 +1,7 @@
+import { lazy } from 'react';
 import type { RouteObject } from 'react-router-dom';
 import { Navigate } from 'react-router-dom';
-import NotFound from '@/pages/NotFound';
-import LoginPage from '@/pages/login/page';
 import MainLayout from '@/components/feature/MainLayout';
-import DashboardPage from '@/pages/dashboard/page';
-import RecruiterInterviewsPage from '@/pages/interviews/page';
-import HiredPage from '@/pages/dashboard/hired/page';
-import CyclePage from '@/pages/dashboard/cycle/page';
-import OffersPage from '@/pages/offers/page';
-import JobsPage from '@/pages/jobs/page';
-import CandidatesPage from '@/pages/candidates/page';
-import KanbanPage from '@/pages/kanban/page';
-import SettingsPage from '@/pages/settings/page';
-import TalentMapPage from '@/pages/talent-map/page';
-import AnalyticsPage from '@/pages/analytics/page';
-import InterviewerDashboardPage from '@/pages/interviewer/dashboard/page';
-import InterviewerInterviewsPage from '@/pages/interviewer/interviews/page';
-import InterviewerJobsPage from '@/pages/interviewer/jobs/page';
-import InterviewerScreeningPage from '@/pages/interviewer/screening/page';
-import DirectorCockpitPage from '@/pages/director/cockpit/page';
-import DirectorProgressPage from '@/pages/director/progress/page';
-import DirectorInsightsPage from '@/pages/director/insights/page';
-import DirectorApprovalsPage from '@/pages/director/approvals/page';
 import {
   CompanyHomeRedirect,
   RequireCompanyAuth,
@@ -29,6 +9,28 @@ import {
 } from '@/auth/companyGuards';
 import { RequireCompanyRole, RoleHomeRedirect } from '@/auth/productRole';
 import type { ProductRole } from '@/auth/productRoleModel';
+
+const NotFound = lazy(() => import('@/pages/NotFound'));
+const LoginPage = lazy(() => import('@/pages/login/page'));
+const DashboardPage = lazy(() => import('@/pages/dashboard/page'));
+const RecruiterInterviewsPage = lazy(() => import('@/pages/interviews/page'));
+const HiredPage = lazy(() => import('@/pages/dashboard/hired/page'));
+const CyclePage = lazy(() => import('@/pages/dashboard/cycle/page'));
+const OffersPage = lazy(() => import('@/pages/offers/page'));
+const JobsPage = lazy(() => import('@/pages/jobs/page'));
+const CandidatesPage = lazy(() => import('@/pages/candidates/page'));
+const KanbanPage = lazy(() => import('@/pages/kanban/page'));
+const SettingsPage = lazy(() => import('@/pages/settings/page'));
+const TalentMapPage = lazy(() => import('@/pages/talent-map/page'));
+const AnalyticsPage = lazy(() => import('@/pages/analytics/page'));
+const InterviewerDashboardPage = lazy(() => import('@/pages/interviewer/dashboard/page'));
+const InterviewerInterviewsPage = lazy(() => import('@/pages/interviewer/interviews/page'));
+const InterviewerJobsPage = lazy(() => import('@/pages/interviewer/jobs/page'));
+const InterviewerScreeningPage = lazy(() => import('@/pages/interviewer/screening/page'));
+const DirectorCockpitPage = lazy(() => import('@/pages/director/cockpit/page'));
+const DirectorProgressPage = lazy(() => import('@/pages/director/progress/page'));
+const DirectorInsightsPage = lazy(() => import('@/pages/director/insights/page'));
+const DirectorApprovalsPage = lazy(() => import('@/pages/director/approvals/page'));
 
 const dashboardRoles: ProductRole[] = ['admin', 'manager', 'recruiter'];
 const hrRoles: ProductRole[] = ['recruiter', 'manager', 'admin'];

@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import { Suspense, type ComponentType, type ReactNode } from "react";
 import { BrowserRouter } from "react-router-dom";
 import type { BrowserRouterProps } from "react-router-dom";
 import { AppRoutes } from "./router";
@@ -9,6 +9,7 @@ import { CompanyAuthProvider, useCompanyAuth } from "@/auth/companyAuth";
 import { CompanyPermissionsProvider } from "@/auth/companyPermissions";
 import { ProductRoleProvider } from "@/auth/productRole";
 import AppErrorBoundary from "@/components/ui/AppErrorBoundary";
+import RouteLoadingFallback from "@/components/ui/RouteLoadingFallback";
 
 type BrowserRouterFutureProps = BrowserRouterProps & {
   future: {
@@ -40,7 +41,9 @@ function App() {
             <ProductRoleProvider>
               <CompanySecurityBoundary>
                 <ToastProvider>
-                  <AppRoutes />
+                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <AppRoutes />
+                  </Suspense>
                 </ToastProvider>
               </CompanySecurityBoundary>
             </ProductRoleProvider>
