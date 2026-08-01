@@ -11,10 +11,11 @@ def _seed_analytics_fact(app, *, org_id, owner_id, request_no, title, department
         from app.models import Candidate, Job, OfferRecord, PipelineStage, RecruitmentDemand, UploadBatch
         from app.time_utils import utc_now
 
+        now = utc_now()
         job = Job(org_id=org_id, title=title, department=department, jd_text="真实统计验收")
         db.session.add(job)
         db.session.flush()
-        start_date = (utc_now() - timedelta(days=10)).date()
+        start_date = (now - timedelta(days=10)).date()
         demand = RecruitmentDemand(
             org_id=org_id,
             job_id=job.id,
@@ -63,8 +64,8 @@ def _seed_analytics_fact(app, *, org_id, owner_id, request_no, title, department
             demand_id=demand.id,
             job_id=job.id,
             approval_status="onboarded",
-            onboarded_at=utc_now() - timedelta(days=1),
-            onboard_date=utc_now().date(),
+            onboarded_at=now,
+            onboard_date=now.date(),
             created_by=owner_id,
             version=1,
         ))
