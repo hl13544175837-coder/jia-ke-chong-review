@@ -35,6 +35,7 @@ run_step "前端契约测试" bash -c 'cd "$1" && node --test tests/*.test.mjs' 
 run_step "前端类型检查" bash -c 'cd "$1" && npm run type-check' _ "$FRONTEND_DIR"
 run_step "前端代码规范" bash -c 'cd "$1" && npm run lint' _ "$FRONTEND_DIR"
 run_step "前端正式构建" bash -c 'cd "$1" && npm run build' _ "$FRONTEND_DIR"
+run_step "前端包体积门禁" node scripts/check-frontend-bundle-budget.mjs
 
 run_step "前端依赖安全" node scripts/check-frontend-audit.mjs
 # pip_audit --local --strict
