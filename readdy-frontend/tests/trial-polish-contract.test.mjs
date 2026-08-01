@@ -54,3 +54,19 @@ test('候选人详情的图标关闭按钮有可读名称', () => {
   );
   assert.match(source, /ri-close-line[^>]*aria-hidden="true"/);
 });
+
+test('本地同事试用清单覆盖五个角色和安全恢复步骤', () => {
+  const checklistFile = '../docs/16_本地同事试用验收清单.md';
+  assert.equal(existsSync(path.join(root, checklistFile)), true, '缺少本地同事试用验收清单');
+  const source = `${read('../docs/15_同事小范围试用说明.md')}\n${read(checklistFile)}`;
+
+  ['hr01', 'interviewer01', 'interviewer02', 'director01', 'admin01'].forEach((account) => {
+    assert.match(source, new RegExp(account), `缺少 ${account} 的验收步骤`);
+  });
+  assert.match(source, /验收测试/);
+  assert.match(source, /backup_pilot_data\.py/);
+  assert.match(source, /restore_pilot_data\.py/);
+  assert.match(source, /--dry-run/);
+  assert.match(source, /停止.{0,12}服务/);
+  assert.match(source, /绝不自动恢复|恢复绝不自动执行/);
+});
