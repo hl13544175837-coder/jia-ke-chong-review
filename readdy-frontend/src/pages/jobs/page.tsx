@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useProductRole } from '@/auth/productRole';
 import PageHeader from '@/components/ui/PageHeader';
+import PageStateCard from '@/components/ui/PageStateCard';
 import { candidatesApi } from '@/features/candidates/api';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewTask } from '@/features/businessReviews/types';
@@ -17,6 +18,7 @@ import type {
   RequisitionRow,
 } from '@/features/demands/types';
 import { ApiError, apiRequest } from '@/lib/api';
+import { userFacingError } from '@/lib/userFacingError';
 import { useToast } from '@/hooks/useToast';
 import RequisitionTabs from './components/RequisitionTabs';
 import RequisitionForm from './components/RequisitionForm';
@@ -64,7 +66,7 @@ function isBusinessReviewer(
 }
 
 function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error && error.message.trim() ? error.message : fallback;
+  return userFacingError(error, fallback);
 }
 
 function initialWorkspaceTab(value: string | null | undefined): DemandWorkspaceTab {
@@ -173,7 +175,7 @@ export default function JobsPage() {
       const response = await demandsApi.listDemands();
       setDemands(response.items);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : '加载招聘需求失败');
+      setLoadError(userFacingError(error, '加载招聘需求失败'));
     } finally {
       setLoading(false);
     }
@@ -482,14 +484,14 @@ export default function JobsPage() {
       <RequisitionTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
       {loading ? (
-        <div className="rounded-lg border border-background-200 bg-white py-16 text-center text-sm text-foreground-500">
-          <i className="ri-loader-4-line mr-2 animate-spin"></i>正在加载招聘需求...
-        </div>
+        <PageStateCard variant="loading" title="正在加载招聘需求" description="请稍候，正在读取最新需求。" />
       ) : loadError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-6 text-center">
-          <p className="text-sm text-red-600">{loadError}</p>
-          <button onClick={() => void loadDemands()} className="mt-3 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm text-red-600 hover:bg-red-100">重新加载</button>
-        </div>
+        <PageStateCard
+          variant="error"
+          title="招聘需求加载失败"
+          description={loadError}
+          onAction={() => void loadDemands()}
+        />
       ) : (
         <RequisitionTable
           data={filteredData}

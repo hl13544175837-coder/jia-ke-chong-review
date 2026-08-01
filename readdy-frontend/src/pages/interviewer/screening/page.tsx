@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  AlertCircle,
   ArrowRight,
   CheckCircle2,
   CircleHelp,
   Clock3,
   FileSearch,
-  LoaderCircle,
-  RotateCw,
   X,
   XCircle,
   type LucideIcon,
@@ -21,7 +18,9 @@ import type {
 } from '@/features/businessReviews/types';
 import { useToast } from '@/hooks/useToast';
 import PageHeader from '@/components/ui/PageHeader';
+import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
+import { userFacingError } from '@/lib/userFacingError';
 import ReviewActionModal from '@/pages/interviewer/dashboard/components/ReviewActionModal';
 import BusinessReviewDetail from './components/BusinessReviewDetail';
 
@@ -71,8 +70,8 @@ function dueState(value: string | null) {
   return { label: formatDate(value), className: 'text-foreground-600' };
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : '业务筛选任务读取失败';
+function errorMessage(error: unknown, fallback = '业务筛选任务读取失败') {
+  return userFacingError(error, fallback);
 }
 
 function reviewTabFromQuery(value: string | null): BusinessReviewStatus {
@@ -190,7 +189,7 @@ export default function InterviewerScreeningPage() {
       closeTaskDetail();
       await loadTasks(false);
     } catch (submitError) {
-      setDecisionError(errorMessage(submitError));
+      setDecisionError(errorMessage(submitError, '提交筛选结果失败'));
     } finally {
       setSubmitting(false);
     }
@@ -234,32 +233,20 @@ export default function InterviewerScreeningPage() {
 
       <section aria-live="polite" aria-busy={loading}>
         {loading ? (
-          <div className="flex min-h-56 items-center justify-center rounded-lg border border-background-200 bg-white text-sm text-foreground-500">
-            <LoaderCircle className="mr-2 animate-spin" size={18} aria-hidden="true" />
-            正在加载业务筛选任务...
-          </div>
+          <PageStateCard variant="loading" title="正在加载业务筛选任务" description="请稍候，正在读取最新筛选任务。" />
         ) : error ? (
-          <div className="flex min-h-56 flex-col items-center justify-center rounded-lg border border-red-200 bg-red-50/40 px-6 text-center">
-            <AlertCircle size={24} className="text-red-600" aria-hidden="true" />
-            <p className="mt-3 text-sm font-medium text-foreground-800">业务筛选任务加载失败</p>
-            <p className="mt-1 max-w-xl text-xs text-foreground-500">{error}</p>
-            <button
-              type="button"
-              onClick={() => void loadTasks()}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 bg-white px-3 py-2 text-sm font-medium text-foreground-700 hover:bg-background-50"
-            >
-              <RotateCw size={15} aria-hidden="true" />
-              重新加载
-            </button>
-          </div>
+          <PageStateCard
+            variant="error"
+            title="业务筛选任务加载失败"
+            description={error}
+            onAction={() => void loadTasks()}
+          />
         ) : visibleTasks.length === 0 ? (
-          <div className="flex min-h-56 flex-col items-center justify-center rounded-lg border border-dashed border-background-300 bg-background-50/50 px-6 text-center">
-            <FileSearch size={26} className="text-foreground-400" aria-hidden="true" />
-            <p className="mt-3 text-sm font-medium text-foreground-700">{emptyLabels[activeTab]}</p>
-            <p className="mt-1 text-xs text-foreground-500">
-              {activeTab === 'pending' ? '招聘专员推送新简历后，任务会出现在这里。' : '该状态暂时没有记录。'}
-            </p>
-          </div>
+          <PageStateCard
+            variant="empty"
+            title={emptyLabels[activeTab]}
+            description={activeTab === 'pending' ? '招聘专员推送新简历后，任务会出现在这里。' : '该状态暂时没有记录。'}
+          />
         ) : (
           <div className="space-y-2">
             {visibleTasks.map((task) => {

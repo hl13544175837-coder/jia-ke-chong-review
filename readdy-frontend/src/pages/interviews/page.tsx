@@ -1,7 +1,8 @@
-import { ArrowLeft, CalendarDays, CheckCircle2, MapPin, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, MapPin, RefreshCw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
+import PageStateCard from '@/components/ui/PageStateCard';
 import { interviewsApi } from '@/features/interviews/api';
 import type {
   InterviewAssignmentInput,
@@ -12,6 +13,7 @@ import type {
 } from '@/features/interviews/types';
 import { formatInterviewDateTime } from '@/features/interviews/dateTime';
 import { pipelineApi } from '@/features/pipeline/api';
+import { userFacingError } from '@/lib/userFacingError';
 import InterviewFilterPopover from './components/InterviewFilterPopover';
 import InterviewManagementCalendar from './components/InterviewManagementCalendar';
 import InterviewManagementTable from './components/InterviewManagementTable';
@@ -226,7 +228,7 @@ export default function RecruiterInterviewsPage() {
           : null
       ));
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : '面试管理加载失败');
+      setLoadError(userFacingError(error, '面试管理加载失败'));
     } finally {
       setLoading(false);
     }
@@ -556,17 +558,22 @@ export default function RecruiterInterviewsPage() {
       />
 
       {loading ? (
-        <div className="rounded-lg border border-background-200 bg-white py-20 text-center text-sm text-foreground-500"><RefreshCw className="mx-auto mb-2 animate-spin" size={18} />正在加载面试工作台...</div>
+        <PageStateCard variant="loading" title="正在加载面试工作台" description="请稍候，正在读取最新面试安排。" />
       ) : loadError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-10 text-center"><p className="text-sm text-red-700">{loadError}</p><button type="button" onClick={() => void loadWorkbench()} className="mt-3 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm text-red-700">重新加载</button></div>
+        <PageStateCard
+          variant="error"
+          title="面试工作台加载失败"
+          description={loadError}
+          onAction={() => void loadWorkbench()}
+        />
       ) : visibleRows.length === 0 ? (
-        <div className="rounded-xl border border-background-200 bg-white py-16 text-center">
-          <CalendarDays className="mx-auto text-foreground-300" size={28} />
-          <p className="mt-3 text-sm font-medium text-foreground-700">
-            {fromDashboard && activeTab === 'unassigned' ? '当前没有待安排面试' : '没有符合当前条件的面试任务'}
-          </p>
-          <button type="button" onClick={() => { setSearch(''); setActiveTab('all'); setAppliedFilters(emptyInterviewFilters); }} className="mt-3 text-sm font-medium text-primary-600 hover:text-primary-700">重置筛选</button>
-        </div>
+        <PageStateCard
+          variant="empty"
+          title={fromDashboard && activeTab === 'unassigned' ? '当前没有待安排面试' : '没有符合当前条件的面试任务'}
+          description="可以切换状态或清除筛选条件后再查看。"
+          actionLabel="重置筛选"
+          onAction={() => { setSearch(''); setActiveTab('all'); setAppliedFilters(emptyInterviewFilters); }}
+        />
       ) : viewMode === 'list' ? (
         <InterviewManagementTable
           rows={visibleRows}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import PageHeader from '@/components/ui/PageHeader';
+import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import { demandsApi } from '@/features/demands/api';
 import type {
@@ -16,6 +17,7 @@ import { jobsApi } from '@/features/jobs/api';
 import type { JobTemplateDetail, JobTemplateSummary } from '@/features/jobs/types';
 import { useToast } from '@/hooks/useToast';
 import { ApiError } from '@/lib/api';
+import { userFacingError } from '@/lib/userFacingError';
 import InterviewerDemandDetailDrawer from './components/InterviewerDemandDetailDrawer';
 
 type DemandFormMode = { kind: 'create' } | { kind: 'resubmit'; demand: RecruitmentDemand };
@@ -152,7 +154,7 @@ export default function InterviewerJobsPage() {
       setDemands(demandResponse.items);
       setOwners(ownerRows);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : '加载招聘需求失败');
+      setLoadError(userFacingError(error, '加载招聘需求失败'));
     } finally {
       setLoading(false);
     }
@@ -381,19 +383,20 @@ export default function InterviewerJobsPage() {
       />
 
       {loading ? (
-        <div className="rounded-lg border border-background-200 bg-white py-16 text-center text-sm text-foreground-500">
-          <i className="ri-loader-4-line mr-2 animate-spin"></i>正在加载需求...
-        </div>
+        <PageStateCard variant="loading" title="正在加载招聘需求" description="请稍候，正在读取最新需求。" />
       ) : loadError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-8 text-center">
-          <p className="text-sm text-red-600" role="alert">{loadError}</p>
-          <button type="button" onClick={() => void loadPage()} className="mt-3 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm text-red-600 hover:bg-red-100">重新加载</button>
-        </div>
+        <PageStateCard
+          variant="error"
+          title="招聘需求加载失败"
+          description={loadError}
+          onAction={() => void loadPage()}
+        />
       ) : visibleDemands.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-background-300 bg-white py-16 text-center">
-          <i className="ri-file-list-3-line text-3xl text-foreground-300"></i>
-          <p className="mt-3 text-sm text-foreground-500">暂无{approvalLabels[activeTab]}的招聘需求</p>
-        </div>
+        <PageStateCard
+          variant="empty"
+          title={`暂无${approvalLabels[activeTab]}的招聘需求`}
+          description={activeTab === 'pending' ? '提交新需求后会出现在这里。' : '可以切换状态查看其他招聘需求。'}
+        />
       ) : (
         <div className="overflow-hidden rounded-lg border border-background-200 bg-white">
           <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(160px,1fr)_110px_150px] gap-4 border-b border-background-200 bg-background-50 px-5 py-3 text-xs font-medium text-foreground-500 md:grid">

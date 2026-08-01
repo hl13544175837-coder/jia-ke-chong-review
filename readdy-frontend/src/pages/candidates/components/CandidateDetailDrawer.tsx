@@ -67,8 +67,8 @@ export default function CandidateDetailDrawer({
               <p className="text-xs text-foreground-400 mt-0.5">{c.gender} · {c.age}岁 · {c.experienceYears}经验 · {c.education}</p>
             </div>
           </div>
-          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-background-100 text-foreground-500 transition-colors cursor-pointer">
-            <i className="ri-close-line text-xl"></i>
+          <button type="button" onClick={onClose} aria-label="关闭候选人详情" className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-background-100 text-foreground-500 transition-colors cursor-pointer">
+            <i className="ri-close-line text-xl" aria-hidden="true"></i>
           </button>
         </div>
 

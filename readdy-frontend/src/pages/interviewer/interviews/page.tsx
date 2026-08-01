@@ -1,5 +1,4 @@
 import {
-  CalendarDays,
   Clock3,
   MapPin,
   MessageSquareText,
@@ -9,6 +8,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
+import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { candidatesApi } from '@/features/candidates/api';
@@ -24,6 +24,7 @@ import type {
   InterviewRescheduleRequestInput,
   StructuredInterviewFeedbackValues,
 } from '@/features/interviews/types';
+import { userFacingError } from '@/lib/userFacingError';
 import InterviewerInterviewDetailDrawer from './components/InterviewerInterviewDetailDrawer';
 import type { DetailActionLabel } from './components/InterviewerInterviewDetailDrawer';
 import RescheduleRequestModal from './components/RescheduleRequestModal';
@@ -129,7 +130,7 @@ export default function InterviewerInterviewsPage() {
         current ? rows.find((item) => item.id === current.id) ?? current : null
       ));
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : '加载面试任务失败');
+      setLoadError(userFacingError(error, '加载面试任务失败'));
     } finally {
       setLoading(false);
     }
@@ -417,26 +418,22 @@ export default function InterviewerInterviewsPage() {
       )}
 
       {loading ? (
-        <div className="rounded-lg border border-background-200 bg-white py-16 text-center text-sm text-foreground-500">
-          <RefreshCw size={18} className="mx-auto mb-2 animate-spin" />
-          正在加载面试任务...
-        </div>
+        <PageStateCard variant="loading" title="正在加载面试任务" description="请稍候，正在读取最新面试安排。" />
       ) : loadError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-8 text-center">
-          <p className="text-sm text-red-700">{loadError}</p>
-          <button
-            type="button"
-            onClick={() => void loadAssignments()}
-            className="mt-3 rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700"
-          >
-            重新加载
-          </button>
-        </div>
+        <PageStateCard
+          variant="error"
+          title="面试任务加载失败"
+          description={loadError}
+          onAction={() => void loadAssignments()}
+        />
       ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-background-200 bg-white py-16 text-center">
-          <CalendarDays size={28} className="mx-auto mb-3 text-foreground-300" />
-          <p className="text-sm font-medium text-foreground-600">暂无符合条件的面试任务</p>
-        </div>
+        <PageStateCard
+          variant="empty"
+          title="暂无符合条件的面试任务"
+          description="可以切换状态或清除搜索条件后再查看。"
+          actionLabel={searchQuery || activeTab !== 'all' ? '清空筛选' : undefined}
+          onAction={searchQuery || activeTab !== 'all' ? () => changeListState('all', '') : undefined}
+        />
       ) : (
         <div className="overflow-hidden rounded-lg border border-background-200 bg-white">
           <div className="divide-y divide-background-100">

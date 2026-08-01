@@ -3,12 +3,14 @@ import { ArrowLeft } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useProductRole } from '@/auth/productRole';
 import PageHeader from '@/components/ui/PageHeader';
+import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { offersApi } from '@/features/offers/api';
 import type { OfferAction, OfferActionInput, OfferRecord } from '@/features/offers/types';
 import { useToast } from '@/hooks/useToast';
+import { userFacingError } from '@/lib/userFacingError';
 import CreateOfferModal from './components/CreateOfferModal';
 import OfferDetailDrawer from './components/OfferDetailDrawer';
 import OfferTable from './components/OfferTable';
@@ -119,7 +121,7 @@ export default function OffersPage() {
       setOffers(response.items);
       setUnmappedTotal(response.unmapped_total);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : '加载 Offer 失败');
+      setLoadError(userFacingError(error, '加载 Offer 失败'));
     } finally {
       setLoading(false);
     }
@@ -412,18 +414,22 @@ export default function OffersPage() {
         {hasFilters && <div className="flex flex-wrap items-center gap-2 border-b border-background-100 px-4 py-2.5 text-xs text-foreground-500"><span>已筛选</span>{search && <button type="button" onClick={() => { setSearch(''); setSearchInput(''); }} className="rounded-full bg-background-100 px-2.5 py-1">搜索：{search} ×</button>}{demandFilter && <button type="button" onClick={() => setDemandFilter('')} className="rounded-full bg-background-100 px-2.5 py-1">需求：{demandFilter} ×</button>}{ownerFilter && <button type="button" onClick={() => setOwnerFilter('')} className="rounded-full bg-background-100 px-2.5 py-1">负责人：{ownerFilter} ×</button>}{riskFilter && <button type="button" onClick={() => setRiskFilter('')} className="rounded-full bg-background-100 px-2.5 py-1">风险：{riskFilter} ×</button>}<button type="button" onClick={resetOfferFilters} className="font-medium text-primary-700">清空全部</button></div>}
 
         {loading ? (
-          <div className="py-16 text-center text-sm text-foreground-500"><i className="ri-loader-4-line mr-2 animate-spin"></i>正在加载 Offer...</div>
+          <PageStateCard variant="loading" title="正在加载 Offer" description="请稍候，正在读取最新 Offer。" />
         ) : loadError ? (
-          <div className="px-5 py-14 text-center">
-            <p className="text-sm text-red-600">{loadError}</p>
-            <button type="button" onClick={() => void loadOffers()} className="mt-3 rounded-lg border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50">重新加载</button>
-          </div>
+          <PageStateCard
+            variant="error"
+            title="Offer 加载失败"
+            description={loadError}
+            onAction={() => void loadOffers()}
+          />
         ) : visibleOffers.length === 0 ? (
-          <div className="py-16 text-center">
-            <i className="ri-file-list-3-line text-3xl text-foreground-300" aria-hidden="true"></i>
-            <p className="mt-3 text-sm font-medium text-foreground-700">{activeTab === 'today' ? '今天没有需要处理的 Offer' : '当前范围没有符合条件的 Offer'}</p>
-            <p className="mt-1 text-xs text-foreground-400">{activeTab === 'history' ? '已入职、拒绝、撤回和过期记录会统一归档在这里。' : '可切换状态或清除筛选查看其他记录。'}</p>
-          </div>
+          <PageStateCard
+            variant="empty"
+            title={activeTab === 'today' ? '今天没有需要处理的 Offer' : '当前范围没有符合条件的 Offer'}
+            description={activeTab === 'history' ? '已入职、拒绝、撤回和过期记录会统一归档在这里。' : '可切换状态或清除筛选查看其他记录。'}
+            actionLabel={hasFilters ? '清空筛选' : undefined}
+            onAction={hasFilters ? resetOfferFilters : undefined}
+          />
         ) : (
           <OfferTable
             offers={visibleOffers}
