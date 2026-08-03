@@ -66,6 +66,7 @@ from .access import (
 def register_candidate_action_routes(bp):
     from .candidates import (
         _candidate_library_payload,
+        _candidate_stage_context_by_ids,
         _demand_summary,
     )
 

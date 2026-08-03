@@ -6,9 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from .. import db
-from ..middleware.events import record_event
 from ..models import Candidate, Job, OfferEvent, OfferRecord, RecruitmentDemand, UploadBatch, User
 from ..time_utils import utc_now
+from . import pipeline_service
 from .pipeline_service import (
     PipelineServiceError,
     _completion_state,
@@ -21,6 +21,12 @@ from .pipeline_service import (
     parse_date,
     parse_datetime,
 )
+
+
+def record_event(*args, **kwargs):
+    """Keep the existing audit failure injection point after the service split."""
+
+    return pipeline_service.record_event(*args, **kwargs)
 
 OFFER_STATUSES = {
     "draft",
