@@ -1,3 +1,18 @@
+export interface AnalyticsCandidateRow {
+  candidate_id: number;
+  candidate_name: string;
+  stage: string;
+  stage_label: string;
+  age_days: number;
+  updated_at: string | null;
+  last_actor_id: number | null;
+  last_actor_name: string | null;
+  hired_this_month: boolean;
+  hired_this_quarter: boolean;
+  offer_issued: boolean;
+  offer_accepted: boolean;
+}
+
 export interface AnalyticsDemandRow {
   demand_id: number;
   request_no: string;
@@ -15,6 +30,7 @@ export interface AnalyticsDemandRow {
   days_open: number;
   risk_flags: string[];
   outstanding_feedback: number;
+  candidates: AnalyticsCandidateRow[];
   funnel: {
     pending: number;
     ai_screen: number;

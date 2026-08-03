@@ -119,6 +119,20 @@ def test_analytics_uses_current_org_database_facts_and_exports_csv(app, client, 
     assert demand_row["start_date"]
     assert demand_row["days_open"] == 10
     assert demand_row["over_headcount"] == 0
+    assert demand_row["candidates"] == [{
+        "candidate_id": body["hired_records"][0]["candidate_id"],
+        "candidate_name": "真实数据岗位候选人",
+        "stage": "onboarded",
+        "stage_label": "已入职",
+        "age_days": 0,
+        "updated_at": demand_row["candidates"][0]["updated_at"],
+        "last_actor_id": admin_id,
+        "last_actor_name": demand_row["owner_name"],
+        "hired_this_month": True,
+        "hired_this_quarter": True,
+        "offer_issued": True,
+        "offer_accepted": True,
+    }]
     assert body["hired_records"] == [{
         "offer_id": body["hired_records"][0]["offer_id"],
         "candidate_id": body["hired_records"][0]["candidate_id"],

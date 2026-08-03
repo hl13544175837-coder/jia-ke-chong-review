@@ -104,6 +104,9 @@ def build_analytics_overview(org_id):
         funnel_data = metrics["funnel"]
         demand_offers = offers_by_demand[demand.id]
         demand_onboarded_offers = [item for item in demand_offers if item.approval_status == "onboarded"]
+        offers_by_candidate = defaultdict(list)
+        for item in demand_offers:
+            offers_by_candidate[item.candidate_id].append(item)
         for stage in ("pending", "ai_screen", "business_review", "interview", "offer", "onboarded"):
             funnel[stage] += int(funnel_data.get(stage, 0))
         department = demand.department or demand.requester_department or "未填写部门"
@@ -126,6 +129,32 @@ def build_analytics_overview(org_id):
             risk_flags.append("no_active_candidate")
         if int(metrics["outstanding_feedback"]["count"]) > 0:
             risk_flags.append("feedback_pending")
+        candidate_rows = []
+        for item in metrics["stage_age"]:
+            candidate_offers = offers_by_candidate[item["candidate_id"]]
+            candidate_rows.append({
+                **item,
+                "hired_this_month": any(
+                    _month_key(offer.onboarded_at) == monthly_key
+                    for offer in candidate_offers
+                    if offer.approval_status == "onboarded"
+                ),
+                "hired_this_quarter": any(
+                    offer.onboarded_at
+                    and offer.onboarded_at.year == now.year
+                    and quarter_start_month <= offer.onboarded_at.month <= quarter_end_month
+                    for offer in candidate_offers
+                    if offer.approval_status == "onboarded"
+                ),
+                "offer_issued": any(
+                    (offer.approval_status or "draft") not in excluded_offer_statuses
+                    for offer in candidate_offers
+                ),
+                "offer_accepted": any(
+                    offer.approval_status in {"accepted", "onboarded"}
+                    for offer in candidate_offers
+                ),
+            })
         demand_rows.append({
             "demand_id": demand.id,
             "request_no": demand.request_no,
@@ -143,6 +172,7 @@ def build_analytics_overview(org_id):
             "days_open": days_open,
             "risk_flags": risk_flags,
             "outstanding_feedback": int(metrics["outstanding_feedback"]["count"]),
+            "candidates": candidate_rows,
             "funnel": {
                 stage: int(funnel_data.get(stage, 0))
                 for stage in (

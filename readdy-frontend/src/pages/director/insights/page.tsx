@@ -75,16 +75,22 @@ export default function DirectorInsightsPage() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
-          ['候选人总量', data?.summary.candidate_total ?? 0, 'ri-group-line'],
-          ['流程中候选人', inProgress, 'ri-route-line'],
-          ['本月已入职', data?.summary.hires_month ?? 0, 'ri-user-add-line'],
-          ['当前在招需求', data?.summary.open_demands ?? 0, 'ri-briefcase-line'],
-        ].map(([label, value, icon]) => (
-          <div key={String(label)} className="rounded-xl border border-background-200 bg-white p-5">
+          ['候选人总量', data?.summary.candidate_total ?? 0, 'ri-group-line', 'candidate-total'],
+          ['流程中候选人', inProgress, 'ri-route-line', 'pipeline-active'],
+          ['本月已入职', data?.summary.hires_month ?? 0, 'ri-user-add-line', 'hires-month'],
+          ['当前在招需求', data?.summary.open_demands ?? 0, 'ri-briefcase-line', 'open-demands'],
+        ].map(([label, value, icon, insight]) => (
+          <Link
+            key={String(label)}
+            to={`/analytics?insight=${insight}`}
+            data-ui="director-insights-kpi-link"
+            className="group rounded-xl border border-background-200 bg-white p-5 transition hover:border-primary-200 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-200"
+          >
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-600"><i className={String(icon)}></i></div>
             <p className="text-2xl font-bold text-foreground-900">{value}</p>
             <p className="text-xs text-foreground-500">{label}</p>
-          </div>
+            <span className="mt-2 inline-flex items-center text-[11px] font-medium text-primary-700">查看岗位与候选人<i className="ri-arrow-right-s-line ml-1" /></span>
+          </Link>
         ))}
       </div>
 
@@ -110,10 +116,16 @@ export default function DirectorInsightsPage() {
             {departmentRows.map((row) => {
               const remaining = row.remaining;
               return (
-                <div key={row.department} className="rounded-lg border border-background-100 px-4 py-3">
+                <Link
+                  key={row.department}
+                  to={`/analytics?insight=${encodeURIComponent(`department:${row.department}`)}`}
+                  data-ui="director-department-link"
+                  className="block rounded-lg border border-background-100 px-4 py-3 transition hover:border-primary-200 hover:bg-background-50 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                >
                   <div className="flex items-center justify-between"><span className="text-sm font-medium text-foreground-900">{row.department}</span><span className={`text-xs font-medium ${remaining > row.in_progress ? 'text-accent-700' : 'text-primary-700'}`}>剩余 HC {remaining}</span></div>
                   <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-foreground-500"><span>目标 {row.headcount}</span><span>在途 {row.in_progress}</span><span>入职 {row.onboarded}</span></div>
-                </div>
+                  <span className="mt-2 inline-flex items-center text-[11px] font-medium text-primary-700">查看部门岗位<i className="ri-arrow-right-s-line ml-1" /></span>
+                </Link>
               );
             })}
             {departmentRows.length === 0 && <p className="py-10 text-center text-sm text-foreground-500">当前没有在招部门数据。</p>}
@@ -122,14 +134,22 @@ export default function DirectorInsightsPage() {
       </div>
 
       <section className="overflow-hidden rounded-xl border border-background-200 bg-white">
-        <div className="border-b border-background-200 px-5 py-4"><h2 className="text-sm font-semibold text-foreground-900">岗位人才缺口</h2><p className="mt-1 text-xs text-foreground-500">只展示当前在招需求，不开放候选人个人明细</p></div>
+        <div className="border-b border-background-200 px-5 py-4"><h2 className="text-sm font-semibold text-foreground-900">岗位人才缺口</h2><p className="mt-1 text-xs text-foreground-500">点击岗位查看脱敏候选人阶段与责任；总监保持只读，不开放简历编辑</p></div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px]">
             <thead><tr className="border-b border-background-200">{['岗位', '部门', '招聘目标', '已入职', '在途', '剩余 HC', '风险'].map((label) => <th key={label} className="px-5 py-3 text-left text-xs font-medium text-foreground-500">{label}</th>)}</tr></thead>
             <tbody className="divide-y divide-background-100">
               {(data?.demands ?? []).map((row) => (
                 <tr key={row.demand_id} className="hover:bg-background-50/50">
-                  <td className="px-5 py-3.5 text-sm font-medium text-foreground-900">{row.title}</td>
+                  <td className="px-5 py-3.5 text-sm font-medium text-foreground-900">
+                    <Link
+                      to={`/analytics?insight=open-demands&demand=${row.demand_id}`}
+                      data-ui="director-demand-link"
+                      className="inline-flex items-center gap-1 text-primary-800 hover:text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                    >
+                      {row.title}<i className="ri-arrow-right-s-line" />
+                    </Link>
+                  </td>
                   <td className="px-5 py-3.5 text-sm text-foreground-600">{row.department}</td>
                   <td className="px-5 py-3.5 text-sm text-foreground-600">{row.headcount}</td>
                   <td className="px-5 py-3.5 text-sm text-foreground-600">{row.onboarded}</td>

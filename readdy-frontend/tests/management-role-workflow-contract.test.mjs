@@ -15,6 +15,7 @@ const directorCockpit = read('src/pages/director/cockpit/page.tsx');
 const directorProgress = read('src/pages/director/progress/page.tsx');
 const directorApprovals = read('src/pages/director/approvals/page.tsx');
 const directorInsights = read('src/pages/director/insights/page.tsx');
+const candidateReadOnlyList = read('src/components/analytics/CandidateReadOnlyList.tsx');
 const layout = read('src/components/feature/MainLayout.tsx');
 
 test('招聘主管工作台优先处理团队审批和卡点，不再伪装成招聘专员工作台', () => {
@@ -66,4 +67,14 @@ test('总监人才页面按真实内容命名为人才供需，数据看板与�
   assert.match(directorInsights, /当前岗位与在途人才/);
   assert.match(analytics, /回到管理驾驶舱/);
   assert.match(analytics, /组织趋势与报表复盘/);
+});
+
+test('总监人才供需和招聘漏斗不再只有数字，能下钻到岗位及候选人', () => {
+  assert.match(directorInsights, /data-ui="director-insights-kpi-link"/);
+  assert.match(directorInsights, /data-ui="director-department-link"/);
+  assert.match(directorInsights, /data-ui="director-demand-link"/);
+  assert.match(directorProgress, /data-ui="director-funnel-detail"/);
+  assert.match(directorProgress, /CandidateReadOnlyList/);
+  assert.match(candidateReadOnlyList, /candidate\.candidate_name/);
+  assert.match(candidateReadOnlyList, /candidate\.stage_label/);
 });

@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import CandidateReadOnlyList from '@/components/analytics/CandidateReadOnlyList';
 import PageHeader from '@/components/ui/PageHeader';
 import ReadOnlyDetailDrawer from '@/components/ui/ReadOnlyDetailDrawer';
 import { analyticsApi } from '@/features/analytics/api';
-import type { AnalyticsOverview } from '@/features/analytics/types';
+import type { AnalyticsCandidateRow, AnalyticsOverview } from '@/features/analytics/types';
 import { buildDirectorData, type PositionProgress } from '../data';
 
 type SortKey = 'daysOpen' | 'risk' | 'department';
 
 function percent(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
+}
+
+function candidateMatchesFunnel(candidate: AnalyticsCandidateRow, funnelKey: string) {
+  if (funnelKey === 'resumes') return true;
+  if (funnelKey === 'screened') return candidate.stage !== 'pending';
+  if (funnelKey === 'interviewed') return ['interview', 'offer', 'onboarded'].includes(candidate.stage);
+  if (funnelKey === 'offered') return candidate.offer_issued;
+  if (funnelKey === 'hired') return candidate.stage === 'onboarded';
+  return false;
 }
 
 function positionFollowUpActions(position: PositionProgress) {
@@ -104,6 +114,17 @@ export default function DirectorProgressPage() {
     () => allPositionProgress.find((position) => position.id === requestedPositionId) || null,
     [allPositionProgress, requestedPositionId],
   );
+  const selectedDemand = useMemo(
+    () => data?.demands.find((row) => row.demand_id === selectedPosition?.demandId) || null,
+    [data, selectedPosition],
+  );
+  const activeFunnelDetails = useMemo(() => {
+    if (!data || !activeFunnelStage) return [];
+    return data.demands.map((row) => ({
+      demand: row,
+      candidates: row.candidates.filter((candidate) => candidateMatchesFunnel(candidate, activeFunnelStage)),
+    })).filter((item) => item.candidates.length > 0);
+  }, [activeFunnelStage, data]);
 
   const openPosition = useCallback((position: PositionProgress) => {
     const next = new URLSearchParams(searchParams);
@@ -135,26 +156,31 @@ export default function DirectorProgressPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-xl border border-background-200 p-4">
+        <Link to="/analytics?insight=open-demands" className="rounded-xl border border-background-200 bg-white p-4 transition hover:border-primary-200 hover:shadow-sm">
           <p className="text-xs text-foreground-500 mb-1">在招岗位</p>
           <p className="text-2xl font-bold text-foreground-900">{allPositionProgress.length}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-background-200 p-4">
+          <span className="mt-1 block text-[11px] text-primary-700">查看明细</span>
+        </Link>
+        <Link to="/analytics?insight=candidate-total" className="rounded-xl border border-background-200 bg-white p-4 transition hover:border-primary-200 hover:shadow-sm">
           <p className="text-xs text-foreground-500 mb-1">简历总量</p>
           <p className="text-2xl font-bold text-foreground-900">{directorFunnel.resumes}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-background-200 p-4">
+          <span className="mt-1 block text-[11px] text-primary-700">查看候选人</span>
+        </Link>
+        <Link to="/analytics?insight=funnel-hired" className="rounded-xl border border-background-200 bg-white p-4 transition hover:border-primary-200 hover:shadow-sm">
           <p className="text-xs text-foreground-500 mb-1">总入职</p>
           <p className="text-2xl font-bold text-primary-600">{directorFunnel.hired}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-background-200 p-4">
+          <span className="mt-1 block text-[11px] text-primary-700">查看入职组成</span>
+        </Link>
+        <Link to="/analytics?insight=offer-rate" className="rounded-xl border border-background-200 bg-white p-4 transition hover:border-primary-200 hover:shadow-sm">
           <p className="text-xs text-foreground-500 mb-1">Offer转化率</p>
           <p className="text-2xl font-bold text-foreground-900">{directorFunnel.offered > 0 ? `${percent(directorFunnel.hired, directorFunnel.offered)}%` : '—'}</p>
-        </div>
-        <div className={`rounded-xl border p-4 ${totalBlocked > 0 ? 'bg-accent-50/30 border-accent-200' : 'bg-white border-background-200'}`}>
+          <span className="mt-1 block text-[11px] text-primary-700">查看 Offer 组成</span>
+        </Link>
+        <Link to="/director/approvals" className={`rounded-xl border p-4 transition hover:shadow-sm ${totalBlocked > 0 ? 'bg-accent-50/30 border-accent-200' : 'bg-white border-background-200'}`}>
           <p className="text-xs text-foreground-500 mb-1">当前阻塞</p>
           <p className={`text-2xl font-bold ${totalBlocked > 0 ? 'text-accent-600' : 'text-foreground-900'}`}>{totalBlocked}</p>
-        </div>
+          <span className="mt-1 block text-[11px] text-accent-700">查看责任与风险</span>
+        </Link>
       </div>
 
       {/* Funnel + Blockage */}
@@ -190,6 +216,25 @@ export default function DirectorProgressPage() {
               );
             })}
           </div>
+          {activeFunnelStage && (
+            <div data-ui="director-funnel-detail" className="mt-4 space-y-3 border-t border-background-100 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-foreground-900">{funnel.find((item) => item.key === activeFunnelStage)?.label}明细</p>
+                <button type="button" onClick={() => setActiveFunnelStage(null)} className="text-xs text-foreground-500 hover:text-foreground-800">收起</button>
+              </div>
+              <div className="max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                {activeFunnelDetails.length ? activeFunnelDetails.map(({ demand, candidates }) => (
+                  <section key={demand.demand_id} className="rounded-lg border border-background-200 bg-background-50/40 p-3">
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div><p className="text-sm font-medium text-foreground-900">{demand.title}</p><p className="mt-0.5 text-xs text-foreground-500">{demand.department} · 负责人：{demand.owner_name || '未分配'}</p></div>
+                      <span className="shrink-0 text-xs font-medium text-primary-700">{candidates.length} 人</span>
+                    </div>
+                    <CandidateReadOnlyList candidates={candidates} emptyText="当前阶段没有可对应的候选人记录。" />
+                  </section>
+                )) : <p className="rounded-lg bg-background-50 px-3 py-5 text-center text-xs text-foreground-500">当前阶段没有可对应的候选人明细。</p>}
+              </div>
+            </div>
+          )}
           <div className="mt-4 pt-3 border-t border-background-100 grid grid-cols-3 gap-2 text-xs">
             <div>
               <span className="text-foreground-500">简历→入职转化率 </span>
@@ -417,6 +462,17 @@ export default function DirectorProgressPage() {
                     <p className="mt-1 text-xs text-foreground-500">{label}</p>
                   </div>
                 ))}
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-foreground-900">候选人阶段与责任</h3>
+                <span className="text-xs text-foreground-500">脱敏只读</span>
+              </div>
+              <p className="mt-1 text-xs text-foreground-500">点击候选人可查看当前停留阶段、最后处理人和下一步责任。</p>
+              <div className="mt-3">
+                <CandidateReadOnlyList candidates={selectedDemand?.candidates ?? []} />
               </div>
             </section>
 

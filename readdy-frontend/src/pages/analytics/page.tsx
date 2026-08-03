@@ -2,10 +2,11 @@ import { ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
+import CandidateReadOnlyList from '@/components/analytics/CandidateReadOnlyList';
 import PageHeader from '@/components/ui/PageHeader';
 import ReadOnlyDetailDrawer from '@/components/ui/ReadOnlyDetailDrawer';
 import { analyticsApi } from '@/features/analytics/api';
-import type { AnalyticsDemandRow, AnalyticsOverview } from '@/features/analytics/types';
+import type { AnalyticsCandidateRow, AnalyticsDemandRow, AnalyticsOverview } from '@/features/analytics/types';
 import { useToast } from '@/hooks/useToast';
 import {
   InterviewerDataBoard,
@@ -15,6 +16,8 @@ import {
 } from './components/RoleDataViews';
 
 type InsightKey =
+  | 'candidate-total'
+  | 'pipeline-active'
   | 'hires-month'
   | 'hires-quarter'
   | 'open-demands'
@@ -53,6 +56,8 @@ function displayTime(value: string | null | undefined) {
 
 function insightMetric(row: AnalyticsDemandRow, key: InsightKey) {
   switch (key) {
+    case 'candidate-total': return row.funnel.funnel_total;
+    case 'pipeline-active': return row.funnel.pipeline_total;
     case 'hires-month': return row.hires_month;
     case 'hires-quarter': return row.hires_quarter;
     case 'open-demands': return 1;
@@ -80,6 +85,8 @@ function buildInsight(data: AnalyticsOverview, key: string | null): InsightView 
   if (!key) return null;
   const demandRows = data.demands;
   const definitions: Partial<Record<InsightKey, [string, string]>> = {
+    'candidate-total': ['候选人岗位组成', '只展示能够对应到当前在招需求的候选人；人才库中暂无岗位归属的数据不会强行拼入。'],
+    'pipeline-active': ['流程中候选人组成', '当前仍在筛选、业务反馈、面试或 Offer 阶段的候选人。'],
     'hires-month': ['本月入职组成', '本月已经办理入职，并能对应到当前在招需求的岗位。'],
     'hires-quarter': ['本季度入职组成', '本季度已经办理入职，并能对应到当前在招需求的岗位。'],
     'open-demands': ['在招岗位明细', '当前状态为在招的需求清单。'],
@@ -125,16 +132,31 @@ function buildInsight(data: AnalyticsOverview, key: string | null): InsightView 
   };
 }
 
+const activeCandidateStages = new Set(['pending', 'ai_screen', 'business_review', 'interview', 'offer']);
+
+function candidatesForInsight(row: AnalyticsDemandRow, key: InsightKey) {
+  if (key === 'hires-month') return row.candidates.filter((candidate) => candidate.hired_this_month);
+  if (key === 'hires-quarter') return row.candidates.filter((candidate) => candidate.hired_this_quarter);
+  if (key === 'pipeline-active') return row.candidates.filter((candidate) => activeCandidateStages.has(candidate.stage));
+  if (key === 'offer-rate' || key === 'funnel-offered') return row.candidates.filter((candidate) => candidate.offer_issued);
+  if (key === 'funnel-screened') return row.candidates.filter((candidate) => candidate.stage !== 'pending');
+  if (key === 'funnel-interviewed') return row.candidates.filter((candidate) => ['interview', 'offer', 'onboarded'].includes(candidate.stage));
+  if (key === 'funnel-hired') return row.candidates.filter((candidate) => candidate.stage === 'onboarded');
+  return row.candidates;
+}
+
 function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruiterPerformance: boolean }) {
   const { role } = useCompanyAuth();
   const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedInsight = searchParams.get('insight');
+  const requestedDemandId = Number(searchParams.get('demand')) || null;
   const [data, setData] = useState<AnalyticsOverview | null>(null);
   const [trendView, setTrendView] = useState<'hires' | 'offers'>('hires');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [expandedDemandId, setExpandedDemandId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,20 +178,25 @@ function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruit
     )) ?? [0])),
     [data, trendView],
   );
-  const selectedInsight = useMemo(
-    () => data ? buildInsight(data, requestedInsight) : null,
-    [data, requestedInsight],
-  );
+  const selectedInsight = useMemo(() => {
+    const insight = data ? buildInsight(data, requestedInsight) : null;
+    if (!insight || !requestedDemandId) return insight;
+    return { ...insight, rows: insight.rows.filter((row) => row.demand_id === requestedDemandId) };
+  }, [data, requestedDemandId, requestedInsight]);
 
   const openInsight = useCallback((key: InsightKey) => {
     const next = new URLSearchParams(searchParams);
     next.set('insight', key);
+    next.delete('demand');
+    setExpandedDemandId(null);
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
   const closeInsight = useCallback(() => {
     const next = new URLSearchParams(searchParams);
     next.delete('insight');
+    next.delete('demand');
+    setExpandedDemandId(null);
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -353,22 +380,36 @@ function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruit
             <p className="rounded-lg border border-primary-100 bg-primary-50/60 px-4 py-3 text-xs leading-5 text-primary-800">
               下方只列出能对应到当前在招需求的数据；没有归属或已关闭需求的历史数字不会强行拼进明细。
             </p>
-            {selectedInsight.rows.length ? selectedInsight.rows.map((row) => (
-              <article key={row.demand_id} className="rounded-lg border border-background-200 px-4 py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground-900">{row.title}</p>
-                    <p className="mt-1 text-xs text-foreground-500">{row.request_no} · {row.department} · 负责人：{row.owner_name || '未分配'}</p>
-                  </div>
-                  <span className="shrink-0 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">{insightMetricLabel(row, selectedInsight.key)}</span>
-                </div>
-                <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-md bg-background-50 px-2 py-2"><dt className="text-[11px] text-foreground-500">HC</dt><dd className="mt-1 text-sm font-semibold text-foreground-900">{row.headcount}</dd></div>
-                  <div className="rounded-md bg-background-50 px-2 py-2"><dt className="text-[11px] text-foreground-500">已入职</dt><dd className="mt-1 text-sm font-semibold text-foreground-900">{row.onboarded}</dd></div>
-                  <div className="rounded-md bg-background-50 px-2 py-2"><dt className="text-[11px] text-foreground-500">流程中 / 剩余</dt><dd className="mt-1 text-sm font-semibold text-foreground-900">{row.in_progress} / {row.remaining}</dd></div>
-                </dl>
-              </article>
-            )) : (
+            {selectedInsight.rows.length ? selectedInsight.rows.map((row) => {
+              const candidates = candidatesForInsight(row, selectedInsight.key);
+              const expanded = expandedDemandId === row.demand_id;
+              return (
+                <article key={row.demand_id} className="overflow-hidden rounded-lg border border-background-200">
+                  <button
+                    type="button"
+                    data-ui="analytics-demand-candidates"
+                    aria-expanded={expanded}
+                    onClick={() => setExpandedDemandId(expanded ? null : row.demand_id)}
+                    className="w-full px-4 py-4 text-left transition hover:bg-background-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-200"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground-900">{row.title}</p>
+                        <p className="mt-1 text-xs text-foreground-500">{row.request_no} · {row.department} · 负责人：{row.owner_name || '未分配'}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">{insightMetricLabel(row, selectedInsight.key)}</span>
+                    </div>
+                    <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-md bg-background-50 px-2 py-2"><dt className="text-[11px] text-foreground-500">HC</dt><dd className="mt-1 text-sm font-semibold text-foreground-900">{row.headcount}</dd></div>
+                      <div className="rounded-md bg-background-50 px-2 py-2"><dt className="text-[11px] text-foreground-500">已入职</dt><dd className="mt-1 text-sm font-semibold text-foreground-900">{row.onboarded}</dd></div>
+                      <div className="rounded-md bg-background-50 px-2 py-2"><dt className="text-[11px] text-foreground-500">流程中 / 剩余</dt><dd className="mt-1 text-sm font-semibold text-foreground-900">{row.in_progress} / {row.remaining}</dd></div>
+                    </dl>
+                    <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary-700">{expanded ? '收起候选人' : `查看候选人 ${candidates.length} 人`}<ChevronRight size={13} className={expanded ? 'rotate-90' : ''} /></span>
+                  </button>
+                  {expanded && <div className="border-t border-background-100 bg-background-50/40 px-4 py-4"><CandidateReadOnlyList candidates={candidates} /></div>}
+                </article>
+              );
+            }) : (
               <div className="rounded-lg border border-dashed border-background-300 py-16 text-center text-sm text-foreground-500">当前条件下暂无组成明细</div>
             )}
           </div>

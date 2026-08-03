@@ -74,3 +74,17 @@ test('数据看板继续使用产品现有标题、颜色和组件规范', () =>
   assert.match(roleViews, /text-2xl/);
   assert.doesNotMatch(roleViews, /#[0-9a-fA-F]{3,8}/);
 });
+
+test('总监下钻岗位后能继续展开真实候选人和责任信息', () => {
+  const page = read('src/pages/analytics/page.tsx') + read('src/components/analytics/CandidateReadOnlyList.tsx');
+  const types = read('src/features/analytics/types.ts');
+
+  assert.match(types, /candidates:\s*AnalyticsCandidateRow\[\]/);
+  assert.match(page, /data-ui="analytics-demand-candidates"/);
+  assert.match(page, /aria-expanded=/);
+  assert.match(page, /row\.candidates/);
+  assert.match(page, /candidate\.candidate_name/);
+  assert.match(page, /candidate\.stage_label/);
+  assert.match(page, /candidate\.last_actor_name/);
+  assert.match(page, /下一步责任/);
+});
