@@ -7,7 +7,7 @@ import {
   type InterviewFilters,
   type InterviewStatusTab,
   type InterviewViewMode,
-} from '../workbench';
+} from '@/features/interviews/workbench';
 
 interface InterviewWorkbenchToolbarProps {
   activeTab: InterviewStatusTab;

@@ -6,7 +6,7 @@ import test from 'node:test';
 const root = path.resolve(import.meta.dirname, '..');
 const loginSource = fs.readFileSync(path.join(root, 'src/pages/login/page.tsx'), 'utf8');
 const scheduleSource = fs.readFileSync(
-  path.join(root, 'src/pages/interviews/components/ScheduleInterviewModal.tsx'),
+  path.join(root, 'src/features/interviews/components/ScheduleInterviewModal.tsx'),
   'utf8',
 );
 const interviewerDashboardSource = fs.readFileSync(

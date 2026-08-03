@@ -1,0 +1,2403 @@
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type ReactNode,
+} from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  AlertCircle,
+  ArrowLeft,
+  BriefcaseBusiness,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  FileText,
+  GitMerge,
+  Inbox,
+  LoaderCircle,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Send,
+  Star,
+  Upload,
+  UserPlus,
+  UserRound,
+  X,
+} from 'lucide-react';
+import { useProductRole } from '@/auth/productRole';
+import StructuredResumeView from '@/components/candidates/StructuredResumeView';
+import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
+import PageHeader from '@/components/ui/PageHeader';
+import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
+import { apiRequest } from '@/lib/api';
+import { candidatesApi } from '@/features/candidates/api';
+import type {
+  CandidateListItem,
+  CandidateListResponse,
+  CandidatePipelineAddResult,
+  CandidateJourney,
+  CandidateResumeDetail,
+  CandidateStage,
+  ParseStatus,
+  ResumeUploadResponse,
+} from '@/features/candidates/types';
+import { demandsApi } from '@/features/demands/api';
+import type { RecruitmentDemand } from '@/features/demands/types';
+import { businessReviewsApi } from '@/features/businessReviews/api';
+import { candidateBusinessAction } from '@/features/businessReviews/actions';
+import type { BusinessReviewStatus, BusinessReviewTask } from '@/features/businessReviews/types';
+import { interviewsApi } from '@/features/interviews/api';
+import type { InterviewManagementRow } from '@/features/interviews/types';
+import { useToast } from '@/hooks/useToast';
+import PushToReviewerModal, {
+  type BusinessReviewerOption,
+  type PushDemandOption,
+  type PushFormValue,
+  type PushResultItem,
+  type PushTarget,
+} from '@/features/businessReviews/components/PushToReviewerModal';
+import { canEnterBusinessReview, isActionableBusinessReviewResult } from '@/features/businessReviews/stages';
+import AddToPipelineModal from './AddToPipelineModal';
+import CandidateDetailDrawer from './CandidateDetailDrawer';
+import CandidateUploadModal from './CandidateUploadModal';
+import DuplicateCandidatesModal from './DuplicateCandidatesModal';
+import ResumeRecoveryPanel from '@/features/candidates/components/ResumeRecoveryPanel';
+import {
+  belongsToSourceFile,
+  candidateFromReviewTask,
+  candidateResumeReady,
+  candidateScopeTabs,
+  candidateStageFromNavigation,
+  candidateStageOptions,
+  errorMessage,
+  formatDate,
+  initialCandidateScope,
+  isBusinessReviewer,
+  isCandidateNavigationState,
+  isCandidateStage,
+  isParseStatus,
+  isPipelineStatus,
+  positiveSearchId,
+  positiveSearchPage,
+  setCandidateSearchParam,
+  type CandidateLibraryScope,
+  type InterviewerApiItem,
+  type PipelineStatusFilter,
+} from '@/features/candidates/library';
+
+const PER_PAGE = 20;
+const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif|zip)$/i;
+const supportedReplacementPattern = /\.(pdf|docx|jpe?g|png|webp|gif)$/i;
+const supportedResumeAccept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,.zip,image/jpeg,image/png,image/webp,image/gif,application/zip';
+
+type ResumeUploadResult = ResumeUploadResponse['results'][number];
+type UploadRowAction = 'keeping' | 'replacing' | 'replaced' | 'retrying' | 'retry_failed';
+
+const emptyCandidateResponse: CandidateListResponse = {
+  candidates: [],
+  total: 0,
+  page: 1,
+  per_page: PER_PAGE,
+  pages: 1,
+};
+
+const parseStatusMeta = {
+  pending: { label: '待解析', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+  processing: { label: '解析中', className: 'border-blue-200 bg-blue-50 text-blue-700' },
+  ok: { label: '已解析', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  failed: { label: '待确认', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+  original_confirmed: { label: '原件已确认', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+} as const;
+
+const stageLabels: Record<CandidateStage, string> = {
+  pending: 'HR 初筛',
+  ai_screen: 'AI 筛选',
+  business_review: '业务筛选',
+  interview: '面试',
+  offer: 'Offer',
+  onboarded: '已入职',
+  rejected: '已淘汰',
+  transferred: '已转需求',
+};
+
+const sourceChannels = ['BOSS直聘', '58同城', '猎聘', '鱼泡直聘', '智联招聘', '前程无忧', '内推', '官网', 'LinkedIn'];
+const sourceFilterOptions = [...sourceChannels, '其他'];
+const educationOptions = ['博士', '硕士', '本科', '大专', '高中', '中专'];
+const cityOptions = ['北京', '上海', '深圳', '广州', '杭州', '成都', '武汉', '南京', '苏州', '西安', '长沙', '重庆', '天津', '厦门', '合肥', '郑州', '青岛', '宁波', '佛山'];
+const businessReviewStatusMeta: Record<BusinessReviewStatus, { label: string; className: string }> = {
+  pending: { label: '等待业务负责人', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+  approved: { label: '已通过', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  rejected: { label: '不合适', className: 'border-red-200 bg-red-50 text-red-700' },
+  needs_info: { label: '待 HR 补充', className: 'border-sky-200 bg-sky-50 text-sky-700' },
+};
+
+type CandidateColumnFilter = 'identity' | 'parse' | 'profile' | 'skills' | 'source' | 'stage' | 'created';
+type CandidateSortBy = 'created_at' | 'name_masked';
+type SortOrder = 'asc' | 'desc';
+
+const filterControlClass = 'h-9 w-full rounded-lg border border-background-300 bg-white px-2.5 text-xs text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100';
+
+function CandidateColumnFilterHeader({
+  'data-ui': dataUi,
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  'data-ui': string;
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <th
+      className="relative px-3 py-3 font-medium"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.stopPropagation();
+          onToggle();
+        }
+      }}
+    >
+      <button
+        type="button"
+        data-ui={dataUi}
+        aria-expanded={open}
+        aria-controls={`${dataUi}-panel`}
+        onClick={onToggle}
+        className="inline-flex items-center gap-1 rounded text-left hover:text-foreground-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+      >
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          id={`${dataUi}-panel`}
+          role="group"
+          aria-label={`${label}筛选条件`}
+          className="absolute left-3 top-full z-30 mt-1 w-60 space-y-2 rounded-lg border border-background-200 bg-white p-3 shadow-xl"
+        >
+          {children}
+        </div>
+      )}
+    </th>
+  );
+}
+
+export default function CandidateLibraryWorkspace() {
+  const { role } = useProductRole();
+  const { showToast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDemandId = positiveSearchId(searchParams.get('demand'));
+  const requestedCandidateId = positiveSearchId(searchParams.get('candidate'));
+  const navState = isCandidateNavigationState(location.state)
+    ? location.state
+    : requestedDemandId
+      ? { demandId: requestedDemandId }
+      : null;
+  const workflowSourceQuery = navState?.fromDashboard
+    ? '&from=dashboard'
+    : navState?.fromJobs
+      ? '&from=jobs'
+      : '';
+
+  const initialScope = initialCandidateScope(searchParams.get('scope'));
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
+  const [demandFilter, setDemandFilter] = useState<number | ''>(navState?.demandId ?? requestedDemandId ?? '');
+  const [cityFilter, setCityFilter] = useState(() => searchParams.get('city') ?? '');
+  const [educationFilter, setEducationFilter] = useState(() => searchParams.get('education') ?? '');
+  const [skillFilter, setSkillFilter] = useState(() => searchParams.get('skill') ?? '');
+  const [sourceFilter, setSourceFilter] = useState(() => searchParams.get('source') ?? '');
+  const [parseStatusFilter, setParseStatusFilter] = useState<'' | ParseStatus>(() => {
+    const value = searchParams.get('parse');
+    return value && isParseStatus(value) ? value : '';
+  });
+  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<PipelineStatusFilter>(
+    initialScope === 'in_pipeline' ? 'in_pipeline' : initialScope === 'talent_pool' ? 'not_in_pipeline' : '',
+  );
+  const [favoriteFilter, setFavoriteFilter] = useState(initialScope === 'favorite');
+  const [stageFilter, setStageFilter] = useState<'' | CandidateStage>(() => {
+    const fromNavigation = candidateStageFromNavigation(navState?.targetStage);
+    const fromUrl = searchParams.get('stage');
+    return fromNavigation || (fromUrl && isCandidateStage(fromUrl) ? fromUrl : '');
+  });
+  const [scoreFilter, setScoreFilter] = useState(() => searchParams.get('score') ?? '0');
+  const [sortBy, setSortBy] = useState<CandidateSortBy>(() => searchParams.get('sort') === 'name_masked' ? 'name_masked' : 'created_at');
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => searchParams.get('order') === 'asc' ? 'asc' : 'desc');
+  const [openColumnFilter, setOpenColumnFilter] = useState<CandidateColumnFilter | null>(null);
+  const [page, setPage] = useState(() => positiveSearchPage(searchParams.get('page')));
+  const [candidateResponse, setCandidateResponse] = useState<CandidateListResponse>(emptyCandidateResponse);
+  const [candidatesLoading, setCandidatesLoading] = useState(true);
+  const [candidatesError, setCandidatesError] = useState<string | null>(null);
+  const [hideLocalDemoRecords, setHideLocalDemoRecords] = useState(false);
+  const candidateRequestId = useRef(0);
+
+  const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
+  const [demandsLoading, setDemandsLoading] = useState(true);
+  const [demandError, setDemandError] = useState<string | null>(null);
+
+  const [reviewers, setReviewers] = useState<BusinessReviewerOption[]>([]);
+  const [reviewersLoading, setReviewersLoading] = useState(false);
+  const [reviewerError, setReviewerError] = useState<string | null>(null);
+
+  const [reviewTasks, setReviewTasks] = useState<BusinessReviewTask[]>([]);
+  const [reviewTasksLoading, setReviewTasksLoading] = useState(true);
+  const [reviewTasksError, setReviewTasksError] = useState<string | null>(null);
+  const [interviewRows, setInterviewRows] = useState<InterviewManagementRow[]>([]);
+  const [interviewRowsError, setInterviewRowsError] = useState<string | null>(null);
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [favoriteSaving, setFavoriteSaving] = useState(false);
+  const [pipelineTargets, setPipelineTargets] = useState<CandidateListItem[] | null>(null);
+  const [pipelineSubmitting, setPipelineSubmitting] = useState(false);
+  const [pipelineResult, setPipelineResult] = useState<CandidatePipelineAddResult | null>(null);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+
+  const [uploadOpen, setUploadOpen] = useState(Boolean(navState?.openUpload));
+  const [uploadDemandId, setUploadDemandId] = useState<number | ''>(navState?.demandId ?? requestedDemandId ?? '');
+  const [uploadSourceChannel, setUploadSourceChannel] = useState('');
+  const [uploadNote, setUploadNote] = useState('');
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [lastSubmittedFiles, setLastSubmittedFiles] = useState<File[]>([]);
+  const [uploadRowActions, setUploadRowActions] = useState<Record<string, UploadRowAction>>({});
+  const [uploadResponse, setUploadResponse] = useState<ResumeUploadResponse | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSubmitting, setUploadSubmitting] = useState(false);
+  const [uploadDragOver, setUploadDragOver] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!navState?.openUpload) return;
+    setUploadOpen(true);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, navState?.openUpload, navigate]);
+
+  const [detailCandidate, setDetailCandidate] = useState<CandidateListItem | null>(null);
+  const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);
+  const [candidateJourney, setCandidateJourney] = useState<CandidateJourney | null>(null);
+  const [journeyError, setJourneyError] = useState<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const detailRequestId = useRef(0);
+  const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
+  const [originalResumeLoading, setOriginalResumeLoading] = useState<'preview' | 'download' | null>(null);
+  const [originalResumeError, setOriginalResumeError] = useState<string | null>(null);
+
+  const [pushTargets, setPushTargets] = useState<PushTarget[] | null>(null);
+  const [pushSubmitting, setPushSubmitting] = useState(false);
+  const [pushResults, setPushResults] = useState<PushResultItem[]>([]);
+  const [pushInitialReviewerId, setPushInitialReviewerId] = useState<number | null>(null);
+  const [reassignTask, setReassignTask] = useState<BusinessReviewTask | null>(null);
+  const handledCandidateQuery = useRef<number | null>(null);
+  const deferredSearch = useDeferredValue(searchQuery.trim());
+  const deferredSkill = useDeferredValue(skillFilter.trim());
+
+  const openCandidateInUrl = useCallback((candidateId: number | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (candidateId) next.set('candidate', String(candidateId));
+    else next.delete('candidate');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const syncCandidateWorkspaceUrl = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    const scope: CandidateLibraryScope = favoriteFilter
+      ? 'favorite'
+      : pipelineStatusFilter === 'in_pipeline'
+        ? 'in_pipeline'
+        : pipelineStatusFilter === 'not_in_pipeline'
+          ? 'talent_pool'
+          : 'all';
+    setCandidateSearchParam(next, 'scope', scope, 'all');
+    setCandidateSearchParam(next, 'q', searchQuery);
+    setCandidateSearchParam(next, 'demand', demandFilter ? String(demandFilter) : '');
+    setCandidateSearchParam(next, 'city', cityFilter);
+    setCandidateSearchParam(next, 'education', educationFilter);
+    setCandidateSearchParam(next, 'skill', skillFilter);
+    setCandidateSearchParam(next, 'source', sourceFilter);
+    setCandidateSearchParam(next, 'parse', parseStatusFilter);
+    setCandidateSearchParam(next, 'stage', stageFilter);
+    setCandidateSearchParam(next, 'score', scoreFilter, '0');
+    setCandidateSearchParam(next, 'sort', sortBy, 'created_at');
+    setCandidateSearchParam(next, 'order', sortOrder, 'desc');
+    setCandidateSearchParam(next, 'page', String(page), '1');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [
+    cityFilter,
+    demandFilter,
+    educationFilter,
+    favoriteFilter,
+    page,
+    parseStatusFilter,
+    pipelineStatusFilter,
+    scoreFilter,
+    searchParams,
+    searchQuery,
+    setSearchParams,
+    skillFilter,
+    sortBy,
+    sortOrder,
+    sourceFilter,
+    stageFilter,
+  ]);
+
+  useEffect(() => { syncCandidateWorkspaceUrl(); }, [syncCandidateWorkspaceUrl]);
+
+  const activeDemands = useMemo(
+    () => demands.filter((demand) => demand.status === 'active' && demand.approval_status === 'approved'),
+    [demands],
+  );
+
+  const pushDemandOptions = useMemo<PushDemandOption[]>(
+    () => activeDemands.map((demand) => ({
+      id: demand.id,
+      jobTitle: demand.job_title,
+      requestNo: demand.request_no,
+      department: demand.job_department,
+    })),
+    [activeDemands],
+  );
+
+  const visibleCandidates = useMemo(
+    () => hideLocalDemoRecords
+      ? candidateResponse.candidates.filter((candidate) => !candidate.is_local_demo_record)
+      : candidateResponse.candidates,
+    [candidateResponse.candidates, hideLocalDemoRecords],
+  );
+
+  const localDemoRecordCount = useMemo(
+    () => candidateResponse.candidates.filter((candidate) => candidate.is_local_demo_record).length,
+    [candidateResponse.candidates],
+  );
+
+  const selectedCandidates = useMemo(
+    () => visibleCandidates.filter((candidate) => selectedIds.has(candidate.id)),
+    [selectedIds, visibleCandidates],
+  );
+
+  const loadCandidates = useCallback(async () => {
+    const requestId = ++candidateRequestId.current;
+    setCandidatesLoading(true);
+    setCandidatesError(null);
+    try {
+      const response = await candidatesApi.listCandidates({
+        search: deferredSearch || undefined,
+        demand_id: demandFilter || undefined,
+        city: cityFilter || undefined,
+        education: educationFilter || undefined,
+        skill: deferredSkill || undefined,
+        min_score: Number(scoreFilter) || undefined,
+        source_channel: sourceFilter || undefined,
+        parse_status: parseStatusFilter || undefined,
+        pipeline_status: pipelineStatusFilter || undefined,
+        favorite: favoriteFilter || undefined,
+        stage: stageFilter || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+        page,
+        per_page: PER_PAGE,
+      });
+      if (requestId !== candidateRequestId.current) return;
+      setCandidateResponse(response);
+      setSelectedIds((current) => new Set(response.candidates.filter((candidate) => current.has(candidate.id)).map((candidate) => candidate.id)));
+    } catch (error) {
+      if (requestId !== candidateRequestId.current) return;
+      setCandidatesError(errorMessage(error, '候选人列表加载失败'));
+    } finally {
+      if (requestId === candidateRequestId.current) setCandidatesLoading(false);
+    }
+  }, [
+    cityFilter,
+    deferredSearch,
+    deferredSkill,
+    demandFilter,
+    educationFilter,
+    favoriteFilter,
+    page,
+    parseStatusFilter,
+    pipelineStatusFilter,
+    scoreFilter,
+    sortBy,
+    sortOrder,
+    sourceFilter,
+    stageFilter,
+  ]);
+
+  const loadDemands = useCallback(async () => {
+    setDemandsLoading(true);
+    setDemandError(null);
+    try {
+      const response = await demandsApi.listDemands();
+      setDemands(response.items);
+    } catch (error) {
+      setDemandError(errorMessage(error, '招聘需求加载失败'));
+    } finally {
+      setDemandsLoading(false);
+    }
+  }, []);
+
+  const loadReviewers = useCallback(async () => {
+    setReviewersLoading(true);
+    setReviewerError(null);
+    try {
+      const response = await apiRequest<InterviewerApiItem[]>('/interview/interviewers');
+      setReviewers(response.filter(isBusinessReviewer).map((item) => ({
+        id: item.id,
+        name: item.name,
+        email: item.email,
+        role: item.role,
+      })));
+    } catch (error) {
+      setReviewerError(errorMessage(error, '业务评审人加载失败'));
+    } finally {
+      setReviewersLoading(false);
+    }
+  }, []);
+
+  const loadReviewTasks = useCallback(async () => {
+    setReviewTasksLoading(true);
+    setReviewTasksError(null);
+    try {
+      const response = await businessReviewsApi.listForHr();
+      setReviewTasks(response.items);
+    } catch (error) {
+      setReviewTasksError(errorMessage(error, '业务筛选结果加载失败'));
+    } finally {
+      setReviewTasksLoading(false);
+    }
+  }, []);
+
+  const loadInterviewRows = useCallback(async () => {
+    setInterviewRowsError(null);
+    try {
+      setInterviewRows(await interviewsApi.listManagementRows());
+    } catch (error) {
+      setInterviewRowsError(errorMessage(error, '面试安排状态加载失败'));
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCandidates();
+  }, [loadCandidates]);
+
+  useEffect(() => {
+    const hasBackgroundParsing = candidateResponse.candidates.some(
+      (candidate) => ['pending', 'processing'].includes(candidate.parse_status),
+    );
+    if (!hasBackgroundParsing) return undefined;
+    const timer = window.setInterval(() => void loadCandidates(), 3000);
+    return () => window.clearInterval(timer);
+  }, [candidateResponse.candidates, loadCandidates]);
+
+  useEffect(() => {
+    void loadDemands();
+  }, [loadDemands]);
+
+  useEffect(() => {
+    void Promise.all([loadReviewTasks(), loadInterviewRows()]);
+    const refreshWorkflowFacts = () => void Promise.all([loadReviewTasks(), loadInterviewRows()]);
+    window.addEventListener('focus', refreshWorkflowFacts);
+    return () => window.removeEventListener('focus', refreshWorkflowFacts);
+  }, [loadInterviewRows, loadReviewTasks]);
+
+  useEffect(() => () => {
+    if (resumePreviewUrl) URL.revokeObjectURL(resumePreviewUrl);
+  }, [resumePreviewUrl]);
+
+  const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(event.target.value);
+    setPage(1);
+  };
+
+  const handleDemandFilterChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setDemandFilter(event.target.value ? Number(event.target.value) : '');
+    setSelectedIds(new Set());
+    setPage(1);
+  };
+
+  const changeFilter = (change: () => void) => {
+    change();
+    setSelectedIds(new Set());
+    setPage(1);
+  };
+
+  const resetCandidateFilters = () => {
+    setSearchQuery('');
+    setDemandFilter('');
+    setCityFilter('');
+    setEducationFilter('');
+    setSkillFilter('');
+    setSourceFilter('');
+    setParseStatusFilter('');
+    setPipelineStatusFilter('');
+    setFavoriteFilter(false);
+    setStageFilter('');
+    setScoreFilter('0');
+    setSortBy('created_at');
+    setSortOrder('desc');
+    setHideLocalDemoRecords(false);
+    setOpenColumnFilter(null);
+    setSelectedIds(new Set());
+    setPage(1);
+  };
+
+  const hasActiveFilters = Boolean(
+    searchQuery.trim()
+    || demandFilter
+    || cityFilter
+    || educationFilter
+    || skillFilter.trim()
+    || sourceFilter
+    || parseStatusFilter
+    || pipelineStatusFilter
+    || favoriteFilter
+    || stageFilter
+    || scoreFilter !== '0'
+    || sortBy !== 'created_at'
+    || sortOrder !== 'desc'
+    || hideLocalDemoRecords,
+  );
+
+  const toggleColumnFilter = (column: CandidateColumnFilter) => {
+    setOpenColumnFilter((current) => current === column ? null : column);
+  };
+
+  const toggleCandidate = (candidateId: number) => {
+    const candidate = candidateResponse.candidates.find((item) => item.id === candidateId);
+    if (!candidate || !candidateResumeReady(candidate)) {
+      showToast('简历待确认，处理后才能加入流程');
+      return;
+    }
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    const selectableCandidates = visibleCandidates.filter(candidateResumeReady);
+    const allVisibleSelected = selectableCandidates.length > 0
+      && selectableCandidates.every((candidate) => selectedIds.has(candidate.id));
+    setSelectedIds(allVisibleSelected ? new Set() : new Set(selectableCandidates.map((candidate) => candidate.id)));
+  };
+
+  const openUploadDialog = () => {
+    setUploadOpen(true);
+    setUploadDemandId(
+      demandFilter && activeDemands.some((demand) => demand.id === demandFilter)
+        ? demandFilter
+        : '',
+    );
+    setUploadSourceChannel('');
+    setUploadNote('');
+    setUploadFiles([]);
+    setLastSubmittedFiles([]);
+    setUploadRowActions({});
+    setUploadResponse(null);
+    setUploadError(null);
+  };
+
+  const addUploadFiles = (incomingFiles: File[]) => {
+    const validFiles = incomingFiles.filter((file) => supportedResumePattern.test(file.name));
+    const invalidFiles = incomingFiles.filter((file) => !supportedResumePattern.test(file.name));
+    if (invalidFiles.length > 0) {
+      showToast(`以下文件格式不支持：${invalidFiles.map((file) => file.name).join('、')}`);
+    }
+    setUploadFiles((current) => {
+      const byFingerprint = new Map(current.map((file) => [`${file.name}-${file.size}-${file.lastModified}`, file]));
+      validFiles.forEach((file) => byFingerprint.set(`${file.name}-${file.size}-${file.lastModified}`, file));
+      return Array.from(byFingerprint.values());
+    });
+    setUploadResponse(null);
+    setUploadError(null);
+  };
+
+  const handleUploadFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    addUploadFiles(Array.from(event.target.files ?? []));
+    event.currentTarget.value = '';
+  };
+
+  const handleUploadDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setUploadDragOver(false);
+    addUploadFiles(Array.from(event.dataTransfer.files));
+  };
+
+  const submitUpload = async () => {
+    if (uploadFiles.length === 0 || uploadSubmitting) return;
+    setUploadSubmitting(true);
+    setUploadError(null);
+    setUploadResponse(null);
+    setUploadRowActions({});
+    setLastSubmittedFiles((current) => {
+      const files = new Map(current.map((file) => [`${file.name}-${file.size}-${file.lastModified}`, file]));
+      uploadFiles.forEach((file) => files.set(`${file.name}-${file.size}-${file.lastModified}`, file));
+      return Array.from(files.values());
+    });
+    try {
+      const uploadResponse = await candidatesApi.uploadResumes(uploadFiles, {
+        target_demand_id: uploadDemandId || undefined,
+        source_channel: uploadSourceChannel || undefined,
+        source_note: uploadNote.trim() || undefined,
+      });
+      setUploadResponse(uploadResponse);
+      const failedSourceNames = new Set(
+        uploadFiles
+          .filter((sourceFile) => {
+            const sourceResults = uploadResponse.results.filter((result) => belongsToSourceFile(result.file, sourceFile.name));
+            return sourceResults.length === 0 || sourceResults.some((result) => !['ok', 'processing', 'duplicate', 'needs_confirmation'].includes(result.status));
+          })
+          .map((file) => file.name),
+      );
+      setUploadFiles((current) => current.filter((file) => failedSourceNames.has(file.name)));
+      await loadCandidates();
+
+      const successfulCount = uploadResponse.results.filter((result) => result.status === 'ok').length;
+      const processingCount = uploadResponse.results.filter((result) => result.status === 'processing').length;
+      const duplicateCount = uploadResponse.results.filter((result) => result.status === 'duplicate').length;
+      const confirmationCount = uploadResponse.results.filter((result) => result.status === 'needs_confirmation').length;
+      if (processingCount > 0) {
+        showToast(`已上传 ${processingCount} 份，AI 正在后台解析，完成后列表会自动刷新`);
+      } else if (uploadResponse.deduplicated && duplicateCount > 0) {
+        showToast('导入失败：系统中已存在重复简历，未重复入库');
+      } else if (uploadResponse.deduplicated) {
+        showToast('该批文件与近期上传内容重复，已返回原处理结果');
+      } else if (successfulCount > 0 && duplicateCount > 0) {
+        showToast(`简历已处理：成功 ${successfulCount} 份，重复 ${duplicateCount} 份`);
+      } else if (successfulCount > 0 && confirmationCount > 0) {
+        showToast(`简历已处理：成功 ${successfulCount} 份，待确认 ${confirmationCount} 份`);
+      } else if (successfulCount > 0) {
+        showToast(`简历已处理，成功入库 ${successfulCount} 份`);
+      } else if (confirmationCount > 0) {
+        showToast(`有 ${confirmationCount} 份简历需要确认原件`);
+      } else if (duplicateCount > 0) {
+        showToast('导入失败：系统中已存在重复简历');
+      } else {
+        showToast('文件处理已完成，但没有成功解析的简历');
+      }
+    } catch (error) {
+      setUploadError(errorMessage(error, '简历上传失败'));
+    } finally {
+      setUploadSubmitting(false);
+    }
+  };
+
+  const loadCandidateDetail = useCallback(async (candidateId: number, demandId: number | null) => {
+    const requestId = ++detailRequestId.current;
+    setDetailLoading(true);
+    setDetailError(null);
+    setJourneyError(null);
+    try {
+      const [resumeResult, journeyResult] = await Promise.allSettled([
+        candidatesApi.getResume(candidateId),
+        demandId ? candidatesApi.getJourney(candidateId, demandId) : Promise.resolve(null),
+      ]);
+      if (requestId !== detailRequestId.current) return;
+      if (resumeResult.status === 'rejected') throw resumeResult.reason;
+      setResumeDetail(resumeResult.value);
+      if (journeyResult.status === 'fulfilled') setCandidateJourney(journeyResult.value);
+      else setJourneyError(errorMessage(journeyResult.reason, '完整招聘过程暂不可用'));
+    } catch (error) {
+      if (requestId !== detailRequestId.current) return;
+      setDetailError(errorMessage(error, '简历详情加载失败'));
+    } finally {
+      if (requestId === detailRequestId.current) setDetailLoading(false);
+    }
+  }, []);
+
+  const openCandidateDetail = useCallback((candidate: CandidateListItem) => {
+    setDetailCandidate(candidate);
+    setResumeDetail(null);
+    setCandidateJourney(null);
+    setJourneyError(null);
+    setResumePreviewUrl(null);
+    setOriginalResumeError(null);
+    openCandidateInUrl(candidate.id);
+    void loadCandidateDetail(candidate.id, candidate.current_demand_id ?? candidate.latest_demand_id ?? requestedDemandId);
+  }, [loadCandidateDetail, openCandidateInUrl, requestedDemandId]);
+
+  const openExistingCandidateFromUpload = useCallback((
+    result: ResumeUploadResponse['results'][number],
+  ) => {
+    if (!result.existing_candidate_id) return;
+    const existing = candidateResponse.candidates.find(
+      (candidate) => candidate.id === result.existing_candidate_id,
+    ) ?? {
+      id: result.existing_candidate_id,
+      name_masked: result.existing_candidate_name || '已有候选人',
+      owner_hr_id: null,
+      is_favorite: false,
+      created_at: '',
+      parse_status: 'ok' as const,
+      tag_count: 0,
+    };
+    setUploadOpen(false);
+    openCandidateDetail(existing);
+  }, [candidateResponse.candidates, openCandidateDetail]);
+
+  const openConfirmationCandidateFromUpload = useCallback((
+    result: ResumeUploadResponse['results'][number],
+  ) => {
+    if (!result.candidate_id) return;
+    const pending = candidateResponse.candidates.find(
+      (candidate) => candidate.id === result.candidate_id,
+    ) ?? {
+      id: result.candidate_id,
+      name_masked: result.file || '待确认候选人',
+      owner_hr_id: null,
+      is_favorite: false,
+      created_at: '',
+      parse_status: 'failed' as const,
+      tag_count: 0,
+    };
+    setUploadOpen(false);
+    openCandidateDetail(pending);
+  }, [candidateResponse.candidates, openCandidateDetail]);
+
+  const sourceFileForUploadResult = (result: ResumeUploadResult) => (
+    lastSubmittedFiles.find((file) => belongsToSourceFile(result.file, file.name))
+    ?? uploadFiles.find((file) => belongsToSourceFile(result.file, file.name))
+    ?? null
+  );
+
+  const keepExistingResumeVersion = (result: ResumeUploadResult) => {
+    setUploadRowActions((current) => ({ ...current, [result.file]: 'keeping' }));
+  };
+
+  const replaceDuplicateAsCurrentVersion = async (result: ResumeUploadResult) => {
+    const file = sourceFileForUploadResult(result);
+    if (!result.existing_candidate_id || !file || !supportedReplacementPattern.test(file.name)) {
+      setUploadError('该文件来自压缩包或原文件已不可用，请进入已有候选人详情后更换简历');
+      return;
+    }
+    if (!window.confirm('将把这份文件设为候选人的当前简历，现有简历会自动归档为历史版本。确认继续吗？')) return;
+    setUploadRowActions((current) => ({ ...current, [result.file]: 'replacing' }));
+    setUploadError(null);
+    try {
+      await candidatesApi.replaceResume(result.existing_candidate_id, file);
+      setUploadRowActions((current) => ({ ...current, [result.file]: 'replaced' }));
+      showToast('新版简历已启用，旧版已保留在历史版本中');
+      await loadCandidates();
+    } catch (error) {
+      setUploadRowActions((current) => ({ ...current, [result.file]: 'retry_failed' }));
+      setUploadError(errorMessage(error, '设为新版简历失败'));
+    }
+  };
+
+  const retrySingleUploadFile = async (result: ResumeUploadResult) => {
+    const file = sourceFileForUploadResult(result);
+    if (!file) {
+      setUploadError('原文件已不可用，请重新选择该文件');
+      return;
+    }
+    setUploadRowActions((current) => ({ ...current, [result.file]: 'retrying' }));
+    setUploadError(null);
+    try {
+      const response = await candidatesApi.uploadResumes([file], {
+        target_demand_id: uploadDemandId || undefined,
+        source_channel: uploadSourceChannel || undefined,
+        source_note: uploadNote.trim() || undefined,
+      });
+      setUploadResponse((current) => current ? {
+        ...current,
+        results: [
+          ...current.results.filter((item) => !belongsToSourceFile(item.file, file.name)),
+          ...response.results,
+        ],
+      } : response);
+      const stillFailed = response.results.some((item) => !['ok', 'processing', 'duplicate', 'needs_confirmation'].includes(item.status));
+      setUploadFiles((current) => stillFailed ? current : current.filter((item) => item !== file));
+      setUploadRowActions((current) => {
+        const next = { ...current };
+        delete next[result.file];
+        return next;
+      });
+      await loadCandidates();
+      showToast(stillFailed ? '该文件仍未处理成功，请查看失败原因' : '该文件已重新处理');
+    } catch (error) {
+      setUploadRowActions((current) => ({ ...current, [result.file]: 'retry_failed' }));
+      setUploadError(errorMessage(error, '单个文件重试失败'));
+    }
+  };
+
+  const focusedReview = useMemo(() => reviewTasks.find((task) => (
+    task.candidate_id === requestedCandidateId
+    && (!requestedDemandId || task.demand_id === requestedDemandId)
+  )) ?? null, [requestedCandidateId, requestedDemandId, reviewTasks]);
+
+  const visibleReviewResults = useMemo(() => {
+    if (focusedReview && isActionableBusinessReviewResult(
+      focusedReview.status,
+      focusedReview.candidate.current_stage,
+    )) return [focusedReview];
+    return reviewTasks
+      .filter((task) => (
+        isActionableBusinessReviewResult(task.status, task.candidate.current_stage)
+        && (!demandFilter || task.demand_id === demandFilter)
+      ))
+      .slice(0, 5);
+  }, [demandFilter, focusedReview, reviewTasks]);
+
+  const detailReview = useMemo(() => {
+    if (!detailCandidate) return null;
+    return reviewTasks.find((task) => (
+      task.candidate_id === detailCandidate.id
+      && (!detailCandidate.current_demand_id || task.demand_id === detailCandidate.current_demand_id)
+    )) ?? null;
+  }, [detailCandidate, reviewTasks]);
+
+  useEffect(() => {
+    if (!requestedCandidateId || candidatesLoading || reviewTasksLoading) return;
+    if (handledCandidateQuery.current === requestedCandidateId) return;
+    const candidate = candidateResponse.candidates.find((item) => item.id === requestedCandidateId)
+      ?? (focusedReview ? candidateFromReviewTask(focusedReview) : null);
+    if (!candidate) return;
+    handledCandidateQuery.current = requestedCandidateId;
+    openCandidateDetail(candidate);
+  }, [
+    candidateResponse.candidates,
+    candidatesLoading,
+    focusedReview,
+    openCandidateDetail,
+    requestedCandidateId,
+    reviewTasksLoading,
+  ]);
+
+  const closeCandidateDetail = () => {
+    detailRequestId.current += 1;
+    setDetailCandidate(null);
+    setResumeDetail(null);
+    setCandidateJourney(null);
+    setJourneyError(null);
+    setDetailError(null);
+    setResumePreviewUrl(null);
+    setOriginalResumeError(null);
+    openCandidateInUrl(null);
+  };
+
+  const previewOriginalResume = async () => {
+    if (!resumeDetail || originalResumeLoading) return;
+    setOriginalResumeLoading('preview');
+    setOriginalResumeError(null);
+    try {
+      const blob = await businessReviewsApi.loadResume(resumeDetail.id);
+      setResumePreviewUrl(URL.createObjectURL(blob));
+    } catch (error) {
+      setOriginalResumeError(errorMessage(error, '原版简历预览失败'));
+    } finally {
+      setOriginalResumeLoading(null);
+    }
+  };
+
+  const downloadOriginalResume = async () => {
+    if (!resumeDetail || originalResumeLoading) return;
+    setOriginalResumeLoading('download');
+    setOriginalResumeError(null);
+    try {
+      const blob = await businessReviewsApi.downloadResume(resumeDetail.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = resumeDetail.original_resume.filename || `candidate-${resumeDetail.id}-resume`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setOriginalResumeError(errorMessage(error, '原版简历下载失败'));
+    } finally {
+      setOriginalResumeLoading(null);
+    }
+  };
+
+  const openPushModal = (candidates: CandidateListItem[], reviewerId: number | null = null) => {
+    if (candidates.length === 0) return;
+    setPushTargets(candidates.map((candidate) => ({
+      candidateId: candidate.id,
+      candidateName: candidate.name_masked,
+      currentDemandId: candidate.current_demand_id ?? (demandFilter || null),
+      currentStage: candidate.current_stage ? stageLabels[candidate.current_stage] : null,
+      currentStageCode: candidate.current_stage,
+    })));
+    setPushResults([]);
+    setPushInitialReviewerId(reviewerId);
+    setReassignTask(null);
+    if (reviewers.length === 0 && !reviewersLoading) void loadReviewers();
+  };
+
+  const openReassignModal = (task: BusinessReviewTask) => {
+    const candidate = candidateFromReviewTask(task);
+    setDemandFilter(task.demand_id);
+    setPushTargets([{
+      candidateId: candidate.id,
+      candidateName: candidate.name_masked,
+      currentDemandId: task.demand_id,
+      currentStage: stageLabels[candidate.current_stage || 'business_review'],
+      currentStageCode: candidate.current_stage || 'business_review',
+    }]);
+    setPushResults([]);
+    setPushInitialReviewerId(task.reviewer_id);
+    setReassignTask(task);
+    if (reviewers.length === 0 && !reviewersLoading) void loadReviewers();
+  };
+
+  const repeatBusinessReview = (task: BusinessReviewTask) => {
+    setDemandFilter(task.demand_id);
+    openPushModal([candidateFromReviewTask(task)], task.reviewer_id);
+  };
+
+  const renderReviewAction = (task: BusinessReviewTask) => {
+    if (task.status === 'approved') {
+      if (task.candidate.current_stage === 'offer') {
+        return (
+          <button
+            type="button"
+            onClick={() => navigate(`/offers?demand=${task.demand_id}&candidate=${task.candidate_id}${workflowSourceQuery}`)}
+            className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
+          >
+            查看 Offer
+          </button>
+        );
+      }
+      if (task.candidate.current_stage === 'onboarded') {
+        return <span className="text-xs font-medium text-emerald-700">已入职，流程已完成</span>;
+      }
+      if (task.candidate.current_stage === 'rejected') {
+        return <span className="text-xs font-medium text-red-700">已淘汰，流程已结束</span>;
+      }
+      if (task.candidate.current_stage === 'transferred') {
+        return <span className="text-xs font-medium text-foreground-600">已转至其他招聘需求</span>;
+      }
+      if (interviewRowsError) {
+        return <span className="text-xs text-amber-700">面试状态暂不可用，请刷新后再操作</span>;
+      }
+      const hasScheduledInterview = interviewRows.some((row) => (
+        row.demand_id === task.demand_id
+        && row.candidate_id === task.candidate_id
+        && row.assignment_id !== null
+        && row.assignment_status !== 'unassigned'
+      ));
+      return (
+        <button
+          type="button"
+          onClick={() => navigate(`/interviews?demand=${task.demand_id}&candidate=${task.candidate_id}${workflowSourceQuery}`)}
+          className="rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white hover:bg-primary-600"
+        >
+          {hasScheduledInterview ? '查看/调整面试' : '安排面试'}
+        </button>
+      );
+    }
+    if (task.status === 'rejected') {
+      return (
+        <button
+          type="button"
+          onClick={() => navigate(`/kanban?demand=${task.demand_id}&candidate=${task.candidate_id}&target=rejected`)}
+          className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+        >
+          去流程处理
+        </button>
+      );
+    }
+    if (task.status === 'needs_info') {
+      return (
+        <button
+          type="button"
+          onClick={() => repeatBusinessReview(task)}
+          className="rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white hover:bg-primary-600"
+        >
+          补充并再次推送
+        </button>
+      );
+    }
+    return <span className="text-xs text-foreground-500">等待业务负责人处理</span>;
+  };
+
+  const updateFavorites = async (candidates: CandidateListItem[], favorite: boolean) => {
+    if (candidates.length === 0 || favoriteSaving) return;
+    setFavoriteSaving(true);
+    try {
+      await candidatesApi.setFavorites(candidates.map((candidate) => candidate.id), favorite);
+      showToast(favorite ? `已收藏 ${candidates.length} 位候选人` : `已取消收藏 ${candidates.length} 位候选人`);
+      await loadCandidates();
+    } catch (error) {
+      showToast(errorMessage(error, favorite ? '收藏候选人失败' : '取消收藏失败'));
+    } finally {
+      setFavoriteSaving(false);
+    }
+  };
+
+  const openPipelineModal = (candidates: CandidateListItem[]) => {
+    if (candidates.length === 0) return;
+    setPipelineTargets(candidates);
+    setPipelineResult(null);
+  };
+
+  const handleAddToPipeline = async (demandId: number, reason: string, pushAfterAdd: boolean) => {
+    if (!pipelineTargets || pipelineSubmitting) return;
+    setPipelineSubmitting(true);
+    try {
+      const result = await candidatesApi.addToPipeline(
+        demandId,
+        pipelineTargets.map((candidate) => candidate.id),
+        reason,
+      );
+      setPipelineResult(result);
+      setSelectedIds(new Set());
+      await loadCandidates();
+      showToast(`已加入 ${result.added} 位，重新启用 ${result.reactivated} 位候选人`);
+      const successfulCount = result.added + result.reactivated;
+      if (pushAfterAdd && successfulCount > 0) {
+        const failedIds = new Set(result.failures.map((item) => item.candidate_id));
+        const successful = pipelineTargets
+          .filter((candidate) => !failedIds.has(candidate.id))
+          .slice(0, successfulCount)
+          .map((candidate) => ({
+            ...candidate,
+            current_demand_id: demandId,
+            current_stage: 'pending' as const,
+          }));
+        setPipelineTargets(null);
+        setPipelineResult(null);
+        setDemandFilter(demandId);
+        openPushModal(successful);
+      }
+    } catch (error) {
+      showToast(errorMessage(error, '加入招聘流程失败'));
+    } finally {
+      setPipelineSubmitting(false);
+    }
+  };
+
+  const selectLibraryScope = (scope: 'all' | 'in_pipeline' | 'talent_pool' | 'favorite') => {
+    changeFilter(() => {
+      setFavoriteFilter(scope === 'favorite');
+      setPipelineStatusFilter(
+        scope === 'in_pipeline' ? 'in_pipeline' : scope === 'talent_pool' ? 'not_in_pipeline' : '',
+      );
+    });
+  };
+
+  const libraryScope = favoriteFilter
+    ? 'favorite'
+    : pipelineStatusFilter === 'in_pipeline'
+      ? 'in_pipeline'
+      : pipelineStatusFilter === 'not_in_pipeline'
+        ? 'talent_pool'
+        : 'all';
+
+  const handlePushToBusiness = async (value: PushFormValue) => {
+    if (!pushTargets || pushSubmitting) return;
+    setPushSubmitting(true);
+    setPushResults([]);
+    const results: PushResultItem[] = [];
+
+    if (reassignTask) {
+      const target = pushTargets[0];
+      try {
+        const task = await businessReviewsApi.reassignTask(reassignTask.id, value.reviewerId);
+        results.push({
+          candidateId: target.candidateId,
+          candidateName: target.candidateName,
+          status: 'created',
+          message: task.unchanged ? '接收人没有变化' : `已改派给 ${task.reviewer_name || '新业务筛选人'}`,
+        });
+        await loadReviewTasks();
+        showToast(task.unchanged ? '业务筛选人没有变化' : `已改派给 ${task.reviewer_name || '新业务筛选人'}`);
+      } catch (error) {
+        results.push({
+          candidateId: target.candidateId,
+          candidateName: target.candidateName,
+          status: 'failed',
+          message: errorMessage(error, '改派失败'),
+        });
+      } finally {
+        setPushResults(results);
+        setPushSubmitting(false);
+      }
+      return;
+    }
+
+    for (const target of pushTargets) {
+      try {
+        const task = await candidatesApi.pushToBusinessReview({
+          demand_id: value.demandId,
+          candidate_id: target.candidateId,
+          reviewer_id: value.reviewerId,
+          hr_note: value.hrNote,
+          due_at: value.dueAt,
+        });
+        const deduplicated = task.deduplicated === true;
+        results.push({
+          candidateId: target.candidateId,
+          candidateName: target.candidateName,
+          status: deduplicated ? 'deduplicated' : 'created',
+          message: deduplicated ? '该候选人已在等待业务筛选' : '业务筛选任务已创建',
+        });
+      } catch (error) {
+        results.push({
+          candidateId: target.candidateId,
+          candidateName: target.candidateName,
+          status: 'failed',
+          message: errorMessage(error, '推送失败'),
+        });
+      }
+    }
+
+    setPushResults(results);
+    setPushSubmitting(false);
+    if (results.some((result) => result.status !== 'failed')) {
+      await loadCandidates();
+      await loadReviewTasks();
+      const created = results.filter((result) => result.status === 'created');
+      const duplicate = results.filter((result) => result.status === 'deduplicated');
+      if (created.length > 0) {
+        showToast(`已根据后端结果创建 ${created.length} 个业务筛选任务`);
+      } else if (duplicate.length > 0) {
+        showToast('该候选人已在等待业务筛选');
+      }
+    }
+  };
+
+  const initialPushDemandId = demandFilter || null;
+  const selectableVisibleCandidates = visibleCandidates.filter(candidateResumeReady);
+  const allVisibleSelected = selectableVisibleCandidates.length > 0
+    && selectableVisibleCandidates.every((candidate) => selectedIds.has(candidate.id));
+  const selectedAllFavorite = selectedCandidates.length > 0
+    && selectedCandidates.every((candidate) => candidate.is_favorite);
+  const selectedAllInPipeline = selectedCandidates.length > 0
+    && selectedCandidates.every((candidate) => candidate.current_demand_id);
+  const selectedAllReviewable = selectedCandidates.length > 0
+    && selectedCandidates.every((candidate) => canEnterBusinessReview(candidate.current_stage));
+
+  const renderCandidateBusinessAction = (candidate: CandidateListItem, compact = false) => {
+    if (!candidateResumeReady(candidate)) {
+      return <span className="text-xs font-medium text-amber-700">简历待确认，处理后才能加入流程</span>;
+    }
+    const demandId = candidate.current_demand_id;
+    const candidateTasks = reviewTasks.filter((task) => (
+      task.candidate_id === candidate.id
+      && (!demandId || task.demand_id === demandId)
+    ));
+    const pendingTask = candidateTasks.find((task) => task.status === 'pending') ?? null;
+    const latestTask = candidateTasks[0] ?? null;
+    const action = candidateBusinessAction({
+      currentDemandId: demandId,
+      currentStage: candidate.current_stage,
+      pendingTask,
+      latestTask,
+    });
+    const primaryClass = compact
+      ? 'inline-flex min-h-8 items-center justify-center rounded-lg bg-primary-500 px-2.5 text-xs font-medium text-white hover:bg-primary-600'
+      : 'inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600';
+    const secondaryClass = compact
+      ? 'inline-flex min-h-8 items-center justify-center rounded-lg border border-primary-200 bg-white px-2.5 text-xs font-medium text-primary-700 hover:bg-primary-50'
+      : 'inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-white px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50';
+
+    if (action.kind === 'join_and_push') {
+      return <button type="button" onClick={() => openPipelineModal([candidate])} className={primaryClass}><UserPlus size={14} aria-hidden="true" />{action.label}</button>;
+    }
+    if (action.kind === 'push') {
+      return <button type="button" onClick={() => openPushModal([candidate])} className={primaryClass}><Send size={14} aria-hidden="true" />{action.label}</button>;
+    }
+    if (action.kind === 'waiting' && pendingTask) {
+      return (
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <span className="text-xs font-medium text-amber-700">{action.label}</span>
+          <button type="button" onClick={() => openReassignModal(pendingTask)} className={secondaryClass}>改派筛选人</button>
+        </div>
+      );
+    }
+    if (action.kind === 'schedule_interview' && demandId) {
+      return <button type="button" aria-label="安排正式面试" onClick={() => navigate(`/interviews?demand=${demandId}&candidate=${candidate.id}${workflowSourceQuery}`)} className={primaryClass}>{action.label}</button>;
+    }
+    if (action.kind === 'needs_info' && latestTask) {
+      return <button type="button" onClick={() => repeatBusinessReview(latestTask)} className={primaryClass}>{action.label}</button>;
+    }
+    if (action.kind === 'rejected' && demandId) {
+      return <button type="button" onClick={() => navigate(`/kanban?demand=${demandId}&candidate=${candidate.id}&target=rejected`)} className={secondaryClass}>{action.label}</button>;
+    }
+    if (action.kind === 'later_stage' && demandId && candidate.current_stage === 'interview') {
+      return <button type="button" onClick={() => navigate(`/interviews?demand=${demandId}&candidate=${candidate.id}${workflowSourceQuery}`)} className={secondaryClass}>{action.label}</button>;
+    }
+    if (action.kind === 'later_stage' && demandId && candidate.current_stage === 'offer') {
+      return <button type="button" onClick={() => navigate(`/offers?demand=${demandId}&candidate=${candidate.id}${workflowSourceQuery}`)} className={secondaryClass}>{action.label}</button>;
+    }
+    return <span className="text-xs font-medium text-foreground-500">{action.label}</span>;
+  };
+
+  return (
+    <div className="space-y-5 px-4 pb-6 pt-3 sm:px-6">
+      <PageHeader
+        className="border-b border-background-200 pb-4"
+        title={navState?.jobTitle ? '当前需求候选人' : '简历库'}
+        visuallyHiddenTitle={!navState?.jobTitle}
+        description={navState?.jobTitle ? `${navState.jobTitle} · 已自动带入需求和阶段条件` : '候选人与业务筛选'}
+        leading={(navState?.fromJobs || navState?.fromDashboard) ? (
+          <button
+            type="button"
+            onClick={() => navigate(navState.fromDashboard ? '/dashboard' : '/jobs')}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-500 transition-colors hover:bg-background-100 hover:text-foreground-800"
+            aria-label={navState.fromDashboard ? '返回工作台' : '返回招聘需求'}
+            title={navState.fromDashboard ? '返回工作台' : '返回招聘需求'}
+          >
+            <ArrowLeft size={18} aria-hidden="true" />
+          </button>
+        ) : undefined}
+        actions={(
+          <>
+          <button
+            type="button"
+            onClick={() => void loadCandidates()}
+            disabled={candidatesLoading}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-background-300 bg-white text-foreground-600 transition-colors hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="刷新候选人"
+            title="刷新"
+          >
+            <RefreshCw className={candidatesLoading ? 'animate-spin' : ''} size={16} aria-hidden="true" />
+          </button>
+          {(role === 'manager' || role === 'admin') && (
+            <button
+              type="button"
+              onClick={() => setDuplicatesOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-background-300 bg-white px-3.5 py-2 text-sm font-medium text-foreground-700 transition-colors hover:bg-background-50"
+            >
+              <GitMerge size={16} aria-hidden="true" />
+              查重合并
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={openUploadDialog}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600"
+          >
+            <Upload size={16} aria-hidden="true" />
+            导入简历
+          </button>
+          </>
+        )}
+      />
+
+      {(visibleReviewResults.length > 0 || (requestedCandidateId && reviewTasksError)) && (
+        <section className="rounded-lg border border-primary-200 bg-primary-50/40 px-4 py-4" aria-label="待处理的业务筛选反馈">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground-900">待处理的业务筛选反馈</h2>
+              <p className="mt-0.5 text-xs text-foreground-500">这里只显示等待招聘专员继续推进的结果；已进入后续流程的结果可在候选人详情中查看</p>
+            </div>
+            <button type="button" onClick={() => void loadReviewTasks()} className="text-xs font-medium text-primary-700 hover:text-primary-800">
+              刷新待办
+            </button>
+          </div>
+          {reviewTasksError ? (
+            <p className="mt-3 text-sm text-red-700">{reviewTasksError}</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {visibleReviewResults.map((task) => {
+                const meta = businessReviewStatusMeta[task.status];
+                return (
+                  <article key={task.id} className="flex flex-col gap-3 rounded-lg border border-background-200 bg-white px-4 py-3 sm:flex-row sm:items-center">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-foreground-900">{task.candidate.name_masked}</p>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${meta.className}`}>{meta.label}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-foreground-500">{task.demand.job_title} · 业务负责人：{task.reviewer_name || '未显示'}</p>
+                      {task.business_note && <p className="mt-1 text-xs text-foreground-700">业务备注：{task.business_note}</p>}
+                    </div>
+                    <div className="shrink-0">{renderReviewAction(task)}</div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      <section className="space-y-3">
+        <WorkspaceTabs
+          items={candidateScopeTabs}
+          value={libraryScope}
+          onChange={selectLibraryScope}
+          ariaLabel="候选人库范围"
+        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+            <label className="relative block min-w-0 flex-1 sm:max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
+              <span className="sr-only">搜索候选人</span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                placeholder="搜索姓名、联系方式、公司、学校或简历内容"
+                className="h-10 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-sm text-foreground-900 outline-none placeholder:text-foreground-400 focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+              />
+            </label>
+            <label className="relative block sm:w-80">
+              <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
+              <span className="sr-only">按招聘需求筛选</span>
+              <select
+                value={demandFilter}
+                onChange={handleDemandFilterChange}
+                disabled={demandsLoading}
+                className="h-10 w-full appearance-none rounded-lg border border-background-300 bg-white pl-9 pr-8 text-sm text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-background-50"
+              >
+                <option value="">{demandsLoading ? '加载需求中' : '全部招聘需求'}</option>
+                {demands.map((demand) => (
+                  <option key={demand.id} value={demand.id}>{demand.request_no} · {demand.job_title}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+            <div className="text-sm text-foreground-500">
+              共 <span className="font-semibold text-foreground-900">{candidateResponse.total}</span> 位候选人
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground-600">
+              <input
+                type="checkbox"
+                checked={hideLocalDemoRecords}
+                onChange={(event) => {
+                  setHideLocalDemoRecords(event.target.checked);
+                  setSelectedIds(new Set());
+                }}
+                className="h-4 w-4 rounded border-background-300 text-primary-500 focus:ring-primary-200"
+              />
+              隐藏本地演示数据{localDemoRecordCount > 0 ? `（当前页 ${localDemoRecordCount} 条）` : ''}
+            </label>
+            <p className="text-[11px] text-foreground-400">仅筛选当前页已加载结果，不会删除数据</p>
+          </div>
+        </div>
+
+        <div className="grid gap-2 border-y border-background-200 bg-background-50 px-3 py-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">意向城市</span>
+            <input
+              list="candidate-city-options"
+              value={cityFilter}
+              onChange={(event) => changeFilter(() => setCityFilter(event.target.value))}
+              placeholder="全部城市或输入城市"
+              className={filterControlClass}
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">学历</span>
+            <select value={educationFilter} onChange={(event) => changeFilter(() => setEducationFilter(event.target.value))} className={filterControlClass}>
+              <option value="">全部学历</option>
+              {educationOptions.map((education) => <option key={education} value={education}>{education}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">技能关键词</span>
+            <input value={skillFilter} onChange={(event) => changeFilter(() => setSkillFilter(event.target.value))} placeholder="如 Java、Python" className={filterControlClass} />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">来源渠道</span>
+            <input
+              list="candidate-source-options"
+              value={sourceFilter}
+              onChange={(event) => changeFilter(() => setSourceFilter(event.target.value))}
+              placeholder="全部来源或输入渠道"
+              className={filterControlClass}
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">解析状态</span>
+            <select
+              value={parseStatusFilter}
+              onChange={(event) => {
+                const nextStatus = event.target.value;
+                if (nextStatus === '' || isParseStatus(nextStatus)) changeFilter(() => setParseStatusFilter(nextStatus));
+              }}
+              className={filterControlClass}
+            >
+              <option value="">全部状态</option>
+              {Object.entries(parseStatusMeta).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">流程状态</span>
+            <select
+              value={pipelineStatusFilter}
+              onChange={(event) => {
+                const nextStatus = event.target.value;
+                if (nextStatus === '' || isPipelineStatus(nextStatus)) changeFilter(() => setPipelineStatusFilter(nextStatus));
+              }}
+              className={filterControlClass}
+            >
+              <option value="">全部流程状态</option>
+              <option value="not_in_pipeline">未进入流程</option>
+              <option value="in_pipeline">已进入流程</option>
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">招聘阶段</span>
+            <select
+              value={stageFilter}
+              onChange={(event) => {
+                const nextStage = event.target.value;
+                if (nextStage === '' || isCandidateStage(nextStage)) changeFilter(() => setStageFilter(nextStage));
+              }}
+              className={filterControlClass}
+            >
+              <option value="">全部阶段</option>
+              {candidateStageOptions.map((stage) => <option key={stage} value={stage}>{stageLabels[stage]}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">最低技能分</span>
+            <select value={scoreFilter} onChange={(event) => changeFilter(() => setScoreFilter(event.target.value))} className={filterControlClass}>
+              <option value="0">全部分数</option>
+              <option value="3">3 分及以上</option>
+              <option value="4">4 分及以上</option>
+              <option value="5">5 分</option>
+            </select>
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-foreground-500">排序方式</span>
+            <select
+              value={`${sortBy}:${sortOrder}`}
+              onChange={(event) => {
+                const [nextSortBy, nextSortOrder] = event.target.value.split(':');
+                if (
+                  (nextSortBy === 'created_at' || nextSortBy === 'name_masked')
+                  && (nextSortOrder === 'asc' || nextSortOrder === 'desc')
+                ) {
+                  changeFilter(() => {
+                    setSortBy(nextSortBy);
+                    setSortOrder(nextSortOrder);
+                  });
+                }
+              }}
+              className={filterControlClass}
+            >
+              <option value="created_at:desc">最近入库</option>
+              <option value="created_at:asc">最早入库</option>
+              <option value="name_masked:asc">候选人名称升序</option>
+              <option value="name_masked:desc">候选人名称降序</option>
+            </select>
+          </label>
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={resetCandidateFilters}
+              disabled={!hasActiveFilters}
+              className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-background-300 bg-white px-3 text-xs font-medium text-foreground-600 hover:bg-background-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RotateCcw size={14} aria-hidden="true" />
+              重置筛选
+            </button>
+          </div>
+          <datalist id="candidate-city-options">
+            {cityOptions.map((city) => <option key={city} value={city} />)}
+          </datalist>
+          <datalist id="candidate-source-options">
+            {sourceFilterOptions.map((source) => <option key={source} value={source} />)}
+          </datalist>
+        </div>
+      </section>
+
+      {demandError && (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
+          <span>{demandError}，需求筛选与上传目标暂不可用。</span>
+          <button type="button" onClick={() => void loadDemands()} className="inline-flex items-center gap-1 font-medium hover:text-amber-900">
+            <RefreshCw size={14} aria-hidden="true" />
+            重试
+          </button>
+        </div>
+      )}
+
+      {selectedIds.size > 0 && (
+        <div className="flex flex-col gap-3 border-y border-primary-200 bg-primary-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-sm font-medium text-primary-800">已选 {selectedIds.size} 位候选人</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setSelectedIds(new Set())} className="text-sm font-medium text-foreground-600 hover:text-foreground-900">取消选择</button>
+            <button
+              type="button"
+              onClick={() => void updateFavorites(selectedCandidates, !selectedAllFavorite)}
+              disabled={favoriteSaving}
+              className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-white px-3.5 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100 disabled:opacity-50"
+            >
+              <Star size={15} fill={selectedAllFavorite ? 'currentColor' : 'none'} aria-hidden="true" />
+              {selectedAllFavorite ? '取消收藏' : '批量收藏'}
+            </button>
+            {!selectedAllInPipeline && (
+              <button
+                type="button"
+                onClick={() => openPipelineModal(selectedCandidates)}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600"
+              >
+                <UserPlus size={15} aria-hidden="true" />
+                加入需求并继续业务筛选
+              </button>
+            )}
+            {selectedAllInPipeline && selectedAllReviewable && (
+              <button
+                type="button"
+                onClick={() => openPushModal(selectedCandidates)}
+                className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-white px-3.5 py-2 text-sm font-medium text-primary-700 transition-colors hover:bg-primary-100"
+              >
+                <Send size={15} aria-hidden="true" />
+                推送业务筛选
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <section className="overflow-hidden border-y border-background-200 bg-white">
+        {candidatesLoading ? (
+          <div className="flex min-h-72 flex-col items-center justify-center gap-3 text-foreground-500">
+            <LoaderCircle className="animate-spin text-primary-500" size={24} aria-hidden="true" />
+            <p className="text-sm">加载候选人中</p>
+          </div>
+        ) : candidatesError ? (
+          <div className="flex min-h-72 flex-col items-center justify-center px-6 text-center">
+            <AlertCircle className="text-red-500" size={28} aria-hidden="true" />
+            <p className="mt-3 text-sm font-medium text-foreground-900">候选人加载失败</p>
+            <p className="mt-1 max-w-lg text-sm text-foreground-500">{candidatesError}</p>
+            <button
+              type="button"
+              onClick={() => void loadCandidates()}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 bg-white px-3.5 py-2 text-sm font-medium text-foreground-700 hover:bg-background-50"
+            >
+              <RefreshCw size={15} aria-hidden="true" />
+              重试
+            </button>
+          </div>
+        ) : visibleCandidates.length === 0 ? (
+          <div className="flex min-h-72 flex-col items-center justify-center px-6 text-center">
+            <Inbox className="text-foreground-300" size={32} aria-hidden="true" />
+            <p className="mt-3 text-sm font-medium text-foreground-900">
+              {hideLocalDemoRecords && candidateResponse.candidates.length > 0
+                ? '当前筛选条件下没有候选人'
+                : '暂无候选人'}
+            </p>
+            <p className="mt-1 text-sm text-foreground-500">
+              {hideLocalDemoRecords && candidateResponse.candidates.length > 0
+                ? '当前页只包含已标记的本地演示数据，数据仍完整保留'
+                : hasActiveFilters
+                  ? '当前筛选条件下没有匹配结果'
+                  : '导入简历建立公司人才库，再按岗位筛选并加入招聘流程'}
+            </p>
+            {hideLocalDemoRecords && candidateResponse.candidates.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setHideLocalDemoRecords(false)}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 px-3 py-2 text-sm font-medium text-foreground-600 hover:bg-background-50"
+              >
+                显示全部数据
+              </button>
+            ) : hasActiveFilters && (
+              <button type="button" onClick={resetCandidateFilters} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 px-3 py-2 text-sm font-medium text-foreground-600 hover:bg-background-50">
+                <RotateCcw size={14} aria-hidden="true" />
+                重置筛选
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1460px] border-collapse text-left">
+              <thead className="bg-background-50 text-xs font-medium text-foreground-500">
+                <tr>
+                  <th className="w-12 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      aria-label="选择当前页所有候选人"
+                      className="h-4 w-4 rounded border-background-300 text-primary-500 focus:ring-primary-200"
+                    />
+                  </th>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-identity"
+                    label="候选人"
+                    open={openColumnFilter === 'identity'}
+                    onToggle={() => toggleColumnFilter('identity')}
+                  >
+                    <input
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                      placeholder="姓名、联系方式或经历"
+                      aria-label="按候选人信息筛选"
+                      className={filterControlClass}
+                    />
+                    <select
+                      value={sortBy === 'name_masked' ? sortOrder : ''}
+                      onChange={(event) => {
+                        const nextOrder = event.target.value;
+                        if (nextOrder === 'asc' || nextOrder === 'desc') {
+                          changeFilter(() => {
+                            setSortBy('name_masked');
+                            setSortOrder(nextOrder);
+                          });
+                        }
+                      }}
+                      aria-label="按候选人名称排序"
+                      className={filterControlClass}
+                    >
+                      <option value="">默认排序</option>
+                      <option value="asc">名称升序</option>
+                      <option value="desc">名称降序</option>
+                    </select>
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-parse"
+                    label="解析状态"
+                    open={openColumnFilter === 'parse'}
+                    onToggle={() => toggleColumnFilter('parse')}
+                  >
+                    <select
+                      value={parseStatusFilter}
+                      onChange={(event) => {
+                        const nextStatus = event.target.value;
+                        if (nextStatus === '' || isParseStatus(nextStatus)) changeFilter(() => setParseStatusFilter(nextStatus));
+                      }}
+                      aria-label="按解析状态筛选"
+                      className={filterControlClass}
+                    >
+                      <option value="">全部解析状态</option>
+                      {Object.entries(parseStatusMeta).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
+                    </select>
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-profile"
+                    label="学历 / 城市"
+                    open={openColumnFilter === 'profile'}
+                    onToggle={() => toggleColumnFilter('profile')}
+                  >
+                    <select value={educationFilter} onChange={(event) => changeFilter(() => setEducationFilter(event.target.value))} aria-label="按学历筛选" className={filterControlClass}>
+                      <option value="">全部学历</option>
+                      {educationOptions.map((education) => <option key={education} value={education}>{education}</option>)}
+                    </select>
+                    <input
+                      list="candidate-city-options"
+                      value={cityFilter}
+                      onChange={(event) => changeFilter(() => setCityFilter(event.target.value))}
+                      placeholder="输入意向城市"
+                      aria-label="按意向城市筛选"
+                      className={filterControlClass}
+                    />
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-skills"
+                    label="核心技能"
+                    open={openColumnFilter === 'skills'}
+                    onToggle={() => toggleColumnFilter('skills')}
+                  >
+                    <input value={skillFilter} onChange={(event) => changeFilter(() => setSkillFilter(event.target.value))} placeholder="技能关键词" aria-label="按技能关键词筛选" className={filterControlClass} />
+                    <select value={scoreFilter} onChange={(event) => changeFilter(() => setScoreFilter(event.target.value))} aria-label="按最低技能分筛选" className={filterControlClass}>
+                      <option value="0">全部分数</option>
+                      <option value="3">3 分及以上</option>
+                      <option value="4">4 分及以上</option>
+                      <option value="5">5 分</option>
+                    </select>
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-source"
+                    label="来源"
+                    open={openColumnFilter === 'source'}
+                    onToggle={() => toggleColumnFilter('source')}
+                  >
+                    <input
+                      list="candidate-source-options"
+                      value={sourceFilter}
+                      onChange={(event) => changeFilter(() => setSourceFilter(event.target.value))}
+                      placeholder="输入来源渠道"
+                      aria-label="按来源渠道筛选"
+                      className={filterControlClass}
+                    />
+                  </CandidateColumnFilterHeader>
+                  <th className="min-w-48 px-3 py-3">目标岗位 / 当前需求</th>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-stage"
+                    label="当前阶段"
+                    open={openColumnFilter === 'stage'}
+                    onToggle={() => toggleColumnFilter('stage')}
+                  >
+                    <select
+                      value={stageFilter}
+                      onChange={(event) => {
+                        const nextStage = event.target.value;
+                        if (nextStage === '' || isCandidateStage(nextStage)) changeFilter(() => setStageFilter(nextStage));
+                      }}
+                      aria-label="按招聘阶段筛选"
+                      className={filterControlClass}
+                    >
+                      <option value="">全部阶段</option>
+                      {candidateStageOptions.map((stage) => <option key={stage} value={stage}>{stageLabels[stage]}</option>)}
+                    </select>
+                    <select
+                      value={pipelineStatusFilter}
+                      onChange={(event) => {
+                        const nextStatus = event.target.value;
+                        if (nextStatus === '' || isPipelineStatus(nextStatus)) changeFilter(() => setPipelineStatusFilter(nextStatus));
+                      }}
+                      aria-label="按流程状态筛选"
+                      className={filterControlClass}
+                    >
+                      <option value="">全部流程状态</option>
+                      <option value="not_in_pipeline">未进入流程</option>
+                      <option value="in_pipeline">已进入流程</option>
+                    </select>
+                  </CandidateColumnFilterHeader>
+                  <CandidateColumnFilterHeader
+                    data-ui="candidate-column-filter-created"
+                    label="入库日期"
+                    open={openColumnFilter === 'created'}
+                    onToggle={() => toggleColumnFilter('created')}
+                  >
+                    <select
+                      value={sortBy === 'created_at' ? sortOrder : ''}
+                      onChange={(event) => {
+                        const nextOrder = event.target.value;
+                        if (nextOrder === 'asc' || nextOrder === 'desc') {
+                          changeFilter(() => {
+                            setSortBy('created_at');
+                            setSortOrder(nextOrder);
+                          });
+                        }
+                      }}
+                      aria-label="按入库日期排序"
+                      className={filterControlClass}
+                    >
+                      <option value="">默认排序</option>
+                      <option value="desc">最近入库</option>
+                      <option value="asc">最早入库</option>
+                    </select>
+                  </CandidateColumnFilterHeader>
+                  <th className="w-32 px-4 py-3 text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-background-200">
+                {visibleCandidates.map((candidate) => {
+                  const status = parseStatusMeta[candidate.parse_status];
+                  const targetDemand = candidate.current_demand ?? candidate.latest_demand;
+                  return (
+                    <tr
+                      key={candidate.id}
+                      onClick={() => openCandidateDetail(candidate)}
+                      className="cursor-pointer transition-colors hover:bg-background-50"
+                    >
+                      <td className="px-4 py-3.5" onClick={(event) => event.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(candidate.id)}
+                          onChange={() => toggleCandidate(candidate.id)}
+                          disabled={!candidateResumeReady(candidate)}
+                          aria-label={`选择 ${candidate.name_masked}`}
+                          className="h-4 w-4 rounded border-background-300 text-primary-500 focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        />
+                      </td>
+                      <td className="px-3 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-sm font-semibold text-primary-700">
+                            {candidate.name_masked.slice(0, 1) || '?'}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-foreground-900">{candidate.name_masked}</p>
+                            <p className="mt-0.5 truncate text-xs text-foreground-400">
+                              {candidate.phone_masked || candidate.email_masked || '暂无联系方式'}
+                            </p>
+                            {(candidate.identical_resume_count > 1 || candidate.same_name_count > 1 || candidate.is_local_demo_record) && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {candidate.identical_resume_count > 1 && (
+                                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                                    相同文件 {candidate.identical_resume_count} 条
+                                  </span>
+                                )}
+                                {candidate.same_name_count > 1 && (
+                                  <span className="rounded bg-background-100 px-1.5 py-0.5 text-[11px] font-medium text-foreground-600">
+                                    同名 {candidate.same_name_count} 条
+                                  </span>
+                                )}
+                                {candidate.is_local_demo_record && (
+                                  <span className="rounded bg-primary-50 px-1.5 py-0.5 text-[11px] font-medium text-primary-700">本地演示</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3.5">
+                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-medium ${status.className}`}>{status.label}</span>
+                      </td>
+                      <td className="max-w-64 px-3 py-3.5 text-sm text-foreground-600">
+                        <span className="line-clamp-2">{candidate.education_summary || '—'}</span>
+                        {candidate.intent_city && <span className="mt-1 block text-xs text-foreground-400">意向 {candidate.intent_city}</span>}
+                      </td>
+                      <td className="max-w-64 px-3 py-3.5">
+                        {candidate.top_tags?.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {candidate.top_tags.slice(0, 3).map((tag) => (
+                              <span key={tag.tag} className="inline-flex rounded-md bg-primary-50 px-2 py-1 text-xs text-primary-700">
+                                {tag.tag}{tag.score ? ` · ${tag.score}分` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        ) : <span className="text-sm text-foreground-400">—</span>}
+                      </td>
+                      <td className="px-3 py-3.5 text-sm text-foreground-600">
+                        {candidate.source?.channel || '—'}
+                      </td>
+                      <td className="max-w-56 px-3 py-3.5">
+                        {candidate.desired_position || targetDemand ? (
+                          <div>
+                            <p className="truncate text-sm font-medium text-foreground-800">{candidate.desired_position || '求职目标待补充'}</p>
+                            {targetDemand && <p className="mt-0.5 truncate text-xs text-foreground-400">
+                              {candidate.current_demand ? '当前需求' : '最近需求'} · {targetDemand.job_title} · {targetDemand.request_no || '未编号'}
+                            </p>}
+                          </div>
+                        ) : <span className="text-sm text-foreground-400">求职目标待补充</span>}
+                      </td>
+                      <td className="px-3 py-3.5 text-sm text-foreground-600">
+                        {candidate.current_stage ? stageLabels[candidate.current_stage] : '—'}
+                      </td>
+                      <td className="px-3 py-3.5 text-sm text-foreground-500">{formatDate(candidate.created_at)}</td>
+                      <td className="px-4 py-3.5" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void updateFavorites([candidate], !candidate.is_favorite)}
+                            disabled={favoriteSaving}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${candidate.is_favorite ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' : 'text-foreground-400 hover:bg-background-100 hover:text-amber-600'}`}
+                            aria-label={`${candidate.is_favorite ? '取消收藏' : '收藏'} ${candidate.name_masked}`}
+                            title={candidate.is_favorite ? '取消收藏' : '收藏'}
+                          >
+                            <Star size={16} fill={candidate.is_favorite ? 'currentColor' : 'none'} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openCandidateDetail(candidate)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-500 transition-colors hover:bg-background-100 hover:text-foreground-800"
+                            aria-label={`查看 ${candidate.name_masked} 简历`}
+                            title="查看简历"
+                          >
+                            <Eye size={16} aria-hidden="true" />
+                          </button>
+                          {renderCandidateBusinessAction(candidate, true)}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {!candidatesLoading && !candidatesError && candidateResponse.total > 0 && (
+        <nav className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" aria-label="候选人分页">
+          <p className="text-xs text-foreground-500">
+            第 {candidateResponse.page} / {candidateResponse.pages} 页，每页 {candidateResponse.per_page} 条
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-background-300 bg-white text-foreground-600 hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="上一页"
+              title="上一页"
+            >
+              <ChevronLeft size={17} aria-hidden="true" />
+            </button>
+            <span className="min-w-20 text-center text-sm font-medium text-foreground-700">{page} / {candidateResponse.pages}</span>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(candidateResponse.pages, current + 1))}
+              disabled={page >= candidateResponse.pages}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-background-300 bg-white text-foreground-600 hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="下一页"
+              title="下一页"
+            >
+              <ChevronRight size={17} aria-hidden="true" />
+            </button>
+          </div>
+        </nav>
+      )}
+
+      <CandidateUploadModal
+        open={uploadOpen}
+        busy={uploadSubmitting}
+        onClose={() => setUploadOpen(false)}
+      >
+            <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
+              <div>
+                <h2 id="upload-resume-title" className="text-lg font-bold text-foreground-900">导入简历</h2>
+                <p className="mt-1 text-sm text-foreground-500">可先存入公司人才库，也可在入库时关联招聘需求</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUploadOpen(false)}
+                disabled={uploadSubmitting}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-400 hover:bg-background-100 hover:text-foreground-700 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="关闭上传弹窗"
+                title="关闭"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="space-y-5 overflow-y-auto px-6 py-5">
+              <div>
+                <label htmlFor="upload-demand" className="mb-2 block text-xs font-medium text-foreground-600">入库后关联需求（选填）</label>
+                <select
+                  id="upload-demand"
+                  value={uploadDemandId}
+                  onChange={(event) => setUploadDemandId(event.target.value ? Number(event.target.value) : '')}
+                  disabled={uploadSubmitting || demandsLoading}
+                  className="w-full rounded-lg border border-background-300 bg-white px-3 py-2.5 text-sm text-foreground-900 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 disabled:bg-background-50"
+                >
+                  <option value="">暂不关联，先存公司人才库</option>
+                  {activeDemands.map((demand) => (
+                    <option key={demand.id} value={demand.id}>{demand.request_no} · {demand.job_title} · {demand.job_department}</option>
+                  ))}
+                </select>
+                {demandsLoading && <p className="mt-1 text-xs text-foreground-400">正在加载可关联的招聘需求</p>}
+                {demandError && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    招聘需求暂时不可用，仍可先入公司人才库。
+                    <button type="button" onClick={() => void loadDemands()} className="ml-1 font-medium hover:text-amber-800">重试</button>
+                  </p>
+                )}
+                {!demandsLoading && !demandError && activeDemands.length === 0 && <p className="mt-1 text-xs text-foreground-400">暂无在招需求，本次简历将保存到公司人才库</p>}
+              </div>
+
+              <div
+                onDragOver={(event) => { event.preventDefault(); setUploadDragOver(true); }}
+                onDragLeave={() => setUploadDragOver(false)}
+                onDrop={handleUploadDrop}
+                className={`flex min-h-36 flex-col items-center justify-center rounded-lg border-2 border-dashed px-5 py-6 text-center transition-colors ${
+                  uploadDragOver ? 'border-primary-400 bg-primary-50' : 'border-background-300 bg-background-50'
+                }`}
+              >
+                <input ref={uploadInputRef} type="file" multiple accept={supportedResumeAccept} onChange={handleUploadFileSelect} className="hidden" />
+                <Upload className="text-foreground-400" size={24} aria-hidden="true" />
+                <p className="mt-2 text-sm font-medium text-foreground-800">拖入简历，或选择文件</p>
+                <p className="mt-1 text-xs text-foreground-400">PDF、DOC、DOCX、JPG、PNG、WebP、GIF、ZIP</p>
+                <button
+                  type="button"
+                  onClick={() => uploadInputRef.current?.click()}
+                  disabled={uploadSubmitting}
+                  className="mt-3 rounded-lg border border-background-300 bg-white px-3 py-1.5 text-sm font-medium text-foreground-700 hover:bg-background-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  选择文件
+                </button>
+              </div>
+
+              {uploadFiles.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-foreground-600">待上传文件（{uploadFiles.length}）</p>
+                  <div className="max-h-36 space-y-2 overflow-y-auto">
+                    {uploadFiles.map((file) => (
+                      <div key={`${file.name}-${file.lastModified}`} className="flex items-center gap-3 rounded-lg border border-background-200 px-3 py-2">
+                        <FileText className="shrink-0 text-primary-500" size={16} aria-hidden="true" />
+                        <span className="min-w-0 flex-1 truncate text-sm text-foreground-700">{file.name}</span>
+                        <span className="shrink-0 text-xs text-foreground-400">{Math.max(1, Math.round(file.size / 1024))} KB</span>
+                        <button
+                          type="button"
+                          onClick={() => setUploadFiles((current) => current.filter((item) => item !== file))}
+                          disabled={uploadSubmitting}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-foreground-400 hover:bg-background-100 hover:text-foreground-700"
+                          aria-label={`移除 ${file.name}`}
+                          title="移除"
+                        >
+                          <X size={14} aria-hidden="true" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="upload-source" className="mb-2 block text-xs font-medium text-foreground-600">来源渠道（选填）</label>
+                  <select
+                    id="upload-source"
+                    value={uploadSourceChannel}
+                    onChange={(event) => setUploadSourceChannel(event.target.value)}
+                    disabled={uploadSubmitting}
+                    className="w-full rounded-lg border border-background-300 bg-white px-3 py-2.5 text-sm text-foreground-900 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+                  >
+                    <option value="">未标注</option>
+                    {sourceChannels.map((channel) => <option key={channel} value={channel}>{channel}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="upload-note" className="mb-2 block text-xs font-medium text-foreground-600">来源备注（选填）</label>
+                  <input
+                    id="upload-note"
+                    value={uploadNote}
+                    onChange={(event) => setUploadNote(event.target.value)}
+                    disabled={uploadSubmitting}
+                    maxLength={500}
+                    placeholder="例如：7 月专场招聘"
+                    className="w-full rounded-lg border border-background-300 bg-white px-3 py-2.5 text-sm text-foreground-900 outline-none placeholder:text-foreground-400 focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+              </div>
+
+              {uploadError && (
+                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700" role="alert">
+                  <AlertCircle className="mt-0.5 shrink-0" size={16} aria-hidden="true" />
+                  <span>{uploadError}</span>
+                </div>
+              )}
+
+              {uploadResponse && (
+                <div aria-live="polite">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-xs font-medium text-foreground-600">文件处理结果</p>
+                    {uploadResponse.deduplicated && <span className="text-xs font-medium text-amber-700">重复批次</span>}
+                  </div>
+                  <div className="max-h-52 space-y-2 overflow-y-auto">
+                    {uploadResponse.results.map((result, index) => {
+                      const success = result.status === 'ok';
+                      const processing = result.status === 'processing';
+                      const duplicate = result.status === 'duplicate';
+                      const needsConfirmation = result.status === 'needs_confirmation';
+                      const rowAction = uploadRowActions[result.file];
+                      const sourceFile = sourceFileForUploadResult(result);
+                      const canSetAsVersion = Boolean(
+                        duplicate
+                        && result.existing_candidate_id
+                        && sourceFile
+                        && supportedReplacementPattern.test(sourceFile.name),
+                      );
+                      return (
+                        <div key={`${result.file}-${index}`} className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 ${success ? 'border-emerald-200 bg-emerald-50' : processing ? 'border-blue-200 bg-blue-50' : duplicate || needsConfirmation ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'}`}>
+                          {success ? <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} aria-hidden="true" /> : processing ? <LoaderCircle className="mt-0.5 shrink-0 animate-spin text-blue-600" size={16} aria-hidden="true" /> : <AlertCircle className={`mt-0.5 shrink-0 ${duplicate || needsConfirmation ? 'text-amber-600' : 'text-red-600'}`} size={16} aria-hidden="true" />}
+                          <div className="min-w-0 flex-1">
+                            <p className={`break-words text-sm font-medium ${success ? 'text-emerald-800' : processing ? 'text-blue-800' : duplicate || needsConfirmation ? 'text-amber-800' : 'text-red-800'}`}>{result.file}</p>
+                            <p className={`mt-0.5 text-xs ${success ? 'text-emerald-700' : processing ? 'text-blue-700' : duplicate || needsConfirmation ? 'text-amber-700' : 'text-red-700'}`}>
+                              {success ? '候选人档案已入库' : processing ? '文件已入库，AI 正在后台解析' : (result.reason || `处理状态：${result.status}`)}
+                            </p>
+                            {duplicate && (
+                              <div className="mt-1.5 space-y-2 text-xs text-amber-800">
+                                <p>已有候选人：{result.existing_candidate_name || '当前组织已有候选人'}{result.match_basis ? ` · ${result.match_basis}` : ''}</p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {result.existing_candidate_id && (
+                                    <button type="button" className="font-medium text-primary-700 hover:text-primary-800" onClick={() => openExistingCandidateFromUpload(result)}>查看已有候选人</button>
+                                  )}
+                                  {rowAction === 'keeping' && <span className="font-medium text-foreground-600">已保留现有版本</span>}
+                                  {rowAction === 'replaced' && <span className="font-medium text-emerald-700">新版简历已启用，旧版已归档</span>}
+                                  {!rowAction && (
+                                    <>
+                                      <button type="button" className="rounded-md border border-background-300 bg-white px-2 py-1 font-medium text-foreground-700 hover:bg-background-50" onClick={() => keepExistingResumeVersion(result)}>保留现有版本</button>
+                                      {canSetAsVersion && (
+                                        <button type="button" className="rounded-md bg-primary-500 px-2 py-1 font-medium text-white hover:bg-primary-600" onClick={() => void replaceDuplicateAsCurrentVersion(result)}>设为新版简历</button>
+                                      )}
+                                    </>
+                                  )}
+                                  {rowAction === 'replacing' && <span className="inline-flex items-center gap-1 font-medium text-primary-700"><LoaderCircle className="animate-spin" size={12} />正在设为新版</span>}
+                                  {rowAction === 'retry_failed' && canSetAsVersion && (
+                                    <button type="button" className="font-medium text-red-700 underline" onClick={() => void replaceDuplicateAsCurrentVersion(result)}>重新尝试设为新版</button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {needsConfirmation && result.candidate_id && (
+                              <button type="button" className="mt-1.5 text-xs font-medium text-primary-700 hover:text-primary-800" onClick={() => openConfirmationCandidateFromUpload(result)}>查看并处理</button>
+                            )}
+                            {!success && !processing && !duplicate && !needsConfirmation && sourceFile && (
+                              <button
+                                type="button"
+                                disabled={rowAction === 'retrying'}
+                                className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800 disabled:opacity-50"
+                                onClick={() => void retrySingleUploadFile(result)}
+                              >
+                                {rowAction === 'retrying' && <LoaderCircle className="animate-spin" size={12} />}
+                                {rowAction === 'retrying' ? '正在重试' : '重试此文件'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-background-200 bg-background-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setUploadOpen(false)}
+                disabled={uploadSubmitting}
+                className="rounded-lg border border-background-300 bg-white px-4 py-2 text-sm font-medium text-foreground-700 hover:bg-background-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {uploadResponse ? '完成' : '取消'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitUpload()}
+                disabled={uploadSubmitting || uploadFiles.length === 0}
+                className="inline-flex min-w-32 items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-background-300 disabled:text-foreground-500"
+              >
+                {uploadSubmitting ? <LoaderCircle className="animate-spin" size={16} aria-hidden="true" /> : <Upload size={16} aria-hidden="true" />}
+                {uploadSubmitting ? '正在上传' : uploadResponse && uploadFiles.length > 0 ? '重试失败文件' : '上传并入库'}
+              </button>
+            </div>
+      </CandidateUploadModal>
+
+      {detailCandidate && (
+        <CandidateDetailDrawer onClose={closeCandidateDetail}>
+            <div className="flex items-start justify-between border-b border-background-200 px-5 py-4 sm:px-6">
+              <div className="min-w-0">
+                <h2 id="candidate-detail-title" className="truncate text-lg font-bold text-foreground-900">{detailCandidate.name_masked}</h2>
+                <p className="mt-1 text-xs text-foreground-500">{detailCandidate.is_favorite ? '已收藏' : '公司候选人档案'} · 入库于 {formatDate(detailCandidate.created_at)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCandidateDetail}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-400 hover:bg-background-100 hover:text-foreground-700"
+                aria-label="关闭简历详情"
+                title="关闭"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+              {detailLoading ? (
+                <div className="flex min-h-72 flex-col items-center justify-center gap-3 text-foreground-500">
+                  <LoaderCircle className="animate-spin text-primary-500" size={24} aria-hidden="true" />
+                  <p className="text-sm">加载简历详情中</p>
+                </div>
+              ) : detailError ? (
+                <div className="flex min-h-72 flex-col items-center justify-center text-center">
+                  <AlertCircle className="text-red-500" size={28} aria-hidden="true" />
+                  <p className="mt-3 text-sm font-medium text-foreground-900">简历详情加载失败</p>
+                  <p className="mt-1 text-sm text-foreground-500">{detailError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void loadCandidateDetail(detailCandidate.id, detailCandidate.current_demand_id ?? detailCandidate.latest_demand_id ?? requestedDemandId)}
+                    className="mt-4 inline-flex items-center gap-2 rounded-lg border border-background-300 bg-white px-3.5 py-2 text-sm font-medium text-foreground-700 hover:bg-background-50"
+                  >
+                    <RefreshCw size={15} aria-hidden="true" />
+                    重试
+                  </button>
+                </div>
+              ) : resumeDetail ? (
+                <div className="space-y-6">
+                  {(detailCandidate.desired_position || detailCandidate.current_demand || detailCandidate.latest_demand) && (
+                    <section className="rounded-lg border border-background-200 bg-background-50 px-4 py-3">
+                      <p className="text-xs text-foreground-400">简历求职目标</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground-900">
+                        {detailCandidate.desired_position || '待补充'}
+                      </p>
+                      {(detailCandidate.current_demand ?? detailCandidate.latest_demand) && <p className="mt-1 text-xs text-foreground-500">
+                        {detailCandidate.current_demand ? '当前需求' : '最近需求'} · {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.job_title} · {(detailCandidate.current_demand ?? detailCandidate.latest_demand)?.request_no || '未编号'}
+                      </p>}
+                    </section>
+                  )}
+                  {detailReview && (
+                    <section className="rounded-lg border border-primary-200 bg-primary-50/40 px-4 py-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-semibold text-foreground-900">业务筛选结果</h3>
+                            <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${businessReviewStatusMeta[detailReview.status].className}`}>
+                              {businessReviewStatusMeta[detailReview.status].label}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-foreground-500">
+                            {detailReview.demand.job_title} · 业务负责人：{detailReview.reviewer_name || '未显示'}
+                          </p>
+                          {detailReview.business_note && (
+                            <p className="mt-2 text-sm text-foreground-700">业务备注：{detailReview.business_note}</p>
+                          )}
+                        </div>
+                        <div className="shrink-0">{renderReviewAction(detailReview)}</div>
+                      </div>
+                    </section>
+                  )}
+
+                  {candidateJourney && <CandidateJourneySummary journey={candidateJourney} />}
+                  {journeyError && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>
+                  )}
+
+                  <ResumeRecoveryPanel
+                    detail={resumeDetail}
+                    onUpdated={(updated) => {
+                      setResumeDetail(updated);
+                      setDetailCandidate((current) => current ? {
+                        ...current,
+                        name_masked: updated.name_masked,
+                        parse_status: updated.parse_status,
+                        parse_error: updated.parse_error,
+                      } : current);
+                      void loadCandidates();
+                    }}
+                  />
+
+                  <section className="grid grid-cols-2 gap-3 border-b border-background-200 pb-5 sm:grid-cols-4">
+                    <div>
+                      <p className="text-xs text-foreground-400">解析状态</p>
+                      <p className="mt-1 text-sm font-medium text-foreground-800">{parseStatusMeta[resumeDetail.parse_status].label}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-foreground-400">HR 负责人</p>
+                      <p className="mt-1 text-sm font-medium text-foreground-800">{resumeDetail.owner_hr_id ? '已分配' : '待分配'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-foreground-400">标签数</p>
+                      <p className="mt-1 text-sm font-medium text-foreground-800">{resumeDetail.tags.length}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-foreground-400">入库日期</p>
+                      <p className="mt-1 text-sm font-medium text-foreground-800">{formatDate(resumeDetail.created_at)}</p>
+                    </div>
+                  </section>
+
+                  {resumeDetail.parse_error && !['failed', 'original_confirmed'].includes(resumeDetail.parse_status) && (
+                    <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+                      <AlertCircle className="mt-0.5 shrink-0" size={16} aria-hidden="true" />
+                      <span>{resumeDetail.parse_error}</span>
+                    </div>
+                  )}
+
+                  <section>
+                    <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground-900">原版简历</h3>
+                        <p className="mt-0.5 text-xs text-foreground-400">{resumeDetail.original_resume.filename || '未返回文件名'}</p>
+                      </div>
+                      {resumeDetail.original_resume.available && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void previewOriginalResume()}
+                            disabled={originalResumeLoading !== null}
+                            className="inline-flex items-center gap-2 rounded-lg border border-background-300 bg-white px-3 py-2 text-sm font-medium text-foreground-700 hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {originalResumeLoading === 'preview' ? <LoaderCircle className="animate-spin" size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
+                            预览
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void downloadOriginalResume()}
+                            disabled={originalResumeLoading !== null}
+                            className="inline-flex items-center gap-2 rounded-lg border border-background-300 bg-white px-3 py-2 text-sm font-medium text-foreground-700 hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {originalResumeLoading === 'download' ? <LoaderCircle className="animate-spin" size={15} aria-hidden="true" /> : <Download size={15} aria-hidden="true" />}
+                            下载
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {!resumeDetail.original_resume.available ? (
+                      <div className="rounded-lg border border-background-200 bg-background-50 px-4 py-4 text-sm text-foreground-500">暂无可用的原版简历</div>
+                    ) : originalResumeError ? (
+                      <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+                        <AlertCircle className="mt-0.5 shrink-0" size={16} aria-hidden="true" />
+                        <span>{originalResumeError}</span>
+                      </div>
+                    ) : null}
+                    {resumePreviewUrl && (
+                      <iframe
+                        src={resumePreviewUrl}
+                        title={`${resumeDetail.name_masked} 原版简历预览`}
+                        className="mt-3 h-[520px] w-full rounded-lg border border-background-200 bg-background-50"
+                      />
+                    )}
+                  </section>
+
+                  {resumeDetail.tags.length > 0 && (
+                    <section>
+                      <h3 className="mb-3 text-sm font-semibold text-foreground-900">解析标签</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {resumeDetail.tags.map((tag) => (
+                          <span key={tag.tag} className="rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">
+                            {tag.tag} · {tag.score}
+                          </span>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  <section>
+                    <h3 className="mb-3 text-sm font-semibold text-foreground-900">结构化简历</h3>
+                    <StructuredResumeView resume={resumeDetail.resume_json} />
+                  </section>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-background-200 bg-background-50 px-5 py-4 sm:px-6">
+              <button type="button" onClick={closeCandidateDetail} className="rounded-lg border border-background-300 bg-white px-4 py-2 text-sm font-medium text-foreground-700 hover:bg-background-100">关闭</button>
+              <div className="flex flex-wrap items-center gap-2">
+                {renderCandidateBusinessAction(detailCandidate)}
+              </div>
+            </div>
+        </CandidateDetailDrawer>
+      )}
+
+      {pushTargets && (
+        <PushToReviewerModal
+          mode={reassignTask ? 'reassign' : 'create'}
+          currentReviewerName={reassignTask?.reviewer_name}
+          targets={pushTargets}
+          demands={pushDemandOptions}
+          reviewers={reviewers}
+          initialDemandId={initialPushDemandId}
+          initialReviewerId={pushInitialReviewerId}
+          demandsLoading={demandsLoading}
+          demandError={demandError}
+          reviewersLoading={reviewersLoading}
+          reviewerError={reviewerError}
+          isSubmitting={pushSubmitting}
+          results={pushResults}
+          onRetryDemands={() => void loadDemands()}
+          onRetryReviewers={() => void loadReviewers()}
+          onClose={() => { setPushTargets(null); setPushResults([]); setPushInitialReviewerId(null); setReassignTask(null); }}
+          onPush={(value) => void handlePushToBusiness(value)}
+        />
+      )}
+
+      {pipelineTargets && (
+        <AddToPipelineModal
+          candidates={pipelineTargets}
+          demands={activeDemands}
+          initialDemandId={demandFilter || null}
+          demandsLoading={demandsLoading}
+          demandError={demandError}
+          submitting={pipelineSubmitting}
+          result={pipelineResult}
+          onRetryDemands={() => void loadDemands()}
+          onClose={() => { setPipelineTargets(null); setPipelineResult(null); }}
+          onAdd={(demandId, reason, pushAfterAdd) => void handleAddToPipeline(demandId, reason, pushAfterAdd)}
+        />
+      )}
+
+      {duplicatesOpen && (
+        <DuplicateCandidatesModal
+          onClose={() => setDuplicatesOpen(false)}
+          onMerged={() => {
+            showToast('重复候选人档案已合并');
+            void loadCandidates();
+          }}
+        />
+      )}
+    </div>
+  );
+}

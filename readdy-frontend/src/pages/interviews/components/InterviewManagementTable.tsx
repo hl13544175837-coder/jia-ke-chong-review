@@ -8,7 +8,7 @@ import {
   type InterviewFilterOptions,
   type InterviewFilters,
   type InterviewStatusTab,
-} from '../workbench';
+} from '@/features/interviews/workbench';
 
 interface InterviewManagementTableProps {
   rows: InterviewManagementRow[];

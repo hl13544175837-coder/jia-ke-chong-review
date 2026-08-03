@@ -4,6 +4,9 @@ import test from 'node:test';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
+const pageSource = (path) => path === 'src/pages/candidates/page.tsx'
+  ? `${read(path)}\n${read('src/features/candidates/components/CandidateLibraryWorkspace.tsx')}`
+  : read(path);
 
 test('主业务页面统一使用同一个页面标题组件', () => {
   const pageHeader = read('src/components/ui/PageHeader.tsx');
@@ -32,7 +35,7 @@ test('主业务页面统一使用同一个页面标题组件', () => {
   assert.match(pageHeader, /data-ui="page-header-title"/);
   assert.match(pageHeader, /text-2xl/);
   pages.forEach((path) => {
-    const source = read(path);
+    const source = pageSource(path);
     assert.match(source, /import PageHeader from '@\/components\/ui\/PageHeader'/, path);
     assert.match(source, /<PageHeader/, path);
     assert.doesNotMatch(source, /<h1\b/, path);
@@ -66,13 +69,13 @@ test('左侧菜单页保留无障碍标题但不重复展示菜单名称', () =>
   assert.match(pageHeader, /sr-only/);
   pages.forEach(([path, title]) => {
     assert.match(
-      read(path),
+      pageSource(path),
       new RegExp(`<PageHeader[\\s\\S]*title="${title}"[\\s\\S]*visuallyHiddenTitle`),
       path,
     );
   });
 
-  const candidatesPage = read('src/pages/candidates/page.tsx');
+  const candidatesPage = pageSource('src/pages/candidates/page.tsx');
   assert.match(candidatesPage, /visuallyHiddenTitle=\{!navState\?\.jobTitle\}/);
 
   const roleDataViews = read('src/pages/analytics/components/RoleDataViews.tsx');
@@ -95,7 +98,7 @@ test('状态页签统一为绿色实心选中态且 Offer 不再使用底部横�
     'src/pages/director/approvals/page.tsx',
   ];
   consumers.forEach((path) => {
-    const source = read(path);
+    const source = pageSource(path);
     assert.match(source, /WorkspaceTabs/, path);
   });
 
@@ -121,7 +124,7 @@ test('常见桌面尺寸下标题、页签、表格和核心弹窗允许换行�
     'src/pages/director/insights/page.tsx',
   ];
   scrollableTables.forEach((path) => {
-    assert.match(read(path), /overflow-x-auto/, path);
+    assert.match(pageSource(path), /overflow-x-auto/, path);
   });
 
   const boundedOverlays = [

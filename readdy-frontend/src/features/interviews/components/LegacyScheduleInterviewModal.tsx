@@ -20,7 +20,7 @@ interface ScheduleInterviewModalProps {
 const interviewRounds = ['一面', '二面', '终面'];
 const interviewTypes = ['线下面试', '视频面试', '电话面试'];
 
-export default function ScheduleInterviewModal({
+export default function LegacyScheduleInterviewModal({
   isOpen,
   onClose,
   candidateName,

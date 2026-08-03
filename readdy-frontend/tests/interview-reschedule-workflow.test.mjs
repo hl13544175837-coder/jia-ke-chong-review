@@ -14,9 +14,9 @@ const api = read('src/features/interviews/api.ts');
 const interviewerPage = read('src/pages/interviewer/interviews/page.tsx');
 const interviewerDrawer = read('src/pages/interviewer/interviews/components/InterviewerInterviewDetailDrawer.tsx');
 const requestModal = read('src/pages/interviewer/interviews/components/RescheduleRequestModal.tsx');
-const recruiterPage = read('src/pages/interviews/page.tsx');
+const recruiterPage = `${read('src/pages/interviews/page.tsx')}\n${read('src/features/interviews/components/RecruiterInterviewOverlays.tsx')}`;
 const recruiterPanel = read('src/pages/interviews/components/RescheduleRequestPanel.tsx');
-const scheduleModal = read('src/pages/interviews/components/ScheduleInterviewModal.tsx');
+const scheduleModal = read('src/features/interviews/components/ScheduleInterviewModal.tsx');
 const router = read('src/router/config.tsx');
 
 test('本地接口类型覆盖申请、处理、历史和取消后替代任务', () => {

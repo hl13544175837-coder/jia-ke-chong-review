@@ -6,7 +6,9 @@ import { requisitions } from '@/mocks/jobs';
 import ResumePanel from '@/features/candidates/components/ResumePanel';
 import CandidateQuickDetail from './CandidateQuickDetail';
 import ImportResumeModal from './ImportResumeModal';
-import MultiInterviewerPushModal, { type PushReviewData } from './MultiInterviewerPushModal';
+import MultiInterviewerPushModal, { type PushReviewData } from '@/features/businessReviews/components/MultiInterviewerPushModal';
+import CandidateSelectionFilters from './CandidateSelectionFilters';
+import { filterCandidateSelection, type JoinStatus } from '@/features/candidates/selection';
 
 interface SelectCandidateDrawerProps {
   isOpen: boolean;
@@ -22,44 +24,8 @@ interface SelectCandidateDrawerProps {
   onAddAndPush?: (reqId: string, candidateIds: number[], pushData: PushReviewData) => void;
 }
 
-type JoinStatus = 'available' | 'in_current' | 'in_other' | 'ended';
 
 const allReqIds = Object.keys(requisitionCandidates);
-
-// City mapping for existing candidates (derived from their education / work context)
-const candidateCityMap: Record<number, string> = {
-  1: '上海', 2: '上海', 3: '杭州', 4: '北京', 5: '北京',
-  6: '上海', 7: '广州', 8: '武汉', 9: '武汉', 10: '成都',
-  11: '南京', 12: '无锡', 13: '北京', 14: '北京', 15: '成都',
-  16: '北京', 17: '哈尔滨', 18: '西安', 19: '天津', 20: '厦门',
-  21: '重庆', 22: '杭州', 23: '合肥', 24: '南京', 25: '上海',
-  26: '广州', 27: '成都', 28: '上海', 29: '北京', 30: '杭州',
-  31: '广州', 32: '广州', 33: '北京',
-};
-
-function getCity(c: Candidate): string {
-  return c.city || candidateCityMap[c.id] || '北京';
-}
-
-// ── Helper: parse education level ───────────────────
-function parseEduLevel(edu: string): string {
-  if (edu.includes('博士')) return '博士';
-  if (edu.includes('硕士')) return '硕士';
-  if (edu.includes('本科')) return '本科';
-  if (edu.includes('大专')) return '大专';
-  return '高中及以下';
-}
-
-// ── Helper: map experience years to range ──────────
-function getExpRange(expYears: string): string {
-  if (!expYears || expYears.includes('应届')) return '应届/1年以内';
-  const n = parseInt(expYears);
-  if (isNaN(n) || n <= 1) return '应届/1年以内';
-  if (n <= 3) return '1–3年';
-  if (n <= 5) return '3–5年';
-  if (n <= 10) return '5–10年';
-  return '10年以上';
-}
 
 // ── Helper: compute match score ─────────────────────
 function computeMatchScore(candidatePos: string, jobTitle: string): number {
@@ -106,86 +72,6 @@ function getCurrentProcessPosition(candidateName: string, activeReqId: string): 
   }
   return '';
 }
-
-// ── Chip definitions ────────────────────────────────
-
-const sourceChips = [
-  { value: '', label: '全部来源' },
-  { value: 'PDF导入', label: 'PDF导入' },
-  { value: '内部推荐', label: '内部推荐' },
-  { value: '猎头公司推荐', label: '猎头推荐' },
-  { value: '外部收录', label: '外部收录' },
-];
-
-const expRangeChips = [
-  { value: '', label: '全部' },
-  { value: '应届/1年以内', label: '应届/1年以内' },
-  { value: '1–3年', label: '1–3年' },
-  { value: '3–5年', label: '3–5年' },
-  { value: '5–10年', label: '5–10年' },
-  { value: '10年以上', label: '10年以上' },
-];
-
-const eduOptions = [
-  { value: '高中及以下', label: '高中及以下' },
-  { value: '大专', label: '大专' },
-  { value: '本科', label: '本科' },
-  { value: '硕士', label: '硕士' },
-  { value: '博士', label: '博士' },
-];
-
-const joinStatusChips = [
-  { value: '', label: '全部' },
-  { value: 'available', label: '可加入' },
-  { value: 'in_other', label: '其他岗位流程中' },
-  { value: 'in_current', label: '已在当前岗位' },
-  { value: 'ended', label: '已结束' },
-];
-
-const cityOptions = [
-  { value: '', label: '全部城市' },
-  ...['上海', '北京', '杭州', '广州', '深圳', '武汉', '成都', '南京',
-  '西安', '天津', '重庆', '合肥', '厦门', '无锡', '哈尔滨', '苏州',
-  ].map((c) => ({ value: c, label: c })),
-];
-
-const recruiterOptions = [
-  { value: '', label: '全部负责人' },
-  { value: '张敏', label: '张敏' },
-  { value: '李华', label: '李华' },
-  { value: '王磊', label: '王磊' },
-];
-
-const resumeTimeOptions = [
-  { value: '', label: '全部' },
-  { value: '7d', label: '最近7天' },
-  { value: '14d', label: '最近14天' },
-  { value: '30d', label: '最近30天' },
-  { value: '90d', label: '最近90天' },
-];
-
-const positionChips = [
-  { value: '', label: '全部期望岗位' },
-  { value: '高级前端工程师', label: '高级前端工程师' },
-  { value: '前端开发工程师', label: '前端开发工程师' },
-  { value: '后端开发工程师', label: '后端开发工程师' },
-  { value: 'Java开发工程师', label: 'Java开发工程师' },
-  { value: '产品经理', label: '产品经理' },
-  { value: '高级产品经理', label: '高级产品经理' },
-  { value: 'UI/UX设计师', label: 'UI/UX设计师' },
-  { value: 'UI设计师', label: 'UI设计师' },
-  { value: '数据分析师', label: '数据分析师' },
-  { value: '测试工程师', label: '测试工程师' },
-  { value: '架构师', label: '架构师' },
-  { value: 'HRBP', label: 'HRBP' },
-  { value: '市场运营专员', label: '市场运营专员' },
-];
-
-const sortModes = [
-  { value: 'match' as const, label: '岗位匹配度' },
-  { value: 'updated' as const, label: '最近更新' },
-  { value: 'entry' as const, label: '最近入库' },
-];
 
 // ── Build helpers ───────────────────────────────────
 
@@ -308,88 +194,12 @@ export default function SelectCandidateDrawer({ isOpen, onClose, req, onAddCandi
   }, [allCandidates, addedIds, importedBoundIds, activeReqId, req?.title]);
 
   // ── Filtered & sorted data ────────────────────────
-  const filteredCandidates = useMemo(() => {
-    let data = [...candidatesWithStatus];
-
-    // Search
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      data = data.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.position.toLowerCase().includes(q) ||
-          c.tags.some((t) => t.toLowerCase().includes(q))
-      );
-    }
-
-    // City
-    if (cityFilter) {
-      data = data.filter((c) => getCity(c) === cityFilter);
-    }
-
-    // Join status filter (overrides joinableOnly when set)
-    if (joinStatusFilter) {
-      data = data.filter((c) => c.joinStatus === joinStatusFilter);
-    } else if (joinableOnly) {
-      data = data.filter((c) => c.joinStatus === 'available');
-    }
-
-    // Source (in more filters)
-    if (sourceFilter) {
-      data = data.filter((c) => c.source === sourceFilter);
-    }
-
-    // Experience range
-    if (expFilter) {
-      data = data.filter((c) => getExpRange(c.experienceYears) === expFilter);
-    }
-
-    // Education multi-select
-    if (eduFilters.size > 0) {
-      data = data.filter((c) => eduFilters.has(parseEduLevel(c.education)));
-    }
-
-    // Recruiter (in more filters)
-    if (recruiterFilter) {
-      data = data.filter((c) => c.recruiter === recruiterFilter);
-    }
-
-    // Resume update time (in more filters)
-    if (resumeTimeFilter) {
-      const daysMap: Record<string, number> = { '7d': 7, '14d': 14, '30d': 30, '90d': 90 };
-      const days = daysMap[resumeTimeFilter] || 999;
-      const cutoff = new Date('2026-07-21');
-      cutoff.setDate(cutoff.getDate() - days);
-      data = data.filter((c) => {
-        const updated = new Date(c.resumeUpdatedAt || c.appliedAt);
-        return updated >= cutoff;
-      });
-    }
-
-    // Position / desired role (in more filters)
-    if (positionFilter) {
-      data = data.filter((c) => c.position === positionFilter);
-    }
-
-    // Sort
-    data.sort((a, b) => {
-      switch (sortMode) {
-        case 'match':
-          return (b.matchScore || 0) - (a.matchScore || 0);
-        case 'updated':
-          return new Date(b.resumeUpdatedAt || b.appliedAt).getTime() - new Date(a.resumeUpdatedAt || a.appliedAt).getTime();
-        case 'entry':
-          return new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime();
-        default:
-          return 0;
-      }
-    });
-
-    return data;
-  }, [
-    searchQuery, cityFilter, joinStatusFilter, joinableOnly,
-    sourceFilter, expFilter, eduFilters, recruiterFilter, resumeTimeFilter, positionFilter,
-    sortMode, candidatesWithStatus,
+  const filteredCandidates = useMemo(() => filterCandidateSelection(candidatesWithStatus, {
+    searchQuery, cityFilter, joinStatusFilter, joinableOnly, sourceFilter, expFilter,
+    eduFilters, recruiterFilter, resumeTimeFilter, positionFilter, sortMode,
+  }), [
+    candidatesWithStatus, searchQuery, cityFilter, joinStatusFilter, joinableOnly, sourceFilter,
+    expFilter, eduFilters, recruiterFilter, resumeTimeFilter, positionFilter, sortMode,
   ]);
 
   const filterStats = useMemo(() => {
@@ -566,38 +376,6 @@ export default function SelectCandidateDrawer({ isOpen, onClose, req, onAddCandi
   };
 
   // ── Dropdown renderer ────────────────────────────
-  const renderSelect = (
-    label: string,
-    value: string,
-    onChange: (v: string) => void,
-    options: { value: string; label: string }[],
-    accent?: boolean
-  ) => (
-    <div>
-      <span className="text-[11px] text-foreground-400 mb-1 block">{label}</span>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`w-full px-3 py-2 bg-white border rounded-lg text-sm text-foreground-900 focus:outline-none appearance-none pr-8 cursor-pointer transition-colors ${
-            value
-              ? accent
-                ? 'border-accent-300 bg-accent-50/60 text-accent-700'
-                : 'border-primary-300 bg-primary-50/60 text-primary-700'
-              : 'border-background-200 hover:border-primary-300'
-          }`}
-        >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-          <i className="ri-arrow-down-s-line text-foreground-400 text-sm"></i>
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <>
       {/* Overlay */}
@@ -638,278 +416,25 @@ export default function SelectCandidateDrawer({ isOpen, onClose, req, onAddCandi
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="px-6 py-3 border-b border-background-100 flex-shrink-0 space-y-3">
-          {/* Search */}
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <i className="ri-search-line text-foreground-400 text-sm"></i>
-            </div>
-            <input
-              type="text"
-              placeholder="搜索姓名、职位或技能标签..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-300"
-            />
-          </div>
-
-          {/* Quick filters: 期望工作城市 + 仅显示可加入 */}
-          <div className="flex items-end gap-3">
-            <div className="w-52">
-              <span className="text-[11px] text-foreground-400 mb-1 block">期望工作城市</span>
-              <div className="relative">
-                <select
-                  value={cityFilter}
-                  onChange={(e) => setCityFilter(e.target.value)}
-                  className={`w-full px-3 py-2 bg-white border rounded-lg text-sm text-foreground-900 focus:outline-none appearance-none pr-8 cursor-pointer transition-colors ${
-                    cityFilter
-                      ? 'border-primary-300 bg-primary-50/60 text-primary-700'
-                      : 'border-background-200 hover:border-primary-300'
-                  }`}
-                >
-                  {cityOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                  <i className="ri-arrow-down-s-line text-foreground-400 text-sm"></i>
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => setJoinableOnly(!joinableOnly)}
-              className={`px-3 py-2 text-xs rounded-lg border transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                joinableOnly
-                  ? 'bg-primary-500 text-white border-primary-500'
-                  : 'bg-white text-foreground-600 border-background-200 hover:border-primary-300 hover:text-primary-600'
-              }`}
-            >
-              <i className={`${joinableOnly ? 'ri-checkbox-circle-fill' : 'ri-checkbox-blank-circle-line'} text-sm`}></i>
-              仅显示可加入
-            </button>
-          </div>
-
-          {/* Join status chips */}
-          <div>
-            <span className="text-[11px] text-foreground-400 mb-1.5 block">加入状态</span>
-            <div className="flex flex-wrap gap-1.5">
-              {joinStatusChips.map((chip) => (
-                <button
-                  key={chip.value}
-                  onClick={() => {
-                    setJoinStatusFilter(joinStatusFilter === chip.value ? '' : chip.value);
-                    if (chip.value) setJoinableOnly(false);
-                  }}
-                  className={`px-3 py-1 text-xs rounded-full border transition-colors cursor-pointer whitespace-nowrap ${
-                    joinStatusFilter === chip.value
-                      ? 'bg-accent-500 text-white border-accent-500'
-                      : 'bg-white text-foreground-600 border-background-200 hover:border-accent-300 hover:text-accent-600'
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* More filters toggle */}
-          <div>
-            <button
-              onClick={() => setShowMoreFilters(!showMoreFilters)}
-              className="flex items-center gap-1.5 text-xs text-foreground-500 hover:text-foreground-700 transition-colors cursor-pointer"
-            >
-              {showMoreFilters ? <i className="ri-arrow-up-s-line"></i> : <i className="ri-arrow-down-s-line"></i>}
-              更多筛选
-              {moreFilterCount > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-primary-500 text-white text-[10px] font-medium">
-                  {moreFilterCount}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* Expanded filters: 来源 + 工作年限 + 学历 + 负责人 + 简历更新时间 + 期望岗位 */}
-          {showMoreFilters && (
-            <div className="space-y-3 pt-1 border-t border-background-100">
-              {/* 简历来源 */}
-              <div>
-                <span className="text-[11px] text-foreground-400 mb-1.5 block">简历来源</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {sourceChips.map((chip) => (
-                    <button
-                      key={chip.value}
-                      onClick={() => setSourceFilter(sourceFilter === chip.value ? '' : chip.value)}
-                      className={`px-3 py-1 text-xs rounded-full border transition-colors cursor-pointer whitespace-nowrap ${
-                        sourceFilter === chip.value
-                          ? 'bg-primary-500 text-white border-primary-500'
-                          : 'bg-white text-foreground-600 border-background-200 hover:border-primary-300 hover:text-primary-600'
-                      }`}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 期望岗位 */}
-              <div>
-                <span className="text-[11px] text-foreground-400 mb-1.5 block">期望岗位</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {positionChips.map((chip) => (
-                    <button
-                      key={chip.value}
-                      onClick={() => setPositionFilter(positionFilter === chip.value ? '' : chip.value)}
-                      className={`px-3 py-1 text-xs rounded-full border transition-colors cursor-pointer whitespace-nowrap ${
-                        positionFilter === chip.value
-                          ? 'bg-accent-500 text-white border-accent-500'
-                          : 'bg-white text-foreground-600 border-background-200 hover:border-accent-300 hover:text-accent-600'
-                      }`}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 工作年限 + 学历 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <span className="text-[11px] text-foreground-400 mb-1.5 block">工作年限</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {expRangeChips.map((chip) => (
-                      <button
-                        key={chip.value}
-                        onClick={() => setExpFilter(expFilter === chip.value ? '' : chip.value)}
-                        className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer whitespace-nowrap ${
-                          expFilter === chip.value
-                            ? 'bg-secondary-500 text-white border-secondary-500'
-                            : 'bg-white text-foreground-600 border-background-200 hover:border-secondary-300 hover:text-secondary-600'
-                        }`}
-                      >
-                        {chip.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-[11px] text-foreground-400 mb-1.5 block">学历（可多选）</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {eduOptions.map((opt) => {
-                      const isActive = eduFilters.has(opt.value);
-                      return (
-                        <button
-                          key={opt.value}
-                          onClick={() => {
-                            setEduFilters((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(opt.value)) {
-                                next.delete(opt.value);
-                              } else {
-                                next.add(opt.value);
-                              }
-                              return next;
-                            });
-                          }}
-                          className={`px-3 py-1 text-xs rounded-full border transition-colors cursor-pointer whitespace-nowrap ${
-                            isActive
-                              ? 'bg-accent-500 text-white border-accent-500'
-                              : 'bg-white text-foreground-600 border-background-200 hover:border-accent-300 hover:text-accent-600'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* 负责人 + 简历更新时间 */}
-              <div className="grid grid-cols-2 gap-3">
-                {renderSelect('负责人', recruiterFilter, setRecruiterFilter, recruiterOptions, true)}
-                <div>
-                  <span className="text-[11px] text-foreground-400 mb-1 block">简历更新时间</span>
-                  <div className="relative">
-                    <select
-                      value={resumeTimeFilter}
-                      onChange={(e) => setResumeTimeFilter(e.target.value)}
-                      className={`w-full px-3 py-2 bg-white border rounded-lg text-sm text-foreground-900 focus:outline-none appearance-none pr-8 cursor-pointer transition-colors ${
-                        resumeTimeFilter
-                          ? 'border-accent-300 bg-accent-50/60 text-accent-700'
-                          : 'border-background-200 hover:border-accent-300'
-                      }`}
-                    >
-                      {resumeTimeOptions.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                      <i className="ri-arrow-down-s-line text-foreground-400 text-sm"></i>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Stats + sort + legend row */}
-          <div className="flex items-center gap-3 text-xs pt-1 border-t border-background-100 flex-wrap">
-            <span className="text-foreground-500 whitespace-nowrap">
-              共 {filterStats.total} 人
-              <span className="mx-0.5">·</span>
-              可加入 {filterStats.available}
-              {hasActiveFilters ? ` · 筛选结果 ${filterStats.filtered}` : ''}
-            </span>
-            {hasActiveFilters && (
-              <button
-                onClick={clearAllFilters}
-                className="text-xs text-primary-600 hover:text-primary-700 font-medium cursor-pointer whitespace-nowrap"
-              >
-                <i className="ri-close-circle-line mr-0.5"></i>清除筛选
-              </button>
-            )}
-
-            <div className="flex-1"></div>
-
-            {/* Sort mode buttons */}
-            <span className="text-foreground-400 whitespace-nowrap">排序：</span>
-            <div className="flex items-center gap-0.5">
-              {sortModes.map((mode) => (
-                <button
-                  key={mode.value}
-                  onClick={() => setSortMode(mode.value)}
-                  className={`px-2.5 py-1 text-xs rounded-full transition-colors cursor-pointer whitespace-nowrap ${
-                    sortMode === mode.value
-                      ? 'bg-foreground-900 text-white'
-                      : 'bg-background-100 text-foreground-500 hover:bg-background-200'
-                  }`}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Legend */}
-            <span className="flex items-center gap-1 text-foreground-500">
-              <span className="w-2 h-2 rounded-full bg-primary-500"></span>
-              可加入
-            </span>
-            <span className="flex items-center gap-1 text-foreground-500">
-              <span className="w-2 h-2 rounded-full bg-primary-200"></span>
-              已加入
-            </span>
-            <span className="flex items-center gap-1 text-foreground-500">
-              <span className="w-2 h-2 rounded-full bg-foreground-300"></span>
-              其他流程/已结束
-            </span>
-            {selectedIds.length > 0 && (
-              <span className="text-xs text-primary-600 font-medium whitespace-nowrap">
-                已选 {selectedIds.length} 人
-              </span>
-            )}
-          </div>
-        </div>
+        <CandidateSelectionFilters
+          searchQuery={searchQuery} setSearchQuery={setSearchQuery}
+          cityFilter={cityFilter} setCityFilter={setCityFilter}
+          joinStatusFilter={joinStatusFilter} setJoinStatusFilter={setJoinStatusFilter}
+          joinableOnly={joinableOnly} setJoinableOnly={setJoinableOnly}
+          showMoreFilters={showMoreFilters} setShowMoreFilters={setShowMoreFilters}
+          sourceFilter={sourceFilter} setSourceFilter={setSourceFilter}
+          expFilter={expFilter} setExpFilter={setExpFilter}
+          eduFilters={eduFilters} setEduFilters={setEduFilters}
+          recruiterFilter={recruiterFilter} setRecruiterFilter={setRecruiterFilter}
+          resumeTimeFilter={resumeTimeFilter} setResumeTimeFilter={setResumeTimeFilter}
+          positionFilter={positionFilter} setPositionFilter={setPositionFilter}
+          sortMode={sortMode} setSortMode={setSortMode}
+          moreFilterCount={moreFilterCount}
+          filterStats={filterStats}
+          hasActiveFilters={Boolean(hasActiveFilters)}
+          selectedCount={selectedIds.length}
+          onClear={clearAllFilters}
+        />
 
         {/* Candidate list */}
         <div className="flex-1 overflow-y-auto">

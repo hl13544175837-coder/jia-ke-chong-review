@@ -1,7 +1,7 @@
 import { CalendarClock, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { InterviewManagementRow } from '@/features/interviews/types';
-import { interviewLocalDateKey, rowStatus, statusLabel } from '../workbench';
+import { interviewLocalDateKey, rowStatus, statusLabel } from '@/features/interviews/workbench';
 
 interface InterviewManagementCalendarProps {
   rows: InterviewManagementRow[];

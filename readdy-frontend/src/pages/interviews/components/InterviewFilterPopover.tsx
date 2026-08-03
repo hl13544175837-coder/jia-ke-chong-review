@@ -1,4 +1,4 @@
-import type { InterviewFilterOptions, InterviewFilters } from '../workbench';
+import type { InterviewFilterOptions, InterviewFilters } from '@/features/interviews/workbench';
 
 interface InterviewFilterPopoverProps {
   filters: InterviewFilters;

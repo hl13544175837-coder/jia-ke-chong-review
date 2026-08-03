@@ -8,7 +8,7 @@ const read = (path) => readFileSync(new URL(path, root), 'utf8');
 test('简历异常处理对用户提供完整补救入口', () => {
   const types = read('src/features/candidates/types.ts');
   const api = read('src/features/candidates/api.ts');
-  const page = read('src/pages/candidates/page.tsx');
+  const page = read('src/features/candidates/components/CandidateLibraryWorkspace.tsx');
   const demandDrawer = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
   const panel = read('src/features/candidates/components/ResumeRecoveryPanel.tsx');
   const ui = `${page}\n${demandDrawer}\n${panel}`;
@@ -36,7 +36,7 @@ test('简历异常处理对用户提供完整补救入口', () => {
 });
 
 test('批量导入把待确认视为已落库待处理，不会再次重复上传', () => {
-  const page = read('src/pages/candidates/page.tsx');
+  const page = read('src/features/candidates/components/CandidateLibraryWorkspace.tsx');
 
   assert.match(page, /\['ok', 'processing', 'duplicate', 'needs_confirmation'\]\.includes\(result\.status\)/);
   assert.match(page, /result\.status === 'needs_confirmation'/);
@@ -45,7 +45,7 @@ test('批量导入把待确认视为已落库待处理，不会再次重复上�
 
 test('后台解析上传立即显示处理中并自动刷新候选人状态', () => {
   const types = read('src/features/candidates/types.ts');
-  const page = read('src/pages/candidates/page.tsx');
+  const page = read('src/features/candidates/components/CandidateLibraryWorkspace.tsx');
   const drawer = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
 
   assert.match(types, /status: 'ok' \| 'processing'/);
@@ -58,7 +58,7 @@ test('后台解析上传立即显示处理中并自动刷新候选人状态', ()
 test('重复简历允许明确保留旧版或设为新版，失败文件可单独重试', () => {
   const types = read('src/features/candidates/types.ts');
   const api = read('src/features/candidates/api.ts');
-  const page = read('src/pages/candidates/page.tsx');
+  const page = read('src/features/candidates/components/CandidateLibraryWorkspace.tsx');
   const panel = read('src/features/candidates/components/ResumeRecoveryPanel.tsx');
 
   assert.match(types, /resume_versions/);

@@ -10,7 +10,7 @@ const hookPath = 'src/components/ui/useOverlayLifecycle.ts';
 const coreOverlays = [
   'src/components/feature/ResumeUploadModal.tsx',
   'src/components/ui/ReadOnlyDetailDrawer.tsx',
-  'src/pages/interviews/components/ScheduleInterviewModal.tsx',
+  'src/features/interviews/components/ScheduleInterviewModal.tsx',
   'src/pages/interviewer/interviews/components/InterviewerInterviewDetailDrawer.tsx',
   'src/pages/interviewer/interviews/components/SimpleFeedbackModal.tsx',
   'src/pages/interviewer/interviews/components/RescheduleRequestModal.tsx',
@@ -40,7 +40,7 @@ test('核心弹窗和抽屉共用生命周期且不再各自注册 Escape 监听
 });
 
 test('提交中的弹窗禁止通过 Escape 关闭，普通详情允许关闭', () => {
-  const schedule = read('src/pages/interviews/components/ScheduleInterviewModal.tsx');
+  const schedule = read('src/features/interviews/components/ScheduleInterviewModal.tsx');
   const feedback = read('src/pages/interviewer/interviews/components/SimpleFeedbackModal.tsx');
   const reschedule = read('src/pages/interviewer/interviews/components/RescheduleRequestModal.tsx');
   const createOffer = read('src/pages/offers/components/CreateOfferModal.tsx');

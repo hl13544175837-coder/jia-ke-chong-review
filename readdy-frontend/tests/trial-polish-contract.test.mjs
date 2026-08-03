@@ -38,7 +38,9 @@ test('六个核心工作页复用统一状态和错误翻译', () => {
   ];
 
   pages.forEach((file) => {
-    const source = read(file);
+    const source = file === 'src/pages/interviews/page.tsx'
+      ? `${read(file)}\n${read('src/features/interviews/useRecruiterInterviewWorkbench.ts')}`
+      : read(file);
     assert.match(source, /import PageStateCard from '@\/components\/ui\/PageStateCard'/, file);
     assert.match(source, /import \{ userFacingError \} from '@\/lib\/userFacingError'/, file);
     assert.match(source, /<PageStateCard/, file);

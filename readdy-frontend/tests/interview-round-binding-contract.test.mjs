@@ -5,7 +5,7 @@ import test from 'node:test';
 
 const root = path.resolve(import.meta.dirname, '..');
 const modalSource = fs.readFileSync(
-  path.join(root, 'src/pages/interviews/components/ScheduleInterviewModal.tsx'),
+  path.join(root, 'src/features/interviews/components/ScheduleInterviewModal.tsx'),
   'utf8',
 );
 

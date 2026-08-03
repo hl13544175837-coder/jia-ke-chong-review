@@ -9,18 +9,25 @@ import type {
   InterviewAssignmentUpdateInput,
   InterviewManagementRow,
   InterviewRescheduleRequest,
-  InterviewerOption,
 } from '@/features/interviews/types';
 import { formatInterviewDateTime } from '@/features/interviews/dateTime';
 import { pipelineApi } from '@/features/pipeline/api';
-import { userFacingError } from '@/lib/userFacingError';
 import InterviewFilterPopover from './components/InterviewFilterPopover';
 import InterviewManagementCalendar from './components/InterviewManagementCalendar';
 import InterviewManagementTable from './components/InterviewManagementTable';
 import InterviewWorkbenchToolbar from './components/InterviewWorkbenchToolbar';
 import RescheduleHistory from '@/features/interviews/components/RescheduleHistory';
 import RescheduleRequestPanel from './components/RescheduleRequestPanel';
-import ScheduleInterviewModal from './components/ScheduleInterviewModal';
+import RecruiterInterviewOverlays from '@/features/interviews/components/RecruiterInterviewOverlays';
+import {
+  followUpScheduleRow,
+  initialInterviewFilters,
+  initialInterviewTab,
+  initialInterviewView,
+  latestCandidateManagementRow,
+  setInterviewSearchParam,
+  useRecruiterInterviewWorkbench,
+} from '@/features/interviews/useRecruiterInterviewWorkbench';
 import {
   deriveInterviewFilterOptions,
   emptyInterviewFilters,
@@ -30,91 +37,7 @@ import {
   type InterviewFilters,
   type InterviewStatusTab,
   type InterviewViewMode,
-} from './workbench';
-
-function followUpScheduleRow(
-  row: InterviewManagementRow,
-  mode: 'next_round' | 'add_interviewer',
-): InterviewManagementRow {
-  const currentSequence = row.round_sequence || 1;
-  const nextSequence = mode === 'next_round' ? currentSequence + 1 : currentSequence;
-  return {
-    ...row,
-    round: mode === 'next_round'
-      ? nextSequence <= 3 ? `round_${nextSequence}` : 'additional'
-      : row.round || 'additional',
-    round_sequence: nextSequence,
-    assignment_id: null,
-    is_primary: mode === 'next_round',
-    interviewer_id: null,
-    interviewer_name: null,
-    scheduled_at: null,
-    location: '',
-    note: '',
-    assignment_status: 'unassigned',
-    feedback_id: null,
-    feedback_submitted: false,
-    feedback_score: null,
-    feedback_passed: null,
-    feedback_result: null,
-    disposition_reason: '',
-    enter_talent_pool: null,
-  };
-}
-
-function initialInterviewTab(value: string | null): InterviewStatusTab {
-  if (value === 'unassigned' || value === 'scheduled' || value === 'awaiting_feedback' || value === 'completed') {
-    return value;
-  }
-  return 'all';
-}
-
-function initialInterviewView(value: string | null): InterviewViewMode {
-  return value === 'calendar' ? 'calendar' : 'list';
-}
-
-function initialInterviewFilters(searchParams: URLSearchParams): InterviewFilters {
-  return {
-    jobTitle: searchParams.get('job') || '',
-    interviewerId: searchParams.get('interviewer') || '',
-    schedule: searchParams.get('schedule') || '',
-    dateFrom: searchParams.get('dateFrom') || '',
-    dateTo: searchParams.get('dateTo') || '',
-    roundSequence: searchParams.get('round') || '',
-    city: searchParams.get('city') || '',
-    department: searchParams.get('department') || '',
-  };
-}
-
-function setInterviewSearchParam(
-  searchParams: URLSearchParams,
-  key: string,
-  value: string,
-  defaultValue = '',
-) {
-  if (!value || value === defaultValue) searchParams.delete(key);
-  else searchParams.set(key, value);
-}
-
-function latestCandidateManagementRow(
-  rows: InterviewManagementRow[],
-  candidateId: number,
-  demandId: number | null,
-  assignmentId: number | null,
-) {
-  const matches = rows.filter((item) => (
-    item.candidate_id === candidateId
-    && (!demandId || item.demand_id === demandId)
-  ));
-  if (assignmentId) {
-    const exact = matches.find((item) => item.assignment_id === assignmentId);
-    if (exact) return exact;
-  }
-  return matches.sort((left, right) => (
-    (right.round_sequence || 0) - (left.round_sequence || 0)
-    || (right.assignment_id || 0) - (left.assignment_id || 0)
-  ))[0] ?? null;
-}
+} from '@/features/interviews/workbench';
 
 export default function RecruiterInterviewsPage() {
   const navigate = useNavigate();
@@ -127,10 +50,7 @@ export default function RecruiterInterviewsPage() {
   const dashboardScheduleHandledInUrl = searchParams.get('quickSchedule') === 'handled';
   const handledDeepLink = useRef('');
   const handledDashboardSchedule = useRef(false);
-  const [rows, setRows] = useState<InterviewManagementRow[]>([]);
-  const [interviewers, setInterviewers] = useState<InterviewerOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
+  const { rows, interviewers, selectedRow, setSelectedRow, loading, loadError, loadWorkbench } = useRecruiterInterviewWorkbench();
   const [activeTab, setActiveTab] = useState<InterviewStatusTab>(() => initialInterviewTab(searchParams.get('status')));
   const [search, setSearch] = useState(() => searchParams.get('q') || '');
   const [viewMode, setViewMode] = useState<InterviewViewMode>(() => initialInterviewView(searchParams.get('view')));
@@ -139,7 +59,6 @@ export default function RecruiterInterviewsPage() {
   const [draftFilters, setDraftFilters] = useState<InterviewFilters>(() => initialInterviewFilters(searchParams));
   const [scheduleRow, setScheduleRow] = useState<InterviewManagementRow | null>(null);
   const [scheduleIsPrimary, setScheduleIsPrimary] = useState(true);
-  const [selectedRow, setSelectedRow] = useState<InterviewManagementRow | null>(null);
   const [confirmConductedRow, setConfirmConductedRow] = useState<InterviewManagementRow | null>(null);
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -193,7 +112,7 @@ export default function RecruiterInterviewsPage() {
         .then(setSelectedRescheduleHistory)
         .catch(() => undefined);
     }
-  }, [openInterviewInUrl]);
+  }, [openInterviewInUrl, setSelectedRow]);
 
   const closeInterviewDetail = useCallback(() => {
     setSelectedRow(null);
@@ -205,41 +124,7 @@ export default function RecruiterInterviewsPage() {
     next.delete('candidate');
     next.delete('assignment');
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
-
-  const loadWorkbench = useCallback(async () => {
-    setLoading(true);
-    setLoadError('');
-    try {
-      const [managementRows, reviewerRows] = await Promise.all([
-        interviewsApi.listManagementRows(),
-        interviewsApi.listInterviewers(),
-      ]);
-      setRows(managementRows);
-      setInterviewers(reviewerRows);
-      setSelectedRow((current) => (
-        current
-          ? latestCandidateManagementRow(
-            managementRows,
-            current.candidate_id,
-            current.demand_id,
-            current.assignment_id,
-          )
-          : null
-      ));
-    } catch (error) {
-      setLoadError(userFacingError(error, '面试管理加载失败'));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadWorkbench();
-    const refresh = () => void loadWorkbench();
-    window.addEventListener('focus', refresh);
-    return () => window.removeEventListener('focus', refresh);
-  }, [loadWorkbench]);
+  }, [searchParams, setSearchParams, setSelectedRow]);
 
   useEffect(() => {
     const deepLinkKey = `${requestedCandidateId || ''}:${requestedAssignmentId || ''}`;
@@ -257,7 +142,7 @@ export default function RecruiterInterviewsPage() {
       setScheduleRow(row);
     }
     else setSelectedRow(row);
-  }, [fromDashboard, fromJobs, loading, requestedAssignmentId, requestedCandidateId, requestedDemandId, rows]);
+  }, [fromDashboard, fromJobs, loading, requestedAssignmentId, requestedCandidateId, requestedDemandId, rows, setSelectedRow]);
 
   const scopedRows = useMemo(
     () => requestedDemandId
@@ -672,21 +557,21 @@ export default function RecruiterInterviewsPage() {
         </div>
       )}
 
-      {confirmConductedRow && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-foreground-900/45 p-4" role="presentation" onMouseDown={() => setConfirmConductedRow(null)}>
-          <div role="dialog" aria-modal="true" aria-labelledby="confirm-conducted-title" className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-            <h2 id="confirm-conducted-title" className="text-base font-semibold text-foreground-900">确认这场面试已经完成？</h2>
-            <p className="mt-2 text-sm leading-6 text-foreground-500">确认后会把任务交给面试官填写评价。请先核对候选人、时间和面试官，避免提前确认。</p>
-            <div className="mt-4 rounded-lg bg-background-50 px-3 py-2 text-sm text-foreground-700">{confirmConductedRow.name_masked} · {formatInterviewDateTime(confirmConductedRow.scheduled_at)} · {confirmConductedRow.interviewer_name || '面试官未填写'}</div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={() => setConfirmConductedRow(null)} className="rounded-lg border border-background-300 bg-white px-4 py-2 text-sm text-foreground-700">返回核对</button>
-              <button type="button" onClick={() => void runAssignmentAction(confirmConductedRow, 'conducted')} disabled={actionRowId !== null} className="rounded-lg bg-foreground-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">确认已面试</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {scheduleRow && <ScheduleInterviewModal row={scheduleRow} interviewers={interviewers} saving={saving} error={actionError} isPrimary={scheduleIsPrimary} allowCancel={rescheduleRequestId === null} onClose={() => { if (!saving) { setScheduleRow(null); setRescheduleRequestId(null); setActionError(''); } }} onSave={(payload) => void saveSchedule(payload)} onCancelAssignment={(reason) => void cancelSchedule(reason)} />}
+      <RecruiterInterviewOverlays
+        confirmConductedRow={confirmConductedRow}
+        actionRowId={actionRowId}
+        onCloseConfirm={() => setConfirmConductedRow(null)}
+        onConfirmConducted={(row) => void runAssignmentAction(row, 'conducted')}
+        scheduleRow={scheduleRow}
+        interviewers={interviewers}
+        saving={saving}
+        actionError={actionError}
+        scheduleIsPrimary={scheduleIsPrimary}
+        allowCancel={rescheduleRequestId === null}
+        onCloseSchedule={() => { if (!saving) { setScheduleRow(null); setRescheduleRequestId(null); setActionError(''); } }}
+        onSaveSchedule={(payload) => void saveSchedule(payload)}
+        onCancelSchedule={(reason) => void cancelSchedule(reason)}
+      />
     </div>
   );
 }

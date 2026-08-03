@@ -14,7 +14,7 @@ test('候选人列表类型包含只读重复提示和本地演示标记', () =>
 });
 
 test('重复信息只显示提示，不触发删除、合并或覆盖', () => {
-  const page = read('src/pages/candidates/page.tsx');
+  const page = read('src/features/candidates/components/CandidateLibraryWorkspace.tsx');
 
   assert.match(page, /相同文件\s*\{candidate\.identical_resume_count\}\s*条/);
   assert.match(page, /同名\s*\{candidate\.same_name_count\}\s*条/);
@@ -23,7 +23,7 @@ test('重复信息只显示提示，不触发删除、合并或覆盖', () => {
 });
 
 test('本地演示筛选只过滤当前已加载结果，并提供可恢复空态', () => {
-  const page = read('src/pages/candidates/page.tsx');
+  const page = read('src/features/candidates/components/CandidateLibraryWorkspace.tsx');
 
   assert.match(page, /const \[hideLocalDemoRecords, setHideLocalDemoRecords\] = useState\(false\)/);
   assert.match(page, /candidateResponse\.candidates\.filter\(\(candidate\) => !candidate\.is_local_demo_record\)/);
