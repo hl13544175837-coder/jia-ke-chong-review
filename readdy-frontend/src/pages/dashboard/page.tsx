@@ -160,6 +160,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { name, role, userId } = useCompanyAuth();
+  const isManager = role === 'manager';
   const [facts, setFacts] = useState<DashboardFacts>(emptyFacts);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
@@ -214,7 +215,7 @@ export default function DashboardPage() {
       tone: 'amber' as const,
       urgent: false,
       priority: 100,
-      action: () => navigate('/jobs', { state: { fromDashboard: true, tab: 'pendingApproval', openTitle: demand.request_no } }),
+      action: () => navigate(`/jobs?tab=pendingApproval&demand=${demand.id}`),
     })),
     ...summary.completionDemands.map((demand) => ({
       key: `completion-${demand.id}`,
@@ -248,11 +249,11 @@ export default function DashboardPage() {
       title: `${item.candidate_name} · ${item.position}`,
       detail: offerStatusLabels[item.status],
       time: item.onboard_date ? `预计入职 ${shortDateLabel(item.onboard_date)}` : '时间待确认',
-      actionLabel: '处理 Offer',
+      actionLabel: isManager ? '确认 Offer' : '处理 Offer',
       tone: 'green' as const,
       urgent: false,
       priority: 60,
-      action: () => navigate(`/offers?demand=${item.demand_id}&candidate=${item.candidate_id}&from=dashboard`),
+      action: () => navigate(`/offers?tab=${isManager ? 'pending' : 'today'}&offer=${item.id}&from=dashboard`),
     })),
   ].sort((left, right) => right.priority - left.priority), [
     assignedBusinessReviews,
@@ -260,6 +261,7 @@ export default function DashboardPage() {
     summary.completionDemands,
     summary.myOfferActions,
     summary.pendingApprovals,
+    isManager,
   ]);
 
   const remindFeedback = useCallback(async (assignmentId: number) => {
@@ -350,35 +352,65 @@ export default function DashboardPage() {
     <div className="min-h-full bg-[#faf9f7] px-4 pb-8 pt-5 sm:px-6" data-ui="real-recruitment-dashboard">
       <div className="mx-auto max-w-[1540px] space-y-4">
         <PageHeader
-          title={`${greeting()}，${name || (role === 'manager' ? '招聘经理' : '招聘专员')}。`}
-          description="查看今天最需要推进的招聘任务和整体进度"
+          title={`${greeting()}，${name || (role === 'manager' ? '招聘主管' : '招聘专员')}。`}
+          description={isManager
+            ? '团队招聘统筹：先处理审批、逾期和跨角色卡点'
+            : '查看今天最需要推进的招聘任务和整体进度'}
           actions={(
             <>
               <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-600">
                 <CalendarDays size={15} aria-hidden="true" />
                 {currentMonthLabel()}
               </span>
-              <button
-                type="button"
-                onClick={() => navigate('/jobs', { state: { fromDashboard: true, openCreate: true } })}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-600 px-3.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-              >
-                <CirclePlus size={15} aria-hidden="true" />新建需求
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/candidates', { state: { fromDashboard: true, openUpload: true } })}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
-              >
-                <FileUp size={15} aria-hidden="true" />导入简历
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/interviews?status=unassigned&from=dashboard')}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
-              >
-                <CalendarDays size={15} aria-hidden="true" />安排面试
-              </button>
+              {isManager ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/jobs?tab=pendingApproval')}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-600 px-3.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+                  >
+                    <i className="ri-shield-check-line" aria-hidden="true" />审核需求
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/offers?tab=pending')}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+                  >
+                    <i className="ri-mail-check-line" aria-hidden="true" />确认 Offer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/dashboard/cycle')}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-200 bg-white px-3.5 text-sm font-medium text-foreground-700 transition hover:bg-background-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+                  >
+                    <Clock3 size={15} aria-hidden="true" />招聘周期
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/jobs', { state: { fromDashboard: true, openCreate: true } })}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-600 px-3.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+                  >
+                    <CirclePlus size={15} aria-hidden="true" />新建需求
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/candidates', { state: { fromDashboard: true, openUpload: true } })}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+                  >
+                    <FileUp size={15} aria-hidden="true" />导入简历
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/interviews?status=unassigned&from=dashboard')}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+                  >
+                    <CalendarDays size={15} aria-hidden="true" />安排面试
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => void loadFacts()}
@@ -392,6 +424,13 @@ export default function DashboardPage() {
             </>
           )}
         />
+
+        {isManager && (
+          <aside data-ui="manager-role-scope" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-primary-100 bg-primary-50/60 px-4 py-3 text-xs text-primary-800">
+            <span className="font-semibold">主管处理范围</span>
+            <span>你负责需求审批、Offer 确认、团队卡点和负责人协同；简历导入、面试安排及候选人跟进由招聘专员执行。</span>
+          </aside>
+        )}
 
         {errors.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -467,7 +506,7 @@ export default function DashboardPage() {
           </SectionCard>
 
           <SectionCard
-            title="今日面试"
+            title={isManager ? '团队今日面试' : '今日面试'}
             action={<button type="button" onClick={() => navigate('/interviews?status=scheduled&from=dashboard')} className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800">查看完整日程<ChevronRight size={13} /></button>}
           >
             <div className="divide-y divide-background-100">
@@ -497,7 +536,7 @@ export default function DashboardPage() {
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(320px,0.95fr)]">
           <SectionCard
-            title="我的岗位进展"
+            title={isManager ? '团队岗位进展' : '我的岗位进展'}
             action={<button type="button" onClick={() => navigate('/jobs')} className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800">查看全部岗位<ChevronRight size={13} /></button>}
           >
             <div className="overflow-x-auto">
@@ -527,7 +566,10 @@ export default function DashboardPage() {
                           <span className="truncate text-sm font-semibold text-foreground-900 group-hover:text-primary-700">{item.demand.job_title}</span>
                           <span className="inline-flex shrink-0 items-center text-[11px] font-medium text-primary-700">查看需求<ChevronRight size={12} /></span>
                         </button>
-                        <p className="mt-0.5 text-[11px] text-foreground-400">{item.demand.job_department} · {item.demand.job_city}</p>
+                        <p className="mt-0.5 text-[11px] text-foreground-400">
+                          {item.demand.job_department} · {item.demand.job_city}
+                          {isManager ? ` · 招聘负责人：${item.demand.owner_hr_name || '未分配'}` : ''}
+                        </p>
                       </td>
                       <td className="px-3 py-2.5 text-center text-sm font-medium text-foreground-800">{item.demand.metrics.onboarded_count}/{item.demand.headcount}</td>
                       <td className="px-3 py-2.5 text-center"><button type="button" data-ui="dashboard-drilldown-business-review" disabled={item.demand.metrics.business_review_count <= 0} onClick={() => openDemandMetric(item, 'business-review')} className="rounded px-2 py-1 text-sm text-foreground-600 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-default disabled:opacity-45">{item.demand.metrics.business_review_count}</button></td>
@@ -546,7 +588,7 @@ export default function DashboardPage() {
           </SectionCard>
 
           <div className="grid gap-4">
-            <SectionCard title="等待他人">
+            <SectionCard title={isManager ? '团队协同等待' : '等待他人'}>
               <div className="divide-y divide-background-100">
                 {waitingItems.slice(0, 3).map((item) => (
                   <div key={item.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5">

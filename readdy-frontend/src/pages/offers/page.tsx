@@ -92,6 +92,10 @@ export default function OffersPage() {
   const [editingOffer, setEditingOffer] = useState<OfferRecord | null>(null);
   const [createPrefill, setCreatePrefill] = useState<{ demandId: number; candidateId: number } | null>(null);
 
+  useEffect(() => {
+    if (role === 'manager' && !searchParams.has('tab')) setActiveTab('pending');
+  }, [role, searchParams]);
+
   const syncOfferWorkspaceUrl = useCallback(() => {
     const next = new URLSearchParams(searchParams);
     setOfferSearchParam(next, 'tab', activeTab, 'today');
@@ -313,7 +317,7 @@ export default function OffersPage() {
       return;
     }
     const actionByStatus: Partial<Record<OfferRecord['status'], OfferAction>> = {
-      pending: role === 'manager' || role === 'admin' || role === 'hr_director' ? 'approve' : undefined,
+      pending: role === 'manager' || role === 'admin' ? 'approve' : undefined,
       approved: 'send',
       sent: 'accept',
       accepted: 'onboard',
@@ -327,7 +331,9 @@ export default function OffersPage() {
       <PageHeader
         title="Offer 管理"
         visuallyHiddenTitle
-        description="确认方案、登记发放、跟进回复和确认入职"
+        description={role === 'manager'
+          ? '确认或退回招聘专员提交的 Offer 方案'
+          : '确认方案、登记发放、跟进回复和确认入职'}
         leading={fromDashboard && !requestedDemandId ? (
           <button type="button" onClick={() => navigate('/dashboard')} aria-label="返回工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-background-200 bg-white text-foreground-600 hover:bg-background-50"><ArrowLeft size={17} /></button>
         ) : undefined}
@@ -343,6 +349,13 @@ export default function OffersPage() {
           </button>
         ) : undefined}
       />
+
+      {role === 'manager' && (
+        <section data-ui="manager-offer-scope" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-primary-100 bg-primary-50/60 px-4 py-3 text-xs text-primary-800">
+          <span className="font-semibold">主管处理范围</span>
+          <span>这里只需要确认或退回待审批 Offer；草稿维护、发放登记、候选人回复和入职登记由招聘专员处理。</span>
+        </section>
+      )}
 
       {requestedDemandId && (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-200 bg-primary-50/60 px-4 py-3" aria-label="当前岗位 Offer">

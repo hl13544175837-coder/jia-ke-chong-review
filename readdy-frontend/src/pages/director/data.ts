@@ -189,7 +189,12 @@ export function buildDirectorData(data: AnalyticsOverview) {
       summary: highRisk.length
         ? `当前有 ${highRisk.length} 个高风险岗位、${data.summary.attention_count} 项待关注事项，建议优先处理目标日期已过和暂无在途候选人的岗位。`
         : `当前没有高风险岗位，共有 ${data.summary.open_demands} 个在招需求。`,
-      alerts: highRisk.slice(0, 3).map((item) => ({ type: 'warning' as const, text: `${item.title}：${item.blockReasons.join('、') || '需关注'}`, drillKey: 'overdue' })),
+      alerts: highRisk.slice(0, 3).map((item) => ({
+        type: 'warning' as const,
+        text: `${item.title}：${item.blockReasons.join('、') || '需关注'}`,
+        drillKey: 'overdue',
+        positionId: item.id,
+      })),
     },
     allPositionProgress: positions,
     directorFunnel: data.funnel,
@@ -198,7 +203,7 @@ export function buildDirectorData(data: AnalyticsOverview) {
     approvalItems,
     riskSummary: {
       summary: approvalItems.length
-        ? `当前共 ${approvalItems.length} 项真实待关注事项，其中 ${urgentCount} 项紧急。请先处理已超期需求和待审批事项。`
+        ? `当前共 ${approvalItems.length} 项真实待关注事项，其中 ${urgentCount} 项紧急。建议优先跟进已超期需求和待审批事项。`
         : '当前本地数据中没有待审批或临期风险事项。',
       alerts: approvalItems.filter((item) => item.urgency === 'urgent').slice(0, 3).map((item) => ({ type: 'warning' as const, text: `${item.title}：${item.detail}`, drillKey: item.type })),
     },

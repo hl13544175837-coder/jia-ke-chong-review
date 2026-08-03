@@ -12,9 +12,23 @@ function percent(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
 }
 
+function positionFollowUpActions(position: PositionProgress) {
+  const actions = new Set<string>();
+  position.blockReasons.forEach((reason) => {
+    if (reason.includes('反馈')) actions.add('由招聘主管催办对应面试官补齐反馈');
+    if (reason.includes('超出招聘 HC')) actions.add('由招聘主管核对 HC、Offer 与历史入职记录');
+    if (reason.includes('目标日期已过')) actions.add('由招聘主管确认继续招聘、调整日期或结束需求');
+    if (reason.includes('暂无在途候选人')) actions.add('由招聘主管安排招聘专员补充候选人');
+    if (reason.includes('开放时间较长')) actions.add('由招聘主管复核岗位画像、渠道和招聘优先级');
+  });
+  if (actions.size === 0) actions.add('由招聘主管继续跟进当前岗位，发生卡点后再升级给总监');
+  return Array.from(actions);
+}
+
 export default function DirectorProgressPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedPositionId = searchParams.get('position');
+  const requestedRisk = searchParams.get('risk');
   const [deptFilter, setDeptFilter] = useState('all');
   const [riskFilter, setRiskFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<SortKey>('daysOpen');
@@ -38,6 +52,12 @@ export default function DirectorProgressPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (requestedRisk === 'high' || requestedRisk === 'medium' || requestedRisk === 'normal') {
+      setRiskFilter(requestedRisk);
+    }
+  }, [requestedRisk]);
 
   const view = useMemo(() => data ? buildDirectorData(data) : null, [data]);
   const allPositionProgress = useMemo(() => view?.allPositionProgress ?? [], [view]);
@@ -291,6 +311,7 @@ export default function DirectorProgressPage() {
               <tr className="border-b border-background-200">
                 <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500">岗位名称</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500">部门</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-foreground-500">负责人</th>
                 <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">HC/入职</th>
                 <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">筛选中</th>
                 <th className="text-center px-5 py-3 text-xs font-medium text-foreground-500">面试中</th>
@@ -319,6 +340,7 @@ export default function DirectorProgressPage() {
                 >
                   <td className="px-5 py-3.5 text-sm font-medium text-foreground-900">{pos.title}</td>
                   <td className="px-5 py-3.5 text-sm text-foreground-600">{pos.department}</td>
+                  <td className="px-5 py-3.5 text-sm text-foreground-600">{pos.recruiter}</td>
                   <td className="px-5 py-3.5 text-sm text-center">
                     <span className="font-semibold text-foreground-900">{pos.filled}</span>
                     <span className="text-foreground-400">/{pos.headcount}</span>
@@ -347,7 +369,7 @@ export default function DirectorProgressPage() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={9} className="px-5 py-12 text-center text-sm text-foreground-500">当前筛选条件下没有在招岗位。</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={10} className="px-5 py-12 text-center text-sm text-foreground-500">当前筛选条件下没有在招岗位。</td></tr>}
             </tbody>
           </table>
         </div>
@@ -411,6 +433,20 @@ export default function DirectorProgressPage() {
               ) : (
                 <p className="mt-3 rounded-lg bg-background-50 px-3 py-4 text-sm text-foreground-500">当前没有已记录的阻塞原因。</p>
               )}
+            </section>
+
+            <section className="rounded-xl border border-primary-100 bg-primary-50/40 p-4">
+              <h3 className="text-sm font-semibold text-foreground-900">责任人与建议跟进动作</h3>
+              <p className="mt-2 text-sm text-foreground-700">当前招聘负责人：<span className="font-semibold text-foreground-900">{selectedPosition.recruiter}</span></p>
+              <ul className="mt-3 space-y-2">
+                {positionFollowUpActions(selectedPosition).map((action) => (
+                  <li key={action} className="flex items-start gap-2 text-sm text-foreground-700">
+                    <i className="ri-checkbox-circle-line mt-0.5 text-primary-600" aria-hidden="true" />{action}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs text-foreground-500">总监负责判断是否需要升级、调整资源或改变优先级，不直接代替招聘主管推进候选人流程。</p>
+              <Link to="/director/approvals" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800">查看相关审批与风险<i className="ri-arrow-right-line" aria-hidden="true" /></Link>
             </section>
           </div>
         </ReadOnlyDetailDrawer>

@@ -15,7 +15,7 @@ export default function DirectorInsightsPage() {
     try {
       setData(await analyticsApi.overview());
     } catch {
-      setError('人才储备暂时无法读取，请稍后重试。');
+      setError('人才供需暂时无法读取，请稍后重试。');
     } finally {
       setLoading(false);
     }
@@ -50,9 +50,9 @@ export default function DirectorInsightsPage() {
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 p-6">
       <PageHeader
-        title="人才储备"
+        title="人才供需"
         visuallyHiddenTitle
-        description={`${data?.summary.candidate_total ?? 0} 位候选人 · ${inProgress} 人在流程中 · ${data?.funnel.hired ?? 0} 人已入职 · 只读模式`}
+        description={`当前岗位与在途人才 · ${data?.summary.candidate_total ?? 0} 位候选人 · ${inProgress} 人在流程中 · ${data?.funnel.hired ?? 0} 人已入职 · 只读模式`}
         actions={<><button type="button" onClick={() => void loadData()} disabled={loading} className="rounded-lg border border-background-200 bg-white px-3 py-2 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-50">刷新</button><Link to="/director/cockpit" className="flex items-center gap-1 whitespace-nowrap text-sm text-foreground-500 transition-colors hover:text-foreground-800"><i className="ri-arrow-left-line"></i> 返回驾驶舱</Link></>}
       />
 

@@ -57,7 +57,7 @@ test('左侧菜单页保留无障碍标题但不重复展示菜单名称', () =>
     ['src/pages/interviewer/interviews/page.tsx', '我的面试'],
     ['src/pages/director/cockpit/page.tsx', '管理驾驶舱'],
     ['src/pages/director/progress/page.tsx', '招聘进展'],
-    ['src/pages/director/insights/page.tsx', '人才储备'],
+    ['src/pages/director/insights/page.tsx', '人才供需'],
     ['src/pages/director/approvals/page.tsx', '审批与风险'],
     ['src/pages/settings/page.tsx', '系统设置'],
   ];

@@ -78,7 +78,7 @@ function availableActions(status: OfferStatus, role: ProductRole | null): OfferA
   if (status === 'draft') return canMaintain ? ['submit'] : [];
   if (status === 'rejected') return [];
   if (status === 'pending') {
-    if (role === 'manager' || role === 'hr_director') return ['approve', 'reject'];
+    if (role === 'manager') return ['approve', 'reject'];
     if (role === 'admin') return ['approve', 'reject', 'withdraw'];
     return canMaintain ? ['withdraw'] : [];
   }

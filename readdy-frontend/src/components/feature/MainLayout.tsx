@@ -36,7 +36,7 @@ const hrNavItems: NavItem[] = [
 const directorNavItems: NavItem[] = [
   { path: '/director/cockpit', icon: 'ri-dashboard-3-line', label: '管理驾驶舱', roles: ['hr_director'], menuCode: 'bi' },
   { path: '/director/progress', icon: 'ri-bar-chart-grouped-line', label: '招聘进展', roles: ['hr_director'], menuCode: 'bi' },
-  { path: '/director/insights', icon: 'ri-organization-chart', label: '人才储备', roles: ['hr_director'], menuCode: 'bi' },
+  { path: '/director/insights', icon: 'ri-organization-chart', label: '人才供需', roles: ['hr_director'], menuCode: 'bi' },
   { path: '/director/approvals', icon: 'ri-shield-check-line', label: '审批与风险', roles: ['hr_director'], menuCode: 'pipeline' },
   { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['hr_director'], menuCode: 'bi' },
 ];

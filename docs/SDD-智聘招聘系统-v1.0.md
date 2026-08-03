@@ -178,6 +178,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `manager` | 工作台、AI 助手、候选人、上传、岗位、流程、BI | 当前组织内团队视角管理、候选人转派、BI 查看；面试任务通过工作台待办或候选人流程深链进入 |
 | `recruiter` | 工作台、AI 助手、候选人、上传、岗位、流程 | 仅负责自己的候选人和岗位；不能查看或操作别人负责的岗位；面试任务通过工作台待办或候选人流程深链进入 |
 | `interviewer` | 工作台、我的面试、候选人详情 | 只处理分配给自己的面试安排与反馈；不浏览全量简历库、不推进候选人流程、不使用 AI 助手 |
+| `hr_director` | 管理驾驶舱、招聘进展、人才供需、审批与风险、数据看板 | 当前组织内只读管理分析；定位风险、责任人和建议动作，不代替 `manager` 执行需求或 Offer 审批 |
 
 ### 5.1 前端路由守卫
 
@@ -196,8 +197,8 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `/job-templates` | `JobsPage` （岗位/JD 二级能力） | recruiter / manager / admin |
 | `/interviewer/dashboard`, `/interviewer/interviews`, `/interviewer/screening` | `DashboardPage`, `InterviewListPage` | interviewer |
 | `/interviewer/candidates`, `/interviewer/jobs` | `InterviewerScopePage` （仅 assignment 范围） | interviewer |
-| `/director/cockpit`, `/director/progress`, `/director/insights` | `DashboardPage`, `BiPage` | manager / admin |
-| `/director/approvals` | `OffersPage` （真实 Offer 状态机） | manager / admin |
+| `/director/cockpit`, `/director/progress`, `/director/insights` | Readdy 管理驾驶舱、招聘进展、人才供需 | hr_director |
+| `/director/approvals` | Readdy 审批与风险监督页 | hr_director |
 | `/jobs/:id/match` | `JobMatchPage` | recruiter / manager / admin |
 | `/talent-map` | `TalentMapPage` | recruiter / manager / admin |
 | `/pipeline` | `PipelinePage` | recruiter / manager / admin |

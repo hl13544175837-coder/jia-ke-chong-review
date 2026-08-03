@@ -8,6 +8,16 @@ import { buildDirectorData } from '../data';
 type DrillKey = string | null;
 type TrendMode = 'hires' | 'offers';
 
+const drillDestinations: Record<string, { title: string; description: string; to?: string; action?: string }> = {
+  cycle: { title: '招聘周期', description: '查看组织招聘周期和岗位周期明细。', to: '/analytics', action: '查看周期报表' },
+  cost: { title: '招聘成本', description: '本地暂未接入成本数据，当前不展示推测值。' },
+  offer: { title: 'Offer 风险与审批', description: '查看待确认 Offer、申请人和当前责任人。', to: '/director/approvals?type=offer', action: '查看 Offer 关注项' },
+  hires: { title: '本月入职', description: '查看已入职数量对应的岗位进展。', to: '/director/progress', action: '查看招聘进展' },
+  overdue: { title: '高风险岗位', description: '查看高风险岗位、负责人和阻塞原因。', to: '/director/progress?risk=high', action: '查看高风险岗位' },
+  approval: { title: '待关注事项', description: '查看需求审批、Offer 审批和到期风险的责任分工。', to: '/director/approvals', action: '查看审批与风险' },
+  pipeline: { title: '在途候选人', description: '查看候选人所在岗位和当前招聘阶段。', to: '/director/progress', action: '查看招聘进展' },
+};
+
 export default function DirectorCockpitPage() {
   const [data, setData] = useState<AnalyticsOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,7 +69,7 @@ export default function DirectorCockpitPage() {
       <PageHeader
         title="管理驾驶舱"
         visuallyHiddenTitle
-        description="本地数据库招聘总览 · 只读模式"
+        description="全局招聘决策入口 · 查看风险、责任人和下一步 · 只读模式"
         actions={<div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-foreground-400">数据更新于 {data?.generated_at ? new Date(data.generated_at).toLocaleString('zh-CN') : '读取中'}</span>
           <button type="button" onClick={() => void loadData()} disabled={loading} className="rounded-lg border border-background-200 bg-white px-3 py-2 text-sm text-foreground-600 hover:bg-background-50 disabled:opacity-50">刷新</button>
@@ -109,14 +119,15 @@ export default function DirectorCockpitPage() {
             <p className="text-sm text-foreground-800 leading-relaxed">{aiInsightSummary.summary}</p>
             <div className="flex flex-wrap items-center gap-2 mt-2">
               {aiInsightSummary.alerts.map((a, i) => (
-                <button
+                <Link
                   key={i}
-                  onClick={() => setDrillDown(a.drillKey)}
+                  to={`/director/progress?position=${a.positionId}`}
                   className="cursor-pointer whitespace-nowrap rounded-full bg-secondary-100 px-2 py-1 text-xs font-medium text-secondary-800"
                 >
                   <i className="ri-alert-line mr-1"></i>
                   {a.text}
-                </button>
+                  <i className="ri-arrow-right-s-line ml-1" aria-hidden="true" />
+                </Link>
               ))}
             </div>
           </div>
@@ -240,13 +251,21 @@ export default function DirectorCockpitPage() {
         </div>
       )}
 
-      {/* Other drill-downs just close */}
+      {/* Other drill-downs route to the existing detail page. */}
       {(drillDown && drillDown !== 'hc' && drillDown !== 'team') && (
-        <div className="bg-white rounded-xl border border-background-200 p-8 text-center">
-          <p className="text-sm text-foreground-500">点击指标可查看对应明细。详细数据请前往对应子页面。</p>
-          <button onClick={() => setDrillDown(null)} className="mt-2 text-xs text-primary-600 hover:text-primary-700 cursor-pointer">
-            关闭面板
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-background-200 bg-white p-5">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground-900">{drillDestinations[drillDown]?.title || '指标明细'}</h3>
+            <p className="mt-1 text-xs text-foreground-500">{drillDestinations[drillDown]?.description || '查看对应的本地真实数据。'}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {drillDestinations[drillDown]?.to && (
+              <Link to={drillDestinations[drillDown].to!} className="rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700">
+                {drillDestinations[drillDown].action}<i className="ri-arrow-right-line ml-1" aria-hidden="true" />
+              </Link>
+            )}
+            <button onClick={() => setDrillDown(null)} className="rounded-lg border border-background-200 px-3 py-2 text-xs text-foreground-600 hover:bg-background-50">关闭</button>
+          </div>
         </div>
       )}
 
@@ -351,8 +370,8 @@ export default function DirectorCockpitPage() {
               <i className="ri-organization-chart text-accent-600"></i>
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground-900">人才洞察</p>
-              <p className="text-xs text-foreground-500">市场与供给分析</p>
+              <p className="text-sm font-semibold text-foreground-900">人才供需</p>
+              <p className="text-xs text-foreground-500">当前岗位与在途人才</p>
             </div>
             <i className="ri-arrow-right-line text-foreground-300 ml-auto group-hover:text-accent-500"></i>
           </div>

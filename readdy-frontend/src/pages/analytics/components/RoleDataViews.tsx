@@ -5,6 +5,7 @@ import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewStatus, BusinessReviewTask } from '@/features/businessReviews/types';
 import { interviewsApi } from '@/features/interviews/api';
 import type { InterviewAssignment } from '@/features/interviews/types';
+import type { AnalyticsOverview } from '@/features/analytics/types';
 import MonthlyPerformancePanel from '@/pages/dashboard/components/MonthlyPerformancePanel';
 import {
   dashboardStageDrilldown,
@@ -37,6 +38,88 @@ export function MonthlyPerformanceDataPanel() {
   };
 
   return <MonthlyPerformancePanel onStageClick={openStage} />;
+}
+
+interface ManagerTeamResponsibilityPanelProps {
+  data: AnalyticsOverview;
+  onOwnerClick: (ownerId: number) => void;
+}
+
+export function ManagerTeamResponsibilityPanel({ data, onOwnerClick }: ManagerTeamResponsibilityPanelProps) {
+  const rows = useMemo(() => {
+    const grouped = new Map<string, {
+      ownerId: number | null;
+      ownerName: string;
+      demandCount: number;
+      remainingHc: number;
+      inProgress: number;
+      blockedDemands: number;
+      outstandingFeedback: number;
+    }>();
+
+    data.demands.forEach((demand) => {
+      const key = `${demand.owner_hr_id ?? 'unassigned'}:${demand.owner_name}`;
+      const current = grouped.get(key) ?? {
+        ownerId: demand.owner_hr_id,
+        ownerName: demand.owner_name || '未分配负责人',
+        demandCount: 0,
+        remainingHc: 0,
+        inProgress: 0,
+        blockedDemands: 0,
+        outstandingFeedback: 0,
+      };
+      current.demandCount += 1;
+      current.remainingHc += demand.remaining;
+      current.inProgress += demand.in_progress;
+      current.blockedDemands += demand.risk_flags.length > 0 ? 1 : 0;
+      current.outstandingFeedback += demand.outstanding_feedback;
+      grouped.set(key, current);
+    });
+
+    return Array.from(grouped.values()).sort((left, right) => (
+      right.blockedDemands - left.blockedDemands
+      || right.outstandingFeedback - left.outstandingFeedback
+      || right.remainingHc - left.remainingHc
+      || left.ownerName.localeCompare(right.ownerName, 'zh-CN')
+    ));
+  }, [data.demands]);
+
+  return (
+    <section data-ui="manager-team-responsibility" className="overflow-hidden rounded-xl border border-background-200 bg-white shadow-[0_8px_28px_rgba(44,62,52,0.035)]">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-background-100 px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground-900">团队责任与卡点</h2>
+          <p className="mt-0.5 text-xs text-foreground-500">按当前负责人汇总在招需求和待协同事项，不做个人排名</p>
+        </div>
+        <span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">{rows.length} 位负责人</span>
+      </header>
+      {rows.length ? (
+        <div className="grid gap-2 p-3 lg:grid-cols-2">
+          {rows.map((row) => (
+            <button
+              key={`${row.ownerId ?? 'unassigned'}-${row.ownerName}`}
+              type="button"
+              disabled={row.ownerId === null}
+              onClick={() => row.ownerId !== null && onOwnerClick(row.ownerId)}
+              className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-background-200 px-4 py-3 text-left transition hover:border-primary-200 hover:bg-primary-50/30 focus:outline-none focus:ring-2 focus:ring-primary-200 disabled:cursor-default disabled:opacity-70"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-foreground-900">{row.ownerName}</span>
+                <span className="mt-1 block text-xs text-foreground-500">负责 {row.demandCount} 个岗位 · 剩余 HC {row.remainingHc} · 在途 {row.inProgress} 人</span>
+              </span>
+              <span className="flex items-center gap-2 text-xs">
+                <span className={row.blockedDemands > 0 ? 'font-medium text-amber-700' : 'text-foreground-400'}>卡点 {row.blockedDemands}</span>
+                <span className={row.outstandingFeedback > 0 ? 'font-medium text-red-700' : 'text-foreground-400'}>待补反馈 {row.outstandingFeedback}</span>
+                {row.ownerId !== null && <i className="ri-arrow-right-s-line text-base text-foreground-300 transition group-hover:text-primary-600" aria-hidden="true" />}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="px-4 py-10 text-center text-sm text-foreground-500">当前没有可汇总的在招需求</p>
+      )}
+    </section>
+  );
 }
 
 export function RecruiterDataBoard() {

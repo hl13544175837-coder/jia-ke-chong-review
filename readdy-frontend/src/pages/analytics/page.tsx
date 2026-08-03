@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import PageHeader from '@/components/ui/PageHeader';
 import ReadOnlyDetailDrawer from '@/components/ui/ReadOnlyDetailDrawer';
@@ -9,6 +9,7 @@ import type { AnalyticsDemandRow, AnalyticsOverview } from '@/features/analytics
 import { useToast } from '@/hooks/useToast';
 import {
   InterviewerDataBoard,
+  ManagerTeamResponsibilityPanel,
   MonthlyPerformanceDataPanel,
   RecruiterDataBoard,
 } from './components/RoleDataViews';
@@ -24,6 +25,7 @@ type InsightKey =
   | 'funnel-interviewed'
   | 'funnel-offered'
   | 'funnel-hired'
+  | `owner:${number}`
   | `department:${string}`;
 
 interface InsightView {
@@ -69,6 +71,7 @@ function insightMetricLabel(row: AnalyticsDemandRow, key: InsightKey) {
   if (key === 'open-demands') return '在招中';
   if (key === 'remaining-hc') return `剩余 ${row.remaining} 人`;
   if (key === 'offer-rate') return `接受 ${row.offers_accepted}/${row.offers_issued} 份`;
+  if (key.startsWith('owner:')) return `剩余 HC ${row.remaining} · 卡点 ${row.risk_flags.length}`;
   if (key.startsWith('department:')) return `已入职 ${row.onboarded}/${row.headcount} 人`;
   return `${insightMetric(row, key)} 人`;
 }
@@ -99,6 +102,18 @@ function buildInsight(data: AnalyticsOverview, key: string | null): InsightView 
     };
   }
 
+  if (key.startsWith('owner:')) {
+    const ownerId = Number(key.slice('owner:'.length));
+    if (!Number.isInteger(ownerId) || ownerId <= 0) return null;
+    const rows = demandRows.filter((row) => row.owner_hr_id === ownerId);
+    return {
+      key: key as InsightKey,
+      title: `${rows[0]?.owner_name || '招聘负责人'}负责的岗位`,
+      description: '只显示该负责人当前负责的在招需求、剩余 HC 和卡点。',
+      rows,
+    };
+  }
+
   const definition = definitions[key as InsightKey];
   if (!definition) return null;
   const insightKey = key as InsightKey;
@@ -111,6 +126,7 @@ function buildInsight(data: AnalyticsOverview, key: string | null): InsightView 
 }
 
 function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruiterPerformance: boolean }) {
+  const { role } = useCompanyAuth();
   const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedInsight = searchParams.get('insight');
@@ -197,8 +213,13 @@ function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruit
       <PageHeader
         title="数据看板"
         visuallyHiddenTitle
-        description={data?.purpose || '读取当前组织的真实招聘数据'}
+        description={role === 'hr_director'
+          ? '组织趋势与报表复盘；当天需要关注的决策请回到管理驾驶舱'
+          : role === 'manager'
+            ? '查看团队招聘进度、责任归属和卡点'
+            : data?.purpose || '读取当前组织的真实招聘数据'}
         actions={<div className="flex flex-wrap items-center gap-3">
+          {role === 'hr_director' && <Link to="/director/cockpit" className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 hover:bg-primary-100">回到管理驾驶舱</Link>}
           <span className="text-xs text-foreground-400">数据更新于 {displayTime(data?.generated_at)}</span>
           <button type="button" onClick={() => void exportCsv()} disabled={!data || exporting} className="rounded-lg border border-background-200 bg-background-100 px-3 py-1.5 text-xs font-medium text-foreground-700 hover:bg-background-200 disabled:opacity-50">
             <i className="ri-download-2-line mr-1" />{exporting ? '导出中' : '导出报表'}
@@ -216,6 +237,12 @@ function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruit
         <div className="rounded-xl border border-background-200 bg-white px-5 py-12 text-center text-sm text-foreground-500">正在加载真实统计数据...</div>
       ) : data && (
         <>
+          {includeRecruiterPerformance && (
+            <ManagerTeamResponsibilityPanel
+              data={data}
+              onOwnerClick={(ownerId) => openInsight(`owner:${ownerId}`)}
+            />
+          )}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
             {cards.map((card) => card.key ? (
               <button
@@ -331,7 +358,7 @@ function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruit
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-foreground-900">{row.title}</p>
-                    <p className="mt-1 text-xs text-foreground-500">{row.request_no} · {row.department}</p>
+                    <p className="mt-1 text-xs text-foreground-500">{row.request_no} · {row.department} · 负责人：{row.owner_name || '未分配'}</p>
                   </div>
                   <span className="shrink-0 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">{insightMetricLabel(row, selectedInsight.key)}</span>
                 </div>

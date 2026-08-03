@@ -15,7 +15,7 @@ interface Props {
 }
 
 function rowPrimaryAction(offer: OfferRecord, role: ProductRole | null) {
-  const canApprove = role === 'manager' || role === 'admin' || role === 'hr_director';
+  const canApprove = role === 'manager' || role === 'admin';
   if (offer.status === 'pending' && !canApprove) return '查看确认进度';
   if ((offer.status === 'draft' || offer.status === 'rejected') && role !== 'recruiter' && role !== 'admin') {
     return offer.status === 'rejected' ? '查看退回记录' : '查看草稿';
