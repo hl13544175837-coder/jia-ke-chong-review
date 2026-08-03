@@ -8,8 +8,16 @@ const read = (file) => readFileSync(path.join(root, file), 'utf8');
 
 test('数据看板属于正常业务菜单且在人才地图下面', () => {
   const layout = read('src/components/feature/MainLayout.tsx');
-  const hrMenu = layout.slice(
-    layout.indexOf('const hrNavItems'),
+  const recruiterMenu = layout.slice(
+    layout.indexOf('const recruiterNavItems'),
+    layout.indexOf('const managerNavItems'),
+  );
+  const managerMenu = layout.slice(
+    layout.indexOf('const managerNavItems'),
+    layout.indexOf('const adminNavItems'),
+  );
+  const adminMenu = layout.slice(
+    layout.indexOf('const adminNavItems'),
     layout.indexOf('const directorNavItems'),
   );
   const directorMenu = layout.slice(
@@ -25,8 +33,11 @@ test('数据看板属于正常业务菜单且在人才地图下面', () => {
     layout.indexOf('const notificationVisuals'),
   );
 
-  assert.match(hrMenu, /path:\s*'\/talent-map'[^}]*},\s*\n\s*\{\s*path:\s*'\/analytics'/);
-  assert.match(hrMenu, /path:\s*'\/analytics'[^}]*roles:\s*\['recruiter', 'manager', 'admin'\]/);
+  assert.match(recruiterMenu, /path:\s*'\/talent-map'[^}]*},\s*\n\s*\{\s*path:\s*'\/analytics'/);
+  assert.match(recruiterMenu, /path:\s*'\/analytics'[^}]*roles:\s*\['recruiter'\]/);
+  assert.match(managerMenu, /path:\s*'\/analytics'[^}]*label:\s*'团队进展'[^}]*roles:\s*\['manager'\]/);
+  assert.match(adminMenu, /path:\s*'\/talent-map'[^}]*},\s*\n\s*\{\s*path:\s*'\/analytics'/);
+  assert.match(adminMenu, /path:\s*'\/analytics'[^}]*roles:\s*\['admin'\]/);
   assert.match(directorMenu, /path:\s*'\/analytics'[^}]*roles:\s*\['hr_director'\]/);
   assert.match(interviewerMenu, /path:\s*'\/analytics'[^}]*roles:\s*\['interviewer'\]/);
   assert.doesNotMatch(bottomMenu, /path:\s*'\/analytics'/);

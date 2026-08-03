@@ -18,19 +18,38 @@ interface NavItem {
   path: string;
   icon: string;
   label: string;
-  displayLabel?: string;
   roles: ProductRole[];
   menuCode?: string;
 }
 
-const hrNavItems: NavItem[] = [
-  { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['recruiter', 'manager', 'admin'], menuCode: 'index' },
-  { path: '/jobs', icon: 'ri-briefcase-line', label: '需求审核', displayLabel: '招聘需求', roles: ['recruiter', 'manager', 'admin'], menuCode: 'demands' },
-  { path: '/candidates', icon: 'ri-file-list-3-line', label: '简历库', roles: ['recruiter', 'manager', 'admin'], menuCode: 'candidates' },
-  { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['recruiter', 'manager', 'admin'], menuCode: 'interviews' },
-  { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['recruiter', 'manager', 'admin'], menuCode: 'pipeline' },
-  { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['recruiter', 'manager', 'admin'], menuCode: 'candidates' },
-  { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['recruiter', 'manager', 'admin'], menuCode: 'bi' },
+const recruiterNavItems: NavItem[] = [
+  { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['recruiter'], menuCode: 'index' },
+  { path: '/jobs', icon: 'ri-briefcase-line', label: '招聘需求', roles: ['recruiter'], menuCode: 'demands' },
+  { path: '/candidates', icon: 'ri-file-list-3-line', label: '简历库', roles: ['recruiter'], menuCode: 'candidates' },
+  { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['recruiter'], menuCode: 'interviews' },
+  { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['recruiter'], menuCode: 'pipeline' },
+  { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['recruiter'], menuCode: 'candidates' },
+  { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['recruiter'], menuCode: 'bi' },
+];
+
+const managerNavItems: NavItem[] = [
+  { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['manager'], menuCode: 'index' },
+  { path: '/jobs', icon: 'ri-briefcase-line', label: '需求审批', roles: ['manager'], menuCode: 'demands' },
+  { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '团队进展', roles: ['manager'], menuCode: 'bi' },
+  { path: '/candidates', icon: 'ri-file-list-3-line', label: '简历库', roles: ['manager'], menuCode: 'candidates' },
+  { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['manager'], menuCode: 'interviews' },
+  { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['manager'], menuCode: 'pipeline' },
+  { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['manager'], menuCode: 'candidates' },
+];
+
+const adminNavItems: NavItem[] = [
+  { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['admin'], menuCode: 'index' },
+  { path: '/jobs', icon: 'ri-briefcase-line', label: '招聘需求', roles: ['admin'], menuCode: 'demands' },
+  { path: '/candidates', icon: 'ri-file-list-3-line', label: '简历库', roles: ['admin'], menuCode: 'candidates' },
+  { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['admin'], menuCode: 'interviews' },
+  { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['admin'], menuCode: 'pipeline' },
+  { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['admin'], menuCode: 'candidates' },
+  { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['admin'], menuCode: 'bi' },
 ];
 
 const directorNavItems: NavItem[] = [
@@ -139,7 +158,11 @@ export default function MainLayout() {
     ? interviewerNavItems
     : currentRole === 'hr_director'
     ? directorNavItems
-    : hrNavItems;
+    : currentRole === 'manager'
+    ? managerNavItems
+    : currentRole === 'admin'
+    ? adminNavItems
+    : recruiterNavItems;
   const navItems = roleNavItems.filter((item) => item.roles.includes(currentRole));
   const visibleBottomNavItems = bottomNavItems.filter(
     (item) => item.roles.includes(currentRole),
@@ -274,7 +297,7 @@ export default function MainLayout() {
               <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                 <i className={`${item.icon} text-lg`}></i>
               </div>
-              {!sidebarCollapsed && <span>{item.displayLabel ?? item.label}</span>}
+              {!sidebarCollapsed && <span>{item.label}</span>}
             </Link>
           ))}
         </nav>

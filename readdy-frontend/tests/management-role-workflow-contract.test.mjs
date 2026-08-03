@@ -17,6 +17,30 @@ const directorApprovals = read('src/pages/director/approvals/page.tsx');
 const directorInsights = read('src/pages/director/insights/page.tsx');
 const candidateReadOnlyList = read('src/components/analytics/CandidateReadOnlyList.tsx');
 const layout = read('src/components/feature/MainLayout.tsx');
+const router = read('src/router/config.tsx');
+
+test('五类角色菜单职责分开且主管复用现有需求和分析页面', () => {
+  const recruiterNav = layout.match(/const recruiterNavItems:[\s\S]*?\n\];/)?.[0] ?? '';
+  const managerNav = layout.match(/const managerNavItems:[\s\S]*?\n\];/)?.[0] ?? '';
+  const adminNav = layout.match(/const adminNavItems:[\s\S]*?\n\];/)?.[0] ?? '';
+
+  assert.match(recruiterNav, /path: '\/jobs'[^\n]*label: '招聘需求'/);
+  assert.match(recruiterNav, /path: '\/analytics'[^\n]*label: '数据看板'/);
+  assert.doesNotMatch(recruiterNav, /需求审批|团队进展/);
+
+  assert.match(managerNav, /path: '\/jobs'[^\n]*label: '需求审批'/);
+  assert.match(managerNav, /path: '\/analytics'[^\n]*label: '团队进展'/);
+  assert.ok(managerNav.indexOf("path: '/analytics'") < managerNav.indexOf("path: '/candidates'"));
+  assert.doesNotMatch(managerNav, /displayLabel/);
+
+  assert.match(adminNav, /path: '\/jobs'[^\n]*label: '招聘需求'/);
+  assert.match(adminNav, /path: '\/analytics'[^\n]*label: '数据看板'/);
+  assert.match(layout, /currentRole === 'manager'[\s\S]*?managerNavItems/);
+  assert.match(layout, /currentRole === 'interviewer'[\s\S]*?interviewerNavItems/);
+  assert.match(layout, /currentRole === 'hr_director'[\s\S]*?directorNavItems/);
+  assert.match(router, /path: '\/jobs'[\s\S]*?allow=\{hrRoles\}/);
+  assert.match(router, /path: '\/analytics'[\s\S]*?allow=\{analyticsRoles\}/);
+});
 
 test('招聘主管工作台优先处理团队审批和卡点，不再伪装成招聘专员工作台', () => {
   assert.match(dashboard, /const isManager = role === 'manager'/);
