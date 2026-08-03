@@ -11,7 +11,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from app import create_app, db
 from app.models import Candidate, CandidateDemandFlow, OfferRecord, PipelineStage, RecruitmentDemand, User
-from app.services.pipeline_service import save_offer_record, transition_offer
+from app.services.offer_service import save_offer_record, transition_offer
 from app.time_utils import utc_now
 
 

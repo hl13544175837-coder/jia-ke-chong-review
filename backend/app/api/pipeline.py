@@ -21,20 +21,22 @@ from ..services.pipeline_service import (
     PIPELINE_STAGE_ORDER,
     STAGE_ORDER,
     PipelineServiceError,
-    get_offer_record,
-    get_offer_by_id,
-    list_offer_records,
     move_candidate,
     normalize_pipeline_stage,
-    offer_payload,
     parse_date,
     pipeline_board,
     pipeline_counts,
     pipeline_history,
-    save_offer_record,
     stage_sort_index,
-    transition_offer,
     transfer_candidate as transfer_candidate_service,
+)
+from ..services.offer_service import (
+    get_offer_by_id,
+    get_offer_record,
+    list_offer_records,
+    offer_payload,
+    save_offer_record,
+    transition_offer,
 )
 from ..services.interview_workflow_service import active_assignment_filter
 from .access import visible_candidate_query
