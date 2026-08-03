@@ -66,7 +66,20 @@ export default function CandidateSelectionFilters(props: CandidateSelectionFilte
     <div className="space-y-3 border-b border-background-100 px-6 py-3" data-ui="candidate-selection-filters">
       <div className="relative"><div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><i className="ri-search-line text-sm text-foreground-400"></i></div><input type="text" placeholder="搜索姓名、职位或技能标签..." value={props.searchQuery} onChange={(event) => props.setSearchQuery(event.target.value)} className="w-full rounded-lg border border-background-200 bg-white py-2 pl-9 pr-4 text-sm text-foreground-900 placeholder:text-foreground-400 focus:border-primary-300 focus:outline-none" /></div>
       <div className="flex items-end gap-3">
-        <div className="w-52"><span className="mb-1 block text-[11px] text-foreground-400">期望工作城市</span><select value={props.cityFilter} onChange={(event) => props.setCityFilter(event.target.value)} className="w-full cursor-pointer rounded-lg border border-background-200 bg-white px-3 py-2 text-sm"><option value="">全部城市</option>{cityOptions.slice(1).map((city) => <option key={city}>{city}</option>)}</select></div>
+        <div className="w-52">
+          <span className="mb-1 block text-[11px] text-foreground-400">期望工作城市</span>
+          <div className="relative">
+            <select
+              value={props.cityFilter}
+              onChange={(event) => props.setCityFilter(event.target.value)}
+              className={`w-full cursor-pointer appearance-none rounded-lg border bg-white px-3 py-2 pr-8 text-sm text-foreground-900 transition-colors focus:outline-none ${props.cityFilter ? 'border-primary-300 bg-primary-50/60 text-primary-700' : 'border-background-200 hover:border-primary-300'}`}
+            >
+              <option value="">全部城市</option>
+              {cityOptions.slice(1).map((city) => <option key={city}>{city}</option>)}
+            </select>
+            <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"><i className="ri-arrow-down-s-line text-sm text-foreground-400"></i></div>
+          </div>
+        </div>
         <button onClick={() => props.setJoinableOnly(!props.joinableOnly)} className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-xs ${props.joinableOnly ? 'border-primary-500 bg-primary-500 text-white' : 'border-background-200 bg-white text-foreground-600'}`}><i className={`${props.joinableOnly ? 'ri-checkbox-circle-fill' : 'ri-checkbox-blank-circle-line'} text-sm`}></i>仅显示可加入</button>
       </div>
       <div><span className="mb-1.5 block text-[11px] text-foreground-400">加入状态</span><div className="flex flex-wrap gap-1.5">{joinStatusChips.map((chip) => <button key={chip.value} onClick={() => { props.setJoinStatusFilter(props.joinStatusFilter === chip.value ? '' : chip.value); if (chip.value) props.setJoinableOnly(false); }} className={chipClass(props.joinStatusFilter === chip.value, 'accent')}>{chip.label}</button>)}</div></div>
@@ -80,8 +93,8 @@ export default function CandidateSelectionFilters(props: CandidateSelectionFilte
             <div><span className="mb-1.5 block text-[11px] text-foreground-400">学历（可多选）</span><div className="flex flex-wrap gap-1.5">{eduOptions.map((education) => <button key={education} onClick={() => props.setEduFilters((current) => { const next = new Set(current); if (next.has(education)) next.delete(education); else next.add(education); return next; })} className={chipClass(props.eduFilters.has(education), 'accent')}>{education}</button>)}</div></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-[11px] text-foreground-400">负责人<select value={props.recruiterFilter} onChange={(event) => props.setRecruiterFilter(event.target.value)} className="mt-1 w-full rounded-lg border border-background-200 bg-white px-3 py-2 text-sm text-foreground-900">{recruiterOptions.map((value) => <option key={value} value={value}>{value || '全部负责人'}</option>)}</select></label>
-            <label className="text-[11px] text-foreground-400">简历更新时间<select value={props.resumeTimeFilter} onChange={(event) => props.setResumeTimeFilter(event.target.value)} className="mt-1 w-full rounded-lg border border-background-200 bg-white px-3 py-2 text-sm text-foreground-900">{resumeTimeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+            <label className="text-[11px] text-foreground-400">负责人<select value={props.recruiterFilter} onChange={(event) => props.setRecruiterFilter(event.target.value)} className="mt-1 w-full appearance-none rounded-lg border border-background-200 bg-white px-3 py-2 pr-8 text-sm text-foreground-900">{recruiterOptions.map((value) => <option key={value} value={value}>{value || '全部负责人'}</option>)}</select></label>
+            <label className="text-[11px] text-foreground-400">简历更新时间<select value={props.resumeTimeFilter} onChange={(event) => props.setResumeTimeFilter(event.target.value)} className="mt-1 w-full appearance-none rounded-lg border border-background-200 bg-white px-3 py-2 pr-8 text-sm text-foreground-900">{resumeTimeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           </div>
         </div>
       )}
