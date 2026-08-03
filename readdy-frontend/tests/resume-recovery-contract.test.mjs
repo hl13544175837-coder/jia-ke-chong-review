@@ -10,7 +10,7 @@ test('简历异常处理对用户提供完整补救入口', () => {
   const api = read('src/features/candidates/api.ts');
   const page = read('src/pages/candidates/page.tsx');
   const demandDrawer = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
-  const panel = read('src/pages/candidates/components/ResumeRecoveryPanel.tsx');
+  const panel = read('src/features/candidates/components/ResumeRecoveryPanel.tsx');
   const ui = `${page}\n${demandDrawer}\n${panel}`;
 
   assert.match(types, /'original_confirmed'/);
@@ -59,7 +59,7 @@ test('重复简历允许明确保留旧版或设为新版，失败文件可单�
   const types = read('src/features/candidates/types.ts');
   const api = read('src/features/candidates/api.ts');
   const page = read('src/pages/candidates/page.tsx');
-  const panel = read('src/pages/candidates/components/ResumeRecoveryPanel.tsx');
+  const panel = read('src/features/candidates/components/ResumeRecoveryPanel.tsx');
 
   assert.match(types, /resume_versions/);
   assert.match(api, /getResumeVersions/);
@@ -71,7 +71,7 @@ test('重复简历允许明确保留旧版或设为新版，失败文件可单�
 });
 
 test('正常候选人也能编辑简历信息，模型报错显示可执行的人话提示', () => {
-  const panel = read('src/pages/candidates/components/ResumeRecoveryPanel.tsx');
+  const panel = read('src/features/candidates/components/ResumeRecoveryPanel.tsx');
   const types = read('src/features/candidates/types.ts');
 
   assert.match(panel, /编辑简历信息/);

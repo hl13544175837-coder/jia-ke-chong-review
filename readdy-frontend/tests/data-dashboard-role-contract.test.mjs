@@ -63,7 +63,7 @@ test('同一个数据看板地址按登录角色展示不同真实数据', () =>
 test('工作台只保留行动信息，月度漏斗迁入数据看板', () => {
   const dashboard = read('src/pages/dashboard/page.tsx');
   const analytics = read('src/pages/analytics/page.tsx');
-  const monthlyPanel = read('src/pages/dashboard/components/MonthlyPerformancePanel.tsx');
+  const monthlyPanel = read('src/features/analytics/components/MonthlyPerformancePanel.tsx');
 
   assert.doesNotMatch(dashboard, /MonthlyPerformancePanel/);
   assert.match(analytics, /RecruiterDataBoard/);

@@ -3,7 +3,7 @@ import { requisitionCandidates } from '@/mocks/requisitionCandidates';
 import { candidateList } from '@/mocks/candidates';
 import { interviewerPool } from '@/mocks/interviews';
 import { addResumePushRecord, updatePushRecordStatus } from '@/mocks/resumePush';
-import ResumePanel from './ResumePanel';
+import ResumePanel from '@/features/candidates/components/ResumePanel';
 import SelectCandidateDrawer from './SelectCandidateDrawer';
 import ScheduleInterviewModal from './ScheduleInterviewModal';
 import CandidateQuickDetail from './CandidateQuickDetail';

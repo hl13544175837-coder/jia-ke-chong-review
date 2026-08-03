@@ -65,11 +65,11 @@ import PushToReviewerModal, {
   type PushFormValue,
   type PushResultItem,
   type PushTarget,
-} from './components/PushToReviewerModal';
+} from '@/features/businessReviews/components/PushToReviewerModal';
 import { canEnterBusinessReview, isActionableBusinessReviewResult } from '@/features/businessReviews/stages';
 import AddToPipelineModal from './components/AddToPipelineModal';
 import DuplicateCandidatesModal from './components/DuplicateCandidatesModal';
-import ResumeRecoveryPanel from './components/ResumeRecoveryPanel';
+import ResumeRecoveryPanel from '@/features/candidates/components/ResumeRecoveryPanel';
 
 const PER_PAGE = 20;
 const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif|zip)$/i;

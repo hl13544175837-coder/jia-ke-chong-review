@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { candidateList, stageColorMap, type Candidate } from '@/mocks/candidates';
 import { requisitionCandidates } from '@/mocks/requisitionCandidates';
 import { requisitions } from '@/mocks/jobs';
-import ResumePanel from './ResumePanel';
+import ResumePanel from '@/features/candidates/components/ResumePanel';
 import CandidateQuickDetail from './CandidateQuickDetail';
 import ImportResumeModal from './ImportResumeModal';
 import MultiInterviewerPushModal, { type PushReviewData } from './MultiInterviewerPushModal';

@@ -31,7 +31,7 @@ import PushToReviewerModal, {
   type PushFormValue,
   type PushResultItem,
   type PushTarget,
-} from '@/pages/candidates/components/PushToReviewerModal';
+} from '@/features/businessReviews/components/PushToReviewerModal';
 import {
   filterAndSortRequisitions,
   type DemandSortDirection,

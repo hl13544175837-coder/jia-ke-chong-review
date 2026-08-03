@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import ResumePanel from '@/pages/jobs/components/ResumePanel';
+import ResumePanel from '@/features/candidates/components/ResumePanel';
 import AdvanceStageModal from '@/components/feature/AdvanceStageModal';
 import { stageColorMap } from '@/mocks/candidates';
 

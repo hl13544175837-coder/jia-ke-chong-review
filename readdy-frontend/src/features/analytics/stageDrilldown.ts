@@ -6,11 +6,11 @@ export type DashboardStage =
   | 'offer'
   | 'onboarding';
 
-type DashboardStageDestination =
+type AnalyticsStageDestination =
   | { kind: 'candidate'; state: { fromDashboard: true; targetStage: string } }
   | { kind: 'route'; to: string };
 
-const destinations: Record<DashboardStage, DashboardStageDestination> = {
+const destinations: Record<DashboardStage, AnalyticsStageDestination> = {
   hr_screening: { kind: 'candidate', state: { fromDashboard: true, targetStage: 'pending' } },
   ai_screening: { kind: 'candidate', state: { fromDashboard: true, targetStage: 'ai_screen' } },
   business_review: { kind: 'candidate', state: { fromDashboard: true, targetStage: 'business_review' } },

@@ -6,11 +6,11 @@ import type { BusinessReviewStatus, BusinessReviewTask } from '@/features/busine
 import { interviewsApi } from '@/features/interviews/api';
 import type { InterviewAssignment } from '@/features/interviews/types';
 import type { AnalyticsOverview } from '@/features/analytics/types';
-import MonthlyPerformancePanel from '@/pages/dashboard/components/MonthlyPerformancePanel';
+import MonthlyPerformancePanel from '@/features/analytics/components/MonthlyPerformancePanel';
 import {
   dashboardStageDrilldown,
   type DashboardStage,
-} from '@/pages/dashboard/stageDrilldown';
+} from '@/features/analytics/stageDrilldown';
 
 function percent(value: number, total: number) {
   if (total <= 0) return 0;

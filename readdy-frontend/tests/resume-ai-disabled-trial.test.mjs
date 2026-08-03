@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const source = readFileSync(
-  new URL('../src/pages/candidates/components/ResumeRecoveryPanel.tsx', import.meta.url),
+  new URL('../src/features/candidates/components/ResumeRecoveryPanel.tsx', import.meta.url),
   'utf8',
 );
 

@@ -18,7 +18,7 @@ import InterviewFilterPopover from './components/InterviewFilterPopover';
 import InterviewManagementCalendar from './components/InterviewManagementCalendar';
 import InterviewManagementTable from './components/InterviewManagementTable';
 import InterviewWorkbenchToolbar from './components/InterviewWorkbenchToolbar';
-import RescheduleHistory from './components/RescheduleHistory';
+import RescheduleHistory from '@/features/interviews/components/RescheduleHistory';
 import RescheduleRequestPanel from './components/RescheduleRequestPanel';
 import ScheduleInterviewModal from './components/ScheduleInterviewModal';
 import {

@@ -23,7 +23,7 @@ import type {
   InterviewRescheduleRequest,
   Satisfaction,
 } from '@/features/interviews/types';
-import RescheduleHistory from '@/pages/interviews/components/RescheduleHistory';
+import RescheduleHistory from '@/features/interviews/components/RescheduleHistory';
 
 const tabs = [
   { key: 'interview', label: '面试信息' },

@@ -39,8 +39,8 @@ import type {
   ResumeUploadResponse,
 } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
-import type { PushTarget } from '@/pages/candidates/components/PushToReviewerModal';
-import ResumeRecoveryPanel from '@/pages/candidates/components/ResumeRecoveryPanel';
+import type { PushTarget } from '@/features/businessReviews/components/PushToReviewerModal';
+import ResumeRecoveryPanel from '@/features/candidates/components/ResumeRecoveryPanel';
 
 interface DemandCandidateDrawerProps {
   demand: RecruitmentDemand;

@@ -21,7 +21,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import { userFacingError } from '@/lib/userFacingError';
-import ReviewActionModal from '@/pages/interviewer/dashboard/components/ReviewActionModal';
+import ReviewActionModal from '@/features/businessReviews/components/ReviewActionModal';
 import BusinessReviewDetail from './components/BusinessReviewDetail';
 
 type Decision = BusinessReviewDecisionInput['decision'];
