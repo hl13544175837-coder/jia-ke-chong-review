@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -1041,6 +1042,19 @@ def test_sit_release_gate_runs_required_checks_without_mutating_release_state():
     assert "npm audit --json" in frontend_audit
     assert "blockedAdvisories" in frontend_audit
     assert "scanForRscEntrypoints" in frontend_audit
+
+
+def test_gitlab_pipeline_declares_every_job_stage():
+    pipeline = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    stages_block = re.search(r"^stages:\n(?P<body>(?:  - [^\n]+\n)+)", pipeline, re.MULTILINE)
+
+    assert stages_block is not None, "GitLab CI 必须声明 stages"
+    declared_stages = set(re.findall(r"^  - ([^\s]+)$", stages_block.group("body"), re.MULTILINE))
+    used_stages = set(re.findall(r"^  stage: ([^\s]+)$", pipeline, re.MULTILINE))
+
+    assert used_stages <= declared_stages, (
+        f"GitLab CI job 使用了未声明的 stage: {sorted(used_stages - declared_stages)}"
+    )
 
 
 def test_flask_static_fallback_targets_the_active_readdy_build():
