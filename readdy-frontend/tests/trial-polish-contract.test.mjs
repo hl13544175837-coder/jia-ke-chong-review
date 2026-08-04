@@ -49,12 +49,12 @@ test('六个核心工作页复用统一状态和错误翻译', () => {
 });
 
 test('候选人详情的图标关闭按钮有可读名称', () => {
-  const source = read('src/pages/candidates/components/CandidateDetailDrawer.tsx');
+  const source = read('src/features/candidates/components/library/CandidateLibraryDetail.tsx');
   assert.match(
     source,
-    /<button[\s\S]{0,220}?type="button"[\s\S]{0,220}?aria-label="关闭候选人详情"/,
+    /<button[\s\S]{0,220}?type="button"[\s\S]{0,220}?aria-label="关闭简历详情"/,
   );
-  assert.match(source, /ri-close-line[^>]*aria-hidden="true"/);
+  assert.match(source, /<X[^>]*aria-hidden="true"/);
 });
 
 test('本地同事试用清单覆盖五个角色和安全恢复步骤', () => {

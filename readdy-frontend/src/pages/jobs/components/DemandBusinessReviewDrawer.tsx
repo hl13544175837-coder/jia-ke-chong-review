@@ -6,6 +6,7 @@ import { candidatesApi } from '@/features/candidates/api';
 import type { CandidateListItem } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { useToast } from '@/hooks/useToast';
+import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 
 interface Props {
   demand: RecruitmentDemand;
@@ -91,8 +92,14 @@ export default function DemandBusinessReviewDrawer({ demand, onClose, onOpenCand
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end bg-foreground-900/35" role="presentation" onMouseDown={onClose}>
-      <aside className="flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label={`${demand.job_title}业务筛选进度`} onMouseDown={(event) => event.stopPropagation()}>
+    <DetailDrawerShell
+      ariaLabel={`${demand.job_title}业务筛选进度`}
+      closeLabel="关闭业务筛选进度"
+      onClose={onClose}
+      modal
+      backdropClassName="fixed inset-0 z-[100] bg-foreground-900/35"
+      panelClassName="fixed inset-y-0 right-0 z-[110] flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl"
+    >
         <header className="flex items-start justify-between gap-4 border-b border-background-200 px-6 py-5">
           <div>
             <p className="text-xs font-semibold text-primary-600">业务筛选进度</p>
@@ -142,7 +149,6 @@ export default function DemandBusinessReviewDrawer({ demand, onClose, onOpenCand
             })}
           </div>
         </div>
-      </aside>
-    </div>
+    </DetailDrawerShell>
   );
 }

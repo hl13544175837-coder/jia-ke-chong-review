@@ -56,31 +56,28 @@ test('候选人工作台把筛选、列表、导入和详情拆到候选人业�
   }
 });
 
-test('需求详情按概况、JD、候选人、招聘进展和操作记录拆分', () => {
-  const panel = read('src/pages/jobs/components/JobDetailPanel.tsx');
-  const workspace = read('src/features/demands/components/jobDetail/JobDetailWorkspace.tsx');
-  const sections = [
-    'JobOverviewSection',
-    'JobDescriptionSection',
-    'JobCandidatesSection',
-    'RecruitmentProgressSection',
-    'JobActivityLogSection',
-  ];
-  sections.forEach((name) => {
-    read(`src/features/demands/components/jobDetail/${name}.tsx`);
-    assert.match(workspace, new RegExp(name));
-  });
-  assert.match(panel, /JobDetailWorkspace/);
-  assert.ok(lineCount('src/pages/jobs/components/JobDetailPanel.tsx') < 900);
+test('需求页把基本详情、候选人和业务筛选分成三个真实入口', () => {
+  const page = read('src/pages/jobs/page.tsx');
+  const detail = read('src/pages/jobs/components/DemandDetailPanel.tsx');
+  const candidates = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
+  const reviews = read('src/pages/jobs/components/DemandBusinessReviewDrawer.tsx');
+
+  for (const name of ['DemandDetailPanel', 'DemandCandidateDrawer', 'DemandBusinessReviewDrawer']) {
+    assert.match(page, new RegExp(name));
+  }
+  assert.match(detail, /DetailActionBar/);
+  assert.match(candidates, /CandidateDetailWorkspace/);
+  assert.match(reviews, /DetailDrawerShell/);
+  assert.ok(lineCount('src/pages/jobs/components/DemandDetailPanel.tsx') < 400);
+  assert.ok(lineCount('src/pages/jobs/components/DemandCandidateDrawer.tsx') < 800);
 });
 
-test('候选人选择归候选人模块且筛选计算与抽屉视图分开', () => {
-  const drawer = read('src/features/candidates/components/SelectCandidateDrawer.tsx');
-  read('src/features/candidates/selection.ts');
-  read('src/features/candidates/components/CandidateSelectionFilters.tsx');
-  assert.match(drawer, /CandidateSelectionFilters/);
-  assert.match(read('src/features/demands/components/jobDetail/JobDetailWorkspace.tsx'), /@\/features\/candidates\/components\/SelectCandidateDrawer/);
-  assert.ok(lineCount('src/features/candidates/components/SelectCandidateDrawer.tsx') < 850);
+test('需求下候选人选择直接使用真实接口、筛选和统一详情', () => {
+  const drawer = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
+  assert.match(drawer, /candidatesApi\.listCandidates/);
+  assert.match(drawer, /搜索姓名、公司、学校、岗位或技能/);
+  assert.match(drawer, /CandidateDetailWorkspace/);
+  assert.match(drawer, /DetailDrawerShell/);
 });
 
 test('面试工作台把数据读取和操作弹层从页面组合中拆出', () => {
