@@ -6,6 +6,8 @@ frontendQuality:
   stage: verify
   script:
     - cd readdy-frontend
+    - node --version
+    - npm --version
     - npm ci
     - npm run test:contract
     - npm run type-check

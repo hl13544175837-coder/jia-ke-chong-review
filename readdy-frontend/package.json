@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit --project tsconfig.app.json",
-    "test:contract": "node --test tests/*.test.mjs",
+    "test:contract": "tsx --test tests/*.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test --grep @smoke"
   },
@@ -44,6 +44,7 @@
     "postcss": "^8.5.6",
     "source-map": "^0.7.6",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.23.5",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.35.1",
     "unplugin-auto-import": "^19.3.0",
