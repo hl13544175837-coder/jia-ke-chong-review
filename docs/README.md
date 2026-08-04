@@ -4,14 +4,14 @@
 > 用途：给产品、研发、部署和 AI/Codex 判断“先读哪份、信哪份”。
 > 状态：当前文档入口。当前开发只看下方真源文档和真实代码，不再追旧计划。
 
-> **当前状态（2026-07-30）**：当前唯一前端主线为 `readdy-frontend/`，本地规范化分支基于 CFPD `test` 缓存基线 `c686b11`。准确代码版本以 `git log -1`、登录页版本号和后端 `/actuator/info` 为准；统一本地门禁入口为 `./scripts/check-sit-release.sh`。Mock 数据按负责人决定暂时保留，Test/SIT 简历 AI 关闭。当前本地候选未推送、未进入 Libra 构建/部署、未在 SIT 生效。
+> **当前状态（2026-08-04）**：当前唯一前端主线为 `readdy-frontend/`，本地规范化分支为 `codex/technical-debt-decoupling-20260804`，公司 GitLab `test` 现场基线为 `d5801f53`。候选人详情、候选人库、人才地图和简历后端已按模块解耦，人才地图已改为真实持久化；非核心 Mock 仍保留，Test/SIT 简历 AI 关闭。准确版本以 `git log -1`、登录页版本号和后端 `/actuator/info` 为准；统一本地门禁入口为 `./scripts/check-sit-release.sh`。当前本地候选未推送、未进入 Libra 构建/部署、未在 SIT 生效。
 >
 > **历史状态（2026-07-11 合并前收口）**：`codex/premerge-p0-closeout-20260711` 当时以 CFPD `test` 基线为起点，完成 P0 代码与文档收口，曾作为下一代码候选。
 
 | 状态面 | 真源 | 当前可证明什么 |
 |---|---|---|
 | 原始 checkout | 当前仓库根目录的实际 `git status` / HEAD | 用户原工作区有哪些本地改动；不等于实施分支或发布源 |
-| 隔离实施分支 | `codex/sit-release-hardening` 工作树的 HEAD、diff 和统一门禁 | 当前本地 Test/SIT 发布候选；未 push、未 Libra、未 SIT |
+| 隔离实施分支 | `codex/technical-debt-decoupling-20260804` 工作树的 HEAD、diff 和统一门禁 | 当前本地 Test/SIT 发布候选；未 push、未 Libra、未 SIT |
 | CFPD `test` | `git ls-remote git@git.ymdd.tech:cfpd/zhipin-mvp.git refs/heads/test` 的 SHA | Libra 应当读到的代码源；不证明构建或部署完成 |
 | 已部署 SIT | Libra CommitID/镜像摘要、后端受控版本/schema revision、测试站 HTML 与前端 asset hash、冒烟证据 | 环境真正运行的版本；不能只凭 pipeline 绿色对勾判定 |
 

@@ -59,6 +59,7 @@
 | AI 面试 | 代码候选已实现，环境待验收 | 保留生成题目、评分与建议；AI 不自动推进、淘汰、发 Offer、转派或关闭需求 |
 | 面试官反馈 | 代码候选已实现，环境待验收 | 按 Demand/assignment/轮次写反馈，数据库约束防并发重复，进入候选人 journey |
 | BI 看板 | 代码候选已实现，环境待验收 | 按 Demand 看进度、瓶颈与当前责任协同；不返回人员排名、绩效或奖金依据 |
+| 人才地图 | 代码候选已实现，环境待验收 | 地图、公司、岗位和人选读写真实后端，刷新持久化，不读取运行时 Mock |
 | AI 助手 | 代码候选已收缩，环境待验收 | 只做解析、匹配、总结与建议，不提供主流程写操作 |
 | 用户管理 | 已实现 | admin 管理用户角色、启停、创建账号与重置密码 |
 
@@ -795,10 +796,10 @@ AI_HUMAN_REVIEW_REQUIRED=true
 |---|---|---|---|
 | 登录页视觉 | `frontend/src/pages/LoginPage.tsx` | 无 | 无 |
 | 导航菜单 | `frontend/src/lib/nav.ts`, `AppShell.tsx` | 可能无 | 若新路由需同步权限 |
-| 候选人列表 | `CandidatesPage.tsx` | `api/candidates.py` | `candidates`, `candidate_tags` |
-| 候选人详情 | `CandidateProfilePage.tsx` | `api/resume.py`, `api/candidates.py` | `resume_json`, tags, journey |
-| 简历批量上传 | `UploadPage.tsx` | `api/resume.py`, `services/resume_service.py` | 会调用 `resume_parser.py` 并写候选人；招聘需求流程加入放在简历库完成 |
-| 简历解析字段 | `CandidateProfilePage.tsx` | `services/resume_service.py` | 高风险，影响 `resume_json` 兼容 |
+| 候选人列表 | `features/candidates/components/CandidateLibraryWorkspace.tsx` | `api/candidates.py` | `candidates`, `candidate_tags` |
+| 候选人详情 | `features/candidates/components/library/CandidateLibraryDetail.tsx` | `api/resume_history.py`, `api/candidates.py` | `resume_json`, tags, journey |
+| 简历批量上传 | `features/candidates/components/library/*` | `api/resume.py`, `services/resumes/upload_service.py` | 调用 `resume_service.py` 和 `resume_parser.py` 并写候选人；招聘需求流程加入放在简历库完成 |
+| 简历解析字段 | `features/candidates/library/useCandidateDetail.ts` | `services/resumes/parse_service.py`, `services/resume_service.py` | 高风险，影响 `resume_json` 兼容 |
 | 岗位列表/编辑 | `JobsPage.tsx` | `api/jobs.py` | `jobs.jd_structured` |
 | JD AI 澄清 | `JobsPage.tsx` | `api/jobs.py` | LLM，只读或写结构化 |
 | 岗位匹配 | `JobsPage.tsx`, `JobMatchPage.tsx` | `services/match_service.py` | `candidate_tags`, `matches`, `job_matcher.py` |
@@ -823,6 +824,10 @@ API 层只负责参数解析、身份入口和响应映射，不在多个路由�
 | `interview_workflow_service` | Demand 下的安排、轮次、primary 面试官、反馈完成语义；不改主流程 |
 | `bi_service` | Demand 维度指标、下钻和口径一致性；禁止人员排名/绩效推断 |
 | `agent_service` | 只组合受权限裁剪的读取、解析、匹配、总结和建议能力 |
+| `resumes/file_service` | 简历文件校验、原件预览/下载与安全删除 |
+| `resumes/parse_service` | 单份简历解析、重复识别、匹配刷新和流程加入 |
+| `resumes/upload_service` | 上传批次、防重与现有 ZIP 安全处理的调度；不改 ZIP 业务能力 |
+| `resumes/version_service` | 简历详情输出、历史版本归档与编辑权限 |
 
 ## 11. 变更影响矩阵
 
@@ -847,7 +852,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 发布通道另有一层不受运行时环境变量覆盖的边界：Makefile 只接受精确 `RC` / `GA`，并把发布通道写入镜像内 `.release-channel` 文件。entrypoint 先读取该标记；GA 镜像若被 K8S env 覆盖为 SIT 放行、自动迁移/空库初始化、公开注册或关闭安全头/限流，会在任何 DDL 之前拒绝启动。RC 镜像则保留本轮已授权的完全宽松测试配置。
 
-当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07` → `20260724_08` → `20260726_09` → `20260728_10` → `20260729_11`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。08 补齐 Demand 审批、业务筛选任务与反馈更新字段。09 新建个人收藏和候选人合并审计表。10 新增组织设置持久化和用户部门字段。11 为候选人增加可空 `resume_sha256` 与 `(org_id, resume_sha256)` 普通索引，不回填历史值，用于精确阻止同文件重复导入；09、10 与 11 都不支持破坏性在线 downgrade。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配、简历指纹列/索引，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
+当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07` → `20260724_08` → `20260726_09` → `20260728_10` → `20260729_11` → `20260729_12` → `20260730_13` → `20260804_14`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。08 补齐 Demand 审批、业务筛选任务与反馈更新字段。09 新建个人收藏和候选人合并审计表。10 新增组织设置持久化和用户部门字段。11 为候选人增加可空 `resume_sha256` 与 `(org_id, resume_sha256)` 普通索引，不回填历史值，用于精确阻止同文件重复导入；12 新增候选人简历版本留档；13 新增面试改约申请与处理历史；14 新增 Offer 本地 OA 结果登记字段与索引，不调用外部 OA。09 至 14 都不支持破坏性在线 downgrade。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配、简历指纹列/索引，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|

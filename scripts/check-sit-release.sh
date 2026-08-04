@@ -71,5 +71,5 @@ fi
 printf '\n[放行摘要]\n'
 printf '提交：%s\n' "$BUILD_VERSION"
 printf '数据库：%s\n' "$EXPECTED_SCHEMA"
-printf '范围：Mock 保留；简历 AI 关闭；现有数据未清理。\n'
+printf '范围：人才地图已真实持久化；非核心 Mock 保留；简历 AI 关闭；企微/外部日历/ZIP 解析未改；现有数据未清理。\n'
 printf '状态：本地检查通过，未推送、未发布。\n'
