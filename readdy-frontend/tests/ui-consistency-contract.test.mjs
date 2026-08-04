@@ -5,7 +5,15 @@ import test from 'node:test';
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const pageSource = (path) => path === 'src/pages/candidates/page.tsx'
-  ? `${read(path)}\n${read('src/features/candidates/components/CandidateLibraryWorkspace.tsx')}`
+  ? [
+      path,
+      'src/features/candidates/components/CandidateLibraryWorkspace.tsx',
+      'src/features/candidates/components/library/CandidateLibraryFilters.tsx',
+      'src/features/candidates/components/library/CandidateLibraryTable.tsx',
+      'src/features/candidates/components/library/CandidateLibraryDetail.tsx',
+      'src/features/candidates/components/library/CandidateLibraryOverlays.tsx',
+      'src/features/candidates/library/useCandidateLibraryController.tsx',
+    ].map(read).join('\n')
   : read(path);
 
 test('主业务页面统一使用同一个页面标题组件', () => {

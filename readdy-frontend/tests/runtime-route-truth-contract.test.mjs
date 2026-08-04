@@ -17,11 +17,11 @@ const allowedStaticLookups = new Set([
 
 function moduleFile(target) {
   const candidates = [
-    target,
     `${target}.ts`,
     `${target}.tsx`,
     path.join(target, 'index.ts'),
     path.join(target, 'index.tsx'),
+    target,
   ];
   return candidates.find((candidate) => existsSync(candidate)) || null;
 }

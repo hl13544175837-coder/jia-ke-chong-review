@@ -41,7 +41,7 @@ test('所有候选人详情统一使用面试信息、候选人简历、面试�
   assert.match(workspace, /CandidateDetailTabs/);
 
   const consumers = [
-    'src/features/candidates/components/CandidateLibraryWorkspace.tsx',
+    'src/features/candidates/components/library/CandidateLibraryDetail.tsx',
     'src/pages/interviews/components/RecruiterInterviewDetailDrawer.tsx',
     'src/pages/interviewer/screening/components/BusinessReviewDetail.tsx',
     'src/pages/interviewer/interviews/components/InterviewerInterviewDetailDrawer.tsx',
@@ -55,7 +55,7 @@ test('所有候选人详情统一使用面试信息、候选人简历、面试�
 
 test('长简历详情把页签工作区限制在弹层内并由内容区独立滚动', () => {
   const longResumeDrawers = [
-    'src/features/candidates/components/CandidateLibraryWorkspace.tsx',
+    'src/features/candidates/components/library/CandidateLibraryDetail.tsx',
     'src/pages/interviewer/interviews/components/InterviewerInterviewDetailDrawer.tsx',
   ];
 

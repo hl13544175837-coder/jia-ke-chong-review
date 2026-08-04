@@ -11,6 +11,7 @@ test('@smoke 长简历在详情内部滚动且右下角操作栏始终可见', a
 
   const scrollPanel = page.getByTestId('candidate-detail-scroll-panel');
   await expect(scrollPanel).toBeVisible();
+  await expect(scrollPanel.getByRole('heading', { name: '个人概况' })).toBeVisible();
   const before = await scrollPanel.evaluate((node) => node.scrollTop);
   const dimensions = await scrollPanel.evaluate((node) => ({
     clientHeight: node.clientHeight,

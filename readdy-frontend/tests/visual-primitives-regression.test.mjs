@@ -7,7 +7,11 @@ const root = path.resolve(import.meta.dirname, '..');
 const read = (file) => readFileSync(path.join(root, file), 'utf8');
 
 test('拆分后的工作台继续使用统一标题、页签、状态和弹层生命周期', () => {
-  const candidateWorkspace = read('src/features/candidates/components/CandidateLibraryWorkspace.tsx');
+  const candidateWorkspace = [
+    'src/features/candidates/components/CandidateLibraryWorkspace.tsx',
+    'src/features/candidates/components/library/CandidateLibraryFilters.tsx',
+    'src/features/candidates/library/useCandidateLibraryController.tsx',
+  ].map(read).join('\n');
   const interviewPage = read('src/pages/interviews/page.tsx');
   const overlays = read('src/features/interviews/components/RecruiterInterviewOverlays.tsx');
   const demandWorkspace = read('src/features/demands/components/jobDetail/JobDetailWorkspace.tsx');

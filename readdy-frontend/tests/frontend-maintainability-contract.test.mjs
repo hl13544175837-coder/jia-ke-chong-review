@@ -6,24 +6,54 @@ import test from 'node:test';
 const root = path.resolve(import.meta.dirname, '..');
 const read = (file) => readFileSync(path.join(root, file), 'utf8');
 const lineCount = (file) => read(file).split('\n').length;
-const TEMPORARY_CANDIDATE_WORKSPACE_CEILING = 2500;
+const CANDIDATE_WORKSPACE_CEILING = 600;
 
 test('候选人工作台把筛选、列表、导入和详情拆到候选人业务模块', () => {
   const page = read('src/pages/candidates/page.tsx');
   const workspace = read('src/features/candidates/components/CandidateLibraryWorkspace.tsx');
+  const detail = read('src/features/candidates/components/library/CandidateLibraryDetail.tsx');
+  const overlays = read('src/features/candidates/components/library/CandidateLibraryOverlays.tsx');
   read('src/features/candidates/library.ts');
   read('src/features/candidates/components/CandidateLibraryWorkspace.tsx');
   read('src/features/candidates/components/CandidateUploadModal.tsx');
   read('src/features/candidates/components/CandidateDetailDrawer.tsx');
+  read('src/features/candidates/components/library/CandidateLibraryFilters.tsx');
+  read('src/features/candidates/components/library/CandidateLibraryTable.tsx');
+  read('src/features/candidates/components/library/CandidateLibraryBulkActions.tsx');
+  read('src/features/candidates/components/library/CandidateLibraryPagination.tsx');
+  read('src/features/candidates/components/library/CandidateLibraryDetail.tsx');
+  read('src/features/candidates/components/library/CandidateLibraryOverlays.tsx');
+  read('src/features/candidates/library/useCandidateLibraryController.tsx');
+  read('src/features/candidates/library/useCandidateLibraryData.ts');
+  read('src/features/candidates/library/useCandidateLibraryFilters.ts');
+  read('src/features/candidates/library/useCandidateDetail.ts');
+  read('src/features/candidates/library/candidateLibraryViewModel.ts');
 
   assert.match(page, /CandidateLibraryWorkspace/);
-  assert.match(workspace, /CandidateUploadModal/);
-  assert.match(workspace, /CandidateDetailDrawer/);
+  assert.match(workspace, /CandidateLibraryFilters/);
+  assert.match(workspace, /CandidateLibraryTable/);
+  assert.match(workspace, /CandidateLibraryDetail/);
+  assert.match(workspace, /CandidateLibraryOverlays/);
+  assert.match(overlays, /CandidateUploadModal/);
+  assert.match(detail, /CandidateDetailDrawer/);
   assert.ok(lineCount('src/pages/candidates/page.tsx') < 1650);
   assert.ok(
-    lineCount('src/features/candidates/components/CandidateLibraryWorkspace.tsx') < TEMPORARY_CANDIDATE_WORKSPACE_CEILING,
-    '候选人工作台不得在拆分前继续增长；完成拆分时把临时上限收紧为 600 行',
+    lineCount('src/features/candidates/components/CandidateLibraryWorkspace.tsx') < CANDIDATE_WORKSPACE_CEILING,
+    '候选人工作台只负责组合，必须控制在 600 行以内',
   );
+  for (const file of [
+    'CandidateLibraryFilters.tsx',
+    'CandidateLibraryTable.tsx',
+    'CandidateLibraryBulkActions.tsx',
+    'CandidateLibraryPagination.tsx',
+    'CandidateLibraryDetail.tsx',
+    'CandidateLibraryOverlays.tsx',
+  ]) {
+    assert.ok(
+      lineCount(`src/features/candidates/components/library/${file}`) < 450,
+      `${file} 不得重新长成难以维护的大文件`,
+    );
+  }
 });
 
 test('需求详情按概况、JD、候选人、招聘进展和操作记录拆分', () => {
