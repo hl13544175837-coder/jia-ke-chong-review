@@ -6,16 +6,18 @@ import test from 'node:test';
 const root = path.resolve(import.meta.dirname, '..');
 const drawerPath = path.join(root, 'src/components/ui/ReadOnlyDetailDrawer.tsx');
 const drawerSource = existsSync(drawerPath) ? readFileSync(drawerPath, 'utf8') : '';
+const drawerShellSource = readFileSync(path.join(root, 'src/components/ui/DetailDrawerShell.tsx'), 'utf8');
 const dashboardSource = readFileSync(path.join(root, 'src/pages/dashboard/page.tsx'), 'utf8');
 
 test('只读详情抽屉统一提供关闭、键盘、加载、错误和重试能力', () => {
   assert.notEqual(drawerSource, '', '只读详情抽屉组件尚未创建');
-  assert.match(drawerSource, /role="dialog"/);
-  assert.doesNotMatch(drawerSource, /aria-modal="true"/);
+  assert.match(drawerShellSource, /role="dialog"/);
+  assert.doesNotMatch(drawerSource, /\bmodal(?:=|\s)/);
   assert.match(drawerSource, /workspace-detail-backdrop/);
   assert.match(drawerSource, /workspace-detail-panel/);
-  assert.match(drawerSource, /useOverlayLifecycle/);
-  assert.match(drawerSource, /initialFocusRef: drawerRef/);
+  assert.match(drawerSource, /DetailDrawerShell/);
+  assert.match(drawerShellSource, /useOverlayLifecycle/);
+  assert.match(drawerShellSource, /initialFocusRef: panelRef/);
   assert.doesNotMatch(drawerSource, /window\.addEventListener\('keydown'/);
   assert.match(drawerSource, /aria-label="关闭详情"/);
   assert.match(drawerSource, /loading/);

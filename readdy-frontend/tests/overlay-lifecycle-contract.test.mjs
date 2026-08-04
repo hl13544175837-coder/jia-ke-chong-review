@@ -7,6 +7,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const read = (file) => readFileSync(path.join(root, file), 'utf8');
 
 const hookPath = 'src/components/ui/useOverlayLifecycle.ts';
+const drawerShellPath = 'src/components/ui/DetailDrawerShell.tsx';
 const coreOverlays = [
   'src/components/feature/ResumeUploadModal.tsx',
   'src/components/ui/ReadOnlyDetailDrawer.tsx',
@@ -33,9 +34,9 @@ test('公共弹层生命周期统一处理 Escape、背景滚动和焦点恢复'
 test('核心弹窗和抽屉共用生命周期且不再各自注册 Escape 监听', () => {
   coreOverlays.forEach((file) => {
     const source = read(file);
-    assert.match(source, /useOverlayLifecycle/, file);
+    assert.match(source, /useOverlayLifecycle|DetailDrawerShell/, file);
     assert.doesNotMatch(source, /window\.addEventListener\('keydown'/, file);
-    assert.match(source, /tabIndex=\{-1\}/, file);
+    if (!source.includes('DetailDrawerShell')) assert.match(source, /tabIndex=\{-1\}/, file);
   });
 });
 
@@ -50,5 +51,23 @@ test('提交中的弹窗禁止通过 Escape 关闭，普通详情允许关闭', 
   [schedule, feedback, reschedule, createOffer, offerDetail].forEach((source) => {
     assert.match(source, /canClose: ![a-zA-Z]+/);
   });
-  assert.match(interviewerDetail, /canClose: !escapeDisabled/);
+  assert.match(interviewerDetail, /canClose=\{!escapeDisabled\}/);
+});
+
+test('五类招聘详情共用唯一抽屉外壳', () => {
+  assert.equal(existsSync(path.join(root, drawerShellPath)), true, '缺少统一详情抽屉外壳');
+  const shell = read(drawerShellPath);
+  assert.match(shell, /useOverlayLifecycle/);
+  assert.match(shell, /min-h-0/);
+  assert.match(shell, /overflow-hidden/);
+
+  [
+    'src/components/ui/ReadOnlyDetailDrawer.tsx',
+    'src/features/candidates/components/CandidateDetailDrawer.tsx',
+    'src/pages/interviewer/interviews/components/InterviewerInterviewDetailDrawer.tsx',
+    'src/pages/interviewer/screening/page.tsx',
+    'src/pages/jobs/components/DemandCandidateDrawer.tsx',
+  ].forEach((file) => {
+    assert.match(read(file), /DetailDrawerShell/, file);
+  });
 });

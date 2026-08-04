@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 
 interface CandidateDetailDrawerProps {
   onClose: () => void;
@@ -7,16 +8,15 @@ interface CandidateDetailDrawerProps {
 
 export default function CandidateDetailDrawer({ onClose, children }: CandidateDetailDrawerProps) {
   return (
-    <div className="fixed inset-0 z-40 bg-black/30" role="presentation" onMouseDown={onClose}>
-      <aside
-        className="ml-auto flex h-full w-full max-w-[720px] flex-col bg-white shadow-xl"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="candidate-detail-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        {children}
-      </aside>
-    </div>
+    <DetailDrawerShell
+      ariaLabel="候选人详情"
+      closeLabel="关闭候选人详情"
+      onClose={onClose}
+      modal
+      backdropClassName="fixed inset-0 z-40 cursor-default bg-black/30"
+      panelClassName="fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-[720px] flex-col bg-white shadow-xl"
+    >
+      {children}
+    </DetailDrawerShell>
   );
 }

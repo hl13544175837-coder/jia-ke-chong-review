@@ -1,6 +1,6 @@
 import { AlertCircle, LoaderCircle, RotateCw, X } from 'lucide-react';
-import { useRef, type ReactNode } from 'react';
-import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
+import type { ReactNode } from 'react';
+import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 
 interface ReadOnlyDetailDrawerProps {
   title: ReactNode;
@@ -25,24 +25,14 @@ export default function ReadOnlyDetailDrawer({
   footer,
   widthClassName = 'max-w-[640px]',
 }: ReadOnlyDetailDrawerProps) {
-  const drawerRef = useRef<HTMLElement>(null);
-  useOverlayLifecycle({ onClose, initialFocusRef: drawerRef });
-
   return (
-    <>
-      <button
-        type="button"
-        aria-label="关闭详情"
-        onClick={onClose}
-        className="workspace-detail-backdrop fixed inset-0 z-[100] cursor-default bg-foreground-900/35 lg:left-[var(--workspace-sidebar-width)] lg:top-14"
-      />
-      <aside
-        ref={drawerRef}
-        tabIndex={-1}
-        role="dialog"
-        aria-label="只读详情"
-        className={`workspace-detail-panel fixed inset-y-0 right-0 z-[110] flex w-full flex-col border-l border-background-200 bg-white shadow-2xl outline-none lg:top-14 ${widthClassName}`}
-      >
+    <DetailDrawerShell
+      ariaLabel="只读详情"
+      closeLabel="关闭详情"
+      onClose={onClose}
+      backdropClassName="workspace-detail-backdrop fixed inset-0 z-[100] cursor-default bg-foreground-900/35 lg:left-[var(--workspace-sidebar-width)] lg:top-14"
+      panelClassName={`workspace-detail-panel fixed inset-y-0 right-0 z-[110] flex w-full flex-col border-l border-background-200 bg-white shadow-2xl lg:top-14 ${widthClassName}`}
+    >
         <header className="flex items-start justify-between gap-4 border-b border-background-100 px-6 py-5">
           <div className="min-w-0">
             <h2 className="truncate text-lg font-bold text-foreground-900">{title}</h2>
@@ -78,7 +68,6 @@ export default function ReadOnlyDetailDrawer({
         </div>
 
         {footer && <footer className="border-t border-background-100 bg-white px-6 py-4">{footer}</footer>}
-      </aside>
-    </>
+    </DetailDrawerShell>
   );
 }

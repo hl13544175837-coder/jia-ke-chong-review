@@ -44,9 +44,8 @@ test('页签切换只改本地状态，不触发详情接口重新请求', () =>
 });
 
 test('详情支持 Escape 和中文关闭按钮', () => {
-  assert.match(drawerSource, /useOverlayLifecycle/);
-  assert.match(drawerSource, /canClose: !escapeDisabled/);
-  assert.match(drawerSource, /initialFocusRef: drawerRef/);
+  assert.match(drawerSource, /DetailDrawerShell/);
+  assert.match(drawerSource, /canClose=\{!escapeDisabled\}/);
   assert.doesNotMatch(drawerSource, /window\.addEventListener\('keydown'/);
   assert.match(drawerSource, /aria-label="关闭面试详情"/);
   assert.match(pageSource, /escapeDisabled=\{feedbackAssignment !== null \|\| rescheduleAssignment !== null\}/);

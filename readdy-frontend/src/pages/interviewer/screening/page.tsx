@@ -21,6 +21,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import FilterBar from '@/components/ui/FilterBar';
+import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import { businessReviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import { userFacingError } from '@/lib/userFacingError';
@@ -361,18 +362,13 @@ export default function InterviewerScreeningPage() {
       </section>
 
       {selectedTask && (
-        <div className="workspace-detail-backdrop fixed inset-0 z-40 flex justify-end bg-black/35 lg:left-[var(--workspace-sidebar-width)] lg:top-14" role="presentation">
-          <button
-            type="button"
-            aria-label="关闭业务筛选详情"
-            className="absolute inset-0 cursor-default"
-            onClick={closeTaskDetail}
-          />
-          <aside
-            role="dialog"
-            aria-label={`${selectedTask.candidate.name_masked}的业务筛选详情`}
-            className="workspace-detail-panel relative h-full w-full max-w-3xl overflow-y-auto bg-white shadow-xl"
-          >
+        <DetailDrawerShell
+          ariaLabel={`${selectedTask.candidate.name_masked}的业务筛选详情`}
+          closeLabel="关闭业务筛选详情"
+          onClose={closeTaskDetail}
+          backdropClassName="workspace-detail-backdrop fixed inset-0 z-40 cursor-default bg-black/35 lg:left-[var(--workspace-sidebar-width)] lg:top-14"
+          panelClassName="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-3xl flex-col bg-white shadow-xl lg:top-14"
+        >
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-background-200 bg-white px-5 py-4">
               <div>
                 <p className="text-sm font-semibold text-foreground-900">业务筛选详情</p>
@@ -388,12 +384,13 @@ export default function InterviewerScreeningPage() {
                 <X size={18} aria-hidden="true" />
               </button>
             </div>
-            <BusinessReviewDetail
-              task={selectedTask}
-              onReview={selectedTask.status === 'pending' ? (decision) => openReview(selectedTask, decision) : undefined}
-            />
-          </aside>
-        </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <BusinessReviewDetail
+                task={selectedTask}
+                onReview={selectedTask.status === 'pending' ? (decision) => openReview(selectedTask, decision) : undefined}
+              />
+            </div>
+        </DetailDrawerShell>
       )}
 
       {reviewTask && (

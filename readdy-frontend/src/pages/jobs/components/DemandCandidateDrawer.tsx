@@ -45,6 +45,7 @@ import ResumeRecoveryPanel from '@/features/candidates/components/ResumeRecovery
 import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
 import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
 import CandidateFeedbackTimeline from '@/features/candidates/components/CandidateFeedbackTimeline';
+import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 import DetailActionBar from '@/components/ui/DetailActionBar';
 import ActionButton from '@/components/ui/ActionButton';
 
@@ -478,9 +479,14 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-foreground-900/35" role="presentation">
-      <button type="button" aria-label="关闭需求候选人工作区" className="absolute inset-0 cursor-default" onClick={onClose} />
-      <aside className="relative flex h-full w-full max-w-6xl flex-col bg-white shadow-2xl" aria-label={`${demand.job_title}候选人工作区`}>
+    <DetailDrawerShell
+      ariaLabel={`${demand.job_title}候选人工作区`}
+      closeLabel="关闭需求候选人工作区"
+      onClose={onClose}
+      modal
+      backdropClassName="fixed inset-0 z-50 cursor-default bg-foreground-900/35"
+      panelClassName="fixed inset-y-0 right-0 z-[60] flex h-full w-full max-w-6xl flex-col bg-white shadow-2xl"
+    >
         <header className="flex items-start justify-between border-b border-background-200 px-6 py-4">
           <div>
             <h2 className="text-lg font-bold text-foreground-900">当前需求候选人</h2>
@@ -628,8 +634,14 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
         </div>
 
         {resumeCandidate && (
-          <div className="absolute inset-0 z-20 flex justify-end bg-foreground-900/30" role="presentation" onMouseDown={() => setResumeCandidate(null)}>
-            <aside className="flex h-full w-full max-w-xl flex-col overflow-hidden bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label={`${resumeCandidate.name_masked}候选人详情`} onMouseDown={(event) => event.stopPropagation()}>
+          <DetailDrawerShell
+            ariaLabel={`${resumeCandidate.name_masked}候选人详情`}
+            closeLabel="关闭候选人详情"
+            onClose={() => setResumeCandidate(null)}
+            modal
+            backdropClassName="absolute inset-0 z-20 cursor-default bg-foreground-900/30"
+            panelClassName="absolute inset-y-0 right-0 z-30 flex h-full w-full max-w-xl flex-col bg-white shadow-2xl"
+          >
               <div className="flex items-start justify-between gap-4 border-b border-background-200 px-6 py-4"><div><h3 className="text-lg font-bold text-foreground-900">{resumeCandidate.name_masked}</h3><p className="mt-1 text-sm text-foreground-500">{demand.job_title} · {demand.request_no || `需求 #${demand.id}`}</p></div><button type="button" onClick={() => setResumeCandidate(null)} className="rounded-lg p-2 text-foreground-500 hover:bg-background-100" aria-label="关闭候选人详情"><X size={18} /></button></div>
               <CandidateDetailWorkspace value={resumeTab} onChange={setResumeTab} className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
@@ -689,10 +701,8 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
               <DetailActionBar>
                 <ActionButton tone="secondary" onClick={() => setResumeCandidate(null)}>关闭</ActionButton>
               </DetailActionBar>
-            </aside>
-          </div>
+          </DetailDrawerShell>
         )}
-      </aside>
-    </div>
+    </DetailDrawerShell>
   );
 }

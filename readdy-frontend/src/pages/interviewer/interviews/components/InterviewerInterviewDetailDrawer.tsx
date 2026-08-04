@@ -10,11 +10,11 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
-import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 import ActionButton from '@/components/ui/ActionButton';
+import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 import DetailActionBar from '@/components/ui/DetailActionBar';
 import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
 import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
@@ -121,38 +121,25 @@ export default function InterviewerInterviewDetailDrawer({
   onConfirmAndStartFeedback,
   onRequestReschedule,
 }: InterviewerInterviewDetailDrawerProps) {
-  const drawerRef = useRef<HTMLElement>(null);
   const [activeTab, setActiveTab] = useState<CandidateDetailTab>('interview');
 
   useEffect(() => {
     setActiveTab('interview');
   }, [assignment.id]);
 
-  useOverlayLifecycle({
-    canClose: !escapeDisabled,
-    onClose,
-    initialFocusRef: drawerRef,
-  });
-
   const actionDisabled = detailLoading || (!canSubmit && !canSelfConfirm);
   const jobMatch = feedback ? evaluationText(feedback, 'job_match') : '';
   const recommendation = feedback ? evaluationText(feedback, 'recommendation') : '';
 
   return (
-    <>
-      <button
-        type="button"
-        aria-label="关闭面试详情"
-        onClick={onClose}
-        className="workspace-detail-backdrop fixed inset-0 z-40 bg-foreground-900/40 lg:left-[var(--workspace-sidebar-width)] lg:top-14"
-      />
-      <aside
-        ref={drawerRef}
-        tabIndex={-1}
-        role="dialog"
-        aria-labelledby="interviewer-interview-detail-title"
-        className="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-[680px] flex-col overflow-hidden bg-white shadow-2xl outline-none lg:top-14"
-      >
+    <DetailDrawerShell
+      ariaLabel="面试详情"
+      closeLabel="关闭面试详情"
+      canClose={!escapeDisabled}
+      onClose={onClose}
+      backdropClassName="workspace-detail-backdrop fixed inset-0 z-40 cursor-default bg-foreground-900/40 lg:left-[var(--workspace-sidebar-width)] lg:top-14"
+      panelClassName="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-[680px] flex-col bg-white shadow-2xl lg:top-14"
+    >
         <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div className="min-w-0">
             <h2
@@ -348,7 +335,6 @@ export default function InterviewerInterviewDetailDrawer({
               </ActionButton>
           </DetailActionBar>
         </div>
-      </aside>
-    </>
+    </DetailDrawerShell>
   );
 }
