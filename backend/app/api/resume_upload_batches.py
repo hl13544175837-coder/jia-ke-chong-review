@@ -1,46 +1,20 @@
-import hashlib
-import mimetypes
-import os, uuid, zipfile
-from datetime import timedelta
-from pathlib import Path, PurePosixPath
-from types import SimpleNamespace
-from flask import current_app
-from flask import Blueprint, request, jsonify, g, send_file
-from werkzeug.utils import secure_filename
+from flask import current_app, g, jsonify, request
+
 from runtime_paths import (
     DEFAULT_UPLOAD_FOLDER,
     RuntimePathError,
     resolve_stored_upload_path,
 )
-from ..middleware.auth import require_auth, require_role
-from ..middleware.rate_limit import rate_limit
-from ..middleware.events import record_event
-from ..services.resume_service import ResumeBatchService
-from ..services.candidate_library_service import find_existing_candidate_by_identity
-from image_resume_parser import (
-    IMAGE_RESUME_EXTENSIONS,
-    IMAGE_RESUME_MAX_FILE_SIZE,
-    inspect_image_file,
-    inspect_image_stream,
-)
-from ..services.demand_context_service import (
-    DemandContextError,
-    can_manage_demand,
-    resolve_demand_context,
-)
-from ..services.pipeline_service import PipelineServiceError, move_candidate
-from ..source_channels import normalize_resume_source_channel
+
 from .. import db
-from ..models import Candidate, CandidateResumeVersion, Event, UploadBatch
+from ..middleware.auth import require_auth, require_role
+from ..middleware.events import record_event
+from ..models import Candidate, UploadBatch
 from ..time_utils import utc_now
-from .access import can_access_candidate, same_org
+from .access import same_org
 
 
 def register_resume_batch_routes(bp):
-    from .resume import (
-        _remove_uploaded_file,
-    )
-
     @bp.post("/resume/batches/<int:batch_id>/rollback")
     @require_auth
     @require_role("recruiter", "manager", "admin")

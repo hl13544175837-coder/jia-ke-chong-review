@@ -1,62 +1,51 @@
-import hashlib
 import mimetypes
-import os, uuid, zipfile
-from datetime import timedelta
-from pathlib import Path, PurePosixPath
-from types import SimpleNamespace
-from flask import current_app
-from flask import Blueprint, request, jsonify, g, send_file
+import uuid
+from pathlib import Path
+
+from flask import current_app, g, jsonify, request, send_file
 from werkzeug.utils import secure_filename
+
 from runtime_paths import (
     DEFAULT_UPLOAD_FOLDER,
     RuntimePathError,
     resolve_stored_upload_path,
 )
-from ..middleware.auth import require_auth, require_role
+
+from .. import db
+from ..middleware.auth import require_auth
 from ..middleware.rate_limit import rate_limit
 from ..middleware.events import record_event
-from ..services.resume_service import ResumeBatchService
+from ..models import Candidate, CandidateResumeVersion
 from ..services.candidate_library_service import find_existing_candidate_by_identity
-from image_resume_parser import (
-    IMAGE_RESUME_EXTENSIONS,
-    IMAGE_RESUME_MAX_FILE_SIZE,
-    inspect_image_file,
-    inspect_image_stream,
-)
-from ..services.demand_context_service import (
-    DemandContextError,
-    can_manage_demand,
-    resolve_demand_context,
-)
-from ..services.pipeline_service import PipelineServiceError, move_candidate
-from ..source_channels import normalize_resume_source_channel
-from .. import db
-from ..models import Candidate, CandidateResumeVersion, Event, UploadBatch
-from ..time_utils import utc_now
+from ..services.resume_service import ResumeBatchService
 from .access import can_access_candidate, same_org
 
 
 def register_resume_history_routes(bp):
-    from .resume import (
+    from ..services.resumes.file_service import (
         BLOCKED_RESUME_EXTS,
         ORIGINAL_RESUME_MIME_TYPES,
-        RESUME_AI_DISABLED_MESSAGE,
-        _actionable_parse_failure_message,
-        _archive_current_resume,
-        _candidate_like_parse_result,
-        _duplicate_upload_result,
-        _editable_resume_candidate,
         _ext,
         _file_sha256,
         _is_resume,
         _original_resume_candidate,
         _remove_uploaded_file,
         _resolve_original_resume,
+        _serve_original_resume,
+        _validate_upload_file,
+    )
+    from ..services.resumes.parse_service import (
+        RESUME_AI_DISABLED_MESSAGE,
+        _duplicate_upload_result,
+        _refresh_related_job_matches,
+    )
+    from ..services.resumes.version_service import (
+        _actionable_parse_failure_message,
+        _archive_current_resume,
+        _candidate_like_parse_result,
+        _editable_resume_candidate,
         _resume_detail_payload,
         _resume_version_payload,
-        _serve_original_resume,
-        _refresh_related_job_matches,
-        _validate_upload_file,
     )
 
     @bp.get("/resume/<int:candidate_id>")

@@ -149,7 +149,7 @@ def test_upload_rejects_oversized_resume_before_parse(client, make_user, monkeyp
         "app.services.resume_service.ResumeBatchService.parse_and_save",
         fail_if_called,
     )
-    monkeypatch.setattr("app.api.resume.RESUME_MAX_FILE_SIZE", 32)
+    monkeypatch.setattr("app.services.resumes.file_service.RESUME_MAX_FILE_SIZE", 32)
 
     oversized_pdf = b"%PDF-1.4\n" + (b"x" * 64)
     response = client.post(
