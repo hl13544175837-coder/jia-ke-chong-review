@@ -175,7 +175,7 @@ export default function InterviewerInterviewDetailDrawer({
           </button>
         </div>
 
-        <CandidateDetailWorkspace value={activeTab} onChange={setActiveTab}>
+        <CandidateDetailWorkspace value={activeTab} onChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
 
         <div
           id={`interview-detail-panel-${activeTab}`}

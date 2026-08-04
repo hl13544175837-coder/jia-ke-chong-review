@@ -2182,9 +2182,9 @@ export default function CandidateLibraryWorkspace() {
               </button>
             </div>
 
-            <CandidateDetailWorkspace value={detailTab} onChange={setDetailTab}>
+            <CandidateDetailWorkspace value={detailTab} onChange={setDetailTab} className="flex min-h-0 flex-1 flex-col">
 
-            <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
               {detailLoading ? (
                 <div className="flex min-h-72 flex-col items-center justify-center gap-3 text-foreground-500">
                   <LoaderCircle className="animate-spin text-primary-500" size={24} aria-hidden="true" />

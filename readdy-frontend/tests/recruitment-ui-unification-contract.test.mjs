@@ -53,6 +53,27 @@ test('所有候选人详情统一使用面试信息、候选人简历、面试�
   });
 });
 
+test('长简历详情把页签工作区限制在弹层内并由内容区独立滚动', () => {
+  const longResumeDrawers = [
+    'src/features/candidates/components/CandidateLibraryWorkspace.tsx',
+    'src/pages/interviewer/interviews/components/InterviewerInterviewDetailDrawer.tsx',
+  ];
+
+  longResumeDrawers.forEach((file) => {
+    const source = read(file);
+    assert.match(
+      source,
+      /<CandidateDetailWorkspace[^>]*className="flex min-h-0 flex-1 flex-col"/,
+      `${file} 的统一页签工作区必须占满弹层剩余高度`,
+    );
+    assert.match(
+      source,
+      /className="min-h-0 flex-1 overflow-y-auto[^\"]*"/,
+      `${file} 的长简历内容区必须自己滚动`,
+    );
+  });
+});
+
 test('Offer 候选人姓名进入同一套候选人详情', () => {
   const table = read('src/pages/offers/components/OfferTable.tsx');
   const page = read('src/pages/offers/page.tsx');
