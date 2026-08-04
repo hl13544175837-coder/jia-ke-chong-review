@@ -59,4 +59,3 @@ Accepted
 
 - `docs/adr/0001-modular-monolith-by-sidebar-feature.md`
 - `docs/superpowers/plans/2026-08-04-technical-debt-decoupling-plan.md`
-

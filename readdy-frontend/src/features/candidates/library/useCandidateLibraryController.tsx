@@ -770,7 +770,7 @@ export function useCandidateLibraryController() {
     return <span className="text-xs font-medium text-foreground-500">{action.label}</span>;
   };
 
-  
+
   return {
     ...filters,
     AlertCircle,

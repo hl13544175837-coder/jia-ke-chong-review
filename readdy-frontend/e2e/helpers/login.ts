@@ -44,4 +44,3 @@ export async function loginAs(page: Page, role: TestRole) {
   await page.getByRole('button', { name: '登 录' }).click();
   await expect(page).not.toHaveURL(/\/login(?:\?|$)/, { timeout: 15_000 });
 }
-
