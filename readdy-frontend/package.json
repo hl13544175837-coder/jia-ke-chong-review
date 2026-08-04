@@ -11,23 +11,27 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "type-check": "tsc --noEmit --project tsconfig.app.json"
+    "type-check": "tsc --noEmit --project tsconfig.app.json",
+    "test:contract": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --grep @smoke"
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "4.0.2",
+    "@supabase/supabase-js": "2.57.4",
+    "firebase": "12.0.0",
     "i18next": "^25.3.2",
+    "i18next-browser-languagedetector": "^8.2.0",
+    "lucide-react": "^0.469.0",
     "react": "^19.1.2",
     "react-dom": "^19.1.2",
     "react-i18next": "^15.6.0",
     "react-router-dom": "7.18.2",
-    "i18next-browser-languagedetector": "^8.2.0",
-    "firebase": "12.0.0",
-    "@supabase/supabase-js": "2.57.4",
-    "@stripe/react-stripe-js": "4.0.2",
-    "recharts": "3.2.0",
-    "lucide-react": "^0.469.0"
+    "recharts": "3.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.1",
@@ -36,13 +40,13 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
+    "jiti": "^2.6.1",
     "postcss": "^8.5.6",
+    "source-map": "^0.7.6",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.35.1",
-    "vite": "^8.0.1",
     "unplugin-auto-import": "^19.3.0",
-    "source-map": "^0.7.6",
-    "jiti": "^2.6.1"
+    "vite": "^8.0.1"
   }
 }

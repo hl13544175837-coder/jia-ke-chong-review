@@ -2184,7 +2184,7 @@ export default function CandidateLibraryWorkspace() {
 
             <CandidateDetailWorkspace value={detailTab} onChange={setDetailTab} className="flex min-h-0 flex-1 flex-col">
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+            <div data-testid="candidate-detail-scroll-panel" className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
               {detailLoading ? (
                 <div className="flex min-h-72 flex-col items-center justify-center gap-3 text-foreground-500">
                   <LoaderCircle className="animate-spin text-primary-500" size={24} aria-hidden="true" />

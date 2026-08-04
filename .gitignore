@@ -32,6 +32,8 @@ node_modules/
 dist/
 out/
 .vite/
+playwright-report/
+test-results/
 # 前端构建产物不纳入版本库；部署前运行 `cd frontend && npm run build` 生成。
 
 # ── Runtime uploads ──────────────────────────────────────

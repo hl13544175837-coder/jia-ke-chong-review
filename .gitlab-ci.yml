@@ -1,5 +1,40 @@
 stages:
+  - verify
   - build
+
+frontendQuality:
+  stage: verify
+  script:
+    - cd readdy-frontend
+    - npm ci
+    - npm run test:contract
+    - npm run type-check
+    - npm run lint
+    - npm run build
+  tags:
+    - t_FRONTEND
+  only:
+    - api
+    - test
+    - merge_requests
+
+frontendBrowserSmoke:
+  stage: verify
+  script:
+    - cd readdy-frontend
+    - npm ci
+    - npx playwright install chromium
+    - npm run test:e2e:smoke
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - readdy-frontend/playwright-report/
+      - readdy-frontend/test-results/
+  tags:
+    - t_FRONTEND
+  rules:
+    - if: '$E2E_BASE_URL && $E2E_PASSWORD && ($CI_COMMIT_BRANCH == "api" || $CI_COMMIT_BRANCH == "test")'
 
 buildTest:
   stage: build
