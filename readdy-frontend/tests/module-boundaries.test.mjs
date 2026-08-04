@@ -71,3 +71,22 @@ test('候选人详情和工作台模块保持单向依赖', () => {
   assert.doesNotMatch(dashboard, /pages\/offers/);
   assert.doesNotMatch(communicationTasks, /@\/pages\//);
 });
+
+test('所有业务 feature 都不反向引用页面内部实现', () => {
+  const featureRoot = path.join(sourceRoot, 'features');
+  const violations = [];
+
+  sourceFiles(featureRoot).forEach((file) => {
+    const source = readFileSync(file, 'utf8');
+    const importPattern = /(?:from\s*|import\s*\(\s*)['"](@\/pages\/[^'"]+)['"]/g;
+    for (const match of source.matchAll(importPattern)) {
+      violations.push(`${path.relative(root, file)} -> ${match[1]}`);
+    }
+  });
+
+  assert.deepEqual(
+    violations,
+    [],
+    `业务 feature 只能依赖公共组件或其他 feature 的公开接口：\n${violations.join('\n')}`,
+  );
+});

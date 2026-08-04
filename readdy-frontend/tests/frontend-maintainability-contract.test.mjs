@@ -6,6 +6,7 @@ import test from 'node:test';
 const root = path.resolve(import.meta.dirname, '..');
 const read = (file) => readFileSync(path.join(root, file), 'utf8');
 const lineCount = (file) => read(file).split('\n').length;
+const TEMPORARY_CANDIDATE_WORKSPACE_CEILING = 2500;
 
 test('候选人工作台把筛选、列表、导入和详情拆到候选人业务模块', () => {
   const page = read('src/pages/candidates/page.tsx');
@@ -19,6 +20,10 @@ test('候选人工作台把筛选、列表、导入和详情拆到候选人业�
   assert.match(workspace, /CandidateUploadModal/);
   assert.match(workspace, /CandidateDetailDrawer/);
   assert.ok(lineCount('src/pages/candidates/page.tsx') < 1650);
+  assert.ok(
+    lineCount('src/features/candidates/components/CandidateLibraryWorkspace.tsx') < TEMPORARY_CANDIDATE_WORKSPACE_CEILING,
+    '候选人工作台不得在拆分前继续增长；完成拆分时把临时上限收紧为 600 行',
+  );
 });
 
 test('需求详情按概况、JD、候选人、招聘进展和操作记录拆分', () => {
