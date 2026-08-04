@@ -120,6 +120,35 @@ def test_talent_map_can_save_companies_people_and_filter_by_company(client, make
     assert [item["name"] for item in filtered_body["people"]] == ["张三"]
     assert filtered_body["people"][0]["company_name"] == "竞品科技"
 
+    updated_company = client.patch(
+        f"/api/talent-map-companies/{company_body['id']}",
+        headers=_auth(token),
+        json={"note": "刷新后仍应保留的公司说明"},
+    )
+    assert updated_company.status_code == 200
+
+    updated_person = client.patch(
+        f"/api/talent-map-people/{person_body['id']}",
+        headers=_auth(token),
+        json={"title": "高级省区负责人", "contact_status": "已确认"},
+    )
+    assert updated_person.status_code == 200
+
+    refreshed = client.get(
+        f"/api/talent-maps/{talent_map['id']}",
+        headers=_auth(token),
+    )
+    assert refreshed.status_code == 200
+    refreshed_body = refreshed.get_json()
+    assert refreshed_body["companies"][0]["note"] == "刷新后仍应保留的公司说明"
+    assert next(item for item in refreshed_body["people"] if item["id"] == person_body["id"])[
+        "title"
+    ] == "高级省区负责人"
+
+    listed = client.get("/api/talent-maps", headers=_auth(token))
+    assert listed.status_code == 200
+    assert listed.get_json()[0]["id"] == talent_map["id"]
+
 
 def test_talent_maps_are_scoped_to_owner_unless_manager_or_admin(client, make_user, app):
     owner_id, owner_token = make_user("talent-owner@example.com", role="recruiter", name="地图负责人")

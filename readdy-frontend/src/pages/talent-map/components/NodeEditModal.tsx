@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { TalentNode, TalentDepartment } from '@/mocks/talentMap';
+import type { TalentNode, TalentDepartment } from '@/features/talentMaps/types';
 
 interface NodeEditModalProps {
   node: TalentNode | null;
@@ -7,7 +7,7 @@ interface NodeEditModalProps {
   parentNodeId: string | null;
   departments: TalentDepartment[];
   nodes: TalentNode[];
-  onSave: (nodeData: Partial<TalentNode>) => void;
+  onSave: (nodeData: Partial<TalentNode>) => Promise<void>;
   onClose: () => void;
 }
 
@@ -22,6 +22,8 @@ export default function NodeEditModal({
 }: NodeEditModalProps) {
   const isEditing = !!node;
   const parentNode = nodes.find((n) => n.id === parentNodeId);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     title: node?.title || '',
@@ -34,21 +36,28 @@ export default function NodeEditModal({
     reportsTo: node?.reportsTo || parentNodeId || '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title.trim()) return;
-    onSave({
-      ...formData,
-      reportsTo: formData.reportsTo || null,
-      personName: formData.personName.trim() || undefined,
-      personSource: formData.personName.trim() ? (node?.personSource || 'manual') : undefined,
-    });
-    onClose();
+    if (!formData.title.trim() || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave({
+        ...formData,
+        reportsTo: formData.reportsTo || null,
+        personName: formData.personName.trim() || undefined,
+        personSource: formData.personName.trim() ? (node?.personSource || 'manual') : undefined,
+      });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : '岗位保存失败');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <>
-      <div className="fixed inset-0 bg-foreground-900/40 z-40" onClick={onClose}></div>
+      <div className="fixed inset-0 bg-foreground-900/40 z-40" onClick={() => { if (!saving) onClose(); }}></div>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg pointer-events-auto flex flex-col animate-modal-in">
           {/* Header */}
@@ -63,6 +72,7 @@ export default function NodeEditModal({
             </div>
             <button
               onClick={onClose}
+              disabled={saving}
               className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-background-100 text-foreground-500 transition-colors cursor-pointer"
             >
               <i className="ri-close-line text-xl"></i>
@@ -77,6 +87,7 @@ export default function NodeEditModal({
                 岗位名称 <span className="text-accent-500">*</span>
               </label>
               <input
+                aria-label="岗位名称"
                 type="text"
                 value={formData.title}
                 onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
@@ -101,6 +112,7 @@ export default function NodeEditModal({
               <div>
                 <label className="block text-xs font-medium text-foreground-600 mb-1.5">确认状态</label>
                 <select
+                  aria-label="确认状态"
                   value={formData.status}
                   onChange={(e) => setFormData((prev) => ({
                     ...prev,
@@ -122,6 +134,7 @@ export default function NodeEditModal({
                 <span className="text-foreground-400 font-normal ml-1">（选填）</span>
               </label>
               <input
+                aria-label="人员姓名"
                 type="text"
                 value={formData.personName}
                 onChange={(e) => setFormData((prev) => ({ ...prev, personName: e.target.value }))}
@@ -203,21 +216,29 @@ export default function NodeEditModal({
                 className="w-full px-3 py-2.5 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-300 resize-none"
               ></textarea>
             </div>
+
+            {saveError && (
+              <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {saveError}
+              </p>
+            )}
           </form>
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-background-100">
             <button
               onClick={onClose}
+              disabled={saving}
               className="px-4 py-2.5 bg-background-100 hover:bg-background-200 rounded-lg text-sm font-medium text-foreground-700 transition-colors cursor-pointer"
             >
               取消
             </button>
             <button
-              onClick={handleSubmit}
-              className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              onClick={(event) => void handleSubmit(event)}
+              disabled={saving}
+              className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
             >
-              {isEditing ? '保存修改' : '创建岗位'}
+              {saving ? '保存中…' : isEditing ? '保存修改' : '创建岗位'}
             </button>
           </div>
         </div>

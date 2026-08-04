@@ -7,9 +7,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const sourceRoot = path.join(root, 'src');
 const routerConfig = path.join(sourceRoot, 'router', 'config.tsx');
 
-const knownRuntimeMockDebt = new Set([
-  'src/pages/talent-map/page.tsx -> @/mocks/talentMap',
-]);
+const knownRuntimeMockDebt = new Set();
 
 const allowedStaticLookups = new Set([
   '@/mocks/options',
