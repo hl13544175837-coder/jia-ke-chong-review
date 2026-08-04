@@ -1,5 +1,4 @@
 stages:
-  - verify
   - build
 
 frontendQuality:
