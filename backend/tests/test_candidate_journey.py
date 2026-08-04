@@ -71,7 +71,31 @@ def test_journey_aggregates_timeline_and_feedback(client, make_user, app):
     body = r.get_json()
     assert len(body["timeline"]) == 1
     assert body["timeline"][0]["note"] == "n1"
+    assert body["current_stage"] == "interview"
     assert len(body["feedback"]) == 1 and body["feedback"][0]["score"] == 4
+    actions = {item["action"] for item in body["activity"]}
+    assert {"stage_changed", "interview_scheduled", "feedback_submitted"} <= actions
+    assert all(
+        {
+            "id",
+            "occurred_at",
+            "actor_name",
+            "action",
+            "title",
+            "detail",
+            "round_sequence",
+            "reason",
+        } <= item.keys()
+        for item in body["activity"]
+    )
+    stage_activity = next(
+        item for item in body["activity"] if item["action"] == "stage_changed"
+    )
+    assert stage_activity["reason"] == "n1"
+    assert all(item["reason"] for item in body["activity"])
+    assert [item["occurred_at"] for item in body["activity"]] == sorted(
+        [item["occurred_at"] for item in body["activity"]], reverse=True
+    )
 
 
 def test_journey_includes_demand_review_business_review_interview_round_and_offer(client, make_user, app):

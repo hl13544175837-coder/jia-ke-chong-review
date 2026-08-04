@@ -1,37 +1,30 @@
-import type { OfferRecord, OfferStatus } from '@/features/offers/types';
+import type { OfferOaStatus, OfferRecord, OfferStatus, OfferWorkbenchRecord } from '@/features/offers/types';
 
 export type OfferWorkbenchTab =
-  | 'today'
-  | 'draft'
-  | 'pending'
-  | 'approved'
-  | 'sent'
-  | 'accepted'
-  | 'history';
+  | 'pending_registration'
+  | 'follow_up'
+  | 'completed';
 
 export type OfferRiskLevel = 'high' | 'medium' | 'low';
 export type OfferRisk = { level: OfferRiskLevel; label: string; rank: number };
 export type OfferOrder = 'urgent' | 'updated' | 'onboard';
 
 export interface OfferWorkbenchInput {
-  items: OfferRecord[];
+  items: OfferWorkbenchRecord[];
   tab: OfferWorkbenchTab;
   search: string;
   demand: string;
   owner: string;
   risk: '' | OfferRiskLevel;
   order: OfferOrder;
+  recentDays?: number;
   now?: Date;
 }
 
 export const OFFER_WORKBENCH_TABS: Array<{ key: OfferWorkbenchTab; label: string }> = [
-  { key: 'today', label: '今日待办' },
-  { key: 'draft', label: '草稿' },
-  { key: 'pending', label: '待确认' },
-  { key: 'approved', label: '待发放' },
-  { key: 'sent', label: '待回复' },
-  { key: 'accepted', label: '待入职' },
-  { key: 'history', label: '历史记录' },
+  { key: 'pending_registration', label: '待登记' },
+  { key: 'follow_up', label: '跟进中' },
+  { key: 'completed', label: '已完成' },
 ];
 
 const historyStatuses = new Set<OfferStatus>(['declined', 'withdrawn', 'expired', 'onboarded']);
@@ -151,24 +144,27 @@ export function isTodayOfferTask(offer: OfferRecord, now = new Date()) {
   return false;
 }
 
-export function buildOfferTabCounts(items: OfferRecord[], now = new Date()) {
+export function buildOfferTabCounts(items: OfferWorkbenchRecord[]) {
   return {
-    today: items.filter((item) => isTodayOfferTask(item, now)).length,
-    draft: items.filter((item) => item.status === 'draft' || item.status === 'rejected').length,
-    pending: items.filter((item) => item.status === 'pending').length,
-    approved: items.filter((item) => item.status === 'approved').length,
-    sent: items.filter((item) => item.status === 'sent').length,
-    accepted: items.filter((item) => item.status === 'accepted').length,
-    history: items.filter((item) => historyStatuses.has(item.status)).length,
+    pending_registration: items.filter((item) => item.oa_status === 'not_started').length,
+    follow_up: items.filter((item) => item.oa_status === 'pending' || item.oa_status === 'rejected').length,
+    completed: items.filter((item) => item.oa_status === 'approved' || item.oa_status === 'completed').length,
   };
 }
 
-function matchesTab(offer: OfferRecord, tab: OfferWorkbenchTab, now: Date) {
-  if (tab === 'today') return isTodayOfferTask(offer, now);
-  if (tab === 'history') return historyStatuses.has(offer.status);
-  if (tab === 'draft') return offer.status === 'draft' || offer.status === 'rejected';
-  return offer.status === tab;
+function matchesTab(offer: OfferWorkbenchRecord, tab: OfferWorkbenchTab) {
+  if (tab === 'pending_registration') return offer.oa_status === 'not_started';
+  if (tab === 'follow_up') return offer.oa_status === 'pending' || offer.oa_status === 'rejected';
+  return offer.oa_status === 'approved' || offer.oa_status === 'completed';
 }
+
+export const offerOaStatusLabels: Record<OfferOaStatus, string> = {
+  not_started: '待登记',
+  pending: 'OA 审批中',
+  approved: 'OA 已通过',
+  rejected: 'OA 已退回',
+  completed: '已完成',
+};
 
 export function filterAndSortOffers({
   items,
@@ -178,6 +174,7 @@ export function filterAndSortOffers({
   owner,
   risk,
   order,
+  recentDays = 7,
   now = new Date(),
 }: OfferWorkbenchInput) {
   const searchTerm = search.trim().toLocaleLowerCase('zh-CN');
@@ -185,7 +182,12 @@ export function filterAndSortOffers({
   const ownerTerm = owner.trim().toLocaleLowerCase('zh-CN');
 
   return items
-    .filter((offer) => matchesTab(offer, tab, now))
+    .filter((offer) => matchesTab(offer, tab))
+    .filter((offer) => {
+      const updated = parsedTime(offer.oa_updated_at || offer.updated_at || offer.created_at);
+      if (!updated) return true;
+      return updated.getTime() >= now.getTime() - recentDays * 86_400_000;
+    })
     .filter((offer) => !searchTerm || [offer.candidate_name, offer.position, offer.request_no]
       .some((value) => String(value || '').toLocaleLowerCase('zh-CN').includes(searchTerm)))
     .filter((offer) => !demandTerm || [offer.position, offer.request_no, offer.department]

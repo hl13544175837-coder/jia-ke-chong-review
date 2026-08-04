@@ -50,6 +50,7 @@ from ..services.candidate_library_service import (
     resume_info,
     set_candidate_favorites,
 )
+from ..services.candidate_activity_service import build_candidate_activity
 from ..services.match_service import MatchService
 from ..source_channels import normalize_resume_source_channel, resume_source_channel_filter_values
 from .pipeline import LEGACY_INTERVIEW_STAGES, STAGE_ORDER, _latest_stage_subquery, normalize_pipeline_stage
@@ -247,6 +248,11 @@ def register_candidate_journey_routes(bp):
             "note": ps.note,
             "updated_by_name": u.name if u else None,
         } for ps, u in stage_rows]
+        current_stage = (
+            normalize_pipeline_stage(stage_rows[-1][0].stage)
+            if stage_rows
+            else None
+        )
 
         # AI 面试得分
         ai_rows = (Interview.query
@@ -273,10 +279,6 @@ def register_candidate_journey_routes(bp):
         } for f, u in fb_rows]
 
         feedback_by_assignment = {item["assignment_id"]: item for item in feedback if item.get("assignment_id")}
-        viewer_has_submitted_feedback = bool(
-            viewer_assignment
-            and feedback_by_assignment.get(viewer_assignment.id)
-        )
         assignment_rows = (
             db.session.query(InterviewAssignment, User)
             .outerjoin(User, User.id == InterviewAssignment.interviewer_id)
@@ -302,15 +304,6 @@ def register_candidate_journey_routes(bp):
         visible_assignment_ids = {
             assignment.id for assignment, _ in visible_assignment_rows
         }
-        locked_assignment_ids = {
-            assignment.id
-            for assignment, _ in visible_assignment_rows
-            if (
-                viewer_assignment is not None
-                and not viewer_has_submitted_feedback
-                and assignment.round_sequence < viewer_assignment.round_sequence
-            )
-        }
         interview_rounds = [{
             "assignment_id": assignment.id,
             "round": assignment.round,
@@ -320,22 +313,14 @@ def register_candidate_journey_routes(bp):
             "location": assignment.location or "",
             "status": assignment.status,
             "note": assignment.note or "",
-            "feedback": (
-                None
-                if assignment.id in locked_assignment_ids
-                else feedback_by_assignment.get(assignment.id)
-            ),
-            "feedback_locked": assignment.id in locked_assignment_ids,
+            "feedback": feedback_by_assignment.get(assignment.id),
         } for assignment, interviewer in visible_assignment_rows]
         visible_feedback = [
             item
             for item in feedback
             if (
-                item.get("assignment_id") not in locked_assignment_ids
-                and (
-                    g.role != "interviewer"
-                    or item.get("assignment_id") in visible_assignment_ids
-                )
+                g.role != "interviewer"
+                or item.get("assignment_id") in visible_assignment_ids
             )
         ]
 
@@ -400,18 +385,30 @@ def register_candidate_journey_routes(bp):
             response_dispositions = []
             response_offers = []
 
+        activity = build_candidate_activity(
+            org_id=g.org_id,
+            candidate_id=candidate_id,
+            demand_id=demand.id,
+            visible_assignment_ids=(
+                visible_assignment_ids if interviewer_only else None
+            ),
+            include_pipeline=not interviewer_only,
+        )
+
         return jsonify({
             "candidate_id": candidate_id,
             "name_masked": cand.name_masked,
             "demand_id": demand.id,
             "job_id": job_id,
             "job_title": job.title if job else None,
+            "current_stage": current_stage,
             "demand_approval": response_demand_approval,
             "business_reviews": response_business_reviews,
             "timeline": response_timeline,
             "ai_interviews": response_ai_interviews,
             "interview_rounds": interview_rounds,
             "feedback": visible_feedback,
+            "activity": activity,
             "dispositions": response_dispositions,
             "offers": response_offers,
             "decision_summary": _decision_summary(

@@ -39,6 +39,10 @@ import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
 import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
+import ActionButton from '@/components/ui/ActionButton';
+import DetailActionBar from '@/components/ui/DetailActionBar';
+import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
+import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
 import { apiRequest } from '@/lib/api';
 import { candidatesApi } from '@/features/candidates/api';
 import type {
@@ -286,6 +290,7 @@ export default function CandidateLibraryWorkspace() {
   }, [location.pathname, location.search, navState?.openUpload, navigate]);
 
   const [detailCandidate, setDetailCandidate] = useState<CandidateListItem | null>(null);
+  const [detailTab, setDetailTab] = useState<CandidateDetailTab>('interview');
   const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);
   const [candidateJourney, setCandidateJourney] = useState<CandidateJourney | null>(null);
   const [journeyError, setJourneyError] = useState<string | null>(null);
@@ -722,6 +727,7 @@ export default function CandidateLibraryWorkspace() {
 
   const openCandidateDetail = useCallback((candidate: CandidateListItem) => {
     setDetailCandidate(candidate);
+    setDetailTab('interview');
     setResumeDetail(null);
     setCandidateJourney(null);
     setJourneyError(null);
@@ -2176,6 +2182,8 @@ export default function CandidateLibraryWorkspace() {
               </button>
             </div>
 
+            <CandidateDetailWorkspace value={detailTab} onChange={setDetailTab}>
+
             <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
               {detailLoading ? (
                 <div className="flex min-h-72 flex-col items-center justify-center gap-3 text-foreground-500">
@@ -2198,6 +2206,7 @@ export default function CandidateLibraryWorkspace() {
                 </div>
               ) : resumeDetail ? (
                 <div className="space-y-6">
+                  <div className={detailTab === 'interview' ? 'space-y-6' : 'hidden'} role="tabpanel" aria-label="面试信息">
                   {(detailCandidate.desired_position || detailCandidate.current_demand || detailCandidate.latest_demand) && (
                     <section className="rounded-lg border border-background-200 bg-background-50 px-4 py-3">
                       <p className="text-xs text-foreground-400">简历求职目标</p>
@@ -2231,11 +2240,19 @@ export default function CandidateLibraryWorkspace() {
                     </section>
                   )}
 
+                  </div>
+
+                  <div className={detailTab === 'feedback' ? 'space-y-6' : 'hidden'} role="tabpanel" aria-label="面试评价">
                   {candidateJourney && <CandidateJourneySummary journey={candidateJourney} />}
                   {journeyError && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>
                   )}
+                  {!candidateJourney && !journeyError && (
+                    <div className="rounded-lg bg-background-50 px-4 py-8 text-center text-sm text-foreground-500">当前候选人暂无历史面试评价和操作记录</div>
+                  )}
+                  </div>
 
+                  <div className={detailTab === 'resume' ? 'space-y-6' : 'hidden'} role="tabpanel" aria-label="候选人简历">
                   <ResumeRecoveryPanel
                     detail={resumeDetail}
                     onUpdated={(updated) => {
@@ -2339,16 +2356,16 @@ export default function CandidateLibraryWorkspace() {
                     <h3 className="mb-3 text-sm font-semibold text-foreground-900">结构化简历</h3>
                     <StructuredResumeView resume={resumeDetail.resume_json} />
                   </section>
+                  </div>
                 </div>
               ) : null}
             </div>
+            </CandidateDetailWorkspace>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-background-200 bg-background-50 px-5 py-4 sm:px-6">
-              <button type="button" onClick={closeCandidateDetail} className="rounded-lg border border-background-300 bg-white px-4 py-2 text-sm font-medium text-foreground-700 hover:bg-background-100">关闭</button>
-              <div className="flex flex-wrap items-center gap-2">
-                {renderCandidateBusinessAction(detailCandidate)}
-              </div>
-            </div>
+            <DetailActionBar status={<span className="text-xs text-foreground-500">当前档案 · {detailCandidate.is_favorite ? '已收藏' : '公司人才库'}</span>}>
+              <ActionButton tone="secondary" onClick={closeCandidateDetail}>关闭</ActionButton>
+              {renderCandidateBusinessAction(detailCandidate)}
+            </DetailActionBar>
         </CandidateDetailDrawer>
       )}
 

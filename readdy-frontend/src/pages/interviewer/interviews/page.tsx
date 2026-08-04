@@ -10,6 +10,10 @@ import { useSearchParams } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
+import ActionButton from '@/components/ui/ActionButton';
+import FilterBar from '@/components/ui/FilterBar';
+import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
+import { interviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { candidatesApi } from '@/features/candidates/api';
 import type { CandidateJourney, CandidateResumeDetail } from '@/features/candidates/types';
@@ -29,6 +33,7 @@ import InterviewerInterviewDetailDrawer from './components/InterviewerInterviewD
 import type { DetailActionLabel } from './components/InterviewerInterviewDetailDrawer';
 import RescheduleRequestModal from './components/RescheduleRequestModal';
 import SimpleFeedbackModal from './components/SimpleFeedbackModal';
+import { interviewLocalDateKey } from '@/features/interviews/workbench';
 
 type TabKey = 'all' | 'upcoming' | 'feedback' | 'completed';
 
@@ -102,6 +107,9 @@ export default function InterviewerInterviewsPage() {
   const [loadError, setLoadError] = useState('');
   const activeTab = interviewTabFromQuery(searchParams.get('tab'));
   const searchQuery = searchParams.get('q') ?? '';
+  const jobFilter = searchParams.get('job') ?? '';
+  const departmentFilter = searchParams.get('department') ?? '';
+  const dateFilter = searchParams.get('date') ?? '';
   const [selected, setSelected] = useState<InterviewAssignment | null>(null);
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
   const [selectedResume, setSelectedResume] = useState<CandidateResumeDetail | null>(null);
@@ -154,6 +162,23 @@ export default function InterviewerInterviewsPage() {
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
+  const changeListFilter = useCallback((key: 'job' | 'department' | 'date', value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    next.delete('candidate');
+    next.delete('assignment');
+    next.delete('demand');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const resetListFilters = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    ['q', 'job', 'department', 'date', 'candidate', 'assignment', 'demand'].forEach((key) => next.delete(key));
+    next.set('tab', 'all');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const rememberInterviewDetail = useCallback((assignment: InterviewAssignment | null) => {
     const next = new URLSearchParams(searchParams);
     if (assignment) {
@@ -171,12 +196,20 @@ export default function InterviewerInterviewsPage() {
 
   const filtered = useMemo(() => assignments.filter((item) => {
     if (activeTab !== 'all' && assignmentBucket(item) !== activeTab) return false;
+    if (jobFilter && item.job_title !== jobFilter) return false;
+    if (departmentFilter && item.job_department !== departmentFilter) return false;
+    if (dateFilter && interviewLocalDateKey(item.scheduled_at) !== dateFilter) return false;
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
     return [item.name_masked, item.job_title, item.job_department]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
-  }), [activeTab, assignments, searchQuery]);
+  }), [activeTab, assignments, dateFilter, departmentFilter, jobFilter, searchQuery]);
+
+  const filterOptions = useMemo(() => ({
+    jobs: [...new Set(assignments.map((item) => item.job_title).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, 'zh-CN')),
+    departments: [...new Set(assignments.map((item) => item.job_department).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN')),
+  }), [assignments]);
 
   const counts = useMemo(() => ({
     all: assignments.length,
@@ -388,22 +421,23 @@ export default function InterviewerInterviewsPage() {
         )}
       />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="space-y-3">
         <WorkspaceTabs<TabKey>
           items={tabs.map((tab) => ({ ...tab, count: counts[tab.key] }))}
           value={activeTab}
           onChange={(tab) => changeListState(tab, searchQuery)}
           ariaLabel="我的面试状态"
         />
-        <label className="relative ml-auto min-w-[220px] flex-1 sm:max-w-xs">
-          <Search size={15} className="pointer-events-none absolute left-3 top-2.5 text-foreground-400" />
-          <input
-            value={searchQuery}
-            onChange={(event) => changeListState(activeTab, event.target.value)}
-            placeholder="搜索候选人、岗位或部门"
-            className="h-9 w-full rounded-md border border-background-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-primary-400"
-          />
-        </label>
+        <FilterBar ariaLabel="我的面试查询条件" className="rounded-xl border border-background-200 bg-white p-3">
+          <label className="relative min-w-[220px] flex-1">
+            <Search size={15} className="pointer-events-none absolute left-3 top-2.5 text-foreground-400" />
+            <input value={searchQuery} onChange={(event) => changeListState(activeTab, event.target.value)} placeholder="搜索候选人、岗位或部门" className="h-9 w-full rounded-md border border-background-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-primary-400" />
+          </label>
+          <select aria-label="按岗位筛选" value={jobFilter} onChange={(event) => changeListFilter('job', event.target.value)} className="h-9 min-w-[150px] rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <select aria-label="按部门筛选" value={departmentFilter} onChange={(event) => changeListFilter('department', event.target.value)} className="h-9 min-w-[130px] rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <input type="date" aria-label="按面试日期筛选" value={dateFilter} onChange={(event) => changeListFilter('date', event.target.value)} className="h-9 rounded-lg border border-background-300 bg-white px-3 text-sm" />
+          <button type="button" onClick={resetListFilters} disabled={!searchQuery && !jobFilter && !departmentFilter && !dateFilter && activeTab === 'all'} className="h-9 rounded-lg border border-background-300 bg-white px-3 text-sm font-medium text-foreground-600 disabled:opacity-40">重置</button>
+        </FilterBar>
       </div>
 
       {confirmationError && (
@@ -431,8 +465,8 @@ export default function InterviewerInterviewsPage() {
           variant="empty"
           title="暂无符合条件的面试任务"
           description="可以切换状态或清除搜索条件后再查看。"
-          actionLabel={searchQuery || activeTab !== 'all' ? '清空筛选' : undefined}
-          onAction={searchQuery || activeTab !== 'all' ? () => changeListState('all', '') : undefined}
+          actionLabel={searchQuery || jobFilter || departmentFilter || dateFilter || activeTab !== 'all' ? '清空筛选' : undefined}
+          onAction={searchQuery || jobFilter || departmentFilter || dateFilter || activeTab !== 'all' ? resetListFilters : undefined}
         />
       ) : (
         <div className="overflow-hidden rounded-lg border border-background-200 bg-white">
@@ -465,17 +499,11 @@ export default function InterviewerInterviewsPage() {
                   <span className="inline-flex min-w-[120px] items-center gap-2 text-xs text-foreground-500">
                     <MapPin size={14} /> {item.location || '地点待确认'}
                   </span>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                    bucket === 'feedback'
-                      ? 'bg-amber-100 text-amber-700'
-                      : bucket === 'completed'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-primary-100 text-primary-700'
-                  }`}>
+                  <SemanticStatusBadge tone={statusPresentation(interviewStatusPresentation, bucket === 'upcoming' ? 'scheduled' : bucket === 'feedback' ? 'awaiting_feedback' : 'completed').tone}>
                     {bucket === 'feedback' ? '待反馈' : bucket === 'completed' ? '已完成' : interviewHasStarted(item.scheduled_at) ? '等待确认' : '待面试'}
-                  </span>
-                  <button
-                    type="button"
+                  </SemanticStatusBadge>
+                  <ActionButton
+                    tone="primary"
                     onClick={() => void (
                       canSelfConfirm(item)
                         ? confirmAndStartFeedback(item)
@@ -483,11 +511,11 @@ export default function InterviewerInterviewsPage() {
                     )}
                     disabled={!canSubmitFeedback(item) && !canSelfConfirm(item)}
                     title={!canSubmitFeedback(item) && !canSelfConfirm(item) ? actionLabel : undefined}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground-900 px-3 text-sm font-medium text-white hover:bg-foreground-800 disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500"
+                    className="h-9"
+                    icon={<MessageSquareText size={15} />}
                   >
-                    <MessageSquareText size={15} />
                     {actionLabel}
-                  </button>
+                  </ActionButton>
                 </div>
               );
             })}

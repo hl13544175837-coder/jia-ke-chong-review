@@ -33,6 +33,7 @@ import type {
   CandidateListResponse,
   CandidateMatchResult,
   CandidatePipelineAddResult,
+  CandidateJourney,
   CandidateResumeDetail,
   CandidateStage,
   ParseStatus,
@@ -41,6 +42,11 @@ import type {
 import type { RecruitmentDemand } from '@/features/demands/types';
 import type { PushTarget } from '@/features/businessReviews/components/PushToReviewerModal';
 import ResumeRecoveryPanel from '@/features/candidates/components/ResumeRecoveryPanel';
+import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
+import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
+import CandidateFeedbackTimeline from '@/features/candidates/components/CandidateFeedbackTimeline';
+import DetailActionBar from '@/components/ui/DetailActionBar';
+import ActionButton from '@/components/ui/ActionButton';
 
 interface DemandCandidateDrawerProps {
   demand: RecruitmentDemand;
@@ -183,6 +189,10 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   const [resumeError, setResumeError] = useState('');
   const [resumeFileAction, setResumeFileAction] = useState<'preview' | 'download' | null>(null);
   const [resumeFileError, setResumeFileError] = useState('');
+  const [resumeTab, setResumeTab] = useState<CandidateDetailTab>('interview');
+  const [resumeJourney, setResumeJourney] = useState<CandidateJourney | null>(null);
+  const [resumeJourneyLoading, setResumeJourneyLoading] = useState(false);
+  const [resumeJourneyError, setResumeJourneyError] = useState('');
   const [reviewTasks, setReviewTasks] = useState<BusinessReviewTask[]>([]);
   const [reviewTasksError, setReviewTasksError] = useState('');
 
@@ -303,17 +313,24 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
 
   const openResume = async (candidate: CandidateListItem) => {
     setResumeCandidate(candidate);
+    setResumeTab('interview');
     setResumeDetail(null);
     setResumeError('');
     setResumeFileError('');
+    setResumeJourney(null);
+    setResumeJourneyError('');
     setResumeLoading(true);
-    try {
-      setResumeDetail(await candidatesApi.getResume(candidate.id));
-    } catch (error) {
-      setResumeError(messageOf(error, '完整简历加载失败'));
-    } finally {
-      setResumeLoading(false);
-    }
+    setResumeJourneyLoading(true);
+    const [resumeResult, journeyResult] = await Promise.allSettled([
+      candidatesApi.getResume(candidate.id),
+      candidatesApi.getJourney(candidate.id, demand.id),
+    ]);
+    if (resumeResult.status === 'fulfilled') setResumeDetail(resumeResult.value);
+    else setResumeError(messageOf(resumeResult.reason, '完整简历加载失败'));
+    if (journeyResult.status === 'fulfilled') setResumeJourney(journeyResult.value);
+    else setResumeJourneyError(messageOf(journeyResult.reason, '历史面试评价暂时无法读取'));
+    setResumeLoading(false);
+    setResumeJourneyLoading(false);
   };
 
   const openDuplicateCandidate = (result: ResumeUploadResponse['results'][number]) => {
@@ -612,37 +629,66 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
 
         {resumeCandidate && (
           <div className="absolute inset-0 z-20 flex justify-end bg-foreground-900/30" role="presentation" onMouseDown={() => setResumeCandidate(null)}>
-            <aside className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-label={`${resumeCandidate.name_masked}完整简历`} onMouseDown={(event) => event.stopPropagation()}>
-              <div className="flex items-start justify-between gap-4"><div><h3 className="text-lg font-bold text-foreground-900">{resumeCandidate.name_masked}</h3><p className="mt-1 text-sm text-foreground-500">完整候选人简历 · 查看不会改变勾选状态</p></div><button type="button" onClick={() => setResumeCandidate(null)} className="rounded-lg p-2 text-foreground-500 hover:bg-background-100"><X size={18} /></button></div>
-              {resumeLoading ? <div className="py-20 text-center text-sm text-foreground-500"><LoaderCircle className="mx-auto mb-2 animate-spin" size={20} />加载完整简历中...</div> : resumeError ? <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{resumeError}</div> : resumeDetail ? (
-                <div className="mt-6 space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">
-                    <span>{resumeDetail.original_resume.available ? `原版文件：${resumeDetail.original_resume.filename || '未命名文件'}` : '当前没有原版文件，以下为系统解析信息'}</span>
-                    {resumeDetail.original_resume.available && (
-                      <span className="flex gap-2">
-                        <button type="button" onClick={() => void openOriginalResume('preview')} disabled={resumeFileAction !== null} className="inline-flex items-center gap-1 rounded-lg border border-background-300 bg-white px-2.5 py-1.5 text-xs font-medium text-foreground-700 disabled:opacity-50"><Eye size={13} />{resumeFileAction === 'preview' ? '打开中' : '预览原版'}</button>
-                        <button type="button" onClick={() => void openOriginalResume('download')} disabled={resumeFileAction !== null} className="inline-flex items-center gap-1 rounded-lg border border-background-300 bg-white px-2.5 py-1.5 text-xs font-medium text-foreground-700 disabled:opacity-50"><Download size={13} />{resumeFileAction === 'download' ? '下载中' : '下载原版'}</button>
-                      </span>
-                    )}
-                  </div>
-                      {resumeFileError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{resumeFileError}</p>}
-                      <ResumeRecoveryPanel
-                        detail={resumeDetail}
-                        onUpdated={(updated) => {
-                          setResumeDetail(updated);
-                          setResumeCandidate((current) => current ? {
-                            ...current,
-                            name_masked: updated.name_masked,
-                            parse_status: updated.parse_status,
-                            parse_error: updated.parse_error,
-                          } : current);
-                          void loadCandidates();
-                          onChanged();
-                        }}
-                      />
-                      <StructuredResumeView resume={resumeDetail.resume_json} />
+            <aside className="flex h-full w-full max-w-xl flex-col overflow-hidden bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label={`${resumeCandidate.name_masked}候选人详情`} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between gap-4 border-b border-background-200 px-6 py-4"><div><h3 className="text-lg font-bold text-foreground-900">{resumeCandidate.name_masked}</h3><p className="mt-1 text-sm text-foreground-500">{demand.job_title} · {demand.request_no || `需求 #${demand.id}`}</p></div><button type="button" onClick={() => setResumeCandidate(null)} className="rounded-lg p-2 text-foreground-500 hover:bg-background-100" aria-label="关闭候选人详情"><X size={18} /></button></div>
+              <CandidateDetailWorkspace value={resumeTab} onChange={setResumeTab} className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                  {resumeTab === 'interview' && (
+                    <div className="space-y-4" role="tabpanel" aria-label="面试信息">
+                      <dl className="grid grid-cols-2 gap-4 rounded-lg border border-background-200 p-4 text-sm">
+                        <div><dt className="text-xs text-foreground-400">招聘需求</dt><dd className="mt-1 font-medium text-foreground-800">{demand.job_title}</dd></div>
+                        <div><dt className="text-xs text-foreground-400">当前阶段</dt><dd className="mt-1 text-foreground-700">{resumeCandidate.current_stage || matches.get(resumeCandidate.id)?.latest_stage || '尚未进入流程'}</dd></div>
+                        <div><dt className="text-xs text-foreground-400">部门</dt><dd className="mt-1 text-foreground-700">{demand.requester_department || demand.job_department || '未填写'}</dd></div>
+                        <div><dt className="text-xs text-foreground-400">城市</dt><dd className="mt-1 text-foreground-700">{demand.job_city || '未填写'}</dd></div>
+                      </dl>
+                      <p className="rounded-lg bg-background-50 px-4 py-3 text-sm text-foreground-600">面试轮次、时间、面试官和地点会在安排面试后显示在这里。</p>
+                    </div>
+                  )}
+
+                  {resumeTab === 'resume' && (
+                    <div role="tabpanel" aria-label="候选人简历">
+                      {resumeLoading ? <div className="py-20 text-center text-sm text-foreground-500"><LoaderCircle className="mx-auto mb-2 animate-spin" size={20} />加载完整简历中...</div> : resumeError ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{resumeError}</div> : resumeDetail ? (
+                        <div className="space-y-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">
+                            <span>{resumeDetail.original_resume.available ? `原版文件：${resumeDetail.original_resume.filename || '未命名文件'}` : '当前没有原版文件，以下为系统解析信息'}</span>
+                            {resumeDetail.original_resume.available && (
+                              <span className="flex gap-2">
+                                <button type="button" onClick={() => void openOriginalResume('preview')} disabled={resumeFileAction !== null} className="inline-flex items-center gap-1 rounded-lg border border-background-300 bg-white px-2.5 py-1.5 text-xs font-medium text-foreground-700 disabled:opacity-50"><Eye size={13} />{resumeFileAction === 'preview' ? '打开中' : '预览原版'}</button>
+                                <button type="button" onClick={() => void openOriginalResume('download')} disabled={resumeFileAction !== null} className="inline-flex items-center gap-1 rounded-lg border border-background-300 bg-white px-2.5 py-1.5 text-xs font-medium text-foreground-700 disabled:opacity-50"><Download size={13} />{resumeFileAction === 'download' ? '下载中' : '下载原版'}</button>
+                              </span>
+                            )}
+                          </div>
+                          {resumeFileError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{resumeFileError}</p>}
+                          <ResumeRecoveryPanel
+                            detail={resumeDetail}
+                            onUpdated={(updated) => {
+                              setResumeDetail(updated);
+                              setResumeCandidate((current) => current ? {
+                                ...current,
+                                name_masked: updated.name_masked,
+                                parse_status: updated.parse_status,
+                                parse_error: updated.parse_error,
+                              } : current);
+                              void loadCandidates();
+                              onChanged();
+                            }}
+                          />
+                          <StructuredResumeView resume={resumeDetail.resume_json} />
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {resumeTab === 'feedback' && (
+                    <div role="tabpanel" aria-label="面试评价">
+                      <CandidateFeedbackTimeline journey={resumeJourney} loading={resumeJourneyLoading} error={resumeJourneyError} />
+                    </div>
+                  )}
                 </div>
-              ) : null}
+              </CandidateDetailWorkspace>
+              <DetailActionBar>
+                <ActionButton tone="secondary" onClick={() => setResumeCandidate(null)}>关闭</ActionButton>
+              </DetailActionBar>
             </aside>
           </div>
         )}

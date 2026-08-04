@@ -136,12 +136,24 @@ export interface CandidateJourneyFeedback {
   created_at: string | null;
 }
 
+export interface CandidateActivity {
+  id: string;
+  occurred_at: string | null;
+  actor_name: string;
+  action: 'interview_scheduled' | 'reschedule_requested' | 'reschedule_confirmed' | 'feedback_submitted' | 'feedback_updated' | 'stage_changed';
+  title: string;
+  detail: string;
+  round_sequence: number | null;
+  reason: string;
+}
+
 export interface CandidateJourney {
   candidate_id: number;
   name_masked: string;
   demand_id: number;
   job_id: number;
   job_title: string | null;
+  current_stage: CandidateStage | null;
   demand_approval: {
     status: string;
     submitted_by_name: string | null;
@@ -164,6 +176,7 @@ export interface CandidateJourney {
     decided_at: string | null;
   }>;
   timeline: Array<{ stage: string; ts: string | null; note: string | null; updated_by_name: string | null }>;
+  activity: CandidateActivity[];
   interview_rounds: Array<{
     assignment_id: number;
     round: string;
@@ -174,7 +187,6 @@ export interface CandidateJourney {
     status: string;
     note: string;
     feedback: CandidateJourneyFeedback | null;
-    feedback_locked: boolean;
   }>;
   offers: Array<{
     id: number;

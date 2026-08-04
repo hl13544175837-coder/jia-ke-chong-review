@@ -26,6 +26,7 @@ interface LegacyReviewRecord {
 interface BusinessReviewModalProps {
   task: BusinessReviewTask;
   record?: never;
+  initialDecision?: BusinessDecision;
   onClose: () => void;
   onSubmit: (action: BusinessDecision, comment: string) => void | Promise<void>;
   isSubmitting?: boolean;
@@ -35,6 +36,7 @@ interface BusinessReviewModalProps {
 interface LegacyReviewModalProps<TAction extends string> {
   record: LegacyReviewRecord;
   task?: never;
+  initialDecision?: BusinessDecision;
   onClose: () => void;
   onSubmit: (action: TAction, comment: string) => void | Promise<void>;
   isSubmitting?: boolean;
@@ -91,7 +93,8 @@ function formatDate(value: string | null) {
 export default function ReviewActionModal<TAction extends string = BusinessDecision>(
   props: ReviewActionModalProps<TAction>,
 ) {
-  const [action, setAction] = useState<BusinessDecision>('approved');
+  const initialDecision = props.initialDecision ?? 'approved';
+  const [action, setAction] = useState<BusinessDecision>(initialDecision);
   const [comment, setComment] = useState('');
   const [showValidation, setShowValidation] = useState(false);
   const businessTask = 'task' in props && props.task ? props.task : null;
@@ -109,6 +112,12 @@ export default function ReviewActionModal<TAction extends string = BusinessDecis
   const reviewContext = businessTask
     ? businessTask.hr_note || (businessTask.demand.focus_points ?? []).join('、') || 'HR 未填写筛选备注'
     : legacyRecord?.keyRequirements || '未填写重点评审要求';
+
+  useEffect(() => {
+    setAction(initialDecision);
+    setComment('');
+    setShowValidation(false);
+  }, [initialDecision]);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {

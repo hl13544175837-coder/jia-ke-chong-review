@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import CandidateReadOnlyList from '@/components/analytics/CandidateReadOnlyList';
@@ -14,6 +14,8 @@ import {
   MonthlyPerformanceDataPanel,
   RecruiterDataBoard,
 } from './components/RoleDataViews';
+
+const ManagementAnalyticsPanels = lazy(() => import('@/features/analytics/components/ManagementAnalyticsPanels'));
 
 type InsightKey =
   | 'candidate-total'
@@ -152,7 +154,7 @@ function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruit
   const requestedInsight = searchParams.get('insight');
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const [data, setData] = useState<AnalyticsOverview | null>(null);
-  const [trendView, setTrendView] = useState<'hires' | 'offers'>('hires');
+  const [trendMonths, setTrendMonths] = useState<3 | 6 | 7>(7);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -172,12 +174,6 @@ function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruit
 
   useEffect(() => { void load(); }, [load]);
 
-  const maxTrend = useMemo(
-    () => Math.max(1, ...(data?.monthly_trends.map((item) => (
-      trendView === 'hires' ? item.hires : item.offers
-    )) ?? [0])),
-    [data, trendView],
-  );
   const selectedInsight = useMemo(() => {
     const insight = data ? buildInsight(data, requestedInsight) : null;
     if (!insight || !requestedDemandId) return insight;
@@ -247,6 +243,19 @@ function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruit
             : data?.purpose || '读取当前组织的真实招聘数据'}
         actions={<div className="flex flex-wrap items-center gap-3">
           {role === 'hr_director' && <Link to="/director/cockpit" className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 hover:bg-primary-100">回到管理驾驶舱</Link>}
+          <label className="inline-flex h-9 items-center gap-2 rounded-lg border border-background-200 bg-white px-3 text-xs text-foreground-600">
+            <i className="ri-calendar-line text-foreground-400" aria-hidden="true" />
+            <select
+              aria-label="趋势时间范围"
+              value={trendMonths}
+              onChange={(event) => setTrendMonths(Number(event.target.value) as 3 | 6 | 7)}
+              className="bg-transparent pr-1 font-medium text-foreground-700 outline-none"
+            >
+              <option value={3}>近 3 个月</option>
+              <option value={6}>近 6 个月</option>
+              <option value={7}>近 7 个月</option>
+            </select>
+          </label>
           <span className="text-xs text-foreground-400">数据更新于 {displayTime(data?.generated_at)}</span>
           <button type="button" onClick={() => void exportCsv()} disabled={!data || exporting} className="rounded-lg border border-background-200 bg-background-100 px-3 py-1.5 text-xs font-medium text-foreground-700 hover:bg-background-200 disabled:opacity-50">
             <i className="ri-download-2-line mr-1" />{exporting ? '导出中' : '导出报表'}
@@ -292,51 +301,37 @@ function OrganizationDataBoard({ includeRecruiterPerformance }: { includeRecruit
             ))}
           </div>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <section className="rounded-xl border border-background-200 bg-white p-5 lg:col-span-2">
-              <div className="mb-5 flex items-center justify-between">
-                <div><h2 className="font-heading font-bold text-foreground-900">月度招聘趋势</h2><p className="mt-0.5 text-xs text-foreground-500">近 7 个月入职与 Offer 发放</p></div>
-                <div className="rounded-lg bg-background-100 p-0.5">
-                  <button type="button" onClick={() => setTrendView('hires')} className={`rounded-md px-3 py-1.5 text-xs ${trendView === 'hires' ? 'bg-white shadow-sm' : 'text-foreground-500'}`}>入职人数</button>
-                  <button type="button" onClick={() => setTrendView('offers')} className={`rounded-md px-3 py-1.5 text-xs ${trendView === 'offers' ? 'bg-white shadow-sm' : 'text-foreground-500'}`}>Offer 数量</button>
-                </div>
-              </div>
-              <div className="flex h-48 items-end gap-2">
-                {data.monthly_trends.map((item) => {
-                  const value = trendView === 'hires' ? item.hires : item.offers;
-                  return (
-                    <div key={item.month} className="flex flex-1 flex-col items-center gap-1">
-                      <span className="text-xs font-semibold">{value}</span>
-                      <div className="flex h-36 w-full items-end justify-center"><div className="w-full max-w-10 rounded-t bg-primary-400" style={{ height: `${Math.max(4, value / maxTrend * 100)}%` }} /></div>
-                      <span className="text-xs text-foreground-500">{item.month}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
+          <Suspense fallback={(
+            <div className="rounded-xl border border-background-200 bg-white px-5 py-12 text-center text-sm text-foreground-500">
+              正在加载管理图表...
+            </div>
+          )}>
+            <ManagementAnalyticsPanels data={data} trendMonths={trendMonths} />
+          </Suspense>
 
-            <section className="rounded-xl border border-background-200 bg-white p-5">
-              <h2 className="font-heading font-bold text-foreground-900">招聘漏斗</h2>
-              <p className="mt-0.5 text-xs text-foreground-500">点击阶段查看当前在招需求组成</p>
-              <div className="mt-5 space-y-2">
-                {funnelRows.map((row) => (
-                  <button
-                    key={row.key}
-                    type="button"
-                    data-ui="analytics-funnel-drilldown"
-                    onClick={() => openInsight(row.key)}
-                    className="group flex w-full items-center gap-3 rounded-lg p-1.5 text-left hover:bg-background-50 focus:outline-none focus:ring-2 focus:ring-primary-200"
-                  >
-                    <span className="w-24 text-xs text-foreground-600">{row.label}</span>
-                    <span className="h-6 flex-1 overflow-hidden rounded-full bg-background-100">
-                      <span className="flex h-full items-center rounded-full bg-primary-400 pl-2 text-xs font-medium text-white" style={{ width: `${Math.max(5, row.value / Math.max(1, data.funnel.resumes) * 100)}%` }}>{row.value}</span>
-                    </span>
-                    <ChevronRight size={14} className="text-foreground-400 group-hover:text-primary-600" />
-                  </button>
-                ))}
-              </div>
-            </section>
-          </div>
+          <section className="rounded-xl border border-background-200 bg-white p-5">
+            <h2 className="font-heading font-bold text-foreground-900">招聘漏斗</h2>
+            <p className="mt-0.5 text-xs text-foreground-500">保留原有阶段下钻，点击查看当前在招需求组成</p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              {funnelRows.map((row) => (
+                <button
+                  key={row.key}
+                  type="button"
+                  data-ui="analytics-funnel-drilldown"
+                  onClick={() => openInsight(row.key)}
+                  className="group rounded-lg border border-background-100 p-3 text-left hover:border-primary-200 hover:bg-primary-50/30 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                >
+                  <span className="flex items-center justify-between gap-2 text-xs text-foreground-600">
+                    {row.label}<ChevronRight size={14} className="text-foreground-300 group-hover:text-primary-600" />
+                  </span>
+                  <span className="mt-2 block text-lg font-semibold text-foreground-900">{row.value}</span>
+                  <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-background-100">
+                    <span className="block h-full rounded-full bg-primary-400" style={{ width: `${Math.max(5, row.value / Math.max(1, data.funnel.resumes) * 100)}%` }} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <section className="rounded-xl border border-background-200 bg-white p-5">

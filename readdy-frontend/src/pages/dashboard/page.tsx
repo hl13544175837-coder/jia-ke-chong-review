@@ -11,6 +11,9 @@ import {
 } from 'lucide-react';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import PageHeader from '@/components/ui/PageHeader';
+import ActionButton from '@/components/ui/ActionButton';
+import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
+import type { SemanticStatusTone } from '@/components/ui/recruitmentPresentation';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { demandsApi } from '@/features/demands/api';
 import { interviewsApi } from '@/features/interviews/api';
@@ -64,11 +67,11 @@ interface WaitingItem {
   assignmentId?: number | null;
 }
 
-const taskToneClasses: Record<TaskTone, { icon: string; badge: string }> = {
-  amber: { icon: 'bg-amber-50 text-amber-700', badge: 'bg-amber-50 text-amber-700' },
-  green: { icon: 'bg-emerald-50 text-emerald-700', badge: 'bg-emerald-50 text-emerald-700' },
-  red: { icon: 'bg-red-50 text-red-700', badge: 'bg-red-50 text-red-700' },
-  blue: { icon: 'bg-sky-50 text-sky-700', badge: 'bg-sky-50 text-sky-700' },
+const taskToneClasses: Record<TaskTone, { icon: string; status: SemanticStatusTone }> = {
+  amber: { icon: 'bg-amber-50 text-amber-700', status: 'pending' },
+  green: { icon: 'bg-emerald-50 text-emerald-700', status: 'success' },
+  red: { icon: 'bg-red-50 text-red-700', status: 'danger' },
+  blue: { icon: 'bg-sky-50 text-sky-700', status: 'info' },
 };
 
 const riskClasses: Record<DemandRiskLevel, string> = {
@@ -165,6 +168,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
   const [remindingAssignmentId, setRemindingAssignmentId] = useState<number | null>(null);
+  const [showAllTasks, setShowAllTasks] = useState(false);
 
   const loadFacts = useCallback(async () => {
     setLoading(true);
@@ -243,6 +247,42 @@ export default function DashboardPage() {
       priority: 80,
       action: () => navigate(`/interviewer/screening?task=${item.id}`),
     })),
+    ...summary.unassignedInterviews.map((item) => ({
+      key: `unassigned-interview-${item.candidate_id}-${item.demand_id}`,
+      tag: '待安排面试',
+      title: `${item.name_masked} · ${item.job_title}`,
+      detail: '请确认面试官和面试时间',
+      time: '时间待安排',
+      actionLabel: '去安排',
+      tone: 'amber' as const,
+      urgent: true,
+      priority: 92,
+      action: () => navigate(`/interviews?status=unassigned&candidate=${item.candidate_id}&from=dashboard`),
+    })),
+    ...summary.waitingConfirmation.map((item) => ({
+      key: `confirm-interview-${item.assignment_id}`,
+      tag: '待确认已面试',
+      title: `${item.name_masked} · ${item.job_title}`,
+      detail: '面试时间已到，请确认实际是否完成',
+      time: item.scheduled_at ? shortDateLabel(item.scheduled_at) : '时间待确认',
+      actionLabel: '去确认',
+      tone: 'blue' as const,
+      urgent: false,
+      priority: 86,
+      action: () => navigate(`/interviews?status=scheduled&candidate=${item.candidate_id}&from=dashboard`),
+    })),
+    ...summary.communicationTasks.map((item) => ({
+      key: item.key,
+      tag: '待沟通',
+      title: `${item.candidateName} · ${item.jobTitle}`,
+      detail: `第 ${item.roundSequence || '-'} 轮评价已完成，请确认下一步`,
+      time: item.scheduledAt ? shortDateLabel(item.scheduledAt) : '评价已提交',
+      actionLabel: '去沟通',
+      tone: 'green' as const,
+      urgent: false,
+      priority: 84,
+      action: () => navigate(`/interviews?candidate=${item.candidateId}&demand=${item.demandId}&from=dashboard&action=communicate`),
+    })),
     ...summary.myOfferActions.map((item) => ({
       key: `offer-${item.id}`,
       tag: '待处理 Offer',
@@ -259,10 +299,23 @@ export default function DashboardPage() {
     assignedBusinessReviews,
     navigate,
     summary.completionDemands,
+    summary.unassignedInterviews,
+    summary.waitingConfirmation,
+    summary.communicationTasks,
     summary.myOfferActions,
     summary.pendingApprovals,
     isManager,
   ]);
+
+  const visibleTaskItems = useMemo(() => {
+    if (showAllTasks || taskItems.length <= 4) return taskItems;
+    const topTasks = taskItems.slice(0, 4);
+    const firstCommunicationTask = taskItems.find((item) => item.tag === '待沟通');
+    if (!firstCommunicationTask || topTasks.some((item) => item.tag === '待沟通')) {
+      return topTasks;
+    }
+    return [...topTasks.slice(0, 3), firstCommunicationTask];
+  }, [showAllTasks, taskItems]);
 
   const remindFeedback = useCallback(async (assignmentId: number) => {
     if (remindingAssignmentId) return;
@@ -388,27 +441,33 @@ export default function DashboardPage() {
                 </>
               ) : (
                 <>
-                  <button
-                    type="button"
+                  <ActionButton
+                    tone="primary"
+                    size="sm"
                     onClick={() => navigate('/jobs', { state: { fromDashboard: true, openCreate: true } })}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary-600 px-3.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+                    className="h-9 px-3.5 text-sm"
+                    icon={<CirclePlus size={15} aria-hidden="true" />}
                   >
-                    <CirclePlus size={15} aria-hidden="true" />新建需求
-                  </button>
-                  <button
-                    type="button"
+                    新建需求
+                  </ActionButton>
+                  <ActionButton
+                    tone="secondary"
+                    size="sm"
                     onClick={() => navigate('/candidates', { state: { fromDashboard: true, openUpload: true } })}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+                    className="h-9 px-3.5 text-sm"
+                    icon={<FileUp size={15} aria-hidden="true" />}
                   >
-                    <FileUp size={15} aria-hidden="true" />导入简历
-                  </button>
-                  <button
-                    type="button"
+                    导入简历
+                  </ActionButton>
+                  <ActionButton
+                    tone="secondary"
+                    size="sm"
                     onClick={() => navigate('/interviews?status=unassigned&from=dashboard')}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary-300 bg-white px-3.5 text-sm font-medium text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+                    className="h-9 px-3.5 text-sm"
+                    icon={<CalendarDays size={15} aria-hidden="true" />}
                   >
-                    <CalendarDays size={15} aria-hidden="true" />安排面试
-                  </button>
+                    安排面试
+                  </ActionButton>
                 </>
               )}
               <button
@@ -462,7 +521,7 @@ export default function DashboardPage() {
             )}
           >
             <div className="divide-y divide-background-100">
-              {taskItems.slice(0, 4).map((item) => {
+              {visibleTaskItems.map((item) => {
                 const tone = taskToneClasses[item.tone];
                 return (
                   <button
@@ -477,7 +536,7 @@ export default function DashboardPage() {
                     </span>
                     <span className="min-w-0">
                       <span className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded px-2 py-0.5 text-[11px] font-medium ${tone.badge}`}>{item.tag}</span>
+                        <SemanticStatusBadge tone={tone.status} className="px-2 py-0.5 text-[11px]">{item.tag}</SemanticStatusBadge>
                         <span className="truncate text-sm font-semibold text-foreground-900">{item.title}</span>
                       </span>
                       <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground-500">
@@ -499,8 +558,8 @@ export default function DashboardPage() {
               )}
             </div>
             {taskItems.length > 4 && (
-              <button type="button" onClick={() => navigate('/jobs')} className="flex w-full items-center justify-center gap-1 border-t border-background-100 py-2.5 text-xs font-medium text-foreground-600 hover:bg-background-50 hover:text-primary-700">
-                查看全部 {taskItems.length} 项<ChevronRight size={13} aria-hidden="true" />
+              <button type="button" onClick={() => setShowAllTasks((current) => !current)} className="flex w-full items-center justify-center gap-1 border-t border-background-100 py-2.5 text-xs font-medium text-foreground-600 hover:bg-background-50 hover:text-primary-700">
+                {showAllTasks ? '收起' : `查看全部 ${taskItems.length} 项`}<ChevronRight size={13} className={showAllTasks ? '-rotate-90' : ''} aria-hidden="true" />
               </button>
             )}
           </SectionCard>

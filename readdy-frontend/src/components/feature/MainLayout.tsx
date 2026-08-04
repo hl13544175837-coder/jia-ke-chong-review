@@ -63,7 +63,7 @@ const directorNavItems: NavItem[] = [
 const interviewerNavItems: NavItem[] = [
   { path: '/interviewer/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['interviewer'], menuCode: 'index' },
   { path: '/interviewer/jobs', icon: 'ri-briefcase-line', label: '招聘需求', roles: ['interviewer'], menuCode: 'demands' },
-  { path: '/interviewer/screening', icon: 'ri-file-search-line', label: '待面试官筛选', roles: ['interviewer'], menuCode: 'interviews' },
+  { path: '/interviewer/screening', icon: 'ri-file-search-line', label: '候选人筛选', roles: ['interviewer'], menuCode: 'interviews' },
   { path: '/interviewer/interviews', icon: 'ri-calendar-event-line', label: '我的面试', roles: ['interviewer'], menuCode: 'interviews' },
   { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['interviewer'], menuCode: 'bi' },
 ];

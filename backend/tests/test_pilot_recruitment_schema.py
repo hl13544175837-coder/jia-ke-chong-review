@@ -111,7 +111,7 @@ def test_revision_11_adds_candidate_resume_fingerprint_without_backfilling_histo
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260730_13"
+            ).scalar_one() == "20260804_14"
     finally:
         engine.dispose()
 
@@ -154,7 +154,7 @@ def test_revision_12_adds_candidate_resume_version_history_additively(tmp_path):
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260730_13"
+            ).scalar_one() == "20260804_14"
     finally:
         engine.dispose()
 
@@ -177,7 +177,7 @@ def test_revisions_08_and_09_accept_preexisting_orm_contract(tmp_path):
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260730_13"
+            ).scalar_one() == "20260804_14"
     finally:
         engine.dispose()
 
@@ -222,6 +222,6 @@ def test_revision_09_creates_candidate_talent_pool_tables(tmp_path):
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260730_13"
+            ).scalar_one() == "20260804_14"
     finally:
         engine.dispose()

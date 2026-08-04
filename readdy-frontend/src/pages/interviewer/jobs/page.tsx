@@ -311,6 +311,7 @@ export default function InterviewerJobsPage() {
     setFormErrors({});
     try {
       const editable: DemandUpdateInput = {
+        jd_text: draft.jdText.trim(),
         requester_department: draft.requesterDepartment.trim(),
         city: draft.city.trim(),
         hiring_manager_name: draft.hiringManagerName.trim(),
@@ -521,8 +522,9 @@ export default function InterviewerJobsPage() {
                   </div>
 
                   <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <FormField label="完整 JD" error={formErrors.jd_text}>
-                      <textarea readOnly rows={10} value={templateLoading ? '正在加载岗位模板...' : draft.jdText} className={`${inputClass} resize-none bg-background-50 leading-6`} />
+                    <FormField label="本次需求的 JD" error={formErrors.jd_text}>
+                      <textarea rows={10} value={templateLoading ? '正在加载岗位模板...' : draft.jdText} onChange={(event) => setDraft((current) => ({ ...current, jdText: event.target.value }))} className={`${inputClass} resize-none leading-6`} />
+                      <p className="mt-1 text-xs text-foreground-400">这里只修改本次招聘需求，不会改公司的公共岗位模板。</p>
                     </FormField>
                     <FormField label="面试关注点">
                       <textarea rows={10} value={draft.focusPoints} onChange={(event) => setDraft((current) => ({ ...current, focusPoints: event.target.value }))} placeholder="每行一项" className={`${inputClass} resize-none leading-6`} />

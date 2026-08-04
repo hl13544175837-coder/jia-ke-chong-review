@@ -21,12 +21,12 @@ test('主导航记住面试官工作页和招聘看板，但不带回已经关�
     '/interviewer/jobs?tab=approved',
   );
   assert.equal(
-    safeRememberedHref('/interviewer/screening', '/interviewer/screening?tab=approved&demand=17&task=32'),
-    '/interviewer/screening?tab=approved&demand=17',
+    safeRememberedHref('/interviewer/screening', '/interviewer/screening?tab=approved&q=java&job=后端工程师&department=技术部&city=上海&demand=17&task=32'),
+    '/interviewer/screening?tab=approved&q=java&job=%E5%90%8E%E7%AB%AF%E5%B7%A5%E7%A8%8B%E5%B8%88&department=%E6%8A%80%E6%9C%AF%E9%83%A8&city=%E4%B8%8A%E6%B5%B7&demand=17',
   );
   assert.equal(
-    safeRememberedHref('/interviewer/interviews', '/interviewer/interviews?tab=completed&q=java&candidate=8&assignment=12&demand=17'),
-    '/interviewer/interviews?tab=completed&q=java',
+    safeRememberedHref('/interviewer/interviews', '/interviewer/interviews?tab=completed&q=java&job=后端工程师&department=技术部&date=2026-08-03&candidate=8&assignment=12&demand=17'),
+    '/interviewer/interviews?tab=completed&q=java&job=%E5%90%8E%E7%AB%AF%E5%B7%A5%E7%A8%8B%E5%B8%88&department=%E6%8A%80%E6%9C%AF%E9%83%A8&date=2026-08-03',
   );
   assert.equal(
     safeRememberedHref('/kanban', '/kanban?demand=17&detailCandidate=8&candidate=8&target=rejected'),

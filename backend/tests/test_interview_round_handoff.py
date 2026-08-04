@@ -64,7 +64,7 @@ def _seed_interview_flow(app, owner_id):
         return demand.id, candidate.id
 
 
-def test_second_round_feedback_is_locked_until_own_feedback_and_first_round_is_read_only(
+def test_second_round_can_always_read_previous_feedback_and_first_round_is_read_only(
     client, make_user, app
 ):
     owner_id, owner_token = make_user(
@@ -162,15 +162,15 @@ def test_second_round_feedback_is_locked_until_own_feedback_and_first_round_is_r
     )
     assert journey_before.status_code == 200
     journey_before_payload = journey_before.get_json()
-    assert journey_before_payload["feedback"] == []
+    assert [item["note"] for item in journey_before_payload["feedback"]] == [
+        "一面通过：沟通清晰，建议进入二面"
+    ]
     rounds = journey_before_payload["interview_rounds"]
     assert [item["round_sequence"] for item in rounds] == [1, 2]
     assert rounds[0]["interviewer_name"] == "一面面试官"
-    assert rounds[0]["feedback"] is None
-    assert rounds[0]["feedback_locked"] is True
+    assert rounds[0]["feedback"]["note"] == "一面通过：沟通清晰，建议进入二面"
     assert rounds[1]["interviewer_name"] == "二面面试官"
     assert rounds[1]["feedback"] is None
-    assert rounds[1]["feedback_locked"] is False
 
     owner_journey = client.get(
         f"/api/candidates/{candidate_id}/journey?demand_id={demand_id}",
@@ -232,7 +232,6 @@ def test_second_round_feedback_is_locked_until_own_feedback_and_first_round_is_r
     } == {"一面通过：沟通清晰，建议进入二面", "二面独立评价完成"}
     rounds_after = journey_after_payload["interview_rounds"]
     assert rounds_after[0]["feedback"]["note"] == "一面通过：沟通清晰，建议进入二面"
-    assert rounds_after[0]["feedback_locked"] is False
 
     first_journey_after = client.get(
         f"/api/candidates/{candidate_id}/journey?demand_id={demand_id}",

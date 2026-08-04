@@ -1,4 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import ActionButton from '@/components/ui/ActionButton';
+import DetailActionBar from '@/components/ui/DetailActionBar';
+import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
+import { demandStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import type { DemandUpdateInput, RecruitmentDemand } from '@/features/demands/types';
 
 interface DemandDetailPanelProps {
@@ -88,8 +92,16 @@ export default function DemandDetailPanel({
           {!editing ? (
             <div className="space-y-6">
               <section className="grid grid-cols-2 gap-4 rounded-lg border border-background-200 p-4 text-sm">
-                <Info label="审核状态" value={approvalLabel(demand.approval_status)} />
-                <Info label="当前状态" value={statusLabel(demand.status)} />
+                <Info label="审核状态" value={(
+                  <SemanticStatusBadge tone={statusPresentation(demandStatusPresentation, demand.approval_status, approvalLabel(demand.approval_status)).tone}>
+                    {approvalLabel(demand.approval_status)}
+                  </SemanticStatusBadge>
+                )} />
+                <Info label="当前状态" value={(
+                  <SemanticStatusBadge tone={statusPresentation(demandStatusPresentation, demand.status).tone}>
+                    {statusLabel(demand.status)}
+                  </SemanticStatusBadge>
+                )} />
                 <Info label="提交时间" value={formatDateTime(demand.submitted_at)} />
                 <Info label="审核时间" value={formatDateTime(demand.reviewed_at)} />
                 <Info label="审核人" value={demand.reviewed_by ? `用户 #${demand.reviewed_by}` : '暂无'} />
@@ -142,7 +154,7 @@ export default function DemandDetailPanel({
           {error && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600" role="alert">{error}</p>}
         </div>
 
-        <footer className="border-t border-background-100 px-6 py-4">
+        <DetailActionBar>
           {rejectOpen && reviewable && !editing && (
             <div className="mb-4">
               <label className="block text-sm font-medium text-foreground-700">
@@ -166,51 +178,51 @@ export default function DemandDetailPanel({
           <div className="flex flex-wrap justify-end gap-3">
             {editing ? (
               <>
-                <button type="button" disabled={saving} onClick={() => setEditing(false)} className="rounded-lg border border-background-200 px-4 py-2 text-sm text-foreground-700 hover:bg-background-50 disabled:opacity-50">取消</button>
-                <button
+                <ActionButton type="button" tone="secondary" disabled={saving} onClick={() => setEditing(false)}>取消</ActionButton>
+                <ActionButton
                   type="button"
+                  tone="primary"
                   disabled={saving}
                   onClick={() => (document.getElementById('demand-edit-form') as HTMLFormElement | null)?.requestSubmit()}
-                  className="rounded-lg bg-primary-500 px-5 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:opacity-50"
                 >
                   {saving ? '正在保存...' : '保存修改'}
-                </button>
+                </ActionButton>
               </>
             ) : (
               <>
-                <button type="button" disabled={saving} onClick={() => setEditing(true)} className="flex items-center gap-1.5 rounded-lg border border-background-200 px-4 py-2 text-sm text-foreground-700 hover:bg-background-50 disabled:opacity-50">
+                <ActionButton type="button" tone="secondary" disabled={saving} onClick={() => setEditing(true)}>
                   <i className="ri-edit-line"></i>编辑需求
-                </button>
+                </ActionButton>
                 {reviewable && !rejectOpen && (
                   <>
-                    <button type="button" disabled={saving} onClick={() => { void onApprove(demand.id); }} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                    <ActionButton type="button" tone="primary" disabled={saving} onClick={() => { void onApprove(demand.id); }}>
                       <i className="ri-check-line"></i>{saving ? '处理中...' : '通过'}
-                    </button>
-                    <button type="button" disabled={saving} onClick={() => setRejectOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+                    </ActionButton>
+                    <ActionButton type="button" tone="danger" disabled={saving} onClick={() => setRejectOpen(true)}>
                       <i className="ri-close-line"></i>不通过
-                    </button>
+                    </ActionButton>
                   </>
                 )}
                 {reviewable && rejectOpen && (
                   <>
-                    <button type="button" disabled={saving} onClick={() => { setRejectOpen(false); setRejectReason(''); setRejectError(''); }} className="rounded-lg border border-background-200 px-4 py-2 text-sm text-foreground-700 hover:bg-background-50 disabled:opacity-50">取消驳回</button>
-                    <button type="button" disabled={saving} onClick={() => { void submitRejection(); }} className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                    <ActionButton type="button" tone="secondary" disabled={saving} onClick={() => { setRejectOpen(false); setRejectReason(''); setRejectError(''); }}>取消驳回</ActionButton>
+                    <ActionButton type="button" tone="danger" disabled={saving} onClick={() => { void submitRejection(); }}>
                       <i className="ri-close-circle-line"></i>{saving ? '正在提交...' : '确认不通过'}
-                    </button>
+                    </ActionButton>
                   </>
                 )}
               </>
             )}
           </div>
-        </footer>
+        </DetailActionBar>
       </aside>
       <style>{`.field{margin-top:.25rem;width:100%;border:1px solid #e5e7eb;border-radius:.5rem;padding:.55rem .75rem;font-size:.875rem;outline:none}.field:focus{border-color:#10b981;box-shadow:0 0 0 2px rgba(16,185,129,.12)}`}</style>
     </>
   );
 }
 
-function Info({ label, value }: { label: string; value: string }) {
-  return <div><p className="text-xs text-foreground-400">{label}</p><p className="mt-1 font-medium text-foreground-800">{value}</p></div>;
+function Info({ label, value }: { label: string; value: ReactNode }) {
+  return <div><p className="text-xs text-foreground-400">{label}</p><div className="mt-1 font-medium text-foreground-800">{value}</div></div>;
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

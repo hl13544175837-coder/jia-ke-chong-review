@@ -356,6 +356,12 @@ def apply_editable_fields(demand, data, *, org_id):
             fields["headcount"] = "HC 必须是大于 0 的整数"
         else:
             demand.headcount = value
+    if "jd_text" in data:
+        jd_text = str(data.get("jd_text") or "").strip()
+        if not jd_text:
+            fields["jd_text"] = "完整 JD 不能为空"
+        else:
+            demand.jd_text_snapshot = jd_text
     if "note" in data:
         demand.note = clean_text(data.get("note"), 2000)
     return fields

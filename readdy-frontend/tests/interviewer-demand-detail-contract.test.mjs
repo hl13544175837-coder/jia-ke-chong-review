@@ -5,6 +5,7 @@ import test from 'node:test';
 
 const root = path.resolve(import.meta.dirname, '..');
 const pageSource = readFileSync(path.join(root, 'src/pages/interviewer/jobs/page.tsx'), 'utf8');
+const demandTypesSource = readFileSync(path.join(root, 'src/features/demands/types.ts'), 'utf8');
 const screeningSource = readFileSync(path.join(root, 'src/pages/interviewer/screening/page.tsx'), 'utf8');
 const drawerPath = path.join(root, 'src/pages/interviewer/jobs/components/InterviewerDemandDetailDrawer.tsx');
 const drawerSource = existsSync(drawerPath) ? readFileSync(drawerPath, 'utf8') : '';
@@ -33,4 +34,11 @@ test('从已通过需求进入筛选页时只显示该需求的任务', () => {
   assert.match(screeningSource, /searchParams\.get\('demand'\)/);
   assert.match(screeningSource, /task\.demand_id === requestedDemandId/);
   assert.match(screeningSource, /当前仅显示/);
+});
+
+test('面试官修改的是本次需求 JD 并随重提请求保存', () => {
+  assert.match(demandTypesSource, /interface DemandUpdateInput[\s\S]*jd_text\?: string/);
+  assert.match(pageSource, /jd_text: draft\.jdText\.trim\(\)/);
+  assert.doesNotMatch(pageSource, /<textarea readOnly rows=\{10\} value=\{templateLoading/);
+  assert.match(pageSource, /本次需求的 JD/);
 });

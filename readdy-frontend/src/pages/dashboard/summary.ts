@@ -2,6 +2,7 @@ import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import type { InterviewManagementRow } from '@/features/interviews/types';
 import type { OfferRecord, OfferStatus } from '@/features/offers/types';
+import { buildCommunicationTasks } from '@/features/workbench/communicationTasks';
 
 export interface DashboardFacts {
   demands: RecruitmentDemand[];
@@ -111,6 +112,9 @@ export function buildDashboardSummary(
   const activeInterviews = facts.interviews.filter((item) => activeDemandIds.has(item.demand_id));
   const activeOffers = facts.offers.filter((item) => activeDemandIds.has(item.demand_id));
   const pendingReviews = activeReviews.filter((item) => item.status === 'pending');
+  const unassignedInterviews = activeInterviews.filter((item) => (
+    !item.assignment_id || item.assignment_status === 'unassigned'
+  ));
   const waitingFeedback = activeInterviews.filter((item) => (
     item.assignment_status === 'awaiting_feedback' && !item.feedback_submitted
   ));
@@ -125,10 +129,15 @@ export function buildDashboardSummary(
     const date = interviewDate(item.scheduled_at);
     return date ? localDateKey(date) === todayKey : false;
   });
+  const waitingConfirmation = scheduledInterviews.filter((item) => {
+    const date = interviewDate(item.scheduled_at);
+    return !item.feedback_submitted && Boolean(date && date.getTime() <= now.getTime());
+  });
   const overdueFeedback = waitingFeedback.filter((item) => {
     const date = interviewDate(item.scheduled_at);
     return date ? date.getTime() < now.getTime() : false;
   });
+  const communicationTasks = managerView ? [] : buildCommunicationTasks(activeInterviews);
   const stageSummary = activeDemands.reduce((total, demand) => {
     const currentStages = demand.metrics.current_stage_counts ?? {};
     total.hrScreening += currentStages.pending ?? 0;
@@ -157,15 +166,18 @@ export function buildDashboardSummary(
     pendingApprovals,
     completionDemands,
     pendingReviews,
+    unassignedInterviews,
     waitingFeedback,
     scheduledInterviews,
     todayInterviews,
+    waitingConfirmation,
     overdueFeedback,
+    communicationTasks,
     stageSummary,
     demandProgress,
     myOfferActions,
     waitingOfferActions,
-    myTaskCount: pendingApprovals.length + completionDemands.length + myOfferActions.length,
+    myTaskCount: pendingApprovals.length + completionDemands.length + unassignedInterviews.length + waitingConfirmation.length + communicationTasks.length + myOfferActions.length,
     waitingOthersCount: pendingReviews.length + waitingFeedback.length + waitingOfferActions.length,
   };
 }

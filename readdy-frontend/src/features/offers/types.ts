@@ -72,8 +72,31 @@ export interface OfferRecord {
   history: OfferHistoryItem[];
 }
 
+export type OfferOaStatus = 'not_started' | 'pending' | 'approved' | 'rejected' | 'completed';
+
+export interface OfferWorkbenchRecord extends Omit<OfferRecord, 'id'> {
+  id: number | null;
+  oa_instance_no: string;
+  oa_status: OfferOaStatus;
+  oa_note: string;
+  oa_updated_at: string | null;
+  completed_interview_rounds: number;
+}
+
+export interface OfferOaRegistrationInput {
+  oa_instance_no: string;
+  oa_status: Exclude<OfferOaStatus, 'not_started'>;
+  note: string;
+}
+
 export interface OfferListResponse {
   items: OfferRecord[];
+  total: number;
+  unmapped_total: number;
+}
+
+export interface OfferWorkbenchResponse {
+  items: OfferWorkbenchRecord[];
   total: number;
   unmapped_total: number;
 }

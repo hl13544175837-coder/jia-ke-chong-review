@@ -56,3 +56,18 @@ test('业务代码不直接引用其他页面目录里的内部组件', () => {
     `跨页面依赖必须迁移到 src/features：\n${violations.join('\n')}`,
   );
 });
+
+test('候选人详情和工作台模块保持单向依赖', () => {
+  const candidateFeature = sourceFiles(path.join(sourceRoot, 'features', 'candidates'))
+    .map((file) => readFileSync(file, 'utf8'))
+    .join('\n');
+  const dashboard = readFileSync(path.join(pagesRoot, 'dashboard', 'page.tsx'), 'utf8');
+  const communicationTasks = readFileSync(
+    path.join(sourceRoot, 'features', 'workbench', 'communicationTasks.ts'),
+    'utf8',
+  );
+
+  assert.doesNotMatch(candidateFeature, /@\/pages\//);
+  assert.doesNotMatch(dashboard, /pages\/offers/);
+  assert.doesNotMatch(communicationTasks, /@\/pages\//);
+});

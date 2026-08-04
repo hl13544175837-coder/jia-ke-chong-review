@@ -11,15 +11,19 @@ import {
   UserRound,
 } from 'lucide-react';
 import { businessReviewsApi } from '@/features/businessReviews/api';
-import type { BusinessReviewTask } from '@/features/businessReviews/types';
+import type { BusinessReviewDecisionInput, BusinessReviewTask } from '@/features/businessReviews/types';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
 import { candidatesApi } from '@/features/candidates/api';
 import type { CandidateJourney } from '@/features/candidates/types';
+import ActionButton from '@/components/ui/ActionButton';
+import DetailActionBar from '@/components/ui/DetailActionBar';
+import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
+import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
 
 interface BusinessReviewDetailProps {
   task: BusinessReviewTask;
-  onReview?: () => void;
+  onReview?: (decision: BusinessReviewDecisionInput['decision']) => void;
 }
 
 function formatDate(value: string | null) {
@@ -41,6 +45,7 @@ function actionError(error: unknown) {
 }
 
 export default function BusinessReviewDetail({ task, onReview }: BusinessReviewDetailProps) {
+  const [activeTab, setActiveTab] = useState<CandidateDetailTab>('interview');
   const [resumeAction, setResumeAction] = useState<'preview' | 'download' | null>(null);
   const [resumeError, setResumeError] = useState('');
   const [journey, setJourney] = useState<CandidateJourney | null>(null);
@@ -134,15 +139,6 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
               </p>
             </div>
           </div>
-          {task.status === 'pending' && onReview && (
-            <button
-              type="button"
-              onClick={onReview}
-              className="inline-flex min-h-10 items-center justify-center rounded-lg bg-primary-600 px-4 text-sm font-medium text-white hover:bg-primary-700"
-            >
-              提交筛选结果
-            </button>
-          )}
         </div>
 
         <dl className="mt-5 grid gap-3 border-t border-background-100 pt-4 text-xs sm:grid-cols-3">
@@ -161,14 +157,19 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
         </dl>
       </section>
 
+      <CandidateDetailWorkspace value={activeTab} onChange={setActiveTab}>
+
+      <div className={activeTab === 'feedback' ? 'block' : 'hidden'} role="tabpanel" aria-label="面试评价">
       <section className="border-b border-background-200 px-5 py-5 sm:px-6">
-        {journey ? <CandidateJourneySummary journey={journey} /> : journeyError ? (
+        {journey ? <CandidateJourneySummary journey={journey} interviewOnly /> : journeyError ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>
         ) : (
           <div className="rounded-lg bg-background-50 px-3 py-3 text-xs text-foreground-500">正在加载完整招聘过程...</div>
         )}
       </section>
+      </div>
 
+      <div className={activeTab === 'interview' ? 'block' : 'hidden'} role="tabpanel" aria-label="面试信息">
       <section className="border-b border-background-200 px-5 py-5 sm:px-6">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
           <MessageSquareText size={16} aria-hidden="true" /> HR 备注
@@ -228,7 +229,9 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
           </div>
         </div>
       </section>
+      </div>
 
+      <div className={activeTab === 'resume' ? 'block' : 'hidden'} role="tabpanel" aria-label="候选人简历">
       <section className="px-5 py-5 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -275,6 +278,18 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
 
         <div className="mt-4"><StructuredResumeView resume={task.candidate.resume_json} /></div>
       </section>
+      </div>
+      </CandidateDetailWorkspace>
+
+      <DetailActionBar status={<span className="text-xs text-foreground-500">筛选状态：{task.status === 'pending' ? '待处理' : '已完成'}</span>}>
+        {task.status === 'pending' && onReview ? (
+          <>
+            <ActionButton tone="secondary" onClick={() => onReview('needs_info')}>请 HR 补充</ActionButton>
+            <ActionButton tone="danger" onClick={() => onReview('rejected')}>不合适</ActionButton>
+            <ActionButton tone="primary" onClick={() => onReview('approved')}>通过并提交</ActionButton>
+          </>
+        ) : <ActionButton tone="secondary" disabled>筛选已完成</ActionButton>}
+      </DetailActionBar>
     </div>
   );
 }

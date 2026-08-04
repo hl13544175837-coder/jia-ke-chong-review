@@ -14,6 +14,10 @@ import { useEffect, useRef, useState } from 'react';
 import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
+import ActionButton from '@/components/ui/ActionButton';
+import DetailActionBar from '@/components/ui/DetailActionBar';
+import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
+import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
 import type { CandidateJourney, CandidateResumeDetail } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { formatInterviewDateTime } from '@/features/interviews/dateTime';
@@ -24,14 +28,6 @@ import type {
   Satisfaction,
 } from '@/features/interviews/types';
 import RescheduleHistory from '@/features/interviews/components/RescheduleHistory';
-
-const tabs = [
-  { key: 'interview', label: '面试信息' },
-  { key: 'resume', label: '候选人简历' },
-  { key: 'history', label: '历史评价' },
-] as const;
-
-type TabKey = typeof tabs[number]['key'];
 
 export type DetailActionLabel =
   | '面试尚未开始'
@@ -126,7 +122,7 @@ export default function InterviewerInterviewDetailDrawer({
   onRequestReschedule,
 }: InterviewerInterviewDetailDrawerProps) {
   const drawerRef = useRef<HTMLElement>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>('interview');
+  const [activeTab, setActiveTab] = useState<CandidateDetailTab>('interview');
 
   useEffect(() => {
     setActiveTab('interview');
@@ -179,30 +175,7 @@ export default function InterviewerInterviewDetailDrawer({
           </button>
         </div>
 
-        <div
-          role="tablist"
-          aria-label="面试详情"
-          className="grid grid-cols-3 border-b border-background-200 bg-white px-6"
-        >
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              id={`interview-detail-tab-${tab.key}`}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab.key}
-              aria-controls={`interview-detail-panel-${tab.key}`}
-              onClick={() => setActiveTab(tab.key)}
-              className={`border-b-2 px-2 py-3 text-sm font-medium transition-colors ${
-                activeTab === tab.key
-                  ? 'border-primary-500 text-primary-700'
-                  : 'border-transparent text-foreground-500 hover:text-foreground-800'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <CandidateDetailWorkspace value={activeTab} onChange={setActiveTab}>
 
         <div
           id={`interview-detail-panel-${activeTab}`}
@@ -280,7 +253,7 @@ export default function InterviewerInterviewDetailDrawer({
             <section>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
-                  <FileSearch size={16} /> 候选人简历
+                  <FileSearch size={16} /> 简历
                 </h3>
                 {resume?.original_resume.available && (
                   <div className="flex items-center gap-2">
@@ -311,7 +284,7 @@ export default function InterviewerInterviewDetailDrawer({
               </div>
             </section>
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-5" role="tabpanel" aria-label="面试评价">
               <section>
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
                   <MessageSquareText size={16} /> 本轮评价
@@ -328,64 +301,52 @@ export default function InterviewerInterviewDetailDrawer({
                       {feedback.concerns && <p className="whitespace-pre-wrap">顾虑：{feedback.concerns}</p>}
                       <p className="whitespace-pre-wrap">补充备注：{feedback.note || '未填写'}</p>
                     </div>
-                  ) : (
-                    <p className="text-sm text-foreground-500">尚未提交本轮评价</p>
-                  )}
+                  ) : <p className="text-sm text-foreground-500">尚未提交本轮评价</p>}
                 </div>
               </section>
-
               {journeyError && (
                 <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
-                  <p>{journeyError}</p>
-                  <button
-                    type="button"
-                    onClick={onRetry}
-                    className="mt-2 rounded-md border border-amber-200 bg-white px-3 py-1.5 font-medium text-amber-800"
-                  >重新加载</button>
+                  <p>{journeyError}</p><button type="button" onClick={onRetry} className="mt-2 rounded-md border border-amber-200 bg-white px-3 py-1.5 font-medium text-amber-800">重新加载</button>
                 </div>
               )}
               {journey
                 ? <CandidateJourneySummary journey={journey} interviewOnly />
-                : !journeyError && <p className="rounded-md bg-background-50 px-4 py-6 text-center text-sm text-foreground-500">暂无可查看的历史评价</p>}
+                : !journeyError && <p className="rounded-md bg-background-50 px-4 py-6 text-center text-sm text-foreground-500">暂无历史面试评价和操作记录</p>}
             </div>
           )}
         </div>
+        </CandidateDetailWorkspace>
 
-        <div
-          data-ui="interview-detail-sticky-actions"
-          className="sticky bottom-0 z-10 border-t border-background-200 bg-white px-6 py-4 shadow-[0_-8px_24px_rgba(15,23,42,0.06)]"
-        >
+        <div data-ui="interview-detail-sticky-actions">
           {confirmationError && (
-            <p role="alert" className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p role="alert" className="border-t border-red-200 bg-red-50 px-6 py-2 text-sm text-red-700">
               {confirmationError}
             </p>
           )}
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <DetailActionBar status={(
             <div>
               <p className="text-xs text-foreground-400">任务状态</p>
               <p className="mt-0.5 text-sm font-semibold text-foreground-800">{taskStatus(assignment)}</p>
             </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
+          )}>
+              <ActionButton
+                tone="secondary"
                 onClick={onRequestReschedule}
                 disabled={!canRequestReschedule}
                 title={assignment.pending_reschedule ? '已有待确认的改约申请' : undefined}
-                className="inline-flex min-h-10 items-center gap-2 rounded-md border border-primary-200 bg-white px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:border-background-200 disabled:text-foreground-400"
+                icon={<CalendarClock size={16} />}
               >
-                <CalendarClock size={16} /> 申请改约
-              </button>
-              <button
-                type="button"
+                申请改约
+              </ActionButton>
+              <ActionButton
+                tone="primary"
                 onClick={canSelfConfirm ? onConfirmAndStartFeedback : onStartFeedback}
                 disabled={actionDisabled}
-                className="inline-flex min-h-10 items-center gap-2 rounded-md bg-foreground-900 px-4 py-2 text-sm font-medium text-white hover:bg-foreground-800 disabled:cursor-not-allowed disabled:bg-background-200 disabled:text-foreground-500"
+                icon={<MessageSquareText size={16} />}
               >
-                <MessageSquareText size={16} />
                 {actionLabel}
-              </button>
-            </div>
-          </div>
+              </ActionButton>
+          </DetailActionBar>
         </div>
       </aside>
     </>

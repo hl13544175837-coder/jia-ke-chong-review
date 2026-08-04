@@ -689,3 +689,108 @@ def test_unrelated_offer_integrity_error_is_not_mislabeled(
 
         assert OfferRecord.query.count() == 0
         assert db.session.execute(db.text("SELECT 1")).scalar_one() == 1
+
+
+def test_offer_workbench_includes_offer_stage_candidate_before_oa_registration(
+    client, make_user, app
+):
+    recruiter_id, recruiter_token = make_user(
+        "offer-oa-workbench@example.com", role="recruiter", name="OA 招聘专员"
+    )
+    demand_id, _, candidate_id = _seed_offer_candidate(app, recruiter_id)
+
+    response = client.get("/api/offers/workbench", headers=_auth(recruiter_token))
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["total"] == 1
+    row = body["items"][0]
+    assert row["id"] is None
+    assert row["candidate_id"] == candidate_id
+    assert row["demand_id"] == demand_id
+    assert row["oa_status"] == "not_started"
+    assert row["oa_instance_no"] == ""
+    assert row["completed_interview_rounds"] == 0
+
+
+def test_recruiter_registers_oa_result_idempotently_and_workbench_refreshes(
+    client, make_user, app
+):
+    recruiter_id, recruiter_token = make_user(
+        "offer-oa-register@example.com", role="recruiter", name="OA 登记人"
+    )
+    _, interviewer_token = make_user(
+        "offer-oa-forbidden@example.com", role="interviewer"
+    )
+    demand_id, _, candidate_id = _seed_offer_candidate(app, recruiter_id)
+    path = f"/api/pipeline/demands/{demand_id}/offer/{candidate_id}/oa-registration"
+    payload = {
+        "oa_instance_no": "OA-20260804-001",
+        "oa_status": "approved",
+        "note": "OA 已审批通过",
+    }
+
+    forbidden = client.put(path, headers=_auth(interviewer_token), json=payload)
+    assert forbidden.status_code == 403
+
+    registered = client.put(
+        path,
+        headers=_auth(recruiter_token, **{"Idempotency-Key": "register-oa-1"}),
+        json=payload,
+    )
+    assert registered.status_code == 200
+    row = registered.get_json()
+    assert row["id"]
+    assert row["oa_instance_no"] == "OA-20260804-001"
+    assert row["oa_status"] == "approved"
+    assert row["oa_note"] == "OA 已审批通过"
+    assert row["oa_updated_at"]
+
+    replayed = client.put(
+        path,
+        headers=_auth(recruiter_token, **{"Idempotency-Key": "register-oa-1"}),
+        json=payload,
+    )
+    assert replayed.status_code == 200
+    assert replayed.headers["X-Idempotent-Replay"] == "true"
+
+    refreshed = client.get("/api/offers/workbench", headers=_auth(recruiter_token))
+    refreshed_row = refreshed.get_json()["items"][0]
+    assert refreshed_row["oa_instance_no"] == "OA-20260804-001"
+    assert refreshed_row["oa_status"] == "approved"
+    assert refreshed_row["history"] == []
+
+    with app.app_context():
+        from app.models import OfferEvent, OfferRecord
+
+        offer = OfferRecord.query.filter_by(
+            demand_id=demand_id, candidate_id=candidate_id
+        ).one()
+        assert offer.oa_note == "OA 已审批通过"
+        assert [event.action for event in OfferEvent.query.filter_by(offer_id=offer.id)] == [
+            "oa_registered"
+        ]
+
+
+def test_oa_registration_validates_status_and_instance_number(client, make_user, app):
+    recruiter_id, recruiter_token = make_user(
+        "offer-oa-validation@example.com", role="recruiter"
+    )
+    demand_id, _, candidate_id = _seed_offer_candidate(app, recruiter_id)
+    path = f"/api/pipeline/demands/{demand_id}/offer/{candidate_id}/oa-registration"
+
+    invalid_status = client.put(
+        path,
+        headers=_auth(recruiter_token),
+        json={"oa_instance_no": "OA-1", "oa_status": "unknown"},
+    )
+    missing_instance = client.put(
+        path,
+        headers=_auth(recruiter_token),
+        json={"oa_instance_no": "", "oa_status": "pending"},
+    )
+
+    assert invalid_status.status_code == 400
+    assert invalid_status.get_json()["code"] == "oa_status_invalid"
+    assert missing_instance.status_code == 400
+    assert missing_instance.get_json()["code"] == "oa_instance_no_required"

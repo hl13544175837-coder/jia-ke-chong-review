@@ -17,18 +17,28 @@ const journeySource = fs.readFileSync(
   path.join(root, 'src/components/candidates/CandidateJourneySummary.tsx'),
   'utf8',
 );
+const detailTabsSource = fs.readFileSync(
+  path.join(root, 'src/features/candidates/components/CandidateDetailTabs.tsx'),
+  'utf8',
+);
+const actionBarSource = fs.readFileSync(
+  path.join(root, 'src/components/ui/DetailActionBar.tsx'),
+  'utf8',
+);
 
-test('面试详情只提供三个固定页签并具备无障碍状态', () => {
+test('面试详情统一为面试信息、候选人简历和面试评价三个页签', () => {
   assert.notEqual(drawerSource, '', '详情抽屉组件尚未创建');
-  const tabLabels = [...drawerSource.matchAll(/label:\s*'([^']+)'/g)].map((match) => match[1]);
-  assert.deepEqual(tabLabels, ['面试信息', '候选人简历', '历史评价']);
-  assert.match(drawerSource, /role="tablist"/);
-  assert.match(drawerSource, /role="tab"/);
-  assert.match(drawerSource, /aria-selected=\{activeTab === tab\.key\}/);
+  const tabLabels = [...detailTabsSource.matchAll(/label:\s*'([^']+)'/g)].map((match) => match[1]);
+  assert.deepEqual(tabLabels, ['面试信息', '候选人简历', '面试评价']);
+  assert.match(drawerSource, /CandidateDetailWorkspace/);
+  assert.match(detailTabsSource, /role="tablist"/);
+  assert.match(detailTabsSource, /role="tab"/);
+  assert.match(detailTabsSource, /aria-selected=\{value === tab\.key\}/);
 });
 
 test('页签切换只改本地状态，不触发详情接口重新请求', () => {
-  assert.match(drawerSource, /onClick=\{\(\) => setActiveTab\(tab\.key\)\}/);
+  assert.match(drawerSource, /onChange=\{setActiveTab\}/);
+  assert.match(detailTabsSource, /onClick=\{\(\) => onChange\(tab\.key\)\}/);
   assert.doesNotMatch(drawerSource, /candidatesApi|interviewsApi|demandsApi|businessReviewsApi/);
   assert.match(pageSource, /<InterviewerInterviewDetailDrawer/);
 });
@@ -42,7 +52,7 @@ test('详情支持 Escape 和中文关闭按钮', () => {
   assert.match(pageSource, /escapeDisabled=\{feedbackAssignment !== null \|\| rescheduleAssignment !== null\}/);
 });
 
-test('面试官历史页只显示面试评价，不展示 Offer 和 HR 流程区块', () => {
+test('面试官的面试评价页只显示获授权评价，不展示 Offer 和 HR 流程区块', () => {
   assert.match(drawerSource, /<CandidateJourneySummary journey=\{journey\} interviewOnly/);
   assert.match(journeySource, /interviewOnly/);
   assert.match(journeySource, /!interviewOnly/);
@@ -50,7 +60,8 @@ test('面试官历史页只显示面试评价，不展示 Offer 和 HR 流程区
 
 test('固定底部操作区只显示规定的任务动作', () => {
   assert.match(drawerSource, /data-ui="interview-detail-sticky-actions"/);
-  assert.match(drawerSource, /sticky bottom-0/);
+  assert.match(drawerSource, /DetailActionBar/);
+  assert.match(actionBarSource, /sticky bottom-0/);
   const allowedActions = [
     '面试尚未开始',
     '确认已面试并填写评价',

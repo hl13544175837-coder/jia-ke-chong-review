@@ -1,4 +1,8 @@
-import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import ActionButton from '@/components/ui/ActionButton';
+import FilterBar from '@/components/ui/FilterBar';
+import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
+import { demandStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import type { RequisitionRow } from '@/features/demands/types';
 import {
   buildDemandFilterOptions,
@@ -9,15 +13,6 @@ import {
   type DemandWorkspaceTab,
 } from '../workbench';
 import { canOpenDemandStage, type DemandStageDrilldown } from '../stageDrilldown';
-
-const statusBadgeStyles: Record<string, string> = {
-  active: 'bg-primary-100 text-primary-700 border border-primary-200',
-  pending: 'bg-accent-100 text-accent-700 border border-accent-200',
-  paused: 'bg-secondary-100 text-secondary-700 border border-secondary-200',
-  filled: 'bg-primary-50 text-primary-600 border border-primary-100',
-  cancelled: 'bg-background-200 text-foreground-500 border border-background-300',
-  closed: 'bg-background-200 text-foreground-500 border border-background-300',
-};
 
 interface RequisitionTableProps {
   data: RequisitionRow[];
@@ -63,47 +58,6 @@ const priorityConfig: Record<string, { label: string; className: string }> = {
   '普通': { label: '普通', className: 'bg-secondary-100 text-secondary-700' },
 };
 
-function HeaderFilter({
-  id,
-  label,
-  open,
-  active,
-  align = 'left',
-  onToggle,
-  children,
-}: {
-  id: string;
-  label: string;
-  open: boolean;
-  active: boolean;
-  align?: 'left' | 'center';
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <th className={`relative whitespace-nowrap px-5 py-3 text-xs font-medium text-foreground-500 ${align === 'center' ? 'text-center' : 'text-left'}`}>
-      <button
-        type="button"
-        data-ui={`demand-header-filter-${id}`}
-        aria-expanded={open}
-        onClick={onToggle}
-        className={`inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-background-100 hover:text-foreground-800 ${active ? 'text-primary-700' : ''}`}
-      >
-        {label}<i className={`ri-arrow-down-s-line text-sm transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true"></i>
-      </button>
-      {open && (
-        <div role="menu" aria-label={`${label}筛选`} className="absolute left-4 top-full z-30 mt-1 max-h-60 min-w-48 overflow-y-auto rounded-lg border border-background-200 bg-white p-1.5 text-left shadow-xl">
-          {children}
-        </div>
-      )}
-    </th>
-  );
-}
-
-function HeaderOption({ label, selected, onClick }: { label: string; selected?: boolean; onClick: () => void }) {
-  return <button type="button" role="menuitemradio" aria-checked={Boolean(selected)} onClick={onClick} className={`block w-full rounded-md px-3 py-2 text-left text-xs transition ${selected ? 'bg-primary-50 font-medium text-primary-700' : 'text-foreground-600 hover:bg-background-100'}`}>{label}</button>;
-}
-
 export default function RequisitionTable({
   data,
   optionSource,
@@ -130,11 +84,9 @@ export default function RequisitionTable({
   const [confirmReason, setConfirmReason] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
-  const [toolbarPanel, setToolbarPanel] = useState<'filters' | 'sort' | null>(null);
-  const [headerPanel, setHeaderPanel] = useState<'identity' | 'location' | 'owner' | 'delivery' | 'stage' | 'status' | null>(null);
+  const [toolbarPanel, setToolbarPanel] = useState<'sort' | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
-  const tableRef = useRef<HTMLDivElement | null>(null);
 
   const filterOptions = useMemo(() => buildDemandFilterOptions(optionSource), [optionSource]);
 
@@ -146,8 +98,6 @@ export default function RequisitionTable({
     { value: 'interview', label: '面试中' },
     { value: 'offer', label: 'Offer中' },
   ], []);
-
-  const identityOptions = useMemo(() => Array.from(new Set(optionSource.map((row) => row.name).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'zh-CN')), [optionSource]);
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -168,27 +118,6 @@ export default function RequisitionTable({
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [toolbarPanel]);
-
-  useEffect(() => {
-    if (!headerPanel) return undefined;
-    const close = (event: MouseEvent) => {
-      if (tableRef.current && !tableRef.current.contains(event.target as Node)) setHeaderPanel(null);
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setHeaderPanel(null);
-    };
-    window.addEventListener('mousedown', close);
-    window.addEventListener('keydown', escape);
-    return () => {
-      window.removeEventListener('mousedown', close);
-      window.removeEventListener('keydown', escape);
-    };
-  }, [headerPanel]);
-
-  const chooseHeader = (action: () => void) => {
-    action();
-    setHeaderPanel(null);
-  };
 
   const renderSortArrow = (active: boolean) => {
     if (!active) return null;
@@ -231,20 +160,6 @@ export default function RequisitionTable({
             <span className="whitespace-nowrap text-xs text-foreground-400">{data.length} 条</span>
             <button
               type="button"
-              aria-expanded={toolbarPanel === 'filters'}
-              onClick={() => setToolbarPanel((current) => current === 'filters' ? null : 'filters')}
-              className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${
-                activeFilterEntries.length > 0
-                  ? 'border-primary-200 bg-primary-50 text-primary-700'
-                  : 'border-background-200 bg-white text-foreground-600 hover:bg-background-50'
-              }`}
-            >
-              <i className="ri-filter-3-line"></i>
-              筛选
-              {activeFilterEntries.length > 0 && <span className="rounded-full bg-primary-500 px-1.5 text-[10px] text-white">{activeFilterEntries.length}</span>}
-            </button>
-            <button
-              type="button"
               aria-expanded={toolbarPanel === 'sort'}
               onClick={() => setToolbarPanel((current) => current === 'sort' ? null : 'sort')}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-background-200 bg-white px-3 text-sm font-medium text-foreground-600 transition-colors hover:bg-background-50"
@@ -255,8 +170,7 @@ export default function RequisitionTable({
             </button>
           </div>
 
-          {toolbarPanel === 'filters' && (
-            <div className="grid w-full grid-cols-1 gap-3 rounded-xl border border-primary-100 bg-primary-50/40 p-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="招聘需求筛选面板">
+          <FilterBar className="grid w-full grid-cols-1 gap-3 rounded-xl bg-background-50 p-3 sm:grid-cols-2 xl:grid-cols-5" ariaLabel="招聘需求查询条件">
               <select aria-label="按部门筛选" value={filters.department} onChange={(event) => onFilterChange('department', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
                 <option value="">全部部门</option>
                 {filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}
@@ -275,8 +189,7 @@ export default function RequisitionTable({
               <button type="button" onClick={onClearFilters} disabled={activeFilterEntries.length === 0} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm font-medium text-foreground-600 transition-colors hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40">
                 <i className="ri-refresh-line mr-1"></i>清空筛选
               </button>
-            </div>
-          )}
+          </FilterBar>
 
           {toolbarPanel === 'sort' && (
             <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-background-200 bg-background-50 p-3" aria-label="招聘需求排序面板">
@@ -323,47 +236,16 @@ export default function RequisitionTable({
             <p className="text-sm text-foreground-500">暂无符合条件的招聘需求</p>
           </div>
         ) : (
-          <div ref={tableRef} className="overflow-x-auto">
+          <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-background-200">
-                  <HeaderFilter id="identity" label="需求 / 职位" open={headerPanel === 'identity'} active={Boolean(searchQuery)} onToggle={() => setHeaderPanel((current) => current === 'identity' ? null : 'identity')}>
-                    <HeaderOption label="全部需求" selected={!searchQuery} onClick={() => chooseHeader(() => onSearchChange(''))} />
-                    {identityOptions.map((value) => <HeaderOption key={value} label={value} selected={searchQuery === value} onClick={() => chooseHeader(() => onSearchChange(value))} />)}
-                  </HeaderFilter>
-                  <HeaderFilter id="location" label="部门 / 城市" open={headerPanel === 'location'} active={Boolean(filters.department || filters.city)} onToggle={() => setHeaderPanel((current) => current === 'location' ? null : 'location')}>
-                    <HeaderOption label="全部部门和城市" selected={!filters.department && !filters.city} onClick={() => chooseHeader(() => { onFilterChange('department', ''); onFilterChange('city', ''); })} />
-                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-foreground-400">部门</p>
-                    {filterOptions.departments.map((value) => <HeaderOption key={`department-${value}`} label={value} selected={filters.department === value} onClick={() => chooseHeader(() => { onFilterChange('department', value); onFilterChange('city', ''); })} />)}
-                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-foreground-400">城市</p>
-                    {filterOptions.cities.map((value) => <HeaderOption key={`city-${value}`} label={value} selected={filters.city === value} onClick={() => chooseHeader(() => { onFilterChange('city', value); onFilterChange('department', ''); })} />)}
-                  </HeaderFilter>
-                  <HeaderFilter id="owner" label="负责人" open={headerPanel === 'owner'} active={Boolean(filters.owner)} onToggle={() => setHeaderPanel((current) => current === 'owner' ? null : 'owner')}>
-                    <HeaderOption label="全部负责人" selected={!filters.owner} onClick={() => chooseHeader(() => onFilterChange('owner', ''))} />
-                    {filterOptions.owners.map((value) => <HeaderOption key={value} label={value} selected={filters.owner === value} onClick={() => chooseHeader(() => onFilterChange('owner', value))} />)}
-                  </HeaderFilter>
-                  <HeaderFilter id="delivery" label="HC / 截止日期" open={headerPanel === 'delivery'} active={Boolean(filters.headcount || filters.deadline)} onToggle={() => setHeaderPanel((current) => current === 'delivery' ? null : 'delivery')}>
-                    <HeaderOption label="全部 HC 和日期" selected={!filters.headcount && !filters.deadline} onClick={() => chooseHeader(() => { onFilterChange('headcount', ''); onFilterChange('deadline', ''); })} />
-                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-foreground-400">HC</p>
-                    <HeaderOption label="仍有名额" selected={filters.headcount === 'available'} onClick={() => chooseHeader(() => { onFilterChange('headcount', 'available'); onFilterChange('deadline', ''); })} />
-                    <HeaderOption label="HC 已达成" selected={filters.headcount === 'reached'} onClick={() => chooseHeader(() => { onFilterChange('headcount', 'reached'); onFilterChange('deadline', ''); })} />
-                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold text-foreground-400">截止日期</p>
-                    <HeaderOption label="已逾期" selected={filters.deadline === 'overdue'} onClick={() => chooseHeader(() => { onFilterChange('deadline', 'overdue'); onFilterChange('headcount', ''); })} />
-                    <HeaderOption label="7 天内到期" selected={filters.deadline === 'dueSoon'} onClick={() => chooseHeader(() => { onFilterChange('deadline', 'dueSoon'); onFilterChange('headcount', ''); })} />
-                    <HeaderOption label="未设置日期" selected={filters.deadline === 'unset'} onClick={() => chooseHeader(() => { onFilterChange('deadline', 'unset'); onFilterChange('headcount', ''); })} />
-                  </HeaderFilter>
-                  <HeaderFilter id="stage" label="阶段进度" open={headerPanel === 'stage'} active={Boolean(filters.stage)} align="center" onToggle={() => setHeaderPanel((current) => current === 'stage' ? null : 'stage')}>
-                    {stageOptions.map((option) => <HeaderOption key={option.value || 'all'} label={option.label} selected={filters.stage === option.value} onClick={() => chooseHeader(() => onFilterChange('stage', option.value))} />)}
-                  </HeaderFilter>
-                  <HeaderFilter id="status" label="状态" open={headerPanel === 'status'} active={activeTab !== 'all'} onToggle={() => setHeaderPanel((current) => current === 'status' ? null : 'status')}>
-                    {([
-                      ['all', '全部状态'],
-                      ['pendingApproval', '待审核'],
-                      ['active', '招聘中'],
-                      ['filled', '已完成'],
-                      ['stopped', '已停止'],
-                    ] as Array<[DemandWorkspaceTab, string]>).map(([value, label]) => <HeaderOption key={value} label={label} selected={activeTab === value} onClick={() => chooseHeader(() => onTabChange(value))} />)}
-                  </HeaderFilter>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">需求 / 职位</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">部门 / 城市</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">负责人</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">HC / 截止日期</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-center text-xs font-medium text-foreground-500">阶段进度</th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-foreground-500">状态</th>
                   <th className="whitespace-nowrap px-3 py-3 text-center text-xs font-medium text-foreground-500">操作</th>
                 </tr>
               </thead>
@@ -455,9 +337,9 @@ export default function RequisitionTable({
                         </div>
                       </td>
                       <td className="px-5 py-4 cursor-pointer" onClick={() => onRowClick(req)}>
-                        <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap ${statusBadgeStyles[req.statusCode] || ''}`}>
+                        <SemanticStatusBadge tone={statusPresentation(demandStatusPresentation, req.statusCode).tone}>
                           {demandStatusLabel(req)}
-                        </span>
+                        </SemanticStatusBadge>
                         {req.statusNote && (
                           <p className="text-xs text-foreground-400 mt-1">{req.statusNote}</p>
                         )}
@@ -465,16 +347,17 @@ export default function RequisitionTable({
                       <td className="px-3 py-4 text-center">
                         <div className="flex items-center justify-center gap-1">
                           {canSelectCandidates && (
-                            <button
+                            <ActionButton
+                              size="sm"
+                              tone="primary"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onSelectCandidates(req);
                               }}
-                              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-accent-500 hover:bg-accent-600 text-white rounded-md transition-colors cursor-pointer whitespace-nowrap"
                             >
                               <i className="ri-user-add-line text-sm"></i>
                               选候选人
-                            </button>
+                            </ActionButton>
                           )}
                           {headcountReached && (
                             <span
@@ -486,16 +369,17 @@ export default function RequisitionTable({
                             </span>
                           )}
                           {isClosedOrCompleted && (
-                            <button
+                            <ActionButton
+                              size="sm"
+                              tone="secondary"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onViewCandidates(req);
                               }}
-                              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-primary-50 hover:bg-primary-100 text-primary-700 rounded-md transition-colors cursor-pointer whitespace-nowrap"
                             >
                               <i className="ri-team-line text-sm"></i>
                               查看候选人
-                            </button>
+                            </ActionButton>
                           )}
                           {hasActions ? (
                             <div className="relative inline-block" ref={openMenuId === req.id ? menuRef : undefined}>

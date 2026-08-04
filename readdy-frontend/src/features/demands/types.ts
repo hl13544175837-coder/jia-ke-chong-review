@@ -90,6 +90,7 @@ export type BusinessDemandInput = RecruitmentDemandInput & {
 
 export interface DemandUpdateInput {
   request_no?: string;
+  jd_text?: string;
   requester_department: string;
   city: string;
   hiring_manager_name: string;

@@ -52,11 +52,11 @@ test('招聘主管工作台优先处理团队审批和卡点，不再伪装成�
   assert.match(dashboard, /招聘负责人：/);
 });
 
-test('招聘主管进入 Offer 时默认看待确认项并明确自己只负责确认和退回', () => {
-  assert.match(offers, /role === 'manager'/);
-  assert.match(offers, /setActiveTab\('pending'\)/);
-  assert.match(offers, /主管处理范围/);
-  assert.match(offers, /确认或退回/);
+test('招聘主管和招聘专员进入 Offer 时共用 OA 结果登记工作台', () => {
+  assert.match(offers, /listWorkbench/);
+  assert.match(offers, /登记 OA 结果/);
+  assert.match(offers, /仅登记 OA 结果，不会自动发起或同步 OA/);
+  assert.doesNotMatch(offers, /主管处理范围|只需要确认或退回/);
 });
 
 test('招聘主管数据看板先展示团队责任和卡点，并能按负责人下钻到真实需求', () => {

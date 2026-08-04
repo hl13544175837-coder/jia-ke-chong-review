@@ -51,3 +51,17 @@ def test_offer_lifecycle_is_separate_from_candidate_stage_transitions():
     assert "def transition_offer" in offers
     assert "def offer_payload" in offers
     assert _line_count("backend/app/services/pipeline_service.py") < 900
+
+
+def test_candidate_activity_and_offer_workbench_stay_in_domain_services():
+    journey_route = _read("backend/app/api/candidate_journey.py")
+    activity_service = _read("backend/app/services/candidate_activity_service.py")
+    pipeline_route = _read("backend/app/api/pipeline.py")
+    offer_service = _read("backend/app/services/offer_service.py")
+
+    assert "build_candidate_activity(" in journey_route
+    assert "def build_candidate_activity" in activity_service
+    assert "def list_offer_workbench" not in pipeline_route
+    assert "def register_oa_result" not in pipeline_route
+    assert "def list_offer_workbench" in offer_service
+    assert "def register_oa_result" in offer_service

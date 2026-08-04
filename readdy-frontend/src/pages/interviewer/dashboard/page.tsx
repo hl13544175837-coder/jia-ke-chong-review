@@ -119,7 +119,7 @@ export default function InterviewerDashboardPage() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          ['待面试官筛选', (loading || reviewLoadFailed) ? '—' : work.pendingReviews.length, 'ri-file-search-line', '/interviewer/screening'],
+          ['候选人筛选', (loading || reviewLoadFailed) ? '—' : work.pendingReviews.length, 'ri-file-search-line', '/interviewer/screening'],
           ['待提交评价', (loading || interviewLoadFailed) ? '—' : work.needsFeedback.length, 'ri-survey-line', '/interviewer/interviews'],
           ['超时待确认', (loading || interviewLoadFailed) ? '—' : work.needsConfirmation.length, 'ri-timer-line', '/interviewer/interviews'],
           ['两小时内开始', (loading || interviewLoadFailed) ? '—' : work.startingSoon.length, 'ri-calendar-event-line', '/interviewer/interviews'],
@@ -134,7 +134,7 @@ export default function InterviewerDashboardPage() {
       <div className="grid gap-5 xl:grid-cols-2">
         <section className="overflow-hidden rounded-xl border border-background-200 bg-white">
           <div className="border-b border-background-100 px-5 py-4">
-            <h2 className="text-sm font-semibold text-foreground-900">待面试官筛选</h2>
+            <h2 className="text-sm font-semibold text-foreground-900">候选人筛选</h2>
             <p className="mt-0.5 text-xs text-foreground-500">查看完整简历和需求后，再给出明确结论</p>
           </div>
           <div className="divide-y divide-background-100">
@@ -145,7 +145,7 @@ export default function InterviewerDashboardPage() {
                 <span className="text-xs font-medium text-primary-600">去筛选</span>
               </button>
             ))}
-            {!loading && !reviewLoadFailed && work.pendingReviews.length === 0 && <div className="px-5 py-12 text-center text-sm text-foreground-500">当前没有待面试官筛选的简历</div>}
+            {!loading && !reviewLoadFailed && work.pendingReviews.length === 0 && <div className="px-5 py-12 text-center text-sm text-foreground-500">当前没有需要筛选的候选人</div>}
           </div>
         </section>
 

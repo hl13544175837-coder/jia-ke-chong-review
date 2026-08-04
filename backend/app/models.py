@@ -589,6 +589,15 @@ class OfferRecord(db.Model):
     rejection_reason = db.Column(db.Text)
     candidate_reply = db.Column(db.JSON)
     salary_breakdown = db.Column(db.JSON)
+    oa_instance_no = db.Column(db.String(120))
+    oa_status = db.Column(
+        db.String(30),
+        default="not_started",
+        server_default="not_started",
+        nullable=False,
+    )
+    oa_note = db.Column(db.Text)
+    oa_updated_at = db.Column(db.DateTime)
     version = db.Column(db.Integer, default=1, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=utc_now)

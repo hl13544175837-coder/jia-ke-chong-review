@@ -158,6 +158,71 @@ def test_creator_resubmits_rejected_demand_and_history_is_audited(
         assert event.actor_id == creator_id
 
 
+def test_creator_resubmits_with_demand_jd_snapshot_without_changing_job_template(
+    client, make_user, app
+):
+    _, interviewer_token = make_user(
+        "business-resubmit-jd@example.com", role="interviewer"
+    )
+    hr_id, hr_token = make_user("hr-resubmit-jd@example.com", role="recruiter")
+    demand = _create_business_demand(client, app, interviewer_token, hr_id)
+    with app.app_context():
+        original_job_jd = db.session.get(Job, demand["job_id"]).jd_text
+
+    rejected = client.post(
+        f"/api/demands/{demand['id']}/reject",
+        headers=_auth(hr_token),
+        json={"reason": "请把本次招聘的 JD 写具体"},
+    )
+    assert rejected.status_code == 200
+
+    resubmitted = client.post(
+        f"/api/demands/{demand['id']}/resubmit",
+        headers=_auth(interviewer_token),
+        json={"jd_text": "本次招聘重点负责 AI 招聘产品落地"},
+    )
+
+    assert resubmitted.status_code == 200
+    assert resubmitted.get_json()["jd_text"] == "本次招聘重点负责 AI 招聘产品落地"
+    refreshed = client.get(
+        f"/api/demands/{demand['id']}", headers=_auth(interviewer_token)
+    )
+    assert refreshed.status_code == 200
+    assert refreshed.get_json()["jd_text"] == "本次招聘重点负责 AI 招聘产品落地"
+    with app.app_context():
+        job = db.session.get(Job, demand["job_id"])
+        assert job.jd_text == original_job_jd
+        event = Event.query.filter_by(
+            action="demand.resubmitted", entity_id=demand["id"]
+        ).one()
+        assert "jd_text" in event.payload["changed_fields"]
+
+
+def test_creator_cannot_resubmit_with_empty_demand_jd(
+    client, make_user, app
+):
+    _, interviewer_token = make_user(
+        "business-empty-jd@example.com", role="interviewer"
+    )
+    hr_id, hr_token = make_user("hr-empty-jd@example.com", role="recruiter")
+    demand = _create_business_demand(client, app, interviewer_token, hr_id)
+    client.post(
+        f"/api/demands/{demand['id']}/reject",
+        headers=_auth(hr_token),
+        json={"reason": "请补充 JD"},
+    )
+
+    response = client.post(
+        f"/api/demands/{demand['id']}/resubmit",
+        headers=_auth(interviewer_token),
+        json={"jd_text": "   "},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["fields"]["jd_text"] == "完整 JD 不能为空"
+
+
+
 def test_only_original_creator_can_resubmit(client, make_user, app):
     _, creator_token = make_user(
         "business-original@example.com", role="interviewer"

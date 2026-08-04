@@ -2,11 +2,22 @@
 
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from .. import db
-from ..models import Candidate, Job, OfferEvent, OfferRecord, RecruitmentDemand, UploadBatch, User
+from ..models import (
+    Candidate,
+    InterviewAssignment,
+    InterviewFeedback,
+    Job,
+    OfferEvent,
+    OfferRecord,
+    PipelineStage,
+    RecruitmentDemand,
+    UploadBatch,
+    User,
+)
 from ..time_utils import utc_now
 from . import pipeline_service
 from .pipeline_service import (
@@ -58,6 +69,8 @@ OFFER_NON_TRANSITION_ACTIONS = {
     "follow_up": {"sent", "accepted"},
 }
 
+OA_STATUSES = {"not_started", "pending", "approved", "rejected", "completed"}
+
 
 def _iso(value):
     return value.isoformat() if value else None
@@ -89,6 +102,7 @@ def offer_payload(offer, *, demand, candidate_id, include_history=True):
     if offer is None:
         candidate = _require_candidate(candidate_id, demand.org_id)
         return {
+            "id": None,
             "candidate_id": candidate_id,
             "demand_id": demand.id,
             "job_id": demand.job_id,
@@ -103,6 +117,10 @@ def offer_payload(offer, *, demand, candidate_id, include_history=True):
             "approval_status": "draft",
             "status": "draft",
             "note": "",
+            "oa_instance_no": "",
+            "oa_status": "not_started",
+            "oa_note": "",
+            "oa_updated_at": None,
             "history": [],
         }
     candidate = Candidate.query.filter_by(
@@ -140,6 +158,10 @@ def offer_payload(offer, *, demand, candidate_id, include_history=True):
         "approval_status": status,
         "status": status,
         "note": offer.note or "",
+        "oa_instance_no": offer.oa_instance_no or "",
+        "oa_status": offer.oa_status or "not_started",
+        "oa_note": offer.oa_note or "",
+        "oa_updated_at": _iso(offer.oa_updated_at),
         "approver_id": offer.approver_id,
         "approver_name": approver.name if approver else None,
         "created_by": offer.created_by,
@@ -224,6 +246,204 @@ def list_offer_records(*, org_id, user_id, role, search=None, statuses=None):
         "total": len(items),
         "unmapped_total": unmapped_total,
     }
+
+
+def _completed_interview_rounds(*, org_id, candidate_id, demand_id):
+    return (
+        db.session.query(func.count(func.distinct(InterviewAssignment.round_sequence)))
+        .join(
+            InterviewFeedback,
+            InterviewFeedback.assignment_id == InterviewAssignment.id,
+        )
+        .filter(
+            InterviewAssignment.org_id == org_id,
+            InterviewAssignment.candidate_id == candidate_id,
+            InterviewAssignment.demand_id == demand_id,
+            InterviewAssignment.is_primary.is_(True),
+        )
+        .scalar()
+        or 0
+    )
+
+
+def list_offer_workbench(*, org_id, user_id, role, search=None):
+    existing_query = OfferRecord.query.filter(
+        OfferRecord.org_id == org_id,
+        OfferRecord.demand_id.isnot(None),
+    )
+    if role == "recruiter":
+        existing_query = existing_query.join(
+            RecruitmentDemand,
+            RecruitmentDemand.id == OfferRecord.demand_id,
+        ).filter(RecruitmentDemand.owner_hr_id == user_id)
+    existing = existing_query.order_by(
+        OfferRecord.updated_at.desc(), OfferRecord.id.desc()
+    ).all()
+    items_by_key = {}
+    for offer in existing:
+        demand = _require_demand(offer.demand_id, org_id)
+        payload = offer_payload(
+            offer,
+            demand=demand,
+            candidate_id=offer.candidate_id,
+            include_history=False,
+        )
+        payload["completed_interview_rounds"] = _completed_interview_rounds(
+            org_id=org_id,
+            candidate_id=offer.candidate_id,
+            demand_id=offer.demand_id,
+        )
+        items_by_key[(offer.candidate_id, offer.demand_id)] = payload
+
+    latest = (
+        db.session.query(
+            PipelineStage.candidate_id.label("candidate_id"),
+            PipelineStage.demand_id.label("demand_id"),
+            func.max(PipelineStage.id).label("max_id"),
+        )
+        .filter(
+            PipelineStage.org_id == org_id,
+            PipelineStage.demand_id.isnot(None),
+        )
+        .group_by(PipelineStage.candidate_id, PipelineStage.demand_id)
+        .subquery()
+    )
+    stage_query = (
+        db.session.query(PipelineStage, RecruitmentDemand, Candidate)
+        .join(latest, PipelineStage.id == latest.c.max_id)
+        .join(RecruitmentDemand, RecruitmentDemand.id == PipelineStage.demand_id)
+        .join(Candidate, Candidate.id == PipelineStage.candidate_id)
+        .filter(
+            PipelineStage.org_id == org_id,
+            PipelineStage.stage.in_(("offer", "onboarded")),
+            Candidate.org_id == org_id,
+            Candidate.deleted_at.is_(None),
+        )
+    )
+    if role == "recruiter":
+        stage_query = stage_query.filter(RecruitmentDemand.owner_hr_id == user_id)
+    for stage, demand, candidate in stage_query.all():
+        key = (candidate.id, demand.id)
+        if key in items_by_key:
+            continue
+        payload = offer_payload(
+            None,
+            demand=demand,
+            candidate_id=candidate.id,
+            include_history=False,
+        )
+        payload["created_at"] = _iso(stage.ts)
+        payload["updated_at"] = _iso(stage.ts)
+        payload["completed_interview_rounds"] = _completed_interview_rounds(
+            org_id=org_id,
+            candidate_id=candidate.id,
+            demand_id=demand.id,
+        )
+        items_by_key[key] = payload
+
+    term = str(search or "").strip().lower()
+    items = list(items_by_key.values())
+    if term:
+        items = [
+            item for item in items
+            if term in " ".join(
+                str(item.get(key) or "").lower()
+                for key in ("candidate_name", "position", "department", "request_no", "oa_instance_no")
+            )
+        ]
+    items.sort(
+        key=lambda item: (item.get("oa_updated_at") or item.get("updated_at") or "", item.get("id") or 0),
+        reverse=True,
+    )
+    return {"items": items, "total": len(items), "unmapped_total": 0}
+
+
+def register_oa_result(*, demand_id, candidate_id, org_id, actor_id, data):
+    oa_status = str(data.get("oa_status") or "").strip()
+    instance_no = str(data.get("oa_instance_no") or "").strip()
+    note = str(data.get("note") or "").strip()
+    if oa_status not in OA_STATUSES:
+        raise PipelineServiceError("请选择正确的 OA 状态", 400, "oa_status_invalid")
+    if not instance_no:
+        raise PipelineServiceError("请填写 OA 编号", 400, "oa_instance_no_required")
+    if len(instance_no) > 120:
+        raise PipelineServiceError("OA 编号不能超过 120 个字符", 400, "oa_instance_no_too_long")
+    if len(note) > 1000:
+        raise PipelineServiceError("OA 备注不能超过 1000 个字符", 400, "oa_note_too_long")
+
+    try:
+        demand = _require_demand(demand_id, org_id)
+        candidate = _require_candidate(candidate_id, org_id)
+        latest_stage = _latest_stage(candidate.id, demand.id)
+        if latest_stage is None or latest_stage.stage not in {"offer", "onboarded"}:
+            raise PipelineServiceError(
+                "候选人还没有进入 Offer 阶段",
+                409,
+                "candidate_not_in_offer_stage",
+            )
+        offer = db.session.execute(
+            select(OfferRecord)
+            .where(
+                OfferRecord.org_id == org_id,
+                OfferRecord.candidate_id == candidate.id,
+                OfferRecord.demand_id == demand.id,
+            )
+            .with_for_update()
+        ).scalar_one_or_none()
+        if offer is None:
+            offer = OfferRecord(
+                org_id=org_id,
+                candidate_id=candidate.id,
+                demand_id=demand.id,
+                job_id=demand.job_id,
+                approval_status="draft",
+                created_by=actor_id,
+            )
+            db.session.add(offer)
+            db.session.flush()
+        previous_oa_status = offer.oa_status or "not_started"
+        now = utc_now()
+        offer.oa_instance_no = instance_no
+        offer.oa_status = oa_status
+        offer.oa_note = note
+        offer.oa_updated_at = now
+        _append_offer_event(
+            offer,
+            action="oa_registered",
+            actor_id=actor_id,
+            from_status=offer.approval_status or "draft",
+            to_status=offer.approval_status or "draft",
+            comment=note,
+            detail={
+                "from_oa_status": previous_oa_status,
+                "to_oa_status": oa_status,
+                "oa_instance_no": instance_no,
+            },
+        )
+        record_event(
+            "offer.oa_registered",
+            entity_id=candidate.id,
+            entity_type="candidate",
+            demand_id=demand.id,
+            payload={
+                "offer_id": offer.id,
+                "oa_instance_no": instance_no,
+                "from_oa_status": previous_oa_status,
+                "to_oa_status": oa_status,
+            },
+            commit=False,
+        )
+        db.session.commit()
+        payload = offer_payload(offer, demand=demand, candidate_id=candidate.id)
+        payload["completed_interview_rounds"] = _completed_interview_rounds(
+            org_id=org_id,
+            candidate_id=candidate.id,
+            demand_id=demand.id,
+        )
+        return payload
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def _append_offer_event(

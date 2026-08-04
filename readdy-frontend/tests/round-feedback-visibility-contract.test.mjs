@@ -13,8 +13,15 @@ const typeSource = fs.readFileSync(
   'utf8',
 );
 
-test('二面提交前只显示一面已完成，不显示一面文字结论', () => {
-  assert.match(typeSource, /feedback_locked: boolean/);
-  assert.match(journeySource, /item\.feedback_locked/);
-  assert.match(journeySource, /提交本轮评价后可查看此前面试结论/);
+test('历史面试评价始终展示，不再要求先提交本轮评价', () => {
+  assert.doesNotMatch(typeSource, /feedback_locked/);
+  assert.doesNotMatch(journeySource, /item\.feedback_locked/);
+  assert.doesNotMatch(journeySource, /提交本轮评价后可查看此前面试结论/);
+  assert.match(journeySource, /历史面试评价与操作记录/);
+});
+
+test('候选人已进入 Offer 但尚未登记时显示真实阶段', () => {
+  assert.match(typeSource, /current_stage: CandidateStage \| null/);
+  assert.match(journeySource, /journey\.current_stage/);
+  assert.match(journeySource, /已进入 Offer，待登记 OA 结果/);
 });

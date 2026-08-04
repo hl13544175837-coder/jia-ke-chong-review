@@ -5,7 +5,7 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 FRONTEND_DIR="$PROJECT_DIR/readdy-frontend"
 PYTHON_BIN="$PROJECT_DIR/.venv/bin/python"
-EXPECTED_SCHEMA="20260730_13"
+EXPECTED_SCHEMA="20260804_14"
 BUILD_VERSION="$(git -C "$PROJECT_DIR" rev-parse --short=12 HEAD)"
 BUILD_TIME="2026-07-30T00:00:00Z"
 

@@ -33,9 +33,11 @@ from ..services.pipeline_service import (
 from ..services.offer_service import (
     get_offer_by_id,
     get_offer_record,
+    list_offer_workbench,
     list_offer_records,
     offer_payload,
     save_offer_record,
+    register_oa_result,
     transition_offer,
 )
 from ..services.interview_workflow_service import active_assignment_filter
@@ -325,6 +327,20 @@ def list_offers():
     )
 
 
+@bp.get("/offers/workbench")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def offer_workbench():
+    return jsonify(
+        list_offer_workbench(
+            org_id=g.org_id,
+            user_id=g.user_id,
+            role=g.role,
+            search=request.args.get("search"),
+        )
+    )
+
+
 @bp.get("/offers/<int:offer_id>")
 @require_auth
 def get_offer_detail(offer_id):
@@ -386,6 +402,26 @@ def save_offer(candidate_id, job_id=None, demand_id=None):
         if not _manage_allowed(demand):
             return jsonify({"error": "Forbidden"}), 403
         payload = save_offer_record(
+            demand_id=demand.id,
+            candidate_id=candidate_id,
+            org_id=g.org_id,
+            actor_id=g.user_id,
+            data=request.get_json() or {},
+        )
+    except (DemandContextError, PipelineServiceError) as error:
+        return _error_response(error)
+    return jsonify(payload)
+
+
+@bp.put("/pipeline/demands/<int:demand_id>/offer/<int:candidate_id>/oa-registration")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def save_offer_oa_registration(demand_id, candidate_id):
+    try:
+        demand = _route_demand(route_demand_id=demand_id)
+        if not _manage_allowed(demand):
+            return jsonify({"error": "Forbidden"}), 403
+        payload = register_oa_result(
             demand_id=demand.id,
             candidate_id=candidate_id,
             org_id=g.org_id,

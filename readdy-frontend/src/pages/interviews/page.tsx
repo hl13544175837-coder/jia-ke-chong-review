@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, MapPin, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, RefreshCw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
@@ -10,14 +10,11 @@ import type {
   InterviewManagementRow,
   InterviewRescheduleRequest,
 } from '@/features/interviews/types';
-import { formatInterviewDateTime } from '@/features/interviews/dateTime';
 import { pipelineApi } from '@/features/pipeline/api';
-import InterviewFilterPopover from './components/InterviewFilterPopover';
 import InterviewManagementCalendar from './components/InterviewManagementCalendar';
 import InterviewManagementTable from './components/InterviewManagementTable';
 import InterviewWorkbenchToolbar from './components/InterviewWorkbenchToolbar';
-import RescheduleHistory from '@/features/interviews/components/RescheduleHistory';
-import RescheduleRequestPanel from './components/RescheduleRequestPanel';
+import RecruiterInterviewDetailDrawer from './components/RecruiterInterviewDetailDrawer';
 import RecruiterInterviewOverlays from '@/features/interviews/components/RecruiterInterviewOverlays';
 import {
   followUpScheduleRow,
@@ -54,9 +51,7 @@ export default function RecruiterInterviewsPage() {
   const [activeTab, setActiveTab] = useState<InterviewStatusTab>(() => initialInterviewTab(searchParams.get('status')));
   const [search, setSearch] = useState(() => searchParams.get('q') || '');
   const [viewMode, setViewMode] = useState<InterviewViewMode>(() => initialInterviewView(searchParams.get('view')));
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [appliedFilters, setAppliedFilters] = useState<InterviewFilters>(() => initialInterviewFilters(searchParams));
-  const [draftFilters, setDraftFilters] = useState<InterviewFilters>(() => initialInterviewFilters(searchParams));
   const [scheduleRow, setScheduleRow] = useState<InterviewManagementRow | null>(null);
   const [scheduleIsPrimary, setScheduleIsPrimary] = useState(true);
   const [confirmConductedRow, setConfirmConductedRow] = useState<InterviewManagementRow | null>(null);
@@ -170,11 +165,6 @@ export default function RecruiterInterviewsPage() {
     () => filterInterviewRows(scopedRows, activeTab, search, appliedFilters),
     [activeTab, appliedFilters, scopedRows, search],
   );
-  const draftResultCount = useMemo(
-    () => filterInterviewRows(scopedRows, activeTab, search, draftFilters).length,
-    [activeTab, draftFilters, scopedRows, search],
-  );
-
   useEffect(() => {
     if (
       !fromDashboard
@@ -415,31 +405,14 @@ export default function RecruiterInterviewsPage() {
         counts={counts}
         search={search}
         filters={appliedFilters}
+        filterOptions={filterOptions}
         resultCount={visibleRows.length}
         viewMode={viewMode}
-        filtersOpen={filtersOpen}
         onTabChange={setActiveTab}
         onSearchChange={setSearch}
-        onToggleFilters={() => {
-          if (!filtersOpen) setDraftFilters(appliedFilters);
-          setFiltersOpen((open) => !open);
-        }}
-        onCloseFilters={() => setFiltersOpen(false)}
+        onFiltersChange={setAppliedFilters}
+        onResetFilters={() => { setSearch(''); setAppliedFilters(emptyInterviewFilters); }}
         onViewModeChange={setViewMode}
-        filterPopover={filtersOpen ? (
-          <InterviewFilterPopover
-            filters={draftFilters}
-            options={filterOptions}
-            resultCount={draftResultCount}
-            onChange={setDraftFilters}
-            onReset={() => setDraftFilters(emptyInterviewFilters)}
-            onCancel={() => setFiltersOpen(false)}
-            onApply={() => {
-              setAppliedFilters(draftFilters);
-              setFiltersOpen(false);
-            }}
-          />
-        ) : null}
       />
 
       {loading ? (
@@ -466,7 +439,7 @@ export default function RecruiterInterviewsPage() {
           filters={appliedFilters}
           filterOptions={filterOptions}
           activeTab={activeTab}
-          onFiltersChange={(next) => { setAppliedFilters(next); setDraftFilters(next); }}
+          onFiltersChange={setAppliedFilters}
           onStatusChange={setActiveTab}
           onOpenDetails={openInterviewDetail}
           onSchedule={openSchedule}
@@ -478,83 +451,28 @@ export default function RecruiterInterviewsPage() {
       )}
 
       {selectedRow && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-foreground-900/40" role="presentation" onMouseDown={closeInterviewDetail}>
-          <aside className="h-full w-full max-w-[520px] overflow-y-auto bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-bold text-foreground-900">{selectedRow.name_masked}</h2><p className="mt-1 text-sm text-foreground-500">{selectedRow.job_title}</p></div><button type="button" onClick={closeInterviewDetail} className="rounded-lg p-2 text-foreground-400 hover:bg-background-100"><X size={18} /></button></div>
-            <dl className="mt-6 grid grid-cols-2 gap-4 text-sm">
-              <div><dt className="text-xs text-foreground-400">当前状态</dt><dd className="mt-1 font-medium text-foreground-800">{statusLabelForRow(selectedRow)}</dd></div>
-              <div><dt className="text-xs text-foreground-400">面试官</dt><dd className="mt-1 font-medium text-foreground-800">{selectedRow.interviewer_name || '待安排'}</dd></div>
-              <div><dt className="text-xs text-foreground-400">面试时间</dt><dd className="mt-1 text-foreground-700">{formatInterviewDateTime(selectedRow.scheduled_at)}</dd></div>
-              <div><dt className="text-xs text-foreground-400">地点 / 链接</dt><dd className="mt-1 inline-flex items-center gap-1 text-foreground-700"><MapPin size={13} />{selectedRow.location || '待确认'}</dd></div>
-            </dl>
-            {selectedRow.note && <div className="mt-5 rounded-lg bg-background-50 px-4 py-3"><p className="text-xs text-foreground-400">安排备注</p><p className="mt-1 text-sm text-foreground-700">{selectedRow.note}</p></div>}
-            {selectedRow.reschedule_request?.status === 'pending' && (
-              <RescheduleRequestPanel
-                request={selectedRow.reschedule_request}
-                busy={rescheduleBusy}
-                error={rescheduleError}
-                onApprove={(suggestedTime) => openRescheduleApproval(
-                  selectedRow,
-                  selectedRow.reschedule_request as InterviewRescheduleRequest,
-                  suggestedTime,
-                )}
-                onReject={(reason) => void processRescheduleDecision(
-                  selectedRow.reschedule_request as InterviewRescheduleRequest,
-                  'reject',
-                  reason,
-                )}
-                onCancelAndWait={(reason) => void processRescheduleDecision(
-                  selectedRow.reschedule_request as InterviewRescheduleRequest,
-                  'cancel_and_wait',
-                  reason,
-                )}
-              />
-            )}
-            {selectedRow.reschedule_request?.status === 'waiting_reassignment' && (
-              <section className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <h3 className="text-sm font-semibold text-amber-900">因改约待重新安排</h3>
-                <p className="mt-1 text-xs leading-5 text-amber-800">原任务已保留为取消记录，候选人仍在面试流程中。</p>
-                <button type="button" onClick={() => openSchedule(selectedRow)} className="mt-3 rounded-md bg-primary-500 px-3 py-2 text-sm font-medium text-white">重新安排面试</button>
-              </section>
-            )}
-            <div className="mt-5">
-              <RescheduleHistory items={selectedRescheduleHistory} />
-            </div>
-            {selectedRow.feedback_submitted && <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3"><p className="text-sm font-medium text-emerald-800">面试反馈已提交</p><p className="mt-1 text-sm text-emerald-700">面试官评价：{selectedRow.feedback_result === 'passed' ? '满意' : selectedRow.feedback_result === 'not_passed' ? '不满意' : '待定'}{selectedRow.feedback_score !== null ? ` · ${selectedRow.feedback_score} 分` : ''}</p></div>}
-
-            {selectedRow.feedback_submitted && selectedRow.pipeline_stage === 'interview' && (
-              <section className="mt-5 rounded-lg border border-primary-200 bg-primary-50/40 p-4">
-                <h3 className="text-sm font-semibold text-foreground-900">招聘专员确认下一步</h3>
-                <p className="mt-1 text-xs leading-5 text-foreground-500">面试官只提交评价，候选人不会自动跳阶段。请根据结果明确选择下一步。</p>
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => openFollowUpSchedule(selectedRow, 'next_round')} disabled={decisionBusy} className="rounded-lg bg-primary-500 px-3 py-2.5 text-sm font-medium text-white disabled:opacity-50">安排下一轮</button>
-                  <button type="button" onClick={() => openFollowUpSchedule(selectedRow, 'add_interviewer')} disabled={decisionBusy} className="rounded-lg border border-primary-200 bg-white px-3 py-2.5 text-sm font-medium text-primary-700 disabled:opacity-50">增加面试官</button>
-                  <button type="button" onClick={() => void moveAfterInterview(selectedRow, 'offer', '')} disabled={decisionBusy} className="rounded-lg border border-emerald-200 bg-white px-3 py-2.5 text-sm font-medium text-emerald-700 disabled:opacity-50">进入 Offer</button>
-                  <button type="button" onClick={() => setShowReject(true)} disabled={decisionBusy} className="rounded-lg border border-red-200 bg-white px-3 py-2.5 text-sm font-medium text-red-700 disabled:opacity-50">淘汰候选人</button>
-                </div>
-                {showReject && (
-                  <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
-                    <label className="block text-xs font-medium text-red-800">淘汰原因（必填）
-                      <textarea value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} rows={3} maxLength={500} placeholder="请写清与岗位不匹配的具体原因" className="mt-2 w-full resize-none rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-foreground-800" />
-                    </label>
-                    <div className="mt-2 flex justify-end gap-2">
-                      <button type="button" onClick={() => { setShowReject(false); setRejectReason(''); }} className="px-3 py-1.5 text-xs text-foreground-600">取消</button>
-                      <button type="button" onClick={() => void moveAfterInterview(selectedRow, 'rejected', rejectReason)} disabled={decisionBusy || !rejectReason.trim()} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">确认淘汰</button>
-                    </div>
-                  </div>
-                )}
-              </section>
-            )}
-
-            {selectedRow.feedback_submitted && selectedRow.pipeline_stage !== 'interview' && (
-              <div className="mt-5 rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">
-                该候选人已进入“{selectedRow.pipeline_stage === 'offer' ? 'Offer' : selectedRow.pipeline_stage === 'rejected' ? '已淘汰' : selectedRow.pipeline_stage}”阶段，不再重复显示面试决策。
-                {selectedRow.pipeline_stage === 'offer' && <button type="button" onClick={() => navigate(`/offers?demand=${selectedRow.demand_id}&candidate=${selectedRow.candidate_id}`)} className="ml-2 font-medium text-primary-700 hover:underline">查看 Offer</button>}
-                {selectedRow.pipeline_stage === 'rejected' && <p className="mt-2 text-xs text-foreground-500">淘汰原因：{selectedRow.disposition_reason || '未填写'} · {selectedRow.enter_talent_pool ? '已进入公司人才库' : '不进入公司人才库'}</p>}
-              </div>
-            )}
-          </aside>
-        </div>
+        <RecruiterInterviewDetailDrawer
+          row={selectedRow}
+          rescheduleHistory={selectedRescheduleHistory}
+          rescheduleBusy={rescheduleBusy}
+          rescheduleError={rescheduleError}
+          decisionBusy={decisionBusy}
+          showReject={showReject}
+          rejectReason={rejectReason}
+          onClose={closeInterviewDetail}
+          onOpenSchedule={() => openSchedule(selectedRow)}
+          onApproveReschedule={(suggestedTime) => openRescheduleApproval(selectedRow, selectedRow.reschedule_request as InterviewRescheduleRequest, suggestedTime)}
+          onRejectReschedule={(reason) => void processRescheduleDecision(selectedRow.reschedule_request as InterviewRescheduleRequest, 'reject', reason)}
+          onCancelAndWait={(reason) => void processRescheduleDecision(selectedRow.reschedule_request as InterviewRescheduleRequest, 'cancel_and_wait', reason)}
+          onNextRound={() => openFollowUpSchedule(selectedRow, 'next_round')}
+          onAddInterviewer={() => openFollowUpSchedule(selectedRow, 'add_interviewer')}
+          onMoveOffer={() => void moveAfterInterview(selectedRow, 'offer', '')}
+          onShowReject={() => setShowReject(true)}
+          onCancelReject={() => { setShowReject(false); setRejectReason(''); }}
+          onRejectReasonChange={setRejectReason}
+          onConfirmReject={() => void moveAfterInterview(selectedRow, 'rejected', rejectReason)}
+          onViewOffer={() => navigate(`/offers?demand=${selectedRow.demand_id}&candidate=${selectedRow.candidate_id}`)}
+        />
       )}
 
       <RecruiterInterviewOverlays

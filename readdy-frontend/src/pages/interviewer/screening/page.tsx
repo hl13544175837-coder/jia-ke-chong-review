@@ -20,6 +20,9 @@ import { useToast } from '@/hooks/useToast';
 import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
+import FilterBar from '@/components/ui/FilterBar';
+import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
+import { businessReviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import { userFacingError } from '@/lib/userFacingError';
 import ReviewActionModal from '@/features/businessReviews/components/ReviewActionModal';
 import BusinessReviewDetail from './components/BusinessReviewDetail';
@@ -85,11 +88,16 @@ export default function InterviewerScreeningPage() {
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const handledTaskId = useRef<number | null>(null);
   const activeTab = reviewTabFromQuery(searchParams.get('tab'));
+  const query = searchParams.get('q') || '';
+  const jobFilter = searchParams.get('job') || '';
+  const departmentFilter = searchParams.get('department') || '';
+  const cityFilter = searchParams.get('city') || '';
   const [tasks, setTasks] = useState<BusinessReviewTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedTask, setSelectedTask] = useState<BusinessReviewTask | null>(null);
   const [reviewTask, setReviewTask] = useState<BusinessReviewTask | null>(null);
+  const [reviewDecision, setReviewDecision] = useState<Decision>('approved');
   const [decisionError, setDecisionError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -166,14 +174,44 @@ export default function InterviewerScreeningPage() {
   }, [scopedTasks]);
 
   const visibleTasks = useMemo(
-    () => scopedTasks.filter((task) => task.status === activeTab),
-    [activeTab, scopedTasks],
+    () => scopedTasks.filter((task) => (
+      task.status === activeTab
+      && (!query.trim() || [task.candidate.name_masked, task.demand.job_title, task.demand.department, task.demand.city]
+        .some((value) => value.toLocaleLowerCase('zh-CN').includes(query.trim().toLocaleLowerCase('zh-CN'))))
+      && (!jobFilter || task.demand.job_title === jobFilter)
+      && (!departmentFilter || task.demand.department === departmentFilter)
+      && (!cityFilter || task.demand.city === cityFilter)
+    )),
+    [activeTab, cityFilter, departmentFilter, jobFilter, query, scopedTasks],
   );
+
+  const filterOptions = useMemo(() => ({
+    jobs: [...new Set(scopedTasks.map((task) => task.demand.job_title).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN')),
+    departments: [...new Set(scopedTasks.map((task) => task.demand.department).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN')),
+    cities: [...new Set(scopedTasks.map((task) => task.demand.city).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN')),
+  }), [scopedTasks]);
+
+  const setFilter = useCallback((key: 'q' | 'job' | 'department' | 'city', value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    next.delete('task');
+    setSelectedTask(null);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const resetFilters = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    ['q', 'job', 'department', 'city', 'task'].forEach((key) => next.delete(key));
+    setSelectedTask(null);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const scopedDemand = scopedTasks[0]?.demand ?? tasks.find((task) => task.demand_id === requestedDemandId)?.demand;
 
-  const openReview = useCallback((task: BusinessReviewTask) => {
+  const openReview = useCallback((task: BusinessReviewTask, decision: Decision) => {
     setDecisionError('');
+    setReviewDecision(decision);
     setReviewTask(task);
   }, []);
 
@@ -198,7 +236,7 @@ export default function InterviewerScreeningPage() {
   return (
     <div className="space-y-5 p-4 sm:p-6">
       <PageHeader
-        title="待面试官筛选"
+        title="候选人筛选"
         visuallyHiddenTitle
         description="招聘专员推送的简历，由业务负责人决定是否进入一面"
         actions={(
@@ -215,6 +253,14 @@ export default function InterviewerScreeningPage() {
         onChange={changeActiveTab}
         ariaLabel="业务筛选状态"
       />
+
+      <FilterBar ariaLabel="候选人筛选查询条件" className="rounded-xl border border-background-200 bg-white p-3">
+        <input aria-label="搜索候选人" value={query} onChange={(event) => setFilter('q', event.target.value)} placeholder="搜索候选人或岗位" className="h-9 min-w-[220px] flex-1 rounded-lg border border-background-300 px-3 text-sm outline-none focus:border-primary-400" />
+        <select aria-label="按岗位筛选" value={jobFilter} onChange={(event) => setFilter('job', event.target.value)} className="h-9 min-w-[150px] rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+        <select aria-label="按部门筛选" value={departmentFilter} onChange={(event) => setFilter('department', event.target.value)} className="h-9 min-w-[130px] rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+        <select aria-label="按城市筛选" value={cityFilter} onChange={(event) => setFilter('city', event.target.value)} className="h-9 min-w-[120px] rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部城市</option>{filterOptions.cities.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+        <button type="button" onClick={resetFilters} disabled={!query && !jobFilter && !departmentFilter && !cityFilter} className="h-9 rounded-lg border border-background-300 bg-white px-3 text-sm font-medium text-foreground-600 disabled:opacity-40">重置</button>
+      </FilterBar>
 
       {requestedDemandId && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-100 bg-primary-50/40 px-4 py-3 text-sm">
@@ -267,10 +313,10 @@ export default function InterviewerScreeningPage() {
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-semibold text-foreground-900">{task.candidate.name_masked}</span>
-                          <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${meta.badge}`}>
+                          <SemanticStatusBadge tone={statusPresentation(businessReviewStatusPresentation, task.status, meta.label).tone} className="gap-1 px-2 py-0.5">
                             <StatusIcon size={12} aria-hidden="true" />
                             {meta.label}
-                          </span>
+                          </SemanticStatusBadge>
                         </span>
                         <span className="mt-1 block text-xs text-foreground-500">
                           {task.demand.job_title} · {task.demand.department || '部门未填写'} · {task.demand.city || '城市未填写'}
@@ -344,7 +390,7 @@ export default function InterviewerScreeningPage() {
             </div>
             <BusinessReviewDetail
               task={selectedTask}
-              onReview={selectedTask.status === 'pending' ? () => openReview(selectedTask) : undefined}
+              onReview={selectedTask.status === 'pending' ? (decision) => openReview(selectedTask, decision) : undefined}
             />
           </aside>
         </div>
@@ -353,6 +399,7 @@ export default function InterviewerScreeningPage() {
       {reviewTask && (
         <ReviewActionModal
           task={reviewTask}
+          initialDecision={reviewDecision}
           onClose={() => {
             if (!submitting) setReviewTask(null);
           }}

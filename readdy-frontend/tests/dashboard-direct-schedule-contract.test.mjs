@@ -29,3 +29,15 @@ test('多条任务保留列表，零条任务给出明确提示', () => {
   assert.match(interviews, /当前没有待安排面试/);
   assert.match(interviews, /fromDashboard && activeTab === 'unassigned'/);
 });
+
+test('工作台把待安排和待确认已面试直接列为候选人待办', () => {
+  const summary = read('src/pages/dashboard/summary.ts');
+  const dashboard = read('src/pages/dashboard/page.tsx');
+
+  assert.match(summary, /unassignedInterviews/);
+  assert.match(summary, /waitingConfirmation/);
+  assert.match(dashboard, /待安排面试/);
+  assert.match(dashboard, /待确认已面试/);
+  assert.match(dashboard, /status=unassigned/);
+  assert.match(dashboard, /status=scheduled/);
+});
