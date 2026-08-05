@@ -21,6 +21,7 @@ import { ApiError, apiRequest } from '@/lib/api';
 import { userFacingError } from '@/lib/userFacingError';
 import { useToast } from '@/hooks/useToast';
 import RequisitionTabs from './components/RequisitionTabs';
+import RequisitionFilters from './components/RequisitionFilters';
 import RequisitionForm from './components/RequisitionForm';
 import RequisitionTable from './components/RequisitionTable';
 import DemandDetailPanel from './components/DemandDetailPanel';
@@ -481,6 +482,27 @@ export default function JobsPage() {
         )}
       />
 
+      <RequisitionFilters
+        optionSource={requisitions}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        filters={filters}
+        onFilterChange={(key, value) => setFilters((current) => ({ ...current, [key]: value }))}
+        onReset={() => {
+          setSearchQuery('');
+          setFilters({ department: '', owner: '', city: '', stage: '', headcount: '', deadline: '' });
+          setSortField('newest');
+          setSortDirection('desc');
+        }}
+        sortField={sortField}
+        sortDirection={sortDirection}
+        onSortFieldChange={(field) => {
+          setSortField(field);
+          setSortDirection(field === 'deadline' ? 'asc' : 'desc');
+        }}
+        onSortDirectionToggle={() => setSortDirection((current) => current === 'asc' ? 'desc' : 'asc')}
+      />
+
       <RequisitionTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
       {loading ? (
@@ -495,7 +517,6 @@ export default function JobsPage() {
       ) : (
         <RequisitionTable
           data={filteredData}
-          optionSource={requisitions}
           onRowClick={(req) => { void openDemand(req); }}
           onStatusChange={handleStatusChange}
           statusTransitions={statusTransitions}
@@ -503,19 +524,7 @@ export default function JobsPage() {
           onSelectCandidates={(req) => setCandidateDemand(req.source)}
           onViewCandidates={(req) => openCandidates(req, 'all')}
           onStageCountClick={openStageProgress}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          filters={filters}
-          onFilterChange={(key, value) => setFilters((current) => ({ ...current, [key]: value }))}
-          onClearFilters={() => setFilters({ department: '', owner: '', city: '', stage: '', headcount: '', deadline: '' })}
           sortField={sortField}
-          sortDirection={sortDirection}
-          onSortChange={(field: DemandSortField) => {
-            if (sortField === field) setSortDirection((current) => current === 'asc' ? 'desc' : 'asc');
-            else { setSortField(field); setSortDirection(field === 'deadline' ? 'asc' : 'desc'); }
-          }}
         />
       )}
 

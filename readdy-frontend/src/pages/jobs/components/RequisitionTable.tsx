@@ -1,22 +1,16 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import ActionButton from '@/components/ui/ActionButton';
-import FilterBar, { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import { demandStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import type { RequisitionRow } from '@/features/demands/types';
 import {
-  buildDemandFilterOptions,
   demandStatusLabel,
-  type DemandSortDirection,
   type DemandSortField,
-  type DemandWorkspaceFilters,
-  type DemandWorkspaceTab,
 } from '../workbench';
 import { canOpenDemandStage, type DemandStageDrilldown } from '../stageDrilldown';
 
 interface RequisitionTableProps {
   data: RequisitionRow[];
-  optionSource: RequisitionRow[];
   onRowClick: (req: RequisitionTableProps['data'][0]) => void;
   onStatusChange: (id: string, newStatusCode: string, reason: string) => Promise<void>;
   statusTransitions: Record<string, { advance: { to: string; label: string } | null; rollback: { to: string; label: string } | null }>;
@@ -24,16 +18,7 @@ interface RequisitionTableProps {
   onSelectCandidates: (req: RequisitionTableProps['data'][0]) => void;
   onViewCandidates: (req: RequisitionTableProps['data'][0]) => void;
   onStageCountClick: (req: RequisitionTableProps['data'][0], stage: DemandStageDrilldown) => void;
-  activeTab: DemandWorkspaceTab;
-  onTabChange: (tab: DemandWorkspaceTab) => void;
-  searchQuery: string;
-  onSearchChange: (v: string) => void;
-  filters: DemandWorkspaceFilters;
-  onFilterChange: (key: keyof DemandWorkspaceFilters, value: string) => void;
-  onClearFilters: () => void;
   sortField: DemandSortField;
-  sortDirection: DemandSortDirection;
-  onSortChange: (field: DemandSortField) => void;
 }
 
 const statusLabelMap: Record<string, string> = {
@@ -45,12 +30,6 @@ const statusLabelMap: Record<string, string> = {
   closed: '已关闭',
 };
 
-const sortModes: Array<{ value: DemandSortField; label: string }> = [
-  { value: 'newest', label: '最新发布' },
-  { value: 'priority', label: '优先级' },
-  { value: 'deadline', label: '截止日期' },
-];
-
 // priority display config
 const priorityConfig: Record<string, { label: string; className: string }> = {
   '紧急': { label: '紧急', className: 'bg-accent-100 text-accent-700' },
@@ -60,7 +39,6 @@ const priorityConfig: Record<string, { label: string; className: string }> = {
 
 export default function RequisitionTable({
   data,
-  optionSource,
   onRowClick,
   onStatusChange,
   statusTransitions,
@@ -68,36 +46,14 @@ export default function RequisitionTable({
   onSelectCandidates,
   onViewCandidates,
   onStageCountClick,
-  activeTab,
-  onTabChange,
-  searchQuery,
-  onSearchChange,
-  filters,
-  onFilterChange,
-  onClearFilters,
   sortField,
-  sortDirection,
-  onSortChange,
 }: RequisitionTableProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ id: string; to: string; label: string } | null>(null);
   const [confirmReason, setConfirmReason] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
-  const [toolbarPanel, setToolbarPanel] = useState<'sort' | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
-
-  const filterOptions = useMemo(() => buildDemandFilterOptions(optionSource), [optionSource]);
-
-  const stageOptions = useMemo(() => [
-    { value: '', label: '全部' },
-    { value: 'hasAny', label: '有候选人' },
-    { value: 'none', label: '无候选人' },
-    { value: 'feedback', label: '业务筛选中' },
-    { value: 'interview', label: '面试中' },
-    { value: 'offer', label: 'Offer中' },
-  ], []);
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -110,104 +66,10 @@ export default function RequisitionTable({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [openMenuId]);
 
-  useEffect(() => {
-    if (!toolbarPanel) return;
-    const handleClick = (event: MouseEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) setToolbarPanel(null);
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [toolbarPanel]);
-
-  const renderSortArrow = (active: boolean) => {
-    if (!active) return null;
-    if (sortDirection === 'asc') {
-      return <i className="ri-arrow-up-s-line ml-1 text-xs text-primary-500"></i>;
-    }
-    return <i className="ri-arrow-down-s-line ml-1 text-xs text-primary-500"></i>;
-  };
-
-  const activeFilterEntries = ([
-    ['department', '部门', filters.department],
-    ['city', '城市', filters.city],
-    ['owner', '负责人', filters.owner],
-    ['stage', '阶段', filters.stage ? stageOptions.find((option) => option.value === filters.stage)?.label || filters.stage : ''],
-    ['headcount', 'HC', filters.headcount === 'available' ? '仍有名额' : filters.headcount === 'reached' ? '已达成' : ''],
-    ['deadline', '截止日期', filters.deadline === 'overdue' ? '已逾期' : filters.deadline === 'dueSoon' ? '7天内到期' : filters.deadline === 'unset' ? '未设置' : ''],
-  ] as Array<[keyof DemandWorkspaceFilters, string, string]>).filter(([, , value]) => Boolean(value));
-
-  const removeFilter = (key: keyof DemandWorkspaceFilters) => onFilterChange(key, '');
-  const activeSortLabel = sortModes.find((mode) => mode.value === sortField)?.label || '最新发布';
-  const sortDirectionLabel = sortDirection === 'desc' ? '降序' : '升序';
-
   return (
     <>
       <div className="overflow-hidden rounded-xl border border-background-200 bg-white">
-        <div ref={toolbarRef} className="border-b border-background-100 px-5 py-3">
-          <div className="mb-2 text-right text-xs text-foreground-400">{data.length} 条</div>
-          <FilterBar className={`${FILTER_GRID_CLASS} rounded-xl bg-background-50 p-3`} ariaLabel="招聘需求查询条件">
-              <label className="relative block">
-                <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-foreground-400"></i>
-                <input type="text" placeholder="搜索需求编号、职位、负责人、部门或城市" value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} className={`${FILTER_CONTROL_CLASS} pl-9`} />
-              </label>
-              <select aria-label="按部门筛选" value={filters.department} onChange={(event) => onFilterChange('department', event.target.value)} className={FILTER_CONTROL_CLASS}>
-                <option value="">全部部门</option>
-                {filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-              <select aria-label="按城市筛选" value={filters.city} onChange={(event) => onFilterChange('city', event.target.value)} className={FILTER_CONTROL_CLASS}>
-                <option value="">全部城市</option>
-                {filterOptions.cities.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-              <select aria-label="按负责人筛选" value={filters.owner} onChange={(event) => onFilterChange('owner', event.target.value)} className={FILTER_CONTROL_CLASS}>
-                <option value="">全部负责人</option>
-                {filterOptions.owners.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-              <select aria-label="按候选人阶段筛选" value={filters.stage} onChange={(event) => onFilterChange('stage', event.target.value)} className={FILTER_CONTROL_CLASS}>
-                {stageOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-              <button type="button" aria-expanded={toolbarPanel === 'sort'} onClick={() => setToolbarPanel((current) => current === 'sort' ? null : 'sort')} className={`${FILTER_CONTROL_CLASS} inline-flex items-center justify-center gap-1.5 font-medium`}>
-                <i className="ri-sort-desc"></i>排序：{activeSortLabel}<span className="text-xs text-primary-600">{sortDirectionLabel}</span>
-              </button>
-              <button type="button" onClick={onClearFilters} disabled={activeFilterEntries.length === 0} className={`${FILTER_CONTROL_CLASS} font-medium hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40`}>
-                <i className="ri-refresh-line mr-1"></i>清空筛选
-              </button>
-          </FilterBar>
-
-          {toolbarPanel === 'sort' && (
-            <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-background-200 bg-background-50 p-3" aria-label="招聘需求排序面板">
-              <span className="mr-1 text-xs font-medium text-foreground-500">选择排序；再次点击当前项可切换方向</span>
-              {sortModes.map((mode) => (
-                <button
-                  type="button"
-                  key={mode.value}
-                  aria-pressed={sortField === mode.value}
-                  onClick={() => onSortChange(mode.value)}
-                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${sortField === mode.value ? 'bg-primary-500 text-white' : 'bg-white text-foreground-600 hover:bg-background-100'}`}
-                >
-                  {mode.label}{sortField === mode.value && renderSortArrow(true)}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {activeFilterEntries.length > 0 && (
-            <div className="flex w-full flex-wrap items-center gap-2 border-t border-background-100 pt-3" aria-label="当前筛选条件">
-              <span className="text-xs text-foreground-400">当前筛选</span>
-              {activeFilterEntries.map(([key, label, value]) => (
-                <button
-                  type="button"
-                  key={key}
-                  aria-label={`移除${label}筛选`}
-                  onClick={() => removeFilter(key)}
-                  className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 hover:bg-primary-100"
-                >
-                  {label}：{value}<i className="ri-close-line"></i>
-                </button>
-              ))}
-              <button type="button" onClick={onClearFilters} className="ml-1 text-xs font-medium text-foreground-500 underline-offset-2 hover:text-primary-700 hover:underline">清空筛选</button>
-            </div>
-          )}
-        </div>
+        <div className="border-b border-background-100 px-5 py-3 text-right text-xs text-foreground-400">{data.length} 条</div>
 
         {/* Table */}
         {data.length === 0 ? (
