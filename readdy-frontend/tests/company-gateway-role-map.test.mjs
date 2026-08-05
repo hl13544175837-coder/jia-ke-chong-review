@@ -26,3 +26,14 @@ test('company login aligns the PGS workspace role with the backend role', () => 
   assert.match(auth, /PGS 工作台角色/);
   assert.match(auth, /后端角色/);
 });
+
+test('company menu loading fails closed and filters the product navigation', () => {
+  const permissions = read('src/auth/companyPermissions.tsx');
+  const layout = read('src/components/feature/MainLayout.tsx');
+
+  assert.match(permissions, /公司权限加载失败/);
+  assert.match(permissions, /重新加载权限/);
+  assert.doesNotMatch(permissions, /hasMenu:\s*\(code\)\s*=>\s*!state\.ready/);
+  assert.match(layout, /hasMenu/);
+  assert.match(layout, /hasMenu\(item\.menuCode\)/);
+});

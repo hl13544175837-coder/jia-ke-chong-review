@@ -106,7 +106,7 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const { name, logout } = useCompanyAuth();
   const { role } = useProductRole();
-  const { reload: reloadPermissions } = useCompanyPermissions();
+  const { hasMenu, reload: reloadPermissions } = useCompanyPermissions();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
@@ -163,9 +163,11 @@ export default function MainLayout() {
     : currentRole === 'admin'
     ? adminNavItems
     : recruiterNavItems;
-  const navItems = roleNavItems.filter((item) => item.roles.includes(currentRole));
+  const navItems = roleNavItems.filter(
+    (item) => item.roles.includes(currentRole) && hasMenu(item.menuCode),
+  );
   const visibleBottomNavItems = bottomNavItems.filter(
-    (item) => item.roles.includes(currentRole),
+    (item) => item.roles.includes(currentRole) && hasMenu(item.menuCode),
   );
 
   const isActive = (path: string) => {
