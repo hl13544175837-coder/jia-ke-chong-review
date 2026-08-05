@@ -1,9 +1,10 @@
 import { CheckCircle2, Clock3, UserRound } from 'lucide-react';
 import ActionButton from '@/components/ui/ActionButton';
+import RowActionMenu, { type RowActionItem } from '@/components/ui/RowActionMenu';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import { interviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import type { InterviewManagementRow } from '@/features/interviews/types';
-import { formatInterviewDateTime, interviewHasStarted } from '@/features/interviews/dateTime';
+import { formatInterviewDateTime } from '@/features/interviews/dateTime';
 import {
   rowStatus,
   statusLabelForRow,
@@ -11,11 +12,14 @@ import {
   type InterviewFilters,
   type InterviewStatusTab,
 } from '@/features/interviews/workbench';
+import { buildInterviewRowActions } from '../rowActions';
 
 interface InterviewManagementTableProps {
   rows: InterviewManagementRow[];
   actionRowId: number | null;
   onOpenDetails: (row: InterviewManagementRow) => void;
+  onOpenResume: (row: InterviewManagementRow) => void;
+  onOpenHistory: (row: InterviewManagementRow) => void;
   onSchedule: (row: InterviewManagementRow) => void;
   onConfirmConducted: (row: InterviewManagementRow) => void;
   onRemind: (row: InterviewManagementRow) => void;
@@ -26,7 +30,7 @@ interface InterviewManagementTableProps {
   onStatusChange: (status: InterviewStatusTab) => void;
 }
 
-type ActionProps = Pick<InterviewManagementTableProps, 'actionRowId' | 'onOpenDetails' | 'onSchedule' | 'onConfirmConducted' | 'onRemind'> & { row: InterviewManagementRow };
+type ActionProps = Pick<InterviewManagementTableProps, 'actionRowId' | 'onOpenDetails' | 'onOpenResume' | 'onOpenHistory' | 'onSchedule' | 'onConfirmConducted' | 'onRemind'> & { row: InterviewManagementRow };
 
 function rowKey(row: InterviewManagementRow) {
   return `${row.demand_id}-${row.candidate_id}-${row.assignment_id || 'new'}`;
@@ -36,36 +40,35 @@ function roundLabel(row: InterviewManagementRow) {
   return row.round_sequence ? `第 ${row.round_sequence} 轮` : '轮次待定';
 }
 
-function RowActions({ row, actionRowId, onOpenDetails, onSchedule, onConfirmConducted, onRemind }: ActionProps) {
-  const status = rowStatus(row);
+function RowActions({ row, actionRowId, onOpenDetails, onOpenResume, onOpenHistory, onSchedule, onConfirmConducted, onRemind }: ActionProps) {
+  const actions = buildInterviewRowActions(row);
   const busy = actionRowId === row.assignment_id;
-  if (row.reschedule_request?.status === 'pending') {
-    return <ActionButton size="sm" tone="primary" onClick={() => onOpenDetails(row)}>处理改约</ActionButton>;
-  }
-  if (status === 'unassigned') {
-    return <ActionButton size="sm" tone="primary" onClick={() => onSchedule(row)}>{row.reschedule_request?.status === 'waiting_reassignment' ? '重新安排' : '安排面试'}</ActionButton>;
-  }
-  if (status === 'awaiting_feedback') {
-    return <ActionButton size="sm" tone="primary" onClick={() => onRemind(row)} disabled={busy}>催反馈</ActionButton>;
-  }
-  if (status === 'completed') {
-    return <ActionButton size="sm" tone="secondary" onClick={() => onOpenDetails(row)}>查看反馈</ActionButton>;
-  }
-  if (interviewHasStarted(row.scheduled_at)) {
-    return (
-      <>
-        <ActionButton size="sm" tone="secondary" onClick={() => onSchedule(row)}>调整</ActionButton>
-        <ActionButton size="sm" tone="primary" onClick={() => onConfirmConducted(row)} disabled={busy} icon={<CheckCircle2 size={13} />}>确认已面试</ActionButton>
-      </>
-    );
-  }
-  return <ActionButton size="sm" tone="secondary" onClick={() => onSchedule(row)}>调整安排</ActionButton>;
+  const menuConfig: Record<(typeof actions.menu)[number], Omit<RowActionItem, 'key'>> = {
+    view_details: { label: '查看面试详情', icon: <i className="ri-eye-line" />, onSelect: () => onOpenDetails(row) },
+    view_resume: { label: '查看候选人简历', icon: <i className="ri-file-user-line" />, onSelect: () => onOpenResume(row) },
+    view_history: { label: '查看面试记录', icon: <i className="ri-history-line" />, onSelect: () => onOpenHistory(row) },
+    adjust_schedule: { label: '调整面试安排', icon: <i className="ri-calendar-event-line" />, dividerBefore: true, onSelect: () => onSchedule(row) },
+    cancel_schedule: { label: '取消面试', icon: <i className="ri-calendar-close-line" />, tone: 'danger', onSelect: () => onSchedule(row) },
+  };
+  const menuItems = actions.menu.map((action) => ({ key: action, ...menuConfig[action] }));
+  const primary = {
+    process_reschedule: <ActionButton size="sm" tone="primary" onClick={() => onOpenDetails(row)}>处理改约</ActionButton>,
+    schedule: <ActionButton size="sm" tone="primary" onClick={() => onSchedule(row)}>{row.reschedule_request?.status === 'waiting_reassignment' ? '重新安排' : '安排面试'}</ActionButton>,
+    remind_feedback: <ActionButton size="sm" tone="primary" onClick={() => onRemind(row)} disabled={busy}>催反馈</ActionButton>,
+    view_feedback: <ActionButton size="sm" tone="secondary" onClick={() => onOpenDetails(row)}>查看反馈</ActionButton>,
+    confirm_conducted: <ActionButton size="sm" tone="primary" onClick={() => onConfirmConducted(row)} disabled={busy} icon={<CheckCircle2 size={13} />}>确认已面试</ActionButton>,
+    adjust_schedule: <ActionButton size="sm" tone="secondary" onClick={() => onSchedule(row)}>调整安排</ActionButton>,
+  }[actions.primary];
+
+  return <>{primary}<RowActionMenu ariaLabel={`打开${row.name_masked}的面试操作`} items={menuItems} /></>;
 }
 
 export default function InterviewManagementTable({
   rows,
   actionRowId,
   onOpenDetails,
+  onOpenResume,
+  onOpenHistory,
   onSchedule,
   onConfirmConducted,
   onRemind,
@@ -101,7 +104,7 @@ export default function InterviewManagementTable({
                 <td className="px-3 py-3"><SemanticStatusBadge tone={statusPresentation(interviewStatusPresentation, status, statusLabelForRow(row)).tone}>{statusLabelForRow(row)}</SemanticStatusBadge></td>
                 <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                   <div className="flex items-center justify-end gap-2">
-                    <RowActions row={row} actionRowId={actionRowId} onOpenDetails={onOpenDetails} onSchedule={onSchedule} onConfirmConducted={onConfirmConducted} onRemind={onRemind} />
+                    <RowActions row={row} actionRowId={actionRowId} onOpenDetails={onOpenDetails} onOpenResume={onOpenResume} onOpenHistory={onOpenHistory} onSchedule={onSchedule} onConfirmConducted={onConfirmConducted} onRemind={onRemind} />
                   </div>
                 </td>
               </tr>

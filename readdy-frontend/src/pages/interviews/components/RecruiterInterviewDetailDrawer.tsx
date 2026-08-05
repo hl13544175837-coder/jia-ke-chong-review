@@ -20,6 +20,7 @@ import RescheduleRequestPanel from './RescheduleRequestPanel';
 
 interface RecruiterInterviewDetailDrawerProps {
   row: InterviewManagementRow;
+  initialTab?: CandidateDetailTab;
   rescheduleHistory: InterviewRescheduleRequest[];
   rescheduleBusy: boolean;
   rescheduleError: string;
@@ -43,6 +44,7 @@ interface RecruiterInterviewDetailDrawerProps {
 
 export default function RecruiterInterviewDetailDrawer({
   row,
+  initialTab = 'interview',
   rescheduleHistory,
   rescheduleBusy,
   rescheduleError,
@@ -75,7 +77,7 @@ export default function RecruiterInterviewDetailDrawer({
 
   useEffect(() => {
     let cancelled = false;
-    setActiveTab('interview');
+    setActiveTab(initialTab);
     setResume(null);
     setResumeError('');
     setResumeLoading(true);
@@ -91,7 +93,7 @@ export default function RecruiterInterviewDetailDrawer({
       .catch((error) => { if (!cancelled) setJourneyError(error instanceof Error ? error.message : '面试评价暂时无法读取'); })
       .finally(() => { if (!cancelled) setJourneyLoading(false); });
     return () => { cancelled = true; };
-  }, [row.candidate_id, row.demand_id]);
+  }, [initialTab, row.candidate_id, row.demand_id]);
 
   const footer = (
     <DetailActionBar

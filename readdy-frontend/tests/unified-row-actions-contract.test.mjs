@@ -54,3 +54,39 @@ test('招聘需求列表使用公共菜单并移除旧的单项状态菜单', ()
   assert.doesNotMatch(table, /statusExtraActions/);
   assert.doesNotMatch(table, /statusTransitions/);
 });
+
+test('面试管理只保留一个主操作，其余真实入口进入菜单', async () => {
+  const path = new URL('../src/pages/interviews/rowActions.ts', import.meta.url);
+  assert.ok(existsSync(path), '应提供面试行操作策略');
+  const { buildInterviewRowActions } = await import(path.href);
+  const makeRow = (overrides = {}) => ({
+    assignment_id: 9,
+    assignment_status: 'scheduled',
+    feedback_submitted: false,
+    scheduled_at: '2026-08-06T10:00:00Z',
+    reschedule_request: undefined,
+    ...overrides,
+  });
+
+  const upcoming = buildInterviewRowActions(makeRow(), Date.parse('2026-08-05T10:00:00Z'));
+  assert.equal(upcoming.primary, 'adjust_schedule');
+  assert.ok(!upcoming.menu.includes('adjust_schedule'));
+  assert.ok(upcoming.menu.includes('cancel_schedule'));
+
+  const started = buildInterviewRowActions(makeRow(), Date.parse('2026-08-07T10:00:00Z'));
+  assert.equal(started.primary, 'confirm_conducted');
+  assert.ok(started.menu.includes('adjust_schedule'));
+
+  const pending = buildInterviewRowActions(makeRow({ reschedule_request: { status: 'pending' } }));
+  assert.equal(pending.primary, 'process_reschedule');
+
+  const completed = buildInterviewRowActions(makeRow({ feedback_submitted: true }));
+  assert.equal(completed.primary, 'view_feedback');
+});
+
+test('面试列表使用公共菜单', () => {
+  const table = read('src/pages/interviews/components/InterviewManagementTable.tsx');
+  assert.match(table, /RowActionMenu/);
+  assert.match(table, /查看候选人简历/);
+  assert.match(table, /取消面试/);
+});

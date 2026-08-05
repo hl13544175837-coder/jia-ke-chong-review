@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
+import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
 import { interviewsApi } from '@/features/interviews/api';
 import type {
   InterviewAssignmentInput,
@@ -63,6 +64,7 @@ export default function RecruiterInterviewsPage() {
   const [actionError, setActionError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedRescheduleHistory, setSelectedRescheduleHistory] = useState<InterviewRescheduleRequest[]>([]);
+  const [detailInitialTab, setDetailInitialTab] = useState<CandidateDetailTab>('interview');
   const [rescheduleRequestId, setRescheduleRequestId] = useState<number | null>(null);
   const [rescheduleBusy, setRescheduleBusy] = useState(false);
   const [rescheduleError, setRescheduleError] = useState('');
@@ -95,7 +97,8 @@ export default function RecruiterInterviewsPage() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const openInterviewDetail = useCallback((row: InterviewManagementRow) => {
+  const openInterviewDetail = useCallback((row: InterviewManagementRow, initialTab: CandidateDetailTab = 'interview') => {
+    setDetailInitialTab(initialTab);
     setSelectedRow(row);
     setSelectedRescheduleHistory(row.reschedule_request ? [row.reschedule_request] : []);
     setShowReject(false);
@@ -111,6 +114,7 @@ export default function RecruiterInterviewsPage() {
 
   const closeInterviewDetail = useCallback(() => {
     setSelectedRow(null);
+    setDetailInitialTab('interview');
     setShowReject(false);
     setRejectReason('');
     setSelectedRescheduleHistory([]);
@@ -442,6 +446,8 @@ export default function RecruiterInterviewsPage() {
           onFiltersChange={setAppliedFilters}
           onStatusChange={setActiveTab}
           onOpenDetails={openInterviewDetail}
+          onOpenResume={(row) => openInterviewDetail(row, 'resume')}
+          onOpenHistory={(row) => openInterviewDetail(row, 'interview')}
           onSchedule={openSchedule}
           onConfirmConducted={setConfirmConductedRow}
           onRemind={(row) => void runAssignmentAction(row, 'remind')}
@@ -453,6 +459,7 @@ export default function RecruiterInterviewsPage() {
       {selectedRow && (
         <RecruiterInterviewDetailDrawer
           row={selectedRow}
+          initialTab={detailInitialTab}
           rescheduleHistory={selectedRescheduleHistory}
           rescheduleBusy={rescheduleBusy}
           rescheduleError={rescheduleError}
