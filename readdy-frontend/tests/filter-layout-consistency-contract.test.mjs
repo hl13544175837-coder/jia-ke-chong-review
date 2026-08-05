@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
@@ -21,13 +21,28 @@ test('候选人筛选状态区分页面范围、精确流程状态和入库日�
   assert.doesNotMatch(filters, /const \[scoreFilter/);
 });
 
-test('候选人筛选采用等宽紧凑布局且顶部和表头不重复', () => {
+test('普通筛选使用紧凑可收缩工具栏且绿色状态栏不在收缩区域内', () => {
   const filterBar = read('src/components/ui/FilterBar.tsx');
+  const collapsiblePath = new URL('../src/components/ui/CollapsibleFilterBar.tsx', import.meta.url);
+
+  assert.ok(existsSync(collapsiblePath), '应提供统一的 CollapsibleFilterBar 组件');
+  const collapsible = read('src/components/ui/CollapsibleFilterBar.tsx');
+
+  assert.match(filterBar, /FILTER_FIELD_CLASS/);
+  assert.match(filterBar, /sm:w-40/);
+  assert.match(filterBar, /h-9/);
+  assert.doesNotMatch(filterBar, /FILTER_GRID_CLASS/);
+  assert.match(collapsible, /activeFilterCount/);
+  assert.match(collapsible, /aria-expanded/);
+  assert.match(collapsible, /收起筛选/);
+  assert.match(collapsible, /展开筛选/);
+  assert.doesNotMatch(collapsible, /WorkspaceTabs/);
+});
+
+test('候选人顶部和表头筛选不重复', () => {
   const filters = read('src/features/candidates/components/library/CandidateLibraryFilters.tsx');
   const table = read('src/features/candidates/components/library/CandidateLibraryTable.tsx');
 
-  assert.match(filterBar, /FILTER_GRID_CLASS/);
-  assert.match(filterBar, /grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4/);
   assert.match(filters, /入库开始日期/);
   assert.match(filters, /入库结束日期/);
   assert.match(filters, /来源渠道/);
@@ -46,18 +61,25 @@ test('候选人筛选采用等宽紧凑布局且顶部和表头不重复', () =>
   assert.match(table, /setPipelineStateFilter/);
 });
 
-test('已有列表筛选栏复用同一套等宽控件和紧凑间距', () => {
-  const filterPages = [
-    'src/pages/jobs/components/RequisitionTable.tsx',
-    'src/pages/interviews/components/InterviewWorkbenchToolbar.tsx',
-    'src/pages/offers/page.tsx',
-    'src/pages/interviewer/screening/page.tsx',
-    'src/pages/interviewer/interviews/page.tsx',
+test('普通筛选位于绿色状态分类上方且页面复用同一套紧凑控件', () => {
+  const orderedPages = [
+    ['src/features/candidates/components/library/CandidateLibraryFilters.tsx', 'CollapsibleFilterBar', 'WorkspaceTabs'],
+    ['src/pages/interviews/components/InterviewWorkbenchToolbar.tsx', 'CollapsibleFilterBar', 'WorkspaceTabs'],
+    ['src/pages/offers/page.tsx', 'CollapsibleFilterBar', 'WorkspaceTabs'],
+    ['src/pages/interviewer/screening/page.tsx', 'CollapsibleFilterBar', 'WorkspaceTabs'],
+    ['src/pages/interviewer/interviews/page.tsx', 'CollapsibleFilterBar', 'WorkspaceTabs'],
   ];
 
-  for (const path of filterPages) {
+  for (const [path, filters, tabs] of orderedPages) {
     const source = read(path);
-    assert.match(source, /FILTER_GRID_CLASS/, `${path} 应使用统一筛选网格`);
+    assert.ok(source.indexOf(`<${filters}`) >= 0, `${path} 应使用统一可收缩筛选栏`);
+    assert.ok(source.indexOf(`<${filters}`) < source.indexOf(`<${tabs}`), `${path} 普通筛选必须位于状态分类上方`);
+    assert.match(source, /FILTER_FIELD_CLASS/, `${path} 应使用统一紧凑字段宽度`);
     assert.match(source, /FILTER_CONTROL_CLASS/, `${path} 应使用统一筛选控件尺寸`);
   }
+
+  const jobsPage = read('src/pages/jobs/page.tsx');
+  assert.ok(jobsPage.indexOf('<RequisitionFilters') >= 0, '招聘需求页应把筛选移出表格');
+  assert.ok(jobsPage.indexOf('<RequisitionFilters') < jobsPage.indexOf('<RequisitionTabs'), '招聘需求普通筛选必须位于状态分类上方');
+  assert.ok(jobsPage.indexOf('<RequisitionTabs') < jobsPage.indexOf('<RequisitionTable'), '招聘需求状态分类必须位于列表上方');
 });
