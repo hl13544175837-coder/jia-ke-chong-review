@@ -113,6 +113,8 @@ test('简历库把查看、编辑、收藏、流程和转需求收入统一菜�
   assert.match(table, /remaining_headcount > 0/);
   assert.match(controller, /ApiError/);
   assert.match(controller, /detailEditRequested/);
+  assert.match(controller, /setTransferCandidate\(latest\)/);
+  assert.match(controller, /transferInvalidated/);
 });
 
 test('Offer 列表保留 OA 主操作，菜单只提供真实业务导航', () => {

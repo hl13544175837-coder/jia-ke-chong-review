@@ -227,7 +227,7 @@ export default function JobsPage() {
     const match = demands.find((demand) => demand.job_title === navState.openTitle || demand.request_no === navState.openTitle);
     if (match) {
       setSelectedDemand(match);
-      setDetailMode(searchParams.get('mode') === 'edit' ? 'edit' : 'view');
+      setDetailMode('view');
       openDemandInUrl(match.id);
     }
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
@@ -238,7 +238,7 @@ export default function JobsPage() {
     const match = demands.find((demand) => demand.id === requestedDemandId);
     if (match) {
       setSelectedDemand(match);
-      setDetailMode('view');
+      setDetailMode(searchParams.get('mode') === 'edit' ? 'edit' : 'view');
     }
     else {
       setSelectedDemand(null);

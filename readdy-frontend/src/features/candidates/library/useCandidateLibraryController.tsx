@@ -192,6 +192,7 @@ export function useCandidateLibraryController() {
   const [transferCandidate, setTransferCandidate] = useState<CandidateListItem | null>(null);
   const [transferSubmitting, setTransferSubmitting] = useState(false);
   const [transferError, setTransferError] = useState('');
+  const [transferInvalidated, setTransferInvalidated] = useState(false);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
   const [uploadOpen, setUploadOpen] = useState(Boolean(navState?.openUpload));
@@ -663,11 +664,12 @@ export function useCandidateLibraryController() {
   const openTransferModal = (candidate: CandidateListItem) => {
     if (!candidate.current_demand_id) return;
     setTransferError('');
+    setTransferInvalidated(false);
     setTransferCandidate(candidate);
   };
 
   const handleTransferCandidate = async (targetDemandId: number, reason: string) => {
-    if (!transferCandidate?.current_demand_id || transferSubmitting) return;
+    if (!transferCandidate?.current_demand_id || transferSubmitting || transferInvalidated) return;
     setTransferSubmitting(true);
     setTransferError('');
     try {
@@ -682,8 +684,16 @@ export function useCandidateLibraryController() {
       await loadCandidates();
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        await Promise.all([loadCandidates(), loadDemands()]);
-        setTransferError('数据已变化，已刷新候选人和需求状态，请核对后再操作');
+        const [response] = await Promise.all([loadCandidates(), loadDemands()]);
+        const latest = response?.candidates.find((candidate) => candidate.id === transferCandidate.id) ?? null;
+        if (latest?.current_demand_id) {
+          setTransferCandidate(latest);
+          setTransferInvalidated(false);
+          setTransferError('数据已变化，已刷新候选人和需求状态，请核对后再操作');
+        } else {
+          setTransferInvalidated(true);
+          setTransferError('数据已变化，该候选人已不在当前列表或活动流程中，请关闭后重新查看');
+        }
       } else {
         setTransferError(errorMessage(error, '转移招聘需求失败'));
       }
@@ -907,6 +917,7 @@ export function useCandidateLibraryController() {
     setTransferCandidate,
     transferSubmitting,
     transferError,
+    transferInvalidated,
     duplicatesOpen,
     setDuplicatesOpen,
     uploadOpen,

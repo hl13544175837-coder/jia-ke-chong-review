@@ -79,7 +79,7 @@ export function useCandidateLibraryData(
     [activeDemands],
   );
 
-  const loadCandidates = useCallback(async () => {
+  const loadCandidates = useCallback(async (): Promise<CandidateListResponse | null> => {
     const requestId = ++candidateRequestId.current;
     setCandidatesLoading(true);
     setCandidatesError(null);
@@ -106,14 +106,16 @@ export function useCandidateLibraryData(
         page,
         per_page: PER_PAGE,
       });
-      if (requestId !== candidateRequestId.current) return;
+      if (requestId !== candidateRequestId.current) return null;
       setCandidateResponse(response);
       setSelectedIds((current) => new Set(
         response.candidates.filter((candidate) => current.has(candidate.id)).map((candidate) => candidate.id),
       ));
+      return response;
     } catch (error) {
-      if (requestId !== candidateRequestId.current) return;
+      if (requestId !== candidateRequestId.current) return null;
       setCandidatesError(errorMessage(error, '候选人列表加载失败'));
+      return null;
     } finally {
       if (requestId === candidateRequestId.current) setCandidatesLoading(false);
     }

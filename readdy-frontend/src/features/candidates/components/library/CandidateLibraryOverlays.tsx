@@ -38,6 +38,7 @@ export default function CandidateLibraryOverlays({ controller }: CandidateLibrar
     setTransferCandidate,
     transferSubmitting,
     transferError,
+    transferInvalidated,
     duplicatesOpen,
     setDuplicatesOpen,
     uploadOpen,
@@ -353,6 +354,7 @@ export default function CandidateLibraryOverlays({ controller }: CandidateLibrar
           demands={activeDemands}
           saving={transferSubmitting}
           error={transferError}
+          invalidated={transferInvalidated}
           onClose={() => { if (!transferSubmitting) setTransferCandidate(null); }}
           onTransfer={(targetDemandId, reason) => void handleTransferCandidate(targetDemandId, reason)}
         />

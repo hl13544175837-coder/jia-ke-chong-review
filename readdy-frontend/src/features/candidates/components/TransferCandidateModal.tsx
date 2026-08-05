@@ -9,6 +9,7 @@ interface TransferCandidateModalProps {
   demands: RecruitmentDemand[];
   saving: boolean;
   error: string;
+  invalidated: boolean;
   onClose: () => void;
   onTransfer: (targetDemandId: number, reason: string) => void;
 }
@@ -18,6 +19,7 @@ export default function TransferCandidateModal({
   demands,
   saving,
   error,
+  invalidated,
   onClose,
   onTransfer,
 }: TransferCandidateModalProps) {
@@ -33,10 +35,16 @@ export default function TransferCandidateModal({
   useOverlayLifecycle({ canClose: !saving, onClose, initialFocusRef: panelRef });
 
   useEffect(() => {
-    setTargetDemandId(availableDemands[0]?.id ?? 0);
+    setTargetDemandId(0);
     setReason('');
     setLocalError('');
-  }, [availableDemands, candidate.id]);
+  }, [candidate.id]);
+
+  useEffect(() => {
+    setTargetDemandId((current) => availableDemands.some((demand) => demand.id === current)
+      ? current
+      : availableDemands[0]?.id ?? 0);
+  }, [availableDemands]);
 
   const submit = () => {
     if (!targetDemandId) { setLocalError('请选择目标招聘需求'); return; }
@@ -64,7 +72,7 @@ export default function TransferCandidateModal({
           </label>
           {(localError || error) && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{localError || error}</p>}
         </div>
-        <footer className="flex justify-end gap-3 border-t border-background-200 px-6 py-4"><ActionButton tone="secondary" disabled={saving} onClick={onClose}>取消</ActionButton><ActionButton tone="primary" disabled={saving || availableDemands.length === 0} onClick={submit}>{saving ? '正在转移...' : '确认转移'}</ActionButton></footer>
+        <footer className="flex justify-end gap-3 border-t border-background-200 px-6 py-4"><ActionButton tone="secondary" disabled={saving} onClick={onClose}>取消</ActionButton><ActionButton tone="primary" disabled={saving || invalidated || availableDemands.length === 0} onClick={submit}>{saving ? '正在转移...' : '确认转移'}</ActionButton></footer>
       </section>
     </div>
   );
