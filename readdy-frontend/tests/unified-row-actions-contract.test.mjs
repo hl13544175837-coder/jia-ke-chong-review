@@ -110,3 +110,16 @@ test('Offer 列表保留 OA 主操作，菜单只提供真实业务导航', () =
   assert.match(table, /查看已完成面试/);
   assert.match(table, /登记 OA 结果/);
 });
+
+test('用户管理提供真实账号操作且不提供删除成员', () => {
+  const table = read('src/pages/settings/components/UserManagementSection.tsx');
+  const api = read('src/features/settings/api.ts');
+  assert.match(table, /RowActionMenu/);
+  assert.match(table, /编辑资料/);
+  assert.match(table, /调整角色与部门/);
+  assert.match(table, /重置密码/);
+  assert.match(table, /user\.is_active \? '停用账号' : '启用账号'/);
+  assert.doesNotMatch(table, /删除成员/);
+  assert.match(api, /resetUserPassword/);
+  assert.match(api, /reset-password/);
+});

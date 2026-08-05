@@ -17,4 +17,10 @@ export const settingsApi = {
   updateUser(userId: number, input: Partial<Pick<AdminUser, 'name' | 'role' | 'department' | 'is_active'>>): Promise<AdminUser> {
     return apiRequest(`/admin/users/${userId}`, { method: 'PATCH', body: input });
   },
+  resetUserPassword(userId: number, password: string): Promise<{ status: 'ok'; id: number }> {
+    return apiRequest(`/admin/users/${userId}/reset-password`, {
+      method: 'POST',
+      body: { password },
+    });
+  },
 };
