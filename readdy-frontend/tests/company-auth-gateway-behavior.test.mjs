@@ -81,13 +81,12 @@ test('真实 PGS 菜单和后端角色一致时返回后端用户身份', async 
   assert.equal(backendRequest.init.headers.Authorization, 'Bearer company-token');
 });
 
-test('没有工作台标记但回退角色与后端不一致时拒绝登录', async () => {
-  const { gateway } = gatewayScenario({ menuCodes: [], backendRole: 'interviewer' });
+test('没有工作台标记时使用后端真实角色登录', async () => {
+  const { gateway } = gatewayScenario({ menuCodes: [], backendRole: 'admin' });
 
-  await assert.rejects(
-    () => gateway.login('lisi', 'password'),
-    /前端回退角色为 recruiter，但后端角色为 interviewer/,
-  );
+  const result = await gateway.login('lisi', 'password');
+
+  assert.equal(result.role, 'admin');
 });
 
 test('PGS 工作台角色与后端不一致时拒绝登录', async () => {

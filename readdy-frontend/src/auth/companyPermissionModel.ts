@@ -74,16 +74,16 @@ export function resolveWorkspaceRole(menuCodes: Iterable<string>): CompanyRole |
 
 export function resolveAlignedCompanyRole(
   workspaceRole: CompanyRole | null,
-  fallbackRole: CompanyRole,
+  _fallbackRole: CompanyRole,
   backendRole: CompanyRole,
 ): CompanyRole {
-  const expectedRole = workspaceRole ?? fallbackRole;
-  if (expectedRole !== backendRole) {
+  if (!workspaceRole) return backendRole;
+  if (workspaceRole !== backendRole) {
     throw new CompanyRoleMismatchError(
-      expectedRole,
+      workspaceRole,
       backendRole,
-      workspaceRole ? 'PGS 工作台角色' : '前端回退角色',
+      'PGS 工作台角色',
     );
   }
-  return expectedRole;
+  return workspaceRole;
 }

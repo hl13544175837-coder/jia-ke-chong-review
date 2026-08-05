@@ -342,7 +342,7 @@ VITE_GATEWAY_ROLE_MAP=100002:interviewer
 AUTH_GATEWAY_ROLE_MAP=100002:interviewer
 ```
 
-`VITE_GATEWAY_ROLE_MAP` 是前端构建参数，`AUTH_GATEWAY_ROLE_MAP` 是后端运行参数。登录时前端会读取 PGS 工作台菜单，再调用 `/api/auth/me` 对照后端角色；两边不一致时会停止进入业务页面并显示双方角色，不能只改其中一处。现场至少验证：登录落在 `/interviewer/dashboard`、`/api/auth/me` 返回 `interviewer`、第二名面试官看不到李四的任务、李四直接访问招聘专员页面或接口被拒绝。
+`VITE_GATEWAY_ROLE_MAP` 是前端构建回退参数，`AUTH_GATEWAY_ROLE_MAP` 是后端运行参数。登录时前端会读取 PGS 工作台菜单，再调用 `/api/auth/me` 取得后端真实角色：PGS 已配置工作台标记时，两边不一致会停止进入业务页面；PGS 尚未配置工作台标记时，以后端真实角色进入对应页面，避免前端默认 `recruiter` 错挡管理员等真实账号。目标状态仍应补齐 PGS 唯一工作台标记。现场至少验证：登录落在 `/interviewer/dashboard`、`/api/auth/me` 返回 `interviewer`、第二名面试官看不到李四的任务、李四直接访问招聘专员页面或接口被拒绝。
 
 ### 公司网关不可达时的本地五角色验收
 

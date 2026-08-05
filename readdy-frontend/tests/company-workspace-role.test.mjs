@@ -11,7 +11,6 @@ const {
   collectCompanyPermissionCodes,
   resolveAlignedCompanyRole,
   resolveWorkspaceRole,
-  CompanyRoleMismatchError,
   WorkspaceRoleConflictError,
 } = await jiti.import('../src/auth/companyPermissionModel.ts');
 
@@ -51,10 +50,10 @@ test('同时配置两个工作台角色时拒绝静默选一个', () => {
   );
 });
 
-test('没有工作台标记时仍要求回退角色与后端角色一致', () => {
-  assert.throws(
-    () => resolveAlignedCompanyRole(null, 'recruiter', 'interviewer'),
-    CompanyRoleMismatchError,
+test('没有工作台标记时采用后端真实角色', () => {
+  assert.equal(
+    resolveAlignedCompanyRole(null, 'recruiter', 'admin'),
+    'admin',
   );
 });
 
