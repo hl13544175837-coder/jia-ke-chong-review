@@ -6,48 +6,17 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { md5 } from './md5';
+import { VALID_COMPANY_ROLES, type CompanyRole } from './gatewayRoles';
 import {
-  resolveGatewayRole,
-  VALID_COMPANY_ROLES,
-  type CompanyRole,
-} from './gatewayRoles';
-import {
-  collectCompanyPermissionCodes,
-  resolveAlignedCompanyRole,
-  resolveWorkspaceRole,
-  type CompanyMenuNode,
-} from './companyPermissionModel';
+  CompanyAuthError,
+  createCompanyAuthGateway,
+  type CompanyLoginResult,
+  type CompanySession,
+} from './companyAuthGateway';
 
 export type { CompanyRole } from './gatewayRoles';
-
-export interface CompanyLoginResult {
-  token: string;
-  user_id: number | null;
-  role: CompanyRole;
-  name: string;
-}
-
-interface GatewayEnvelope<T> {
-  code?: number;
-  msg?: string;
-  data?: T;
-  succ?: boolean;
-  fail?: boolean;
-}
-
-interface GatewayUserInfo {
-  empName?: string | null;
-  nickname?: string | null;
-  ymEmpCode?: string | null;
-  yhUserCode?: string | null;
-  userId?: number | null;
-  role?: CompanyRole | null;
-}
-
-interface CompanySession extends CompanyLoginResult {
-  empCode: string;
-}
+export { CompanyAuthError } from './companyAuthGateway';
+export type { CompanyLoginResult } from './companyAuthGateway';
 
 interface CompanyAuthValue {
   token: string | null;
@@ -68,7 +37,6 @@ const ROLE_KEY = 'hireinsight_role';
 const USER_ID_KEY = 'hireinsight_user_id';
 const ENV_ROLE = ((import.meta.env.VITE_DEFAULT_ROLE ?? 'recruiter') as string).trim();
 const GATEWAY_ROLE_MAP = ((import.meta.env.VITE_GATEWAY_ROLE_MAP ?? '') as string).trim();
-
 const OAUTH_BASE = ((import.meta.env.VITE_OAUTH_BASE_URL ?? '/pgs/oauth') as string)
   .trim()
   .replace(/\/+$/, '') || '/pgs/oauth';
@@ -77,151 +45,22 @@ const API_BASE = ((import.meta.env.VITE_API_BASE_URL ?? '/api') as string)
   .replace(/\/+$/, '') || '/api';
 const PERMISSION_CLIENT_ID = ((import.meta.env.VITE_PERMISSION_CLIENT_ID ?? 'zhipin') as string)
   .trim() || 'zhipin';
-export class CompanyAuthError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = 'CompanyAuthError';
-    this.status = status;
-  }
-}
-
-function ensureGatewaySuccess<T>(
-  body: GatewayEnvelope<T>,
-  status: number,
-  fallback: string,
-): T {
-  if (body?.succ === true || body?.code === 1) {
-    return body.data ?? ({} as T);
-  }
-  throw new CompanyAuthError(status, body?.msg || fallback);
-}
-
-async function readJson<T>(response: Response): Promise<T> {
-  return (await response.json().catch(() => ({}))) as T;
-}
-
-async function gatewayLogin(account: string, password: string): Promise<string> {
-  let response: Response;
-  try {
-    response = await fetch(`${OAUTH_BASE}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account, password: md5(password) }),
-    });
-  } catch (error) {
-    throw new CompanyAuthError(0, `网络错误：${(error as Error).message}`);
-  }
-
-  const body = await readJson<GatewayEnvelope<{ token?: string }>>(response);
-  const succeeded = body.succ === true || body.code === 1;
-  if (!succeeded && !body.msg) {
-    throw new CompanyAuthError(
-      response.status,
-      response.ok
-        ? '公司登录网关返回异常，请稍后重试或联系 IT 支持'
-        : `公司登录网关连接失败（HTTP ${response.status}），请检查网关地址或公司网络`,
-    );
-  }
-  const data = ensureGatewaySuccess(body, response.status, '公司登录未通过，请联系 IT 支持');
-  if (!data.token) {
-    throw new CompanyAuthError(401, '登录响应缺少 token，请联系系统管理员');
-  }
-  return data.token;
-}
-
-async function gatewayProfile(token: string): Promise<{
-  name: string;
-  empCode: string;
-  profileRole: unknown;
-}> {
-  let response: Response;
-  try {
-    response = await fetch(`${OAUTH_BASE}/api/profile`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch (error) {
-    throw new CompanyAuthError(0, `网络错误：${(error as Error).message}`);
-  }
-
-  const body = await readJson<GatewayEnvelope<{ userInfo?: GatewayUserInfo }>>(response);
-  const data = ensureGatewaySuccess(body, response.status, '获取公司用户信息失败');
-  const info = data.userInfo ?? {};
-  const empCode = info.ymEmpCode || info.yhUserCode || '';
-  const name = info.empName || info.nickname || info.yhUserCode || info.ymEmpCode || '用户';
-  if (!empCode) {
-    throw new CompanyAuthError(502, '公司账号缺少工号，请联系系统管理员');
-  }
-  return { name, empCode, profileRole: info.role };
-}
-
-async function gatewayMenuRole(token: string): Promise<CompanyRole | null> {
-  let response: Response;
-  try {
-    response = await fetch(
-      `${OAUTH_BASE}/api/queryCurrentUserMenu?clientId=${encodeURIComponent(PERMISSION_CLIENT_ID)}`,
-      { method: 'POST', headers: { Authorization: `Bearer ${token}` } },
-    );
-  } catch (error) {
-    throw new CompanyAuthError(0, `公司权限加载失败：${(error as Error).message}`);
-  }
-
-  const body = await readJson<GatewayEnvelope<CompanyMenuNode[]>>(response);
-  const menuTree = ensureGatewaySuccess(body, response.status, '公司权限加载失败，请稍后重试');
-  const { menuCodes } = collectCompanyPermissionCodes(menuTree);
-  return resolveWorkspaceRole(menuCodes);
-}
-
-async function backendProfile(token: string, empCode: string): Promise<{
-  id: number;
-  role: CompanyRole;
-}> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}/auth/me`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Emp-Code': empCode,
-      },
-    });
-  } catch (error) {
-    throw new CompanyAuthError(0, `业务权限校验失败：${(error as Error).message}`);
-  }
-
-  const body = await readJson<{ id?: unknown; role?: unknown; error?: string }>(response);
-  if (!response.ok) {
-    throw new CompanyAuthError(
-      response.status,
-      body.error || `业务权限校验失败（HTTP ${response.status}）`,
-    );
-  }
-  const id = Number(body.id);
-  const role = typeof body.role === 'string' ? body.role.trim().toLowerCase() : '';
-  if (!Number.isSafeInteger(id) || id <= 0 || !VALID_COMPANY_ROLES.includes(role as CompanyRole)) {
-    throw new CompanyAuthError(502, '后端返回的账号角色无效，请联系系统管理员');
-  }
-  return { id, role: role as CompanyRole };
-}
+const companyAuthGateway = createCompanyAuthGateway({
+  oauthBase: OAUTH_BASE,
+  apiBase: API_BASE,
+  permissionClientId: PERMISSION_CLIENT_ID,
+  gatewayRoleMap: GATEWAY_ROLE_MAP,
+  fallbackRole: ENV_ROLE,
+});
 
 // eslint-disable-next-line react-refresh/only-export-components
 export async function loginViaCompanyGateway(
   account: string,
   password: string,
 ): Promise<CompanyLoginResult> {
-  const token = await gatewayLogin(account, password);
-  const { name, empCode, profileRole } = await gatewayProfile(token);
-  const workspaceRole = await gatewayMenuRole(token);
-  const fallbackRole = resolveGatewayRole(empCode, profileRole, GATEWAY_ROLE_MAP, ENV_ROLE);
-  const backendUser = await backendProfile(token, empCode);
-  const role = resolveAlignedCompanyRole(workspaceRole, fallbackRole, backendUser.role);
+  const { empCode, ...result } = await companyAuthGateway.login(account, password);
   localStorage.setItem(EMP_CODE_KEY, empCode);
-  return {
-    token,
-    user_id: backendUser.id,
-    role,
-    name,
-  };
+  return result;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -280,23 +119,10 @@ export function CompanyAuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const restore = async () => {
       try {
-        const [workspaceRole, backendUser] = await Promise.all([
-          gatewayMenuRole(storedSession.token),
-          backendProfile(storedSession.token, storedSession.empCode),
-        ]);
-        const role = resolveAlignedCompanyRole(
-          workspaceRole,
-          storedSession.role,
-          backendUser.role,
-        );
+        const restoredSession = await companyAuthGateway.revalidate(storedSession);
         if (cancelled) return;
-        const restoredSession = {
-          ...storedSession,
-          role,
-          user_id: backendUser.id,
-        };
-        localStorage.setItem(ROLE_KEY, role);
-        localStorage.setItem(USER_ID_KEY, String(backendUser.id));
+        localStorage.setItem(ROLE_KEY, restoredSession.role);
+        localStorage.setItem(USER_ID_KEY, String(restoredSession.user_id));
         setSession(restoredSession);
       } catch {
         if (cancelled) return;
