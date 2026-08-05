@@ -303,7 +303,16 @@ PGS 的“工作台”菜单下使用唯一角色标记：
 | 招聘专员工作台 | `dashboard_recruiter` | `recruiter` | `/dashboard` |
 | 面试官工作台 | `dashboard_interviewer` | `interviewer` | `/interviewer/dashboard` |
 
-普通功能菜单编码（如 `index`、`demands`、`candidates`、`interviews`、`bi`）控制左侧入口是否显示；`dashboard_recruiter` / `dashboard_interviewer` 只负责识别当前账号应进入哪类工作台。同一账号不能同时获得两个角色工作台标记，否则登录会提示清理重复授权。
+普通功能菜单编码不仅控制左侧入口，也控制对应地址能否直接打开；没有菜单时直接输入网址会显示“当前账号没有这个页面权限”。`dashboard_recruiter` / `dashboard_interviewer` 只负责识别当前账号应进入哪类工作台。同一账号不能同时获得两个角色工作台标记，否则登录会提示清理重复授权。
+
+第一轮两类角色的页面口径如下：
+
+| 角色 | PGS 功能菜单 | 实际页面与数据范围 |
+|---|---|---|
+| 招聘专员 | `index`、`demands`、`candidates`、`interviews`、`pipeline`，按需增加 `bi` | 招聘专员工作台、招聘需求、简历库、面试管理、Offer；面试管理读取本人可管理需求范围，可安排/调整面试并根据反馈推进 |
+| 面试官 | `index`、`demands`、`interviews`，按需增加 `bi` | 面试官工作台、只读招聘需求、候选人筛选、我的面试；只读取分配给本人的任务，可确认、申请改约和填写本人反馈 |
+
+两类角色虽然都可能拥有 `interviews` 菜单，但页面由技术角色分别落到 `/interviews` 和 `/interviewer/interviews`，按钮也来自各自页面；后端继续拒绝面试官安排面试、推进 Offer 或读取其他面试官任务。
 
 第一轮用李四（工号 `100002`）验收时，三处必须一致：
 

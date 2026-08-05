@@ -2,10 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useCompanyPermissions } from '@/auth/companyPermissions';
+import { requiredMenuCodeForPath } from '@/auth/companyPagePermissions';
 import {
   useProductRole,
 } from '@/auth/productRole';
-import { PRODUCT_ROLES, type ProductRole } from '@/auth/productRoleModel';
+import { homePathForRole, PRODUCT_ROLES, type ProductRole } from '@/auth/productRoleModel';
 import { notificationsApi } from '@/features/notifications/api';
 import type { NotificationItem } from '@/features/notifications/types';
 import {
@@ -169,6 +170,8 @@ export default function MainLayout() {
   const visibleBottomNavItems = bottomNavItems.filter(
     (item) => item.roles.includes(currentRole) && hasMenu(item.menuCode),
   );
+  const requiredMenuCode = requiredMenuCodeForPath(location.pathname);
+  const canOpenCurrentPage = !requiredMenuCode || hasMenu(requiredMenuCode);
 
   const isActive = (path: string) => {
     if (currentRole === 'interviewer' || currentRole === 'hr_director') {
@@ -517,7 +520,24 @@ export default function MainLayout() {
 
         {/* Page content */}
         <main ref={mainScrollRef} onScroll={rememberMainScroll} className="flex-1 overflow-auto">
-          <Outlet />
+          {canOpenCurrentPage ? (
+            <Outlet />
+          ) : (
+            <div className="flex min-h-full items-center justify-center p-6">
+              <section className="w-full max-w-lg rounded-xl border border-background-200 bg-white p-8 text-center shadow-sm">
+                <i className="ri-lock-line text-3xl text-foreground-400" aria-hidden="true" />
+                <h1 className="mt-3 text-lg font-semibold text-foreground-900">当前账号没有这个页面权限</h1>
+                <p className="mt-2 text-sm text-foreground-500">请返回已授权页面，或让管理员在 PGS 中补充对应菜单。</p>
+                <button
+                  type="button"
+                  onClick={() => navigate(homePathForRole(currentRole), { replace: true })}
+                  className="mt-5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600"
+                >
+                  返回我的工作台
+                </button>
+              </section>
+            </div>
+          )}
         </main>
       </div>
 

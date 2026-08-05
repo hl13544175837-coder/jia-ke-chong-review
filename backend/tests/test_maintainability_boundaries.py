@@ -21,6 +21,7 @@ def test_large_api_modules_delegate_domain_route_groups_without_new_blueprints()
         "backend/app/api/interview_reschedules.py",
         "backend/app/api/resume_history.py",
         "backend/app/api/candidate_actions.py",
+        "backend/app/api/candidate_admin.py",
         "backend/app/api/candidate_journey.py",
     ]
 
@@ -31,6 +32,7 @@ def test_large_api_modules_delegate_domain_route_groups_without_new_blueprints()
     assert "register_interview_reschedule_routes(bp)" in interview
     assert "register_resume_history_routes(bp)" in resume
     assert "register_candidate_action_routes(bp)" in candidates
+    assert "register_candidate_admin_routes(bp)" in candidates
     assert "register_candidate_journey_routes(bp)" in candidates
     for relative_path in route_modules:
         source = _read(relative_path)

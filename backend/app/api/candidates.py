@@ -1,16 +1,11 @@
-import csv
-import io
 import json
 import re
 import unicodedata
 from datetime import date, datetime, time, timedelta
-from pathlib import Path
 
-from flask import Blueprint, Response, current_app, jsonify, request, g
+from flask import Blueprint, current_app, jsonify, request, g
 from sqlalchemy import func, or_, select
-from runtime_paths import DEFAULT_UPLOAD_FOLDER, RuntimePathError, resolve_stored_upload_path
-from ..middleware.auth import require_auth, require_role
-from ..middleware.events import record_event
+from ..middleware.auth import require_auth
 from .. import db
 from ..models import (
     Candidate,
@@ -28,7 +23,6 @@ from ..models import (
     OfferRecord,
     RecruitmentDemand,
     UploadBatch,
-    User,
     VALID_STAGES,
 )
 from ..time_utils import utc_now
@@ -54,10 +48,8 @@ from ..services.match_service import MatchService
 from ..source_channels import normalize_resume_source_channel, resume_source_channel_filter_values
 from .pipeline import LEGACY_INTERVIEW_STAGES, STAGE_ORDER, _latest_stage_subquery, normalize_pipeline_stage
 from .access import (
-    can_access_candidate,
     can_manage_job,
     can_read_job,
-    same_org,
     visible_candidate_query,
     visible_job_query,
 )
@@ -889,145 +881,10 @@ def list_candidates():
     })
 
 
-@bp.patch("/candidates/<int:candidate_id>/owner")
-@require_auth
-@require_role("manager", "admin")
-def reassign_owner(candidate_id):
-    data = request.get_json(silent=True) or {}
-    new_owner = data.get("owner_hr_id")
-    reason = str(data.get("reason") or "").strip()[:240]
-    if not new_owner:
-        return jsonify({"error": "owner_hr_id required"}), 400
-    if not reason:
-        return jsonify({"error": "转派原因必填"}), 400
-    cand = db.session.get(Candidate, candidate_id)
-    if cand is None or not same_org(cand, g.org_id) or cand.deleted_at is not None:
-        return jsonify({"error": "候选人不存在"}), 404
-    active_flow = CandidateDemandFlow.query.filter_by(
-        org_id=g.org_id,
-        candidate_id=candidate_id,
-        status="active",
-    ).order_by(CandidateDemandFlow.id.asc()).first()
-    managed_demand_id = cand.current_demand_id or (
-        active_flow.demand_id if active_flow is not None else None
-    )
-    if managed_demand_id is not None:
-        return jsonify({
-            "error": "进行中候选人的负责人跟随招聘需求，请在需求详情中转派",
-            "code": "owner_managed_by_demand",
-            "demand_id": managed_demand_id,
-        }), 409
-    target = db.session.get(User, new_owner)
-    if target is None or not same_org(target, g.org_id):
-        return jsonify({"error": "目标用户不存在"}), 404
-    if target.role != "recruiter" or not target.is_active:
-        return jsonify({"error": "候选人负责人必须是启用中的招聘专员"}), 400
-    old_owner = cand.owner_hr_id
-    cand.owner_hr_id = new_owner
-    db.session.commit()
-    record_event("candidate.reassigned", entity_id=candidate_id, entity_type="candidate",
-                 payload={"from": old_owner, "to": new_owner, "reason": reason})
-    return jsonify({"candidate_id": candidate_id, "owner_hr_id": new_owner, "reason": reason})
-
-
-@bp.get("/candidates/<int:candidate_id>/export")
-@require_auth
-@require_role("recruiter", "manager", "admin")
-def export_candidate(candidate_id):
-    candidate = db.session.get(Candidate, candidate_id)
-    if candidate is None or not same_org(candidate, g.org_id) or candidate.deleted_at is not None:
-        return jsonify({"error": "候选人不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, candidate_id):
-        return jsonify({"error": "Forbidden"}), 403
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow([
-        "candidate_id",
-        "name",
-        "email",
-        "phone",
-        "owner_hr_id",
-        "created_at",
-        "resume_json",
-    ])
-    writer.writerow([
-        candidate.id,
-        candidate.name_masked or "",
-        candidate.email_masked or "",
-        candidate.phone_masked or "",
-        candidate.owner_hr_id or "",
-        candidate.created_at.isoformat() if candidate.created_at else "",
-        json.dumps(candidate.resume_json or {}, ensure_ascii=False),
-    ])
-
-    export_count_10m = _export_count_for_actor() + 1
-    record_event(
-        "candidate.exported",
-        entity_id=candidate.id,
-        entity_type="candidate",
-        payload={"format": "csv", "export_count_10m": export_count_10m},
-        severity="warning" if export_count_10m >= 6 else "info",
-    )
-    return Response(
-        output.getvalue(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=candidate-{candidate.id}.csv"},
-    )
-
-
-@bp.delete("/candidates/<int:candidate_id>")
-@require_auth
-@require_role("recruiter", "manager", "admin")
-def delete_candidate(candidate_id):
-    data = request.get_json(silent=True) or {}
-    reason = str(data.get("reason") or "").strip()[:240]
-    if not reason:
-        return jsonify({"error": "删除原因必填"}), 400
-    candidate = db.session.get(Candidate, candidate_id)
-    if candidate is None or not same_org(candidate, g.org_id) or candidate.deleted_at is not None:
-        return jsonify({"error": "候选人不存在"}), 404
-    if not can_access_candidate(g.user_id, g.role, candidate_id):
-        return jsonify({"error": "Forbidden"}), 403
-
-    raw_file_removed = False
-    raw_path = candidate.raw_file_path
-    if raw_path:
-        try:
-            path = resolve_stored_upload_path(
-                raw_path,
-                current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER,
-            )
-            if path.is_file():
-                path.unlink()
-                raw_file_removed = True
-        except (OSError, RuntimePathError):
-            raw_file_removed = False
-
-    candidate.name_masked = "已删除候选人"
-    candidate.email_masked = ""
-    candidate.phone_masked = ""
-    candidate.resume_json = {}
-    candidate.raw_file_path = None
-    candidate.parse_error = None
-    candidate.deleted_at = utc_now()
-    candidate.deleted_by = g.user_id
-    candidate.anonymized_at = utc_now()
-    for tag in candidate.tags:
-        tag.tag = "已删除"
-        tag.score = None
-        tag.org_id = g.org_id
-    db.session.commit()
-    record_event(
-        "candidate.deleted",
-        entity_id=candidate_id,
-        entity_type="candidate",
-        payload={"reason": reason, "anonymized": True, "raw_file_removed": raw_file_removed},
-    )
-    return jsonify({"candidate_id": candidate_id, "deleted": True, "anonymized": True})
-
+from .candidate_admin import register_candidate_admin_routes
 from .candidate_actions import register_candidate_action_routes
 from .candidate_journey import register_candidate_journey_routes
 
+register_candidate_admin_routes(bp)
 register_candidate_action_routes(bp)
 register_candidate_journey_routes(bp)

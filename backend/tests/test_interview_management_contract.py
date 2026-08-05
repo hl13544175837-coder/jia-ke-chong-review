@@ -720,6 +720,11 @@ def test_management_rows_return_cancelled_interview_candidate_as_unassigned(
 def test_adjust_assignment_validates_scope_interviewer_conflict_and_state(
     client, make_user, app
 ):
+    target_time = (utc_now() + timedelta(days=2)).replace(
+        hour=10, minute=0, second=0, microsecond=0
+    )
+    conflict_time = target_time + timedelta(hours=1)
+    updated_time = target_time + timedelta(hours=2, minutes=30)
     owner_id, owner_token = make_user(
         "adjust-owner@example.com", role="recruiter"
     )
@@ -747,14 +752,14 @@ def test_adjust_assignment_validates_scope_interviewer_conflict_and_state(
         owner_id=owner_id,
         suffix="ADJUST-TARGET",
         interviewer_id=first_interviewer_id,
-        scheduled_at=datetime(2026, 8, 4, 10, 0),
+        scheduled_at=target_time,
     )
     conflict = _seed_interview_candidate(
         app,
         owner_id=other_owner_id,
         suffix="ADJUST-CONFLICT",
         interviewer_id=second_interviewer_id,
-        scheduled_at=datetime(2026, 8, 4, 11, 0),
+        scheduled_at=conflict_time,
     )
     endpoint = f"/api/interview/assignments/{target['assignment_id']}"
 
@@ -783,7 +788,7 @@ def test_adjust_assignment_validates_scope_interviewer_conflict_and_state(
         headers=_auth(owner_token),
         json={
             "interviewer_id": second_interviewer_id,
-            "scheduled_at": "2026-08-04T11:00:00",
+            "scheduled_at": conflict_time.isoformat(),
         },
     )
 
@@ -799,14 +804,14 @@ def test_adjust_assignment_validates_scope_interviewer_conflict_and_state(
         headers=_auth(manager_token),
         json={
             "interviewer_id": second_interviewer_id,
-            "scheduled_at": "2026-08-04T12:30:00",
+            "scheduled_at": updated_time.isoformat(),
             "location": "新会议室",
             "note": "请准备系统设计题",
         },
     )
     assert updated.status_code == 200
     assert updated.get_json()["interviewer_id"] == second_interviewer_id
-    assert updated.get_json()["scheduled_at"].startswith("2026-08-04T12:30:00")
+    assert updated.get_json()["scheduled_at"].startswith(updated_time.isoformat())
     assert updated.get_json()["location"] == "新会议室"
     assert updated.get_json()["note"] == "请准备系统设计题"
     assert updated.get_json()["deduplicated"] is False
