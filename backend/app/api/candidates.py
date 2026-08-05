@@ -3,7 +3,7 @@ import io
 import json
 import re
 import unicodedata
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from flask import Blueprint, Response, current_app, jsonify, request, g
@@ -63,6 +63,18 @@ from .access import (
 )
 
 bp = Blueprint("candidates", __name__)
+
+TERMINAL_PIPELINE_STATES = {"rejected", "onboarded", "transferred"}
+
+
+def _parse_candidate_date_arg(name):
+    raw = request.args.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as error:
+        raise ValueError(f"{name} 必须使用 YYYY-MM-DD 格式") from error
 
 COMMON_CITIES = [
     "北京",
@@ -226,6 +238,7 @@ def _candidate_library_item(
     candidate,
     *,
     stage_context=None,
+    pipeline_fact=None,
     favorite=False,
     demands_by_id=None,
     data_hygiene=None,
@@ -238,6 +251,10 @@ def _candidate_library_item(
         "is_local_demo_record": False,
     }
     latest_demand_id = stage_context["demand_id"] if stage_context else None
+    pipeline_fact = pipeline_fact or {
+        "pipeline_state": "never_entered",
+        "has_rejected_history": False,
+    }
     tags = sorted(
         [{"tag": t.tag, "score": t.score or 0} for t in candidate.tags if t.tag],
         key=lambda x: (-int(x["score"] or 0), x["tag"]),
@@ -250,6 +267,8 @@ def _candidate_library_item(
         "owner_hr_id": candidate.owner_hr_id,
         "current_demand_id": candidate.current_demand_id,
         "current_stage": stage_context["stage"] if stage_context else None,
+        "pipeline_state": pipeline_fact["pipeline_state"],
+        "has_rejected_history": pipeline_fact["has_rejected_history"],
         "latest_demand_id": latest_demand_id,
         "current_demand": _demand_summary(
             demands_by_id.get(candidate.current_demand_id)
@@ -307,6 +326,100 @@ def _candidate_stage_context(candidates, demand_id=None):
         [candidate.id for candidate in candidates],
         demand_id=demand_id,
     )
+
+
+def _active_candidate_condition(demand_id=None):
+    active_flows = select(CandidateDemandFlow.candidate_id).where(
+        CandidateDemandFlow.org_id == g.org_id,
+        CandidateDemandFlow.status == "active",
+    )
+    if demand_id is not None:
+        active_flows = active_flows.where(CandidateDemandFlow.demand_id == demand_id)
+
+    latest_by_demand = (
+        db.session.query(
+            PipelineStage.candidate_id.label("candidate_id"),
+            PipelineStage.demand_id.label("demand_id"),
+            func.max(PipelineStage.id).label("max_id"),
+        )
+        .filter(PipelineStage.org_id == g.org_id)
+    )
+    if demand_id is not None:
+        latest_by_demand = latest_by_demand.filter(
+            PipelineStage.demand_id == demand_id
+        )
+    latest_by_demand = latest_by_demand.group_by(
+        PipelineStage.candidate_id,
+        PipelineStage.demand_id,
+    ).subquery()
+    legacy_active_ids = (
+        select(PipelineStage.candidate_id)
+        .join(latest_by_demand, PipelineStage.id == latest_by_demand.c.max_id)
+        .where(PipelineStage.stage.notin_(TERMINAL_PIPELINE_STATES))
+    )
+    current_demand_condition = (
+        Candidate.current_demand_id == demand_id
+        if demand_id is not None
+        else Candidate.current_demand_id.isnot(None)
+    )
+    return or_(
+        current_demand_condition,
+        Candidate.id.in_(active_flows),
+        Candidate.id.in_(legacy_active_ids),
+    )
+
+
+def _latest_candidate_stage_subquery(demand_id=None):
+    latest = (
+        db.session.query(
+            PipelineStage.candidate_id.label("candidate_id"),
+            func.max(PipelineStage.id).label("max_id"),
+        )
+        .filter(PipelineStage.org_id == g.org_id)
+    )
+    if demand_id is not None:
+        latest = latest.filter(PipelineStage.demand_id == demand_id)
+    return latest.group_by(PipelineStage.candidate_id).subquery()
+
+
+def _candidate_pipeline_facts(candidates, stages, demand_id=None):
+    candidate_ids = [candidate.id for candidate in candidates]
+    if not candidate_ids:
+        return {}
+    active_ids = {
+        row[0]
+        for row in (
+            db.session.query(Candidate.id)
+            .filter(
+                Candidate.id.in_(candidate_ids),
+                _active_candidate_condition(demand_id=demand_id),
+            )
+            .all()
+        )
+    }
+    rejected_query = db.session.query(PipelineStage.candidate_id).filter(
+        PipelineStage.org_id == g.org_id,
+        PipelineStage.candidate_id.in_(candidate_ids),
+        PipelineStage.stage == "rejected",
+    )
+    if demand_id is not None:
+        rejected_query = rejected_query.filter(PipelineStage.demand_id == demand_id)
+    rejected_ids = {row[0] for row in rejected_query.distinct().all()}
+
+    facts = {}
+    for candidate_id in candidate_ids:
+        latest_stage = (stages.get(candidate_id) or {}).get("stage")
+        if candidate_id in active_ids:
+            pipeline_state = "in_pipeline"
+        elif latest_stage in TERMINAL_PIPELINE_STATES:
+            pipeline_state = latest_stage
+        else:
+            pipeline_state = "never_entered"
+        facts[candidate_id] = {
+            "pipeline_state": pipeline_state,
+            "has_rejected_history": candidate_id in rejected_ids,
+        }
+    return facts
 
 
 def _candidate_favorite_ids(candidates):
@@ -382,6 +495,11 @@ def _candidate_data_hygiene_by_id():
 
 def _candidate_library_payload(candidates, demand_id=None):
     stages = _candidate_stage_context(candidates, demand_id=demand_id)
+    pipeline_facts = _candidate_pipeline_facts(
+        candidates,
+        stages,
+        demand_id=demand_id,
+    )
     favorites = _candidate_favorite_ids(candidates)
     data_hygiene_by_id = _candidate_data_hygiene_by_id()
     demand_ids = {
@@ -404,6 +522,7 @@ def _candidate_library_payload(candidates, demand_id=None):
         _candidate_library_item(
             candidate,
             stage_context=stages.get(candidate.id),
+            pipeline_fact=pipeline_facts.get(candidate.id),
             favorite=candidate.id in favorites,
             demands_by_id=demands_by_id,
             data_hygiene=data_hygiene_by_id.get(candidate.id),
@@ -507,6 +626,8 @@ def list_candidates():
             "source_channel",
             "parse_status",
             "pipeline_status",
+            "created_from",
+            "created_to",
             "favorite",
             "education",
             "skill",
@@ -539,6 +660,23 @@ def list_candidates():
     sort_order = request.args.get("sort_order", "desc")
     page = max(1, request.args.get("page", 1, type=int) or 1)
     per_page = min(max(1, request.args.get("per_page", 20, type=int) or 20), 100)
+
+    try:
+        created_from = _parse_candidate_date_arg("created_from")
+        created_to = _parse_candidate_date_arg("created_to")
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    if created_from and created_to and created_from > created_to:
+        return jsonify({"error": "入库开始日期不能晚于结束日期"}), 400
+    if created_from:
+        query = query.filter(
+            Candidate.created_at >= datetime.combine(created_from, time.min)
+        )
+    if created_to:
+        query = query.filter(
+            Candidate.created_at
+            < datetime.combine(created_to + timedelta(days=1), time.min)
+        )
 
     scope_demand = None
     if demand_id or job_id:
@@ -599,42 +737,53 @@ def list_candidates():
     if parse_status in {"pending", "processing", "ok", "failed", "original_confirmed"}:
         query = query.filter(Candidate.parse_status == parse_status)
 
-    if pipeline_status in {"in_pipeline", "not_in_pipeline"}:
-        active_flow_ids = select(CandidateDemandFlow.candidate_id).where(
-            CandidateDemandFlow.org_id == g.org_id,
-            CandidateDemandFlow.status == "active",
-        )
-        latest_by_demand = (
-            db.session.query(
-                PipelineStage.candidate_id.label("candidate_id"),
-                PipelineStage.demand_id.label("demand_id"),
-                func.max(PipelineStage.id).label("max_id"),
-            )
-            .filter(PipelineStage.org_id == g.org_id)
-            .group_by(PipelineStage.candidate_id, PipelineStage.demand_id)
-            .subquery()
-        )
-        legacy_active_ids = (
-            select(PipelineStage.candidate_id)
-            .join(latest_by_demand, PipelineStage.id == latest_by_demand.c.max_id)
-            .where(PipelineStage.stage.notin_(("onboarded", "rejected", "transferred")))
-        )
-        active_condition = or_(
-            Candidate.current_demand_id.isnot(None),
-            Candidate.id.in_(active_flow_ids),
-            Candidate.id.in_(legacy_active_ids),
+    if pipeline_status in {
+        "in_pipeline",
+        "not_in_pipeline",
+        "never_entered",
+        "rejected",
+        "onboarded",
+        "transferred",
+    }:
+        active_condition = _active_candidate_condition(
+            demand_id=scope_demand.id if scope_demand is not None else None
         )
         if pipeline_status == "in_pipeline":
             query = query.filter(active_condition)
-        else:
-            latest_by_candidate = (
-                db.session.query(
-                    PipelineStage.candidate_id.label("candidate_id"),
-                    func.max(PipelineStage.id).label("max_id"),
+        elif pipeline_status == "never_entered":
+            any_history = select(PipelineStage.candidate_id).where(
+                PipelineStage.org_id == g.org_id
+            )
+            if scope_demand is not None:
+                any_history = any_history.where(
+                    PipelineStage.demand_id == scope_demand.id
                 )
-                .filter(PipelineStage.org_id == g.org_id)
-                .group_by(PipelineStage.candidate_id)
-                .subquery()
+            query = query.filter(
+                ~active_condition,
+                ~Candidate.id.in_(any_history),
+            )
+        elif pipeline_status in TERMINAL_PIPELINE_STATES:
+            latest_by_candidate = _latest_candidate_stage_subquery(
+                demand_id=scope_demand.id if scope_demand is not None else None
+            )
+            latest_stage_ids = (
+                select(PipelineStage.candidate_id)
+                .join(
+                    latest_by_candidate,
+                    PipelineStage.id == latest_by_candidate.c.max_id,
+                )
+            )
+            query = query.filter(
+                ~active_condition,
+                Candidate.id.in_(
+                    latest_stage_ids.where(
+                        PipelineStage.stage == pipeline_status
+                    )
+                ),
+            )
+        else:
+            latest_by_candidate = _latest_candidate_stage_subquery(
+                demand_id=scope_demand.id if scope_demand is not None else None
             )
             unavailable_talent_ids = (
                 select(PipelineStage.candidate_id)

@@ -241,6 +241,179 @@ def test_candidates_support_source_parse_and_pipeline_filters(client, make_user,
     assert pipeline_response.get_json()["candidates"][0]["name_masked"] == "候选人已入流程"
 
 
+def test_candidates_support_inclusive_created_date_range(client, make_user, app):
+    admin_id, admin_token = make_user(
+        "candidate-created-range-admin@example.com", role="admin"
+    )
+
+    with app.app_context():
+        from app import db
+        from app.models import Candidate
+
+        db.session.add_all([
+            Candidate(
+                owner_hr_id=admin_id,
+                name_masked="范围之前",
+                resume_json={"extracted_info": {}},
+                created_at=datetime(2026, 8, 1, 23, 59, 59),
+            ),
+            Candidate(
+                owner_hr_id=admin_id,
+                name_masked="边界开始",
+                resume_json={"extracted_info": {}},
+                created_at=datetime(2026, 8, 2, 0, 0, 0),
+            ),
+            Candidate(
+                owner_hr_id=admin_id,
+                name_masked="边界结束",
+                resume_json={"extracted_info": {}},
+                created_at=datetime(2026, 8, 3, 23, 59, 59),
+            ),
+            Candidate(
+                owner_hr_id=admin_id,
+                name_masked="范围之后",
+                resume_json={"extracted_info": {}},
+                created_at=datetime(2026, 8, 4, 0, 0, 0),
+            ),
+        ])
+        db.session.commit()
+
+    response = client.get(
+        "/api/candidates?created_from=2026-08-02&created_to=2026-08-03&page=1&per_page=20",
+        headers=_auth(admin_token),
+    )
+
+    assert response.status_code == 200
+    assert {
+        item["name_masked"] for item in response.get_json()["candidates"]
+    } == {"边界开始", "边界结束"}
+
+    invalid = client.get(
+        "/api/candidates?created_from=2026-08-XX&page=1&per_page=20",
+        headers=_auth(admin_token),
+    )
+    assert invalid.status_code == 400
+    assert invalid.get_json()["error"] == "created_from 必须使用 YYYY-MM-DD 格式"
+
+    reversed_range = client.get(
+        "/api/candidates?created_from=2026-08-04&created_to=2026-08-03&page=1&per_page=20",
+        headers=_auth(admin_token),
+    )
+    assert reversed_range.status_code == 400
+    assert reversed_range.get_json()["error"] == "入库开始日期不能晚于结束日期"
+
+
+def test_candidates_expose_and_filter_precise_pipeline_state(client, make_user, app):
+    admin_id, admin_token = make_user(
+        "candidate-pipeline-state-admin@example.com", role="admin"
+    )
+
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, Job, PipelineStage
+
+        job = Job(title="后端工程师", jd_text="负责后端开发", owner_hr_id=admin_id)
+        db.session.add(job)
+        db.session.flush()
+
+        never_entered = Candidate(
+            owner_hr_id=admin_id,
+            name_masked="从未进入",
+            resume_json={"extracted_info": {}},
+        )
+        active = Candidate(
+            owner_hr_id=admin_id,
+            name_masked="当前流程中",
+            resume_json={"extracted_info": {}},
+        )
+        rejected = Candidate(
+            owner_hr_id=admin_id,
+            name_masked="当前淘汰",
+            resume_json={"extracted_info": {}},
+        )
+        reactivated = Candidate(
+            owner_hr_id=admin_id,
+            name_masked="重新启用",
+            resume_json={"extracted_info": {}},
+        )
+        onboarded = Candidate(
+            owner_hr_id=admin_id,
+            name_masked="已经入职",
+            resume_json={"extracted_info": {}},
+        )
+        transferred = Candidate(
+            owner_hr_id=admin_id,
+            name_masked="已经转出",
+            resume_json={"extracted_info": {}},
+        )
+        db.session.add_all([
+            never_entered,
+            active,
+            rejected,
+            reactivated,
+            onboarded,
+            transferred,
+        ])
+        db.session.flush()
+        db.session.add_all([
+            PipelineStage(candidate_id=active.id, job_id=job.id, stage="pending", updated_by=admin_id),
+            PipelineStage(candidate_id=rejected.id, job_id=job.id, stage="rejected", updated_by=admin_id),
+            PipelineStage(candidate_id=reactivated.id, job_id=job.id, stage="rejected", updated_by=admin_id),
+            PipelineStage(candidate_id=reactivated.id, job_id=job.id, stage="pending", updated_by=admin_id),
+            PipelineStage(candidate_id=onboarded.id, job_id=job.id, stage="onboarded", updated_by=admin_id),
+            PipelineStage(candidate_id=transferred.id, job_id=job.id, stage="transferred", updated_by=admin_id),
+        ])
+        db.session.commit()
+
+    response = client.get(
+        "/api/candidates?page=1&per_page=20",
+        headers=_auth(admin_token),
+    )
+
+    assert response.status_code == 200
+    states = {
+        item["name_masked"]: (
+            item["pipeline_state"],
+            item["has_rejected_history"],
+        )
+        for item in response.get_json()["candidates"]
+    }
+    assert states["从未进入"] == ("never_entered", False)
+    assert states["当前流程中"] == ("in_pipeline", False)
+    assert states["当前淘汰"] == ("rejected", True)
+    assert states["重新启用"] == ("in_pipeline", True)
+    assert states["已经入职"] == ("onboarded", False)
+    assert states["已经转出"] == ("transferred", False)
+
+    never_response = client.get(
+        "/api/candidates?pipeline_status=never_entered&page=1&per_page=20",
+        headers=_auth(admin_token),
+    )
+    assert never_response.status_code == 200
+    assert [
+        item["name_masked"] for item in never_response.get_json()["candidates"]
+    ] == ["从未进入"]
+
+    rejected_response = client.get(
+        "/api/candidates?pipeline_status=rejected&page=1&per_page=20",
+        headers=_auth(admin_token),
+    )
+    assert rejected_response.status_code == 200
+    assert [
+        item["name_masked"] for item in rejected_response.get_json()["candidates"]
+    ] == ["当前淘汰"]
+
+    talent_pool_response = client.get(
+        "/api/candidates?pipeline_status=not_in_pipeline&page=1&per_page=20",
+        headers=_auth(admin_token),
+    )
+    assert talent_pool_response.status_code == 200
+    assert {
+        item["name_masked"]
+        for item in talent_pool_response.get_json()["candidates"]
+    } == {"从未进入", "当前淘汰"}
+
+
 def test_candidates_support_education_skill_and_score_filters(client, make_user, app):
     admin_id, admin_token = make_user(
         "candidate-profile-filter-admin@example.com", role="admin"
