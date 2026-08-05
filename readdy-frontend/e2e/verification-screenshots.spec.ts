@@ -33,7 +33,7 @@ test.describe.serial('技术债解耦验收截图', () => {
 
     await page.goto('/candidates');
     await expect(page.getByRole('heading', { name: '简历库' })).toBeAttached();
-    const candidateRow = page.getByRole('row').filter({ hasText: '谷杨' }).first();
+    const candidateRow = page.getByRole('row').filter({ hasText: '候选人001' }).first();
     await candidateRow.locator('[data-ui="row-action-menu-trigger"]').click();
     await page.getByRole('menuitem', { name: '查看候选人详情' }).click();
     await expect(page.getByRole('tab', { name: '面试信息' })).toBeVisible();

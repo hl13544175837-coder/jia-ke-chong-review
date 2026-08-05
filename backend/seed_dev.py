@@ -29,6 +29,7 @@ from app import create_app, db
 from app.models import (
     User, Candidate, CandidateTag, Job, Match,
     RecruitmentDemand, CandidateDemandFlow,
+    BusinessReviewTask,
     Interview, InterviewAssignment, InterviewFeedback,
     PipelineStage, CandidateDisposition,
     OfferRecord, OfferEvent, Event, AuditLog
@@ -53,6 +54,7 @@ def wipe():
     db.session.query(OfferRecord).delete()
     db.session.query(InterviewFeedback).delete()
     db.session.query(InterviewAssignment).delete()
+    db.session.query(BusinessReviewTask).delete()
     db.session.query(CandidateDisposition).delete()
     db.session.query(PipelineStage).delete()
     db.session.query(Interview).delete()
@@ -609,6 +611,34 @@ def seed():
                 updated_at=_dt(latest_days_ago),
             ))
 
+        db.session.flush()
+
+        # Keep the interviewer screening acceptance path available on every
+        # clean seed instead of depending on historical local database rows.
+        screening_demand = demands_by_job_id[job2.id]
+        db.session.add(PipelineStage(
+            org_id=screening_demand.org_id,
+            candidate_id=c9.id,
+            job_id=job2.id,
+            demand_id=screening_demand.id,
+            stage="business_review",
+            updated_by=hr3.id,
+            note="本地验收数据：等待业务筛选",
+            ts=_dt(1),
+        ))
+        db.session.add(BusinessReviewTask(
+            org_id=screening_demand.org_id,
+            demand_id=screening_demand.id,
+            candidate_id=c9.id,
+            reviewer_id=ivr.id,
+            status="pending",
+            pending_slot=1,
+            hr_note="请重点确认 React 与 Python 的岗位匹配度",
+            due_at=_dt(-1),
+            created_by=hr3.id,
+            created_at=_dt(1),
+            updated_at=_dt(1),
+        ))
         db.session.flush()
 
         # ── 6. INTERVIEWS ─────────────────────────────────────────────────────
