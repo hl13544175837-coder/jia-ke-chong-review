@@ -16,3 +16,13 @@ test('company gateway roles use an employee map and least-privilege fallback', (
   assert.match(auth, /resolveGatewayRole\(empCode/);
   assert.doesNotMatch(auth, /VITE_DEFAULT_ROLE \?\? 'admin'/);
 });
+
+test('company login aligns the PGS workspace role with the backend role', () => {
+  const auth = read('src/auth/companyAuth.tsx');
+
+  assert.match(auth, /queryCurrentUserMenu/);
+  assert.match(auth, /resolveWorkspaceRole/);
+  assert.match(auth, /\/auth\/me/);
+  assert.match(auth, /PGS 工作台角色/);
+  assert.match(auth, /后端角色/);
+});

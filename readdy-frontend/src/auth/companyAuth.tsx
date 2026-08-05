@@ -12,6 +12,11 @@ import {
   VALID_COMPANY_ROLES,
   type CompanyRole,
 } from './gatewayRoles';
+import {
+  collectCompanyPermissionCodes,
+  resolveWorkspaceRole,
+  type CompanyMenuNode,
+} from './companyPermissionModel';
 
 export type { CompanyRole } from './gatewayRoles';
 
@@ -66,6 +71,11 @@ const GATEWAY_ROLE_MAP = ((import.meta.env.VITE_GATEWAY_ROLE_MAP ?? '') as strin
 const OAUTH_BASE = ((import.meta.env.VITE_OAUTH_BASE_URL ?? '/pgs/oauth') as string)
   .trim()
   .replace(/\/+$/, '') || '/pgs/oauth';
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL ?? '/api') as string)
+  .trim()
+  .replace(/\/+$/, '') || '/api';
+const PERMISSION_CLIENT_ID = ((import.meta.env.VITE_PERMISSION_CLIENT_ID ?? 'zhipin') as string)
+  .trim() || 'zhipin';
 export class CompanyAuthError extends Error {
   status: number;
 
@@ -123,8 +133,7 @@ async function gatewayLogin(account: string, password: string): Promise<string> 
 async function gatewayProfile(token: string): Promise<{
   name: string;
   empCode: string;
-  userId: number | null;
-  role: CompanyRole;
+  profileRole: unknown;
 }> {
   let response: Response;
   try {
@@ -140,14 +149,58 @@ async function gatewayProfile(token: string): Promise<{
   const info = data.userInfo ?? {};
   const empCode = info.ymEmpCode || info.yhUserCode || '';
   const name = info.empName || info.nickname || info.yhUserCode || info.ymEmpCode || '用户';
-  const userId = Number.isSafeInteger(info.userId) && Number(info.userId) > 0
-    ? Number(info.userId)
-    : null;
   if (!empCode) {
     throw new CompanyAuthError(502, '公司账号缺少工号，请联系系统管理员');
   }
-  const role = resolveGatewayRole(empCode, info.role, GATEWAY_ROLE_MAP, ENV_ROLE);
-  return { name, empCode, userId, role };
+  return { name, empCode, profileRole: info.role };
+}
+
+async function gatewayMenuRole(token: string): Promise<CompanyRole | null> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${OAUTH_BASE}/api/queryCurrentUserMenu?clientId=${encodeURIComponent(PERMISSION_CLIENT_ID)}`,
+      { method: 'POST', headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch (error) {
+    throw new CompanyAuthError(0, `公司权限加载失败：${(error as Error).message}`);
+  }
+
+  const body = await readJson<GatewayEnvelope<CompanyMenuNode[]>>(response);
+  const menuTree = ensureGatewaySuccess(body, response.status, '公司权限加载失败，请稍后重试');
+  const { menuCodes } = collectCompanyPermissionCodes(menuTree);
+  return resolveWorkspaceRole(menuCodes);
+}
+
+async function backendProfile(token: string, empCode: string): Promise<{
+  id: number;
+  role: CompanyRole;
+}> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Emp-Code': empCode,
+      },
+    });
+  } catch (error) {
+    throw new CompanyAuthError(0, `业务权限校验失败：${(error as Error).message}`);
+  }
+
+  const body = await readJson<{ id?: unknown; role?: unknown; error?: string }>(response);
+  if (!response.ok) {
+    throw new CompanyAuthError(
+      response.status,
+      body.error || `业务权限校验失败（HTTP ${response.status}）`,
+    );
+  }
+  const id = Number(body.id);
+  const role = typeof body.role === 'string' ? body.role.trim().toLowerCase() : '';
+  if (!Number.isSafeInteger(id) || id <= 0 || !VALID_COMPANY_ROLES.includes(role as CompanyRole)) {
+    throw new CompanyAuthError(502, '后端返回的账号角色无效，请联系系统管理员');
+  }
+  return { id, role: role as CompanyRole };
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -156,11 +209,21 @@ export async function loginViaCompanyGateway(
   password: string,
 ): Promise<CompanyLoginResult> {
   const token = await gatewayLogin(account, password);
-  const { name, empCode, userId, role } = await gatewayProfile(token);
+  const { name, empCode, profileRole } = await gatewayProfile(token);
+  const workspaceRole = await gatewayMenuRole(token);
+  const role = workspaceRole
+    ?? resolveGatewayRole(empCode, profileRole, GATEWAY_ROLE_MAP, ENV_ROLE);
+  const backendUser = await backendProfile(token, empCode);
+  if (workspaceRole && backendUser.role !== workspaceRole) {
+    throw new CompanyAuthError(
+      403,
+      `PGS 工作台角色为 ${workspaceRole}，但后端角色为 ${backendUser.role}，请同步角色配置后重试`,
+    );
+  }
   localStorage.setItem(EMP_CODE_KEY, empCode);
   return {
     token,
-    user_id: userId,
+    user_id: backendUser.id,
     role,
     name,
   };
