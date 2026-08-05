@@ -15,7 +15,7 @@
 
 ---
 
-## 当前 Test/SIT 候选（2026-08-04）
+## 当前 Test/SIT 候选（2026-08-06）
 
 当前唯一前端主线是 `readdy-frontend/`，后端主线是 `backend/`。招聘需求、候选人、业务筛选、面试、Offer、工作台、人才地图与核心管理统计已接真实后端。人才地图的地图、公司和人选刷新后仍保留；仓库仍保留部分非试点页面的 Mock 数据，不能把本地闭环描述成全站生产数据验收。
 
@@ -39,13 +39,20 @@
 
 它会一次检查前后端测试、类型、Lint、构建、依赖安全、数据库版本和 Git 状态，不会清理 Mock、迁移数据库、提交、推送或发布。
 
+五角色真实页面冒烟使用 Playwright 自带 Chromium，不会安装、打开或修改用户默认浏览器。先按 `RUNNING.md` 启动本地隔离环境，再运行：
+
+```bash
+cd readdy-frontend
+E2E_BASE_URL=http://127.0.0.1:5190 E2E_PASSWORD=Zhipin2026 npm run test:e2e:smoke
+```
+
 ## 接手先读
 
 如果你是下一任接手开发的人，先看 [docs/README.md](docs/README.md) 判断“先读哪份、信哪份”。本页只负责项目总览和快速开始；当前实现细节以 [docs/SDD-智聘招聘系统-v1.0.md](docs/SDD-智聘招聘系统-v1.0.md) 为准，本地运行以 [RUNNING.md](RUNNING.md) 为准，生产/试点部署以 [DEPLOYMENT.md](DEPLOYMENT.md) 和上线检查清单为准。
 
 本 README 里的功能介绍用于了解系统能力，不等于生产上线完成证明。涉及真实 HR 试点、服务器部署、数据清理、LLM 合规或备份恢复时，必须再看 [docs/06_试点上线检查清单.md](docs/06_试点上线检查清单.md) 和 [docs/07_上线部署前关键清单](docs/07_上线部署前关键清单_给AI执行.md)，并由负责人确认后执行。
 
-> **当前候选状态**：本地规范化分支从 CFPD `test` 缓存基线 `c686b11` 建立；准确版本以 `git log -1`、前端登录页版本号和后端 `/actuator/info` 为准。本地通过不等于已经推送、Libra 已构建或 SIT 已部署，这四个状态必须分别确认。
+> **当前候选状态**：公司唯一发布代码源是 `https://git.ymdd.tech/cfpd/zhipin-mvp.git` 的 `test` 分支。准确代码版本以 `git log -1`、`git ls-remote cfpd refs/heads/test`、前端登录页版本号和后端 `/actuator/info` 分别核对，不在文档中长期写死提交号。本地通过、GitLab 已推送、Libra 已构建和 SIT 已部署是四个独立状态，不能互相替代。
 >
 > **2026-07-11 历史收口状态口径**：当时代码树已完成 `demand_id` P0、数据库生命周期、面试轮次唯一性、Demand 维度 BI、错误态保真、运行配置与可恢复清理的合并前收口，并补齐 Demand 默认面试官口子、需求编号唯一性和视口级操作弹窗；`codex/premerge-p0-closeout-20260711` 曾作为 CFPD `test` 的下一代码候选。本轮当时不引入 OA/Consul、微服务或依赖大版本升级。
 
