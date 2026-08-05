@@ -28,6 +28,7 @@ export default function CandidateLibraryDetail({ controller }: CandidateLibraryD
     setDetailCandidate,
     detailTab,
     setDetailTab,
+    detailEditRequested,
     resumeDetail,
     setResumeDetail,
     candidateJourney,
@@ -140,6 +141,7 @@ export default function CandidateLibraryDetail({ controller }: CandidateLibraryD
                   <div className={detailTab === 'resume' ? 'space-y-6' : 'hidden'} role="tabpanel" aria-label="候选人简历">
                   <ResumeRecoveryPanel
                     detail={resumeDetail}
+                    initialEditing={detailEditRequested}
                     onUpdated={(updated) => {
                       setResumeDetail(updated);
                       setDetailCandidate((current) => current ? {

@@ -50,6 +50,7 @@ import { businessReviewsApi } from '@/features/businessReviews/api';
 import { candidateBusinessAction } from '@/features/businessReviews/actions';
 import type { BusinessReviewStatus, BusinessReviewTask } from '@/features/businessReviews/types';
 import { useToast } from '@/hooks/useToast';
+import { ApiError } from '@/lib/api';
 import PushToReviewerModal, {
   type PushFormValue,
   type PushResultItem,
@@ -138,6 +139,7 @@ export function useCandidateLibraryController() {
     navigate,
     requestedDemandId,
     requestedCandidateId,
+    requestedDetailTab,
     navState,
     workflowSourceQuery,
     demandFilter,
@@ -217,6 +219,7 @@ export function useCandidateLibraryController() {
     reviewTasks,
     reviewTasksLoading,
     requestedCandidateId,
+    requestedDetailTab,
     requestedDemandId,
     demandFilter,
     openCandidateInUrl,
@@ -226,6 +229,7 @@ export function useCandidateLibraryController() {
     setDetailCandidate,
     detailTab,
     setDetailTab,
+    detailEditRequested,
     resumeDetail,
     setResumeDetail,
     candidateJourney,
@@ -677,7 +681,12 @@ export function useCandidateLibraryController() {
       setTransferCandidate(null);
       await loadCandidates();
     } catch (error) {
-      setTransferError(errorMessage(error, '转移招聘需求失败'));
+      if (error instanceof ApiError && error.status === 409) {
+        await Promise.all([loadCandidates(), loadDemands()]);
+        setTransferError('数据已变化，已刷新候选人和需求状态，请核对后再操作');
+      } else {
+        setTransferError(errorMessage(error, '转移招聘需求失败'));
+      }
     } finally {
       setTransferSubmitting(false);
     }
@@ -921,6 +930,7 @@ export function useCandidateLibraryController() {
     setDetailCandidate,
     detailTab,
     setDetailTab,
+    detailEditRequested,
     resumeDetail,
     setResumeDetail,
     candidateJourney,

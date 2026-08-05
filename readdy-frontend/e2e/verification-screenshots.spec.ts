@@ -33,7 +33,9 @@ test.describe.serial('技术债解耦验收截图', () => {
 
     await page.goto('/candidates');
     await expect(page.getByRole('heading', { name: '简历库' })).toBeAttached();
-    await page.getByRole('button', { name: '查看 谷杨 简历' }).first().click();
+    const candidateRow = page.getByRole('row').filter({ hasText: '谷杨' }).first();
+    await candidateRow.locator('[data-ui="row-action-menu-trigger"]').click();
+    await page.getByRole('menuitem', { name: '查看候选人详情' }).click();
     await expect(page.getByRole('tab', { name: '面试信息' })).toBeVisible();
     await capture(page, 'after-03-candidate-detail-top.png');
     await page.getByRole('tab', { name: '候选人简历' }).click();
@@ -54,7 +56,7 @@ test.describe.serial('技术债解耦验收截图', () => {
     await page.getByRole('button', { name: '关闭' }).last().click();
 
     await page.goto('/offers');
-    await expect(page.getByLabel('Offer 查询条件')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Offer 查询条件' })).toBeVisible();
     await capture(page, 'after-07-offer-list.png');
     const firstOfferCandidate = page.locator('tbody tr td').first().getByRole('button');
     await expect(firstOfferCandidate).toBeVisible();
@@ -73,7 +75,7 @@ test.describe.serial('技术债解耦验收截图', () => {
     await loginAs(page, 'interviewer');
 
     await page.goto('/interviewer/screening');
-    await expect(page.getByLabel('候选人筛选查询条件')).toBeVisible();
+    await expect(page.getByRole('region', { name: '候选人筛选查询条件' })).toBeVisible();
     await capture(page, 'after-10-interviewer-screening.png');
     const screeningTask = page.locator('article button').first();
     await expect(screeningTask).toBeVisible();

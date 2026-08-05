@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ActionButton from '@/components/ui/ActionButton';
+import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 import type { CandidateListItem } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
 
@@ -21,12 +22,15 @@ export default function TransferCandidateModal({
   onTransfer,
 }: TransferCandidateModalProps) {
   const availableDemands = useMemo(
-    () => demands.filter((demand) => demand.id !== candidate.current_demand_id),
+    () => demands.filter((demand) => demand.id !== candidate.current_demand_id && demand.metrics.remaining_headcount > 0),
     [candidate.current_demand_id, demands],
   );
   const [targetDemandId, setTargetDemandId] = useState(0);
   const [reason, setReason] = useState('');
   const [localError, setLocalError] = useState('');
+  const panelRef = useRef<HTMLElement>(null);
+
+  useOverlayLifecycle({ canClose: !saving, onClose, initialFocusRef: panelRef });
 
   useEffect(() => {
     setTargetDemandId(availableDemands[0]?.id ?? 0);
@@ -43,7 +47,7 @@ export default function TransferCandidateModal({
 
   return (
     <div className="fixed inset-0 z-[250] flex items-center justify-center bg-foreground-900/40 p-4" onMouseDown={() => { if (!saving) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="transfer-candidate-title" onMouseDown={(event) => event.stopPropagation()} className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+      <section ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="transfer-candidate-title" onMouseDown={(event) => event.stopPropagation()} className="w-full max-w-lg rounded-2xl bg-white shadow-2xl outline-none">
         <header className="border-b border-background-200 px-6 py-5">
           <h2 id="transfer-candidate-title" className="text-lg font-bold text-foreground-900">转到其他需求</h2>
           <p className="mt-1 text-sm text-foreground-500">{candidate.name_masked} · 当前需求 {candidate.current_demand?.job_title || `#${candidate.current_demand_id}`}</p>
@@ -56,7 +60,7 @@ export default function TransferCandidateModal({
             </select>
           </label>
           <label className="block text-sm font-medium text-foreground-700">转需求原因
-            <textarea value={reason} onChange={(event) => { setReason(event.target.value); setLocalError(''); }} disabled={saving} rows={3} maxLength={500} placeholder="说明调整岗位或招聘需求的原因" className="mt-2 w-full resize-none rounded-lg border border-background-300 px-3 py-2 text-sm" />
+            <textarea value={reason} onChange={(event) => { setReason(event.target.value); setLocalError(''); }} disabled={saving} rows={3} maxLength={240} placeholder="说明调整岗位或招聘需求的原因" className="mt-2 w-full resize-none rounded-lg border border-background-300 px-3 py-2 text-sm" />
           </label>
           {(localError || error) && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{localError || error}</p>}
         </div>

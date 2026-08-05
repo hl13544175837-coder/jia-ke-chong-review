@@ -447,7 +447,7 @@ export default function RecruiterInterviewsPage() {
           onStatusChange={setActiveTab}
           onOpenDetails={openInterviewDetail}
           onOpenResume={(row) => openInterviewDetail(row, 'resume')}
-          onOpenHistory={(row) => openInterviewDetail(row, 'interview')}
+          onOpenHistory={(row) => openInterviewDetail(row, 'feedback')}
           onSchedule={openSchedule}
           onConfirmConducted={setConfirmConductedRow}
           onRemind={(row) => void runAssignmentAction(row, 'remind')}

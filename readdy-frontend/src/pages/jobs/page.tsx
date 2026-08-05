@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useProductRole } from '@/auth/productRole';
@@ -110,6 +110,7 @@ export default function JobsPage() {
   const [owners, setOwners] = useState<DemandOwnerOption[]>([]);
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
   const [detailMode, setDetailMode] = useState<'view' | 'edit'>('view');
+  const preservedDetailModeDemandId = useRef<number | null>(null);
   const [candidateDemand, setCandidateDemand] = useState<RecruitmentDemand | null>(null);
   const [businessReviewDemand, setBusinessReviewDemand] = useState<RecruitmentDemand | null>(null);
   const [loading, setLoading] = useState(true);
@@ -221,7 +222,8 @@ export default function JobsPage() {
     const match = demands.find((demand) => demand.job_title === navState.openTitle || demand.request_no === navState.openTitle);
     if (match) {
       setSelectedDemand(match);
-      setDetailMode('view');
+      if (preservedDetailModeDemandId.current !== match.id) setDetailMode('view');
+      preservedDetailModeDemandId.current = null;
       openDemandInUrl(match.id);
     }
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
@@ -336,9 +338,23 @@ export default function JobsPage() {
     }
   };
 
+  const refreshDemandAfterConflict = async (demandId: number) => {
+    const response = await demandsApi.listDemands();
+    setDemands(response.items);
+    if (selectedDemand?.id === demandId) {
+      setSelectedDemand(response.items.find((demand) => demand.id === demandId) ?? null);
+    }
+  };
+
+  const conflictError = async (error: unknown, demandId: number) => {
+    if (!(error instanceof ApiError) || error.status !== 409) return null;
+    await refreshDemandAfterConflict(demandId);
+    return new Error('数据已变化，已刷新最新需求状态，请核对后再操作');
+  };
+
   const handleStatusChange = async (id: string, nextStatus: DemandStatus, reason: string) => {
+    const demandId = Number(id);
     try {
-      const demandId = Number(id);
       const updated = nextStatus === 'active'
         ? await demandsApi.restoreDemand(demandId, reason)
         : await demandsApi.closeDemand(demandId, nextStatus as Exclude<DemandStatus, 'active' | 'pending'>, reason);
@@ -354,8 +370,10 @@ export default function JobsPage() {
       showToast(statusMessage[nextStatus]);
       await loadDemands();
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '需求状态更新失败');
-      throw error;
+      const conflict = await conflictError(error, demandId);
+      const cause = conflict ?? error;
+      showToast(cause instanceof Error ? cause.message : '需求状态更新失败');
+      throw cause;
     }
   };
 
@@ -366,8 +384,10 @@ export default function JobsPage() {
       showToast('需求优先级已更新');
       await loadDemands();
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '调整优先级失败');
-      throw error;
+      const conflict = await conflictError(error, demandId);
+      const cause = conflict ?? error;
+      showToast(cause instanceof Error ? cause.message : '调整优先级失败');
+      throw cause;
     }
   };
 
@@ -378,14 +398,17 @@ export default function JobsPage() {
       showToast('招聘负责人已转派');
       await loadDemands();
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '转派负责人失败');
-      throw error;
+      const conflict = await conflictError(error, demandId);
+      const cause = conflict ?? error;
+      showToast(cause instanceof Error ? cause.message : '转派负责人失败');
+      throw cause;
     }
   };
 
   const openDemand = async (row: RequisitionRow, mode: 'view' | 'edit' = 'view') => {
     setDetailError('');
     setDetailMode(mode);
+    preservedDetailModeDemandId.current = Number(row.id);
     setSelectedDemand(row.source);
     openDemandInUrl(Number(row.id));
     try {
@@ -398,6 +421,7 @@ export default function JobsPage() {
   const closeDemandDetail = () => {
     setSelectedDemand(null);
     setDetailMode('view');
+    preservedDetailModeDemandId.current = null;
     setDetailError('');
     openDemandInUrl(null);
   };

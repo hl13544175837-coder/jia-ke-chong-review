@@ -40,11 +40,11 @@ export function buildInterviewRowActions(
 ): InterviewRowActions {
   const menu: InterviewMenuAction[] = ['view_details', 'view_resume', 'view_history'];
   let primary: InterviewPrimaryAction;
+  const status = rowActionStatus(row);
 
   if (row.reschedule_request?.status === 'pending') {
     primary = 'process_reschedule';
   } else {
-    const status = rowActionStatus(row);
     if (status === 'unassigned') primary = 'schedule';
     else if (status === 'awaiting_feedback') primary = 'remind_feedback';
     else if (status === 'completed') primary = 'view_feedback';
@@ -52,7 +52,7 @@ export function buildInterviewRowActions(
     else primary = 'adjust_schedule';
   }
 
-  if (row.assignment_id && !row.feedback_submitted && !['completed', 'feedback_submitted'].includes(row.assignment_status)) {
+  if (status === 'scheduled' && row.reschedule_request?.status !== 'pending') {
     menu.push('adjust_schedule', 'cancel_schedule');
   }
 

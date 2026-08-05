@@ -28,6 +28,11 @@ async function verifyFirstRowMenu(page: Page) {
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
   await expect(trigger).toBeFocused();
+
+  await trigger.press('Enter');
+  await expect(page.locator('[data-ui="row-action-menu"]')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.keyboard.press('Escape');
 }
 
 test('招聘需求、简历库、面试和 Offer 统一为单主操作加三点菜单', async ({ page }) => {
@@ -39,6 +44,12 @@ test('招聘需求、简历库、面试和 Offer 统一为单主操作加三点�
     await verifyFirstRowMenu(page);
   }
 
+  await page.goto('/jobs');
+  await page.locator('[data-ui="row-action-menu-trigger"]:visible').first().click();
+  await page.getByRole('menuitem', { name: '编辑需求' }).click();
+  await expect(page.getByRole('button', { name: '保存修改' })).toBeVisible();
+  await page.getByRole('button', { name: '关闭需求详情' }).click();
+
   await page.goto('/offers');
   const trigger = page.locator('[data-ui="row-action-menu-trigger"]:visible').first();
   await trigger.click();
@@ -46,6 +57,9 @@ test('招聘需求、简历库、面试和 Offer 统一为单主操作加三点�
   await expect(menu).not.toContainText('自动发送');
   await expect(menu).not.toContainText('撤回 OA');
   await expect(menu).not.toContainText('同步 OA');
+  await menu.getByRole('menuitem', { name: '查看候选人简历' }).click();
+  await expect(page).toHaveURL(/detail=resume/);
+  await expect(page.getByRole('tab', { name: '候选人简历' })).toHaveAttribute('aria-selected', 'true');
 });
 
 test('用户管理统一操作菜单且没有删除成员', async ({ page }) => {

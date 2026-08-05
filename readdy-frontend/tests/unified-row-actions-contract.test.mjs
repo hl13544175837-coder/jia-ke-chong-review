@@ -17,6 +17,7 @@ test('公共行菜单负责视口定位、关闭行为和键盘语义', () => {
   assert.match(source, /role="menuitem"/);
   assert.match(source, /Escape/);
   assert.match(source, /pointerdown/);
+  assert.match(source, /event\.stopPropagation\(\)/);
   assert.match(source, /danger/);
 });
 
@@ -82,6 +83,11 @@ test('面试管理只保留一个主操作，其余真实入口进入菜单', as
 
   const completed = buildInterviewRowActions(makeRow({ feedback_submitted: true }));
   assert.equal(completed.primary, 'view_feedback');
+
+  const awaiting = buildInterviewRowActions(makeRow({ assignment_status: 'awaiting_feedback' }));
+  assert.equal(awaiting.primary, 'remind_feedback');
+  assert.ok(!awaiting.menu.includes('adjust_schedule'));
+  assert.ok(!awaiting.menu.includes('cancel_schedule'));
 });
 
 test('面试列表使用公共菜单', () => {
@@ -104,6 +110,9 @@ test('简历库把查看、编辑、收藏、流程和转需求收入统一菜�
   assert.doesNotMatch(table, /<Star/);
   assert.doesNotMatch(table, /<Eye/);
   assert.match(controller, /candidatesApi\.transferToDemand/);
+  assert.match(table, /remaining_headcount > 0/);
+  assert.match(controller, /ApiError/);
+  assert.match(controller, /detailEditRequested/);
 });
 
 test('Offer 列表保留 OA 主操作，菜单只提供真实业务导航', () => {
@@ -114,6 +123,7 @@ test('Offer 列表保留 OA 主操作，菜单只提供真实业务导航', () =
   assert.match(table, /查看招聘流程/);
   assert.match(table, /查看已完成面试/);
   assert.match(table, /登记 OA 结果/);
+  assert.match(read('src/pages/offers/page.tsx'), /detail=resume/);
 });
 
 test('用户管理提供真实账号操作且不提供删除成员', () => {
@@ -127,4 +137,19 @@ test('用户管理提供真实账号操作且不提供删除成员', () => {
   assert.doesNotMatch(table, /删除成员/);
   assert.match(api, /resetUserPassword/);
   assert.match(api, /reset-password/);
+  assert.match(table, /currentUserId/);
+});
+
+test('需求编辑模式不被 URL 同步覆盖，冲突后刷新真实状态', () => {
+  const page = read('src/pages/jobs/page.tsx');
+  assert.match(page, /preservedDetailModeDemandId/);
+  assert.match(page, /refreshDemandAfterConflict/);
+  assert.match(page, /error instanceof ApiError/);
+});
+
+test('转需求弹窗对齐后端容量、字数和公共弹层规则', () => {
+  const modal = read('src/features/candidates/components/TransferCandidateModal.tsx');
+  assert.match(modal, /remaining_headcount > 0/);
+  assert.match(modal, /maxLength=\{240\}/);
+  assert.match(modal, /useOverlayLifecycle/);
 });

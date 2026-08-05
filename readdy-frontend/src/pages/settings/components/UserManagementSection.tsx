@@ -4,6 +4,7 @@ import type { AdminRole, AdminUser } from '@/features/settings/types';
 interface UserManagementSectionProps {
   users: AdminUser[];
   roles: Array<{ id: AdminRole; name: string }>;
+  currentUserId: number | null;
   busyUserId: number | null;
   onAdd: () => void;
   onEditProfile: (user: AdminUser) => void;
@@ -16,6 +17,7 @@ interface UserManagementSectionProps {
 export default function UserManagementSection({
   users,
   roles,
+  currentUserId,
   busyUserId,
   onAdd,
   onEditProfile,
@@ -41,14 +43,14 @@ export default function UserManagementSection({
                 { key: 'details', label: '查看成员详情', icon: <i className="ri-user-line" />, onSelect: () => onViewDetails(user) },
                 { key: 'access', label: '调整角色与部门', icon: <i className="ri-user-settings-line" />, onSelect: () => onEditAccess(user) },
                 { key: 'password', label: '重置密码', icon: <i className="ri-lock-password-line" />, dividerBefore: true, onSelect: () => onResetPassword(user) },
-                {
+                ...(user.id === currentUserId ? [] : [{
                   key: 'active',
                   label: user.is_active ? '停用账号' : '启用账号',
                   icon: <i className={user.is_active ? 'ri-user-unfollow-line' : 'ri-user-follow-line'} />,
                   tone: user.is_active ? 'danger' : 'default',
                   disabled: busyUserId === user.id,
                   onSelect: () => onToggleActive(user),
-                },
+                } satisfies RowActionItem]),
               ];
               return (
                 <tr key={user.id} className="border-t border-background-100 hover:bg-background-50/60">

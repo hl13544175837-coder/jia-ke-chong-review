@@ -10,6 +10,7 @@ test('@smoke 长简历在详情内部滚动且右下角操作栏始终可见', a
   await candidateRow.locator('[data-ui="row-action-menu-trigger"]').click();
   await page.getByRole('menuitem', { name: '编辑简历信息' }).click();
   await expect(page.getByRole('tab', { name: '候选人简历' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('button', { name: '收起编辑' })).toBeVisible();
 
   const scrollPanel = page.getByTestId('candidate-detail-scroll-panel');
   await expect(scrollPanel).toBeVisible();

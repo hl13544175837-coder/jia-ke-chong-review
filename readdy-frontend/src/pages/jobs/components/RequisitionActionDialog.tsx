@@ -92,7 +92,7 @@ export default function RequisitionActionDialog({
               </label>
             )}
             <label className="block text-sm font-medium text-foreground-700">操作原因
-              <textarea value={reason} onChange={(event) => { setReason(event.target.value); setLocalError(''); }} rows={3} maxLength={1000} placeholder="请填写本次操作原因" className="mt-2 w-full resize-none rounded-lg border border-background-200 px-3 py-2 text-sm focus:border-primary-400 focus:outline-none" />
+              <textarea value={reason} onChange={(event) => { setReason(event.target.value); setLocalError(''); }} rows={3} maxLength={action.kind === 'owner' ? 240 : 1000} placeholder="请填写本次操作原因" className="mt-2 w-full resize-none rounded-lg border border-background-200 px-3 py-2 text-sm focus:border-primary-400 focus:outline-none" />
             </label>
             {(localError || error) && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600" role="alert">{localError || error}</p>}
           </div>

@@ -156,7 +156,7 @@ export default function CandidateLibraryTable({ controller }: CandidateLibraryTa
                   const canTransfer = canManagePipeline
                     && candidate.pipeline_state === 'in_pipeline'
                     && Boolean(candidate.current_demand_id)
-                    && activeDemands.some((demand) => demand.id !== candidate.current_demand_id);
+                    && activeDemands.some((demand) => demand.id !== candidate.current_demand_id && demand.metrics.remaining_headcount > 0);
                   const menuItems: RowActionItem[] = [
                     {
                       key: 'details',
@@ -168,7 +168,7 @@ export default function CandidateLibraryTable({ controller }: CandidateLibraryTa
                       key: 'edit',
                       label: '编辑简历信息',
                       icon: <i className="ri-file-edit-line" />,
-                      onSelect: () => openCandidateDetail(candidate, 'resume'),
+                      onSelect: () => openCandidateDetail(candidate, 'resume', true),
                     },
                     {
                       key: 'journey',

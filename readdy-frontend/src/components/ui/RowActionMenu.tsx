@@ -112,7 +112,7 @@ export default function RowActionMenu({ ariaLabel, items, className = '' }: RowA
     );
     if (buttons.length === 0) return;
     const current = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement));
-    let next = current;
+    let next: number;
     if (event.key === 'ArrowDown') next = (current + 1) % buttons.length;
     else if (event.key === 'ArrowUp') next = (current - 1 + buttons.length) % buttons.length;
     else if (event.key === 'Home') next = 0;
@@ -184,6 +184,7 @@ export default function RowActionMenu({ ariaLabel, items, className = '' }: RowA
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
+            event.stopPropagation();
             setOpen(true);
           }
         }}

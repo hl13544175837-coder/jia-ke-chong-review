@@ -5,6 +5,7 @@ import type { CandidateProfileUpdate, CandidateResumeDetail } from '@/features/c
 
 interface ResumeRecoveryPanelProps {
   detail: CandidateResumeDetail;
+  initialEditing?: boolean;
   onUpdated: (detail: CandidateResumeDetail) => void;
 }
 
@@ -101,9 +102,9 @@ function formatVersionDate(value: string) {
   }).format(date);
 }
 
-export default function ResumeRecoveryPanel({ detail, onUpdated }: ResumeRecoveryPanelProps) {
+export default function ResumeRecoveryPanel({ detail, initialEditing = false, onUpdated }: ResumeRecoveryPanelProps) {
   const replaceInputRef = useRef<HTMLInputElement>(null);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialEditing);
   const [form, setForm] = useState<ProfileForm>(emptyForm);
   const [action, setAction] = useState<'confirm' | 'retry' | 'replace' | 'save' | null>(null);
   const [downloadingVersionId, setDownloadingVersionId] = useState<number | null>(null);

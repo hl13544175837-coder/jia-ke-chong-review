@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { CandidateStage, ParseStatus } from '@/features/candidates/types';
+import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
 import {
   candidateStageFromNavigation,
   initialCandidateScope,
@@ -35,6 +36,11 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = positiveSearchId(searchParams.get('demand'));
   const requestedCandidateId = positiveSearchId(searchParams.get('candidate'));
+  const requestedDetailTab: CandidateDetailTab = searchParams.get('detail') === 'resume'
+    ? 'resume'
+    : searchParams.get('detail') === 'feedback'
+      ? 'feedback'
+      : 'interview';
   const navState = isCandidateNavigationState(location.state)
     ? location.state
     : requestedDemandId
@@ -75,10 +81,16 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
   const [hideLocalDemoRecords, setHideLocalDemoRecords] = useState(false);
   const deferredSearch = useDeferredValue(searchQuery.trim());
 
-  const openCandidateInUrl = useCallback((candidateId: number | null) => {
+  const openCandidateInUrl = useCallback((candidateId: number | null, detailTab: CandidateDetailTab = 'interview') => {
     const next = new URLSearchParams(searchParams);
-    if (candidateId) next.set('candidate', String(candidateId));
-    else next.delete('candidate');
+    if (candidateId) {
+      next.set('candidate', String(candidateId));
+      if (detailTab === 'interview') next.delete('detail');
+      else next.set('detail', detailTab);
+    } else {
+      next.delete('candidate');
+      next.delete('detail');
+    }
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -195,6 +207,7 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
     navigate,
     requestedDemandId,
     requestedCandidateId,
+    requestedDetailTab,
     navState,
     workflowSourceQuery,
     searchQuery,

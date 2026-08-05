@@ -17,9 +17,10 @@ interface CandidateDetailOptions {
   reviewTasks: BusinessReviewTask[];
   reviewTasksLoading: boolean;
   requestedCandidateId: number | null;
+  requestedDetailTab: CandidateDetailTab;
   requestedDemandId: number | null;
   demandFilter: number | '';
-  openCandidateInUrl: (candidateId: number | null) => void;
+  openCandidateInUrl: (candidateId: number | null, detailTab?: CandidateDetailTab) => void;
 }
 
 export function useCandidateDetail({
@@ -28,12 +29,14 @@ export function useCandidateDetail({
   reviewTasks,
   reviewTasksLoading,
   requestedCandidateId,
+  requestedDetailTab,
   requestedDemandId,
   demandFilter,
   openCandidateInUrl,
 }: CandidateDetailOptions) {
   const [detailCandidate, setDetailCandidate] = useState<CandidateListItem | null>(null);
   const [detailTab, setDetailTab] = useState<CandidateDetailTab>('interview');
+  const [detailEditRequested, setDetailEditRequested] = useState(false);
   const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);
   const [candidateJourney, setCandidateJourney] = useState<CandidateJourney | null>(null);
   const [journeyError, setJourneyError] = useState<string | null>(null);
@@ -68,16 +71,17 @@ export function useCandidateDetail({
     }
   }, []);
 
-  const openCandidateDetail = useCallback((candidate: CandidateListItem, initialTab: CandidateDetailTab = 'interview') => {
+  const openCandidateDetail = useCallback((candidate: CandidateListItem, initialTab: CandidateDetailTab = 'interview', startEditing = false) => {
     handledCandidateQuery.current = candidate.id;
     setDetailCandidate(candidate);
     setDetailTab(initialTab);
+    setDetailEditRequested(startEditing);
     setResumeDetail(null);
     setCandidateJourney(null);
     setJourneyError(null);
     setResumePreviewUrl(null);
     setOriginalResumeError(null);
-    openCandidateInUrl(candidate.id);
+    openCandidateInUrl(candidate.id, initialTab);
     void loadCandidateDetail(
       candidate.id,
       candidate.current_demand_id ?? candidate.latest_demand_id ?? requestedDemandId,
@@ -121,13 +125,14 @@ export function useCandidateDetail({
       ?? (focusedReview ? candidateFromReviewTask(focusedReview) : null);
     if (!candidate) return;
     handledCandidateQuery.current = requestedCandidateId;
-    openCandidateDetail(candidate);
+    openCandidateDetail(candidate, requestedDetailTab);
   }, [
     candidates,
     candidatesLoading,
     focusedReview,
     openCandidateDetail,
     requestedCandidateId,
+    requestedDetailTab,
     reviewTasksLoading,
   ]);
 
@@ -138,6 +143,7 @@ export function useCandidateDetail({
   const closeCandidateDetail = () => {
     detailRequestId.current += 1;
     setDetailCandidate(null);
+    setDetailEditRequested(false);
     setResumeDetail(null);
     setCandidateJourney(null);
     setJourneyError(null);
@@ -187,6 +193,7 @@ export function useCandidateDetail({
     setDetailCandidate,
     detailTab,
     setDetailTab,
+    detailEditRequested,
     resumeDetail,
     setResumeDetail,
     candidateJourney,
