@@ -1,6 +1,7 @@
 import type { CandidateLibraryController } from '@/features/candidates/library/useCandidateLibraryController';
 import CandidateLibraryBulkActions from '@/features/candidates/components/library/CandidateLibraryBulkActions';
 import CandidateLibraryPagination from '@/features/candidates/components/library/CandidateLibraryPagination';
+import RowActionMenu, { type RowActionItem } from '@/components/ui/RowActionMenu';
 
 interface CandidateLibraryTableProps {
   controller: CandidateLibraryController;
@@ -9,12 +10,10 @@ interface CandidateLibraryTableProps {
 export default function CandidateLibraryTable({ controller }: CandidateLibraryTableProps) {
   const {
     AlertCircle,
-    Eye,
     Inbox,
     LoaderCircle,
     RefreshCw,
     RotateCcw,
-    Star,
     activeCandidateStageOptions,
     candidateResumeReady,
     formatDate,
@@ -149,6 +148,34 @@ export default function CandidateLibraryTable({ controller }: CandidateLibraryTa
                   const targetDemand = candidate.current_demand ?? candidate.latest_demand;
                   const pipeline = pipelineStateMeta[candidate.pipeline_state];
                   const educationValue = educationOptions.find((value) => candidate.education_summary?.includes(value)) || candidate.education_summary || '';
+                  const menuItems: RowActionItem[] = [
+                    {
+                      key: 'resume',
+                      label: '查看候选人简历',
+                      icon: <i className="ri-file-user-line" />,
+                      onSelect: () => openCandidateDetail(candidate, 'resume'),
+                    },
+                    {
+                      key: 'process',
+                      label: '查看面试信息',
+                      icon: <i className="ri-calendar-event-line" />,
+                      onSelect: () => openCandidateDetail(candidate, 'interview'),
+                    },
+                    {
+                      key: 'journey',
+                      label: '查看流程记录',
+                      icon: <i className="ri-history-line" />,
+                      onSelect: () => openCandidateDetail(candidate, 'feedback'),
+                    },
+                    {
+                      key: 'favorite',
+                      label: candidate.is_favorite ? '取消收藏' : '收藏',
+                      icon: <i className={candidate.is_favorite ? 'ri-star-fill' : 'ri-star-line'} />,
+                      dividerBefore: true,
+                      disabled: favoriteSaving,
+                      onSelect: () => void updateFavorites([candidate], !candidate.is_favorite),
+                    },
+                  ];
                   return (
                     <tr key={candidate.id} onClick={() => openCandidateDetail(candidate)} className="cursor-pointer transition-colors hover:bg-background-50">
                       <td className="px-4 py-3.5" onClick={(event) => event.stopPropagation()}>
@@ -194,11 +221,8 @@ export default function CandidateLibraryTable({ controller }: CandidateLibraryTa
                       <td className="px-3 py-3.5 text-sm text-foreground-500">{formatDate(candidate.created_at)}</td>
                       <td className="px-4 py-3.5" onClick={(event) => event.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
-                          <button type="button" onClick={() => void updateFavorites([candidate], !candidate.is_favorite)} disabled={favoriteSaving} className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${candidate.is_favorite ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' : 'text-foreground-400 hover:bg-background-100 hover:text-amber-600'}`} aria-label={`${candidate.is_favorite ? '取消收藏' : '收藏'} ${candidate.name_masked}`} title={candidate.is_favorite ? '取消收藏' : '收藏'}>
-                            <Star size={16} fill={candidate.is_favorite ? 'currentColor' : 'none'} aria-hidden="true" />
-                          </button>
-                          <button type="button" onClick={() => openCandidateDetail(candidate)} className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-500 transition-colors hover:bg-background-100 hover:text-foreground-800" aria-label={`查看 ${candidate.name_masked} 简历`} title="查看简历"><Eye size={16} aria-hidden="true" /></button>
                           {renderCandidateBusinessAction(candidate, true)}
+                          <RowActionMenu ariaLabel={`打开${candidate.name_masked}的更多操作`} items={menuItems} />
                         </div>
                       </td>
                     </tr>

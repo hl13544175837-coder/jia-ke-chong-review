@@ -68,9 +68,9 @@ export function useCandidateDetail({
     }
   }, []);
 
-  const openCandidateDetail = useCallback((candidate: CandidateListItem) => {
+  const openCandidateDetail = useCallback((candidate: CandidateListItem, initialTab: CandidateDetailTab = 'interview') => {
     setDetailCandidate(candidate);
-    setDetailTab('interview');
+    setDetailTab(initialTab);
     setResumeDetail(null);
     setCandidateJourney(null);
     setJourneyError(null);

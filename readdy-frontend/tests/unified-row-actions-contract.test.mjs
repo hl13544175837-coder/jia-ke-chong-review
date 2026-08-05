@@ -90,3 +90,13 @@ test('面试列表使用公共菜单', () => {
   assert.match(table, /查看候选人简历/);
   assert.match(table, /取消面试/);
 });
+
+test('简历库把查看、收藏和流程记录收入统一菜单', () => {
+  const table = read('src/features/candidates/components/library/CandidateLibraryTable.tsx');
+  assert.match(table, /RowActionMenu/);
+  assert.match(table, /查看候选人简历/);
+  assert.match(table, /查看流程记录/);
+  assert.match(table, /candidate\.is_favorite \? '取消收藏' : '收藏'/);
+  assert.doesNotMatch(table, /<Star/);
+  assert.doesNotMatch(table, /<Eye/);
+});
