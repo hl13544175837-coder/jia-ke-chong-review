@@ -7,6 +7,7 @@ import type { DemandUpdateInput, RecruitmentDemand } from '@/features/demands/ty
 
 interface DemandDetailPanelProps {
   demand: RecruitmentDemand | null;
+  initialMode?: 'view' | 'edit';
   saving: boolean;
   error: string;
   canReview: boolean;
@@ -18,6 +19,7 @@ interface DemandDetailPanelProps {
 
 export default function DemandDetailPanel({
   demand,
+  initialMode = 'view',
   saving,
   error,
   canReview,
@@ -34,7 +36,7 @@ export default function DemandDetailPanel({
 
   useEffect(() => {
     if (!demand) return;
-    setEditing(false);
+    setEditing(initialMode === 'edit');
     setRejectOpen(false);
     setRejectReason('');
     setRejectError('');
@@ -48,7 +50,7 @@ export default function DemandDetailPanel({
       headcount: demand.headcount,
       note: demand.note,
     });
-  }, [demand]);
+  }, [demand, initialMode]);
 
   if (!demand || !draft) return null;
 

@@ -1,34 +1,37 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
+import type { ProductRole } from '@/auth/productRoleModel';
 import ActionButton from '@/components/ui/ActionButton';
+import RowActionMenu, { type RowActionItem } from '@/components/ui/RowActionMenu';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import { demandStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
-import type { RequisitionRow } from '@/features/demands/types';
+import type {
+  DemandOwnerOption,
+  DemandPriority,
+  DemandStatus,
+  RequisitionRow,
+} from '@/features/demands/types';
 import {
   demandStatusLabel,
   type DemandSortField,
 } from '../workbench';
 import { canOpenDemandStage, type DemandStageDrilldown } from '../stageDrilldown';
+import { buildDemandRowActions, type DemandMenuAction } from '../rowActions';
+import RequisitionActionDialog, { type RequisitionPendingAction } from './RequisitionActionDialog';
 
 interface RequisitionTableProps {
   data: RequisitionRow[];
+  role: ProductRole | null;
+  owners: DemandOwnerOption[];
   onRowClick: (req: RequisitionTableProps['data'][0]) => void;
-  onStatusChange: (id: string, newStatusCode: string, reason: string) => Promise<void>;
-  statusTransitions: Record<string, { advance: { to: string; label: string } | null; rollback: { to: string; label: string } | null }>;
-  statusExtraActions: Record<string, { to: string; label: string; icon: string }[]>;
+  onEditDemand: (req: RequisitionTableProps['data'][0]) => void;
+  onStatusChange: (id: string, newStatusCode: DemandStatus, reason: string) => Promise<void>;
+  onAdjustPriority: (id: number, priority: DemandPriority, reason: string) => Promise<void>;
+  onReassignOwner: (id: number, ownerId: number, reason: string) => Promise<void>;
   onSelectCandidates: (req: RequisitionTableProps['data'][0]) => void;
   onViewCandidates: (req: RequisitionTableProps['data'][0]) => void;
   onStageCountClick: (req: RequisitionTableProps['data'][0], stage: DemandStageDrilldown) => void;
   sortField: DemandSortField;
 }
-
-const statusLabelMap: Record<string, string> = {
-  active: '招聘中',
-  pending: '需求待确认',
-  paused: '已暂停',
-  filled: '已完成',
-  cancelled: '已取消',
-  closed: '已关闭',
-};
 
 // priority display config
 const priorityConfig: Record<string, { label: string; className: string }> = {
@@ -39,32 +42,21 @@ const priorityConfig: Record<string, { label: string; className: string }> = {
 
 export default function RequisitionTable({
   data,
+  role,
+  owners,
   onRowClick,
+  onEditDemand,
   onStatusChange,
-  statusTransitions,
-  statusExtraActions,
+  onAdjustPriority,
+  onReassignOwner,
   onSelectCandidates,
   onViewCandidates,
   onStageCountClick,
   sortField,
 }: RequisitionTableProps) {
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [confirmAction, setConfirmAction] = useState<{ id: string; to: string; label: string } | null>(null);
-  const [confirmReason, setConfirmReason] = useState('');
+  const [pendingAction, setPendingAction] = useState<RequisitionPendingAction | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!openMenuId) return;
-    const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpenMenuId(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [openMenuId]);
 
   return (
     <>
@@ -93,13 +85,84 @@ export default function RequisitionTable({
               </thead>
               <tbody className="divide-y divide-background-100">
                 {data.map((req) => {
-                  const transitions = statusTransitions[req.statusCode];
-                  const extras = statusExtraActions[req.statusCode] || [];
-                  const canSelectCandidates = req.statusCode === 'active' && req.source.approval_status === 'approved' && req.remainingHeadcount > 0;
-                  const headcountReached = req.statusCode === 'active' && req.source.approval_status === 'approved' && req.remainingHeadcount <= 0;
-                  const isClosedOrCompleted = ['filled', 'cancelled', 'closed'].includes(req.statusCode);
-                  const hasActions = transitions && (transitions.advance || transitions.rollback || extras.length > 0);
+                  const actions = buildDemandRowActions(req, role);
                   const prio = priorityConfig[req.priority] || priorityConfig['普通'];
+
+                  const openStatusAction = (status: DemandStatus, label: string) => {
+                    setActionError('');
+                    setPendingAction({ kind: 'status', row: req, status, label });
+                  };
+
+                  const menuActionConfig: Record<DemandMenuAction, Omit<RowActionItem, 'key'>> = {
+                    view: {
+                      label: '查看需求详情',
+                      icon: <i className="ri-eye-line" />,
+                      onSelect: () => onRowClick(req),
+                    },
+                    edit: {
+                      label: '编辑需求',
+                      icon: <i className="ri-edit-line" />,
+                      onSelect: () => onEditDemand(req),
+                    },
+                    view_candidates: {
+                      label: '查看候选人',
+                      icon: <i className="ri-team-line" />,
+                      onSelect: () => onViewCandidates(req),
+                    },
+                    adjust_priority: {
+                      label: '调整优先级',
+                      icon: <i className="ri-flag-line" />,
+                      dividerBefore: true,
+                      onSelect: () => {
+                        setActionError('');
+                        setPendingAction({ kind: 'priority', row: req });
+                      },
+                    },
+                    reassign_owner: {
+                      label: '转派负责人',
+                      icon: <i className="ri-user-settings-line" />,
+                      onSelect: () => {
+                        setActionError('');
+                        setPendingAction({ kind: 'owner', row: req });
+                      },
+                    },
+                    pause: {
+                      label: '暂停招聘',
+                      icon: <i className="ri-pause-circle-line" />,
+                      tone: 'danger',
+                      dividerBefore: true,
+                      onSelect: () => openStatusAction('paused', '暂停招聘'),
+                    },
+                    mark_filled: {
+                      label: '标记招聘完成',
+                      icon: <i className="ri-checkbox-circle-line" />,
+                      dividerBefore: !actions.menu.includes('pause'),
+                      onSelect: () => openStatusAction('filled', '招聘完成'),
+                    },
+                    cancel: {
+                      label: '取消需求',
+                      icon: <i className="ri-close-circle-line" />,
+                      tone: 'danger',
+                      dividerBefore: !actions.menu.includes('pause') && !actions.menu.includes('mark_filled'),
+                      onSelect: () => openStatusAction('cancelled', '取消需求'),
+                    },
+                    close: {
+                      label: '提前关闭需求',
+                      icon: <i className="ri-shut-down-line" />,
+                      tone: 'danger',
+                      onSelect: () => openStatusAction('closed', '关闭需求'),
+                    },
+                    restore: {
+                      label: '恢复招聘',
+                      icon: <i className="ri-restart-line" />,
+                      dividerBefore: true,
+                      onSelect: () => openStatusAction('active', '恢复招聘'),
+                    },
+                  };
+                  const menuItems = actions.menu.map((action) => ({
+                    key: action,
+                    ...menuActionConfig[action],
+                  }));
 
                   return (
                     <tr
@@ -188,7 +251,13 @@ export default function RequisitionTable({
                       </td>
                       <td className="px-3 py-4 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          {canSelectCandidates && (
+                          {actions.primary === 'review' && (
+                            <ActionButton size="sm" tone="primary" onClick={(event) => { event.stopPropagation(); onRowClick(req); }}>
+                              <i className="ri-shield-check-line text-sm" />
+                              审核需求
+                            </ActionButton>
+                          )}
+                          {actions.primary === 'select_candidates' && (
                             <ActionButton
                               size="sm"
                               tone="primary"
@@ -201,93 +270,25 @@ export default function RequisitionTable({
                               选候选人
                             </ActionButton>
                           )}
-                          {headcountReached && (
-                            <span
-                              title="该需求 HC 已满，请确认完成需求或在需求详情调整 HC"
-                              className="flex cursor-not-allowed items-center gap-1 whitespace-nowrap rounded-md bg-background-100 px-2.5 py-1.5 text-xs font-medium text-foreground-400"
-                            >
-                              <i className="ri-user-add-line text-sm"></i>
-                              HC已满
-                            </span>
+                          {actions.primary === 'mark_filled' && (
+                            <ActionButton size="sm" tone="primary" onClick={(event) => { event.stopPropagation(); openStatusAction('filled', '招聘完成'); }}>
+                              <i className="ri-checkbox-circle-line text-sm" />
+                              标记完成
+                            </ActionButton>
                           )}
-                          {isClosedOrCompleted && (
-                            <ActionButton
-                              size="sm"
-                              tone="secondary"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onViewCandidates(req);
-                              }}
-                            >
-                              <i className="ri-team-line text-sm"></i>
+                          {actions.primary === 'restore' && (
+                            <ActionButton size="sm" tone="primary" onClick={(event) => { event.stopPropagation(); openStatusAction('active', '恢复招聘'); }}>
+                              <i className="ri-restart-line text-sm" />
+                              恢复招聘
+                            </ActionButton>
+                          )}
+                          {actions.primary === 'view_candidates' && (
+                            <ActionButton size="sm" tone="secondary" onClick={(event) => { event.stopPropagation(); onViewCandidates(req); }}>
+                              <i className="ri-team-line text-sm" />
                               查看候选人
                             </ActionButton>
                           )}
-                          {hasActions ? (
-                            <div className="relative inline-block" ref={openMenuId === req.id ? menuRef : undefined}>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenMenuId(openMenuId === req.id ? null : req.id);
-                                }}
-                                className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-background-200 text-foreground-500 hover:text-foreground-700 transition-colors cursor-pointer"
-                              >
-                                <i className="ri-more-fill text-base"></i>
-                              </button>
-                              {openMenuId === req.id && (
-                                <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-background-200 rounded-lg shadow-lg z-30 py-1">
-                                  {transitions.advance && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuId(null);
-                                        setConfirmReason('');
-                                        setActionError('');
-                                        setConfirmAction({ id: req.id, to: transitions.advance!.to, label: transitions.advance!.label });
-                                      }}
-                                      className="w-full text-left px-3 py-2 text-sm text-foreground-700 hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2"
-                                    >
-                                      <i className="ri-arrow-right-line text-primary-500"></i>
-                                      {transitions.advance.label}
-                                    </button>
-                                  )}
-                                  {extras.map((action) => (
-                                    <button
-                                      key={action.to}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuId(null);
-                                        setConfirmReason('');
-                                        setActionError('');
-                                        setConfirmAction({ id: req.id, to: action.to, label: action.label });
-                                      }}
-                                      className="w-full text-left px-3 py-2 text-sm text-foreground-700 hover:bg-secondary-50 hover:text-secondary-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2"
-                                    >
-                                      <i className={`${action.icon} text-secondary-500`}></i>
-                                      {action.label}
-                                    </button>
-                                  ))}
-                                  {transitions.rollback && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuId(null);
-                                        setConfirmReason('');
-                                        setActionError('');
-                                        setConfirmAction({ id: req.id, to: transitions.rollback!.to, label: transitions.rollback!.label });
-                                      }}
-                                      className="w-full text-left px-3 py-2 text-sm text-foreground-700 hover:bg-accent-50 hover:text-accent-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2"
-                                    >
-                                      <i className="ri-arrow-go-back-line text-accent-500"></i>
-                                      {transitions.rollback.label}
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            !isClosedOrCompleted && <span className="text-xs text-foreground-300">—</span>
-                          )}
+                          <RowActionMenu ariaLabel={`打开${req.name}的更多操作`} items={menuItems} />
                         </div>
                       </td>
                     </tr>
@@ -299,69 +300,37 @@ export default function RequisitionTable({
         )}
       </div>
 
-      {/* Confirm modal */}
-      {confirmAction && (
-        <>
-          <div
-            className="fixed inset-0 bg-foreground-900/30 z-40"
-            onClick={() => { if (!actionBusy) setConfirmAction(null); }}
-          ></div>
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm pointer-events-auto overflow-hidden">
-              <div className="px-5 py-4 border-b border-background-200">
-                <h3 className="text-base font-bold text-foreground-900">确认状态变更</h3>
-              </div>
-              <div className="px-5 py-4 space-y-3">
-                <p className="text-sm text-foreground-600">
-                  确定将该需求的状态从 <span className="font-semibold text-foreground-800">{statusLabelMap[data.find(r => r.id === confirmAction.id)?.statusCode || '']}</span> 变更为 <span className="font-semibold text-foreground-800">{statusLabelMap[confirmAction.to]}</span>？
-                </p>
-                <label className="block text-sm font-medium text-foreground-700">
-                  {confirmAction.to === 'active' ? '恢复原因' : '关闭原因'}
-                  <textarea
-                    value={confirmReason}
-                    onChange={(event) => { setConfirmReason(event.target.value); setActionError(''); }}
-                    rows={3}
-                    placeholder="请填写本次操作原因"
-                    className="mt-2 w-full resize-none rounded-lg border border-background-200 px-3 py-2 text-sm focus:border-primary-400 focus:outline-none"
-                  />
-                </label>
-                {actionError && <p className="text-sm text-red-500" role="alert">{actionError}</p>}
-              </div>
-              <div className="px-5 py-4 border-t border-background-200 flex items-center justify-end gap-3">
-                <button
-                  disabled={actionBusy}
-                  onClick={() => setConfirmAction(null)}
-                  className="px-4 py-2 text-sm font-medium text-foreground-600 hover:bg-background-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  取消
-                </button>
-                <button
-                  disabled={actionBusy}
-                  onClick={async () => {
-                    const reason = confirmReason.trim();
-                    if (!reason) {
-                      setActionError('请填写操作原因');
-                      return;
-                    }
-                    setActionBusy(true);
-                    try {
-                      await onStatusChange(confirmAction.id, confirmAction.to, reason);
-                      setConfirmAction(null);
-                    } catch (error) {
-                      setActionError(error instanceof Error ? error.message : '状态更新失败');
-                    } finally {
-                      setActionBusy(false);
-                    }
-                  }}
-                  className="px-4 py-2 text-sm font-medium bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  {actionBusy ? '正在提交...' : '确认'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      <RequisitionActionDialog
+        action={pendingAction}
+        owners={owners}
+        busy={actionBusy}
+        error={actionError}
+        onClose={() => {
+          if (!actionBusy) {
+            setPendingAction(null);
+            setActionError('');
+          }
+        }}
+        onSubmit={async ({ reason, priority, ownerId }) => {
+          if (!pendingAction) return;
+          setActionBusy(true);
+          setActionError('');
+          try {
+            if (pendingAction.kind === 'status') {
+              await onStatusChange(pendingAction.row.id, pendingAction.status, reason);
+            } else if (pendingAction.kind === 'priority' && priority) {
+              await onAdjustPriority(Number(pendingAction.row.id), priority, reason);
+            } else if (pendingAction.kind === 'owner' && ownerId) {
+              await onReassignOwner(Number(pendingAction.row.id), ownerId, reason);
+            }
+            setPendingAction(null);
+          } catch (error) {
+            setActionError(error instanceof Error ? error.message : '操作失败，请稍后重试');
+          } finally {
+            setActionBusy(false);
+          }
+        }}
+      />
     </>
   );
 }

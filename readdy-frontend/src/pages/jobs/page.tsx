@@ -11,6 +11,7 @@ import { demandsApi } from '@/features/demands/api';
 import { toRequisitionRow } from '@/features/demands/adapter';
 import type {
   DemandOwnerOption,
+  DemandPriority,
   DemandStatus,
   DemandUpdateInput,
   RecruitmentDemand,
@@ -41,17 +42,6 @@ import {
   type DemandWorkspaceTab,
 } from './workbench';
 import { demandStageDrilldown, type DemandStageDrilldown } from './stageDrilldown';
-
-const statusTransitions: Record<string, { advance: { to: string; label: string } | null; rollback: { to: string; label: string } | null }> = {
-  pending: { advance: { to: 'closed', label: '关闭需求' }, rollback: null },
-  active: { advance: { to: 'closed', label: '关闭需求' }, rollback: null },
-  paused: { advance: { to: 'active', label: '恢复需求' }, rollback: null },
-  filled: { advance: null, rollback: { to: 'active', label: '恢复需求' } },
-  cancelled: { advance: null, rollback: { to: 'active', label: '恢复需求' } },
-  closed: { advance: null, rollback: { to: 'active', label: '恢复需求' } },
-};
-
-const statusExtraActions: Record<string, { to: string; label: string; icon: string }[]> = {};
 
 interface InterviewerApiItem {
   id: number;
@@ -119,6 +109,7 @@ export default function JobsPage() {
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
   const [owners, setOwners] = useState<DemandOwnerOption[]>([]);
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
+  const [detailMode, setDetailMode] = useState<'view' | 'edit'>('view');
   const [candidateDemand, setCandidateDemand] = useState<RecruitmentDemand | null>(null);
   const [businessReviewDemand, setBusinessReviewDemand] = useState<RecruitmentDemand | null>(null);
   const [loading, setLoading] = useState(true);
@@ -230,6 +221,7 @@ export default function JobsPage() {
     const match = demands.find((demand) => demand.job_title === navState.openTitle || demand.request_no === navState.openTitle);
     if (match) {
       setSelectedDemand(match);
+      setDetailMode('view');
       openDemandInUrl(match.id);
     }
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
@@ -238,7 +230,10 @@ export default function JobsPage() {
   useEffect(() => {
     if (!requestedDemandId || demands.length === 0) return;
     const match = demands.find((demand) => demand.id === requestedDemandId);
-    if (match) setSelectedDemand(match);
+    if (match) {
+      setSelectedDemand(match);
+      setDetailMode('view');
+    }
     else {
       setSelectedDemand(null);
       openDemandInUrl(null);
@@ -262,6 +257,7 @@ export default function JobsPage() {
       const created = await demandsApi.createDemand(payload, key);
       setFormOpen(false);
       setSelectedDemand(created);
+      setDetailMode('view');
       openDemandInUrl(created.id);
       showToast('招聘需求已创建并保存到本地数据库');
       await loadDemands();
@@ -340,14 +336,22 @@ export default function JobsPage() {
     }
   };
 
-  const handleStatusChange = async (id: string, nextStatus: string, reason: string) => {
+  const handleStatusChange = async (id: string, nextStatus: DemandStatus, reason: string) => {
     try {
       const demandId = Number(id);
       const updated = nextStatus === 'active'
         ? await demandsApi.restoreDemand(demandId, reason)
         : await demandsApi.closeDemand(demandId, nextStatus as Exclude<DemandStatus, 'active' | 'pending'>, reason);
       if (selectedDemand?.id === demandId) setSelectedDemand(updated);
-      showToast(nextStatus === 'active' ? '招聘需求已恢复' : '招聘需求已关闭');
+      const statusMessage: Record<DemandStatus, string> = {
+        active: '招聘需求已恢复',
+        pending: '招聘需求已转为待确认',
+        paused: '招聘需求已暂停',
+        filled: '招聘需求已标记完成',
+        cancelled: '招聘需求已取消',
+        closed: '招聘需求已关闭',
+      };
+      showToast(statusMessage[nextStatus]);
       await loadDemands();
     } catch (error) {
       showToast(error instanceof Error ? error.message : '需求状态更新失败');
@@ -355,8 +359,33 @@ export default function JobsPage() {
     }
   };
 
-  const openDemand = async (row: RequisitionRow) => {
+  const handleAdjustPriority = async (demandId: number, priority: DemandPriority, reason: string) => {
+    try {
+      const updated = await demandsApi.adjustPriority(demandId, priority, reason);
+      if (selectedDemand?.id === demandId) setSelectedDemand(updated);
+      showToast('需求优先级已更新');
+      await loadDemands();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '调整优先级失败');
+      throw error;
+    }
+  };
+
+  const handleReassignOwner = async (demandId: number, ownerId: number, reason: string) => {
+    try {
+      const updated = await demandsApi.reassignOwner(demandId, ownerId, reason);
+      if (selectedDemand?.id === demandId) setSelectedDemand(updated);
+      showToast('招聘负责人已转派');
+      await loadDemands();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '转派负责人失败');
+      throw error;
+    }
+  };
+
+  const openDemand = async (row: RequisitionRow, mode: 'view' | 'edit' = 'view') => {
     setDetailError('');
+    setDetailMode(mode);
     setSelectedDemand(row.source);
     openDemandInUrl(Number(row.id));
     try {
@@ -368,6 +397,7 @@ export default function JobsPage() {
 
   const closeDemandDetail = () => {
     setSelectedDemand(null);
+    setDetailMode('view');
     setDetailError('');
     openDemandInUrl(null);
   };
@@ -517,10 +547,13 @@ export default function JobsPage() {
       ) : (
         <RequisitionTable
           data={filteredData}
+          role={role}
+          owners={owners}
           onRowClick={(req) => { void openDemand(req); }}
+          onEditDemand={(req) => { void openDemand(req, 'edit'); }}
           onStatusChange={handleStatusChange}
-          statusTransitions={statusTransitions}
-          statusExtraActions={statusExtraActions}
+          onAdjustPriority={handleAdjustPriority}
+          onReassignOwner={handleReassignOwner}
           onSelectCandidates={(req) => setCandidateDemand(req.source)}
           onViewCandidates={(req) => openCandidates(req, 'all')}
           onStageCountClick={openStageProgress}
@@ -629,6 +662,7 @@ export default function JobsPage() {
 
       <DemandDetailPanel
         demand={selectedDemand}
+        initialMode={detailMode}
         saving={detailSaving}
         error={detailError}
         canReview={role === 'recruiter' || role === 'manager' || role === 'admin'}

@@ -2,6 +2,7 @@ import { apiRequest } from '@/lib/api';
 import type {
   DemandListResponse,
   DemandOwnerOption,
+  DemandPriority,
   DemandStatus,
   DemandUpdateInput,
   RecruitmentDemand,
@@ -35,6 +36,18 @@ export const demandsApi = {
     return apiRequest(`/demands/${demandId}/restore`, {
       method: 'POST',
       body: { note: reason },
+    });
+  },
+  adjustPriority(demandId: number, priority: DemandPriority, reason: string): Promise<RecruitmentDemand> {
+    return apiRequest(`/demands/${demandId}/downgrade`, {
+      method: 'POST',
+      body: { priority, downgrade_reason: reason },
+    });
+  },
+  reassignOwner(demandId: number, ownerHrId: number, reason: string): Promise<RecruitmentDemand> {
+    return apiRequest(`/demands/${demandId}/owner`, {
+      method: 'PATCH',
+      body: { owner_hr_id: ownerHrId, reason },
     });
   },
   listRecruiterOwners(): Promise<DemandOwnerOption[]> {
