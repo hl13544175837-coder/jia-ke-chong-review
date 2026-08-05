@@ -91,14 +91,19 @@ test('面试列表使用公共菜单', () => {
   assert.match(table, /取消面试/);
 });
 
-test('简历库把查看、收藏和流程记录收入统一菜单', () => {
+test('简历库把查看、编辑、收藏、流程和转需求收入统一菜单', () => {
   const table = read('src/features/candidates/components/library/CandidateLibraryTable.tsx');
+  const controller = read('src/features/candidates/library/useCandidateLibraryController.tsx');
   assert.match(table, /RowActionMenu/);
-  assert.match(table, /查看候选人简历/);
-  assert.match(table, /查看流程记录/);
+  assert.match(table, /查看候选人详情/);
+  assert.match(table, /编辑简历信息/);
+  assert.match(table, /查看招聘流程/);
+  assert.match(table, /转到其他需求/);
+  assert.match(table, /进入流程处理/);
   assert.match(table, /candidate\.is_favorite \? '取消收藏' : '收藏'/);
   assert.doesNotMatch(table, /<Star/);
   assert.doesNotMatch(table, /<Eye/);
+  assert.match(controller, /candidatesApi\.transferToDemand/);
 });
 
 test('Offer 列表保留 OA 主操作，菜单只提供真实业务导航', () => {

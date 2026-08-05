@@ -1,4 +1,5 @@
 import type { CandidateLibraryController } from '@/features/candidates/library/useCandidateLibraryController';
+import TransferCandidateModal from '@/features/candidates/components/TransferCandidateModal';
 
 interface CandidateLibraryOverlaysProps {
   controller: CandidateLibraryController;
@@ -33,6 +34,10 @@ export default function CandidateLibraryOverlays({ controller }: CandidateLibrar
     pipelineSubmitting,
     pipelineResult,
     setPipelineResult,
+    transferCandidate,
+    setTransferCandidate,
+    transferSubmitting,
+    transferError,
     duplicatesOpen,
     setDuplicatesOpen,
     uploadOpen,
@@ -76,6 +81,7 @@ export default function CandidateLibraryOverlays({ controller }: CandidateLibrar
     replaceDuplicateAsCurrentVersion,
     retrySingleUploadFile,
     handleAddToPipeline,
+    handleTransferCandidate,
     handlePushToBusiness,
     initialPushDemandId,
   } = controller;
@@ -339,6 +345,16 @@ export default function CandidateLibraryOverlays({ controller }: CandidateLibrar
           onRetryDemands={() => void loadDemands()}
           onClose={() => { setPipelineTargets(null); setPipelineResult(null); }}
           onAdd={(demandId, reason, pushAfterAdd) => void handleAddToPipeline(demandId, reason, pushAfterAdd)}
+        />
+      )}
+{transferCandidate && (
+        <TransferCandidateModal
+          candidate={transferCandidate}
+          demands={activeDemands}
+          saving={transferSubmitting}
+          error={transferError}
+          onClose={() => { if (!transferSubmitting) setTransferCandidate(null); }}
+          onTransfer={(targetDemandId, reason) => void handleTransferCandidate(targetDemandId, reason)}
         />
       )}
 {duplicatesOpen && (

@@ -46,6 +46,8 @@ export default function CandidateLibraryTable({ controller }: CandidateLibraryTa
     setHideLocalDemoRecords,
     selectedIds,
     favoriteSaving,
+    role,
+    activeDemands,
     visibleCandidates,
     loadCandidates,
     changeFilter,
@@ -56,6 +58,8 @@ export default function CandidateLibraryTable({ controller }: CandidateLibraryTa
     toggleAllVisible,
     openCandidateDetail,
     updateFavorites,
+    openTransferModal,
+    openCandidatePipeline,
     allVisibleSelected,
     renderCandidateBusinessAction,
   } = controller;
@@ -148,23 +152,28 @@ export default function CandidateLibraryTable({ controller }: CandidateLibraryTa
                   const targetDemand = candidate.current_demand ?? candidate.latest_demand;
                   const pipeline = pipelineStateMeta[candidate.pipeline_state];
                   const educationValue = educationOptions.find((value) => candidate.education_summary?.includes(value)) || candidate.education_summary || '';
+                  const canManagePipeline = ['recruiter', 'manager', 'admin'].includes(role ?? '');
+                  const canTransfer = canManagePipeline
+                    && candidate.pipeline_state === 'in_pipeline'
+                    && Boolean(candidate.current_demand_id)
+                    && activeDemands.some((demand) => demand.id !== candidate.current_demand_id);
                   const menuItems: RowActionItem[] = [
                     {
-                      key: 'resume',
-                      label: '查看候选人简历',
-                      icon: <i className="ri-file-user-line" />,
-                      onSelect: () => openCandidateDetail(candidate, 'resume'),
-                    },
-                    {
-                      key: 'process',
-                      label: '查看面试信息',
-                      icon: <i className="ri-calendar-event-line" />,
+                      key: 'details',
+                      label: '查看候选人详情',
+                      icon: <i className="ri-user-search-line" />,
                       onSelect: () => openCandidateDetail(candidate, 'interview'),
                     },
                     {
+                      key: 'edit',
+                      label: '编辑简历信息',
+                      icon: <i className="ri-file-edit-line" />,
+                      onSelect: () => openCandidateDetail(candidate, 'resume'),
+                    },
+                    {
                       key: 'journey',
-                      label: '查看流程记录',
-                      icon: <i className="ri-history-line" />,
+                      label: '查看招聘流程',
+                      icon: <i className="ri-route-line" />,
                       onSelect: () => openCandidateDetail(candidate, 'feedback'),
                     },
                     {
@@ -175,6 +184,20 @@ export default function CandidateLibraryTable({ controller }: CandidateLibraryTa
                       disabled: favoriteSaving,
                       onSelect: () => void updateFavorites([candidate], !candidate.is_favorite),
                     },
+                    ...(canTransfer ? [{
+                      key: 'transfer',
+                      label: '转到其他需求',
+                      icon: <i className="ri-arrow-left-right-line" />,
+                      dividerBefore: true,
+                      onSelect: () => openTransferModal(candidate),
+                    } satisfies RowActionItem] : []),
+                    ...(canManagePipeline && candidate.pipeline_state === 'in_pipeline' && candidate.current_demand_id ? [{
+                      key: 'pipeline',
+                      label: '进入流程处理',
+                      icon: <i className="ri-kanban-view" />,
+                      dividerBefore: !canTransfer,
+                      onSelect: () => openCandidatePipeline(candidate),
+                    } satisfies RowActionItem] : []),
                   ];
                   return (
                     <tr key={candidate.id} onClick={() => openCandidateDetail(candidate)} className="cursor-pointer transition-colors hover:bg-background-50">

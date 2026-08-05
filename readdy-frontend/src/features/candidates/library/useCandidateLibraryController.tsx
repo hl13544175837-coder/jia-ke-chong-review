@@ -187,6 +187,9 @@ export function useCandidateLibraryController() {
   const [pipelineTargets, setPipelineTargets] = useState<CandidateListItem[] | null>(null);
   const [pipelineSubmitting, setPipelineSubmitting] = useState(false);
   const [pipelineResult, setPipelineResult] = useState<CandidatePipelineAddResult | null>(null);
+  const [transferCandidate, setTransferCandidate] = useState<CandidateListItem | null>(null);
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
+  const [transferError, setTransferError] = useState('');
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
   const [uploadOpen, setUploadOpen] = useState(Boolean(navState?.openUpload));
@@ -653,6 +656,38 @@ export function useCandidateLibraryController() {
     }
   };
 
+  const openTransferModal = (candidate: CandidateListItem) => {
+    if (!candidate.current_demand_id) return;
+    setTransferError('');
+    setTransferCandidate(candidate);
+  };
+
+  const handleTransferCandidate = async (targetDemandId: number, reason: string) => {
+    if (!transferCandidate?.current_demand_id || transferSubmitting) return;
+    setTransferSubmitting(true);
+    setTransferError('');
+    try {
+      await candidatesApi.transferToDemand(
+        transferCandidate.id,
+        transferCandidate.current_demand_id,
+        targetDemandId,
+        reason,
+      );
+      showToast(`${transferCandidate.name_masked}已转到新的招聘需求`);
+      setTransferCandidate(null);
+      await loadCandidates();
+    } catch (error) {
+      setTransferError(errorMessage(error, '转移招聘需求失败'));
+    } finally {
+      setTransferSubmitting(false);
+    }
+  };
+
+  const openCandidatePipeline = (candidate: CandidateListItem) => {
+    if (!candidate.current_demand_id) return;
+    navigate(`/kanban?demand=${candidate.current_demand_id}&candidate=${candidate.id}${workflowSourceQuery}`);
+  };
+
   const handlePushToBusiness = async (value: PushFormValue) => {
     if (!pushTargets || pushSubmitting) return;
     setPushSubmitting(true);
@@ -859,6 +894,10 @@ export function useCandidateLibraryController() {
     pipelineSubmitting,
     pipelineResult,
     setPipelineResult,
+    transferCandidate,
+    setTransferCandidate,
+    transferSubmitting,
+    transferError,
     duplicatesOpen,
     setDuplicatesOpen,
     uploadOpen,
@@ -933,6 +972,9 @@ export function useCandidateLibraryController() {
     updateFavorites,
     openPipelineModal,
     handleAddToPipeline,
+    openTransferModal,
+    handleTransferCandidate,
+    openCandidatePipeline,
     handlePushToBusiness,
     initialPushDemandId,
     allVisibleSelected,
