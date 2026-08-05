@@ -73,6 +73,56 @@ def test_interviews_list_filtered_by_role(client, make_user, app):
     assert r.status_code == 200
     assert any(it["type"] == "feedback" for it in r.get_json())
 
+
+def test_interviewer_lists_only_own_feedback(client, make_user, app):
+    interviewer_one_id, interviewer_one_token = make_user(
+        "iv-one@x.com", role="interviewer", name="面试官一"
+    )
+    interviewer_two_id, interviewer_two_token = make_user(
+        "iv-two@x.com", role="interviewer", name="面试官二"
+    )
+    first_job_id, first_candidate_id = _seed(app)
+    second_job_id, second_candidate_id = _seed(app)
+    _assign(app, first_candidate_id, first_job_id, interviewer_one_id)
+    _assign(app, second_candidate_id, second_job_id, interviewer_two_id)
+
+    for token, candidate_id, job_id in (
+        (interviewer_one_token, first_candidate_id, first_job_id),
+        (interviewer_two_token, second_candidate_id, second_job_id),
+    ):
+        response = client.post(
+            "/api/interview/feedback",
+            headers=_auth(token),
+            json={
+                "candidate_id": candidate_id,
+                "job_id": job_id,
+                "round": "interview_first",
+                "score": 4,
+                "passed": True,
+            },
+        )
+        assert response.status_code == 201
+
+    interviewer_one_items = client.get(
+        "/api/interviews", headers=_auth(interviewer_one_token)
+    ).get_json()
+    interviewer_two_items = client.get(
+        "/api/interviews", headers=_auth(interviewer_two_token)
+    ).get_json()
+
+    assert {item["interviewer_id"] for item in interviewer_one_items} == {
+        interviewer_one_id
+    }
+    assert {item["interviewer_id"] for item in interviewer_two_items} == {
+        interviewer_two_id
+    }
+    assert {item["candidate_id"] for item in interviewer_one_items} == {
+        first_candidate_id
+    }
+    assert {item["candidate_id"] for item in interviewer_two_items} == {
+        second_candidate_id
+    }
+
 def test_interviews_list_exposes_feedback_detail_fields(client, make_user, app):
     interviewer_id, iv_token = make_user("iv-detail@x.com", role="interviewer", name="赵面试官")
     _, mgr_token = make_user("mgr-detail@x.com", role="manager")
