@@ -8,127 +8,45 @@ import {
   type DragEvent,
 } from 'react';
 import {
-  AlertCircle,
-  ArrowLeft,
-  BriefcaseBusiness,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Eye,
-  FileText,
-  GitMerge,
-  Inbox,
-  LoaderCircle,
-  RefreshCw,
-  RotateCcw,
-  Search,
   Send,
-  Star,
-  Upload,
   UserPlus,
-  UserRound,
-  X,
 } from 'lucide-react';
 import { useProductRole } from '@/auth/productRole';
-import StructuredResumeView from '@/components/candidates/StructuredResumeView';
-import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
-import PageHeader from '@/components/ui/PageHeader';
-import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
-import ActionButton from '@/components/ui/ActionButton';
-import DetailActionBar from '@/components/ui/DetailActionBar';
-import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
 import { candidatesApi } from '@/features/candidates/api';
 import type {
   CandidateListItem,
   CandidatePipelineAddResult,
-  CandidateStage,
-  PipelineState,
   ResumeUploadResponse,
 } from '@/features/candidates/types';
 import { businessReviewsApi } from '@/features/businessReviews/api';
 import { candidateBusinessAction } from '@/features/businessReviews/actions';
-import type { BusinessReviewStatus, BusinessReviewTask } from '@/features/businessReviews/types';
+import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import { useToast } from '@/hooks/useToast';
 import { ApiError } from '@/lib/api';
-import PushToReviewerModal, {
-  type PushFormValue,
-  type PushResultItem,
-  type PushTarget,
+import type {
+  PushFormValue,
+  PushResultItem,
+  PushTarget,
 } from '@/features/businessReviews/components/PushToReviewerModal';
 import { canEnterBusinessReview, isActionableBusinessReviewResult } from '@/features/businessReviews/stages';
-import AddToPipelineModal from '@/features/candidates/components/AddToPipelineModal';
-import CandidateDetailDrawer from '@/features/candidates/components/CandidateDetailDrawer';
-import CandidateUploadModal from '@/features/candidates/components/CandidateUploadModal';
-import DuplicateCandidatesModal from '@/features/candidates/components/DuplicateCandidatesModal';
-import ResumeRecoveryPanel from '@/features/candidates/components/ResumeRecoveryPanel';
-import CandidateColumnFilterHeader from '@/features/candidates/components/library/CandidateColumnFilterHeader';
 import {
   belongsToSourceFile,
-  activeCandidateStageOptions,
   candidateFromReviewTask,
   candidateResumeReady,
-  candidateScopeTabs,
   candidateStageFromNavigation,
-  candidateStageOptions,
   errorMessage,
-  formatDate,
   isBusinessReviewer,
-  isCandidateStage,
-  isParseStatus,
-  isPipelineStateFilter,
+  stageLabels,
+  supportedReplacementPattern,
+  supportedResumePattern,
 } from '@/features/candidates/library';
 import { useCandidateLibraryFilters } from '@/features/candidates/library/useCandidateLibraryFilters';
 import { useCandidateLibraryData } from '@/features/candidates/library/useCandidateLibraryData';
 import { useCandidateDetail } from '@/features/candidates/library/useCandidateDetail';
 import { buildCandidateLibraryViewModel } from '@/features/candidates/library/candidateLibraryViewModel';
 
-const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif|zip)$/i;
-const supportedReplacementPattern = /\.(pdf|docx|jpe?g|png|webp|gif)$/i;
-const supportedResumeAccept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,.zip,image/jpeg,image/png,image/webp,image/gif,application/zip';
-
 type ResumeUploadResult = ResumeUploadResponse['results'][number];
 type UploadRowAction = 'keeping' | 'replacing' | 'replaced' | 'retrying' | 'retry_failed';
-
-const parseStatusMeta = {
-  pending: { label: '待解析', className: 'border-amber-200 bg-amber-50 text-amber-700' },
-  processing: { label: '解析中', className: 'border-blue-200 bg-blue-50 text-blue-700' },
-  ok: { label: '已解析', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  failed: { label: '待确认', className: 'border-amber-200 bg-amber-50 text-amber-700' },
-  original_confirmed: { label: '原件已确认', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-} as const;
-
-const stageLabels: Record<CandidateStage, string> = {
-  pending: 'HR 初筛',
-  ai_screen: 'AI 筛选',
-  business_review: '业务筛选',
-  interview: '面试',
-  offer: 'Offer',
-  onboarded: '已入职',
-  rejected: '已淘汰',
-  transferred: '已转需求',
-};
-
-const pipelineStateMeta: Record<PipelineState, { label: string; className: string }> = {
-  in_pipeline: { label: '招聘流程中', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  never_entered: { label: '未进入流程', className: 'border-background-300 bg-background-50 text-foreground-600' },
-  rejected: { label: '已淘汰', className: 'border-red-200 bg-red-50 text-red-700' },
-  onboarded: { label: '已入职', className: 'border-blue-200 bg-blue-50 text-blue-700' },
-  transferred: { label: '已转出', className: 'border-amber-200 bg-amber-50 text-amber-700' },
-};
-
-const sourceChannels = ['BOSS直聘', '58同城', '猎聘', '鱼泡直聘', '智联招聘', '前程无忧', '内推', '官网', 'LinkedIn'];
-const sourceFilterOptions = [...sourceChannels, '其他'];
-const educationOptions = ['博士', '硕士', '本科', '大专', '高中', '中专'];
-const cityOptions = ['北京', '上海', '深圳', '广州', '杭州', '成都', '武汉', '南京', '苏州', '西安', '长沙', '重庆', '天津', '厦门', '合肥', '郑州', '青岛', '宁波', '佛山'];
-const businessReviewStatusMeta: Record<BusinessReviewStatus, { label: string; className: string }> = {
-  pending: { label: '等待业务负责人', className: 'border-amber-200 bg-amber-50 text-amber-700' },
-  approved: { label: '已通过', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  rejected: { label: '不合适', className: 'border-red-200 bg-red-50 text-red-700' },
-  needs_info: { label: '待 HR 补充', className: 'border-sky-200 bg-sky-50 text-sky-700' },
-};
-
-const filterControlClass = 'h-9 w-full rounded-lg border border-background-300 bg-white px-2.5 text-xs text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100';
 
 export function useCandidateLibraryController() {
   const { role } = useProductRole();
@@ -840,59 +758,6 @@ export function useCandidateLibraryController() {
 
   return {
     ...filters,
-    AlertCircle,
-    ArrowLeft,
-    BriefcaseBusiness,
-    CheckCircle2,
-    ChevronLeft,
-    ChevronRight,
-    Download,
-    Eye,
-    FileText,
-    GitMerge,
-    Inbox,
-    LoaderCircle,
-    RefreshCw,
-    RotateCcw,
-    Search,
-    Send,
-    Star,
-    Upload,
-    UserPlus,
-    X,
-    StructuredResumeView,
-    CandidateJourneySummary,
-    PageHeader,
-    WorkspaceTabs,
-    ActionButton,
-    DetailActionBar,
-    CandidateDetailWorkspace,
-    PushToReviewerModal,
-    AddToPipelineModal,
-    CandidateDetailDrawer,
-    CandidateUploadModal,
-    DuplicateCandidatesModal,
-    ResumeRecoveryPanel,
-    candidateResumeReady,
-    candidateScopeTabs,
-    candidateStageOptions,
-    activeCandidateStageOptions,
-    formatDate,
-    isCandidateStage,
-    isParseStatus,
-    isPipelineStateFilter,
-    supportedReplacementPattern,
-    supportedResumeAccept,
-    parseStatusMeta,
-    stageLabels,
-    pipelineStateMeta,
-    sourceChannels,
-    sourceFilterOptions,
-    educationOptions,
-    cityOptions,
-    businessReviewStatusMeta,
-    filterControlClass,
-    CandidateColumnFilterHeader,
     role,
     showToast,
     candidateResponse,

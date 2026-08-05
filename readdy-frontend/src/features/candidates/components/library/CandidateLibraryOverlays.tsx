@@ -1,5 +1,15 @@
 import type { CandidateLibraryController } from '@/features/candidates/library/useCandidateLibraryController';
 import TransferCandidateModal from '@/features/candidates/components/TransferCandidateModal';
+import { AlertCircle, CheckCircle2, FileText, LoaderCircle, Upload, X } from 'lucide-react';
+import PushToReviewerModal from '@/features/businessReviews/components/PushToReviewerModal';
+import AddToPipelineModal from '@/features/candidates/components/AddToPipelineModal';
+import CandidateUploadModal from '@/features/candidates/components/CandidateUploadModal';
+import DuplicateCandidatesModal from '@/features/candidates/components/DuplicateCandidatesModal';
+import {
+  sourceChannels,
+  supportedReplacementPattern,
+  supportedResumeAccept,
+} from '@/features/candidates/library';
 
 interface CandidateLibraryOverlaysProps {
   controller: CandidateLibraryController;
@@ -7,19 +17,6 @@ interface CandidateLibraryOverlaysProps {
 
 export default function CandidateLibraryOverlays({ controller }: CandidateLibraryOverlaysProps) {
   const {
-    AlertCircle,
-    CheckCircle2,
-    FileText,
-    LoaderCircle,
-    Upload,
-    X,
-    PushToReviewerModal,
-    AddToPipelineModal,
-    CandidateUploadModal,
-    DuplicateCandidatesModal,
-    supportedReplacementPattern,
-    supportedResumeAccept,
-    sourceChannels,
     role,
     showToast,
     demandFilter,

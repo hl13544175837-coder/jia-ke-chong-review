@@ -1,4 +1,17 @@
 import type { CandidateLibraryController } from '@/features/candidates/library/useCandidateLibraryController';
+import { AlertCircle, Download, Eye, LoaderCircle, RefreshCw, X } from 'lucide-react';
+import StructuredResumeView from '@/components/candidates/StructuredResumeView';
+import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
+import ActionButton from '@/components/ui/ActionButton';
+import DetailActionBar from '@/components/ui/DetailActionBar';
+import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
+import CandidateDetailDrawer from '@/features/candidates/components/CandidateDetailDrawer';
+import ResumeRecoveryPanel from '@/features/candidates/components/ResumeRecoveryPanel';
+import {
+  businessReviewStatusMeta,
+  formatDate,
+  parseStatusMeta,
+} from '@/features/candidates/library';
 
 interface CandidateLibraryDetailProps {
   controller: CandidateLibraryController;
@@ -6,22 +19,6 @@ interface CandidateLibraryDetailProps {
 
 export default function CandidateLibraryDetail({ controller }: CandidateLibraryDetailProps) {
   const {
-    AlertCircle,
-    Download,
-    Eye,
-    LoaderCircle,
-    RefreshCw,
-    X,
-    StructuredResumeView,
-    CandidateJourneySummary,
-    ActionButton,
-    DetailActionBar,
-    CandidateDetailWorkspace,
-    CandidateDetailDrawer,
-    ResumeRecoveryPanel,
-    formatDate,
-    parseStatusMeta,
-    businessReviewStatusMeta,
     role,
     requestedDemandId,
     detailCandidate,

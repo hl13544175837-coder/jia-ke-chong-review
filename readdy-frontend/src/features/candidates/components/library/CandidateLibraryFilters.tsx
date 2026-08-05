@@ -1,6 +1,16 @@
 import type { CandidateLibraryController } from '@/features/candidates/library/useCandidateLibraryController';
 import CollapsibleFilterBar from '@/components/ui/CollapsibleFilterBar';
 import { FILTER_CONTROL_CLASS, FILTER_FIELD_CLASS } from '@/components/ui/FilterBar';
+import { ArrowLeft, BriefcaseBusiness, GitMerge, RefreshCw, RotateCcw, Search, Upload } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
+import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
+import {
+  businessReviewStatusMeta,
+  candidateScopeTabs,
+  isParseStatus,
+  parseStatusMeta,
+  sourceFilterOptions,
+} from '@/features/candidates/library';
 
 interface CandidateLibraryFiltersProps {
   controller: CandidateLibraryController;
@@ -8,20 +18,6 @@ interface CandidateLibraryFiltersProps {
 
 export default function CandidateLibraryFilters({ controller }: CandidateLibraryFiltersProps) {
   const {
-    ArrowLeft,
-    BriefcaseBusiness,
-    GitMerge,
-    RefreshCw,
-    RotateCcw,
-    Search,
-    Upload,
-    PageHeader,
-    WorkspaceTabs,
-    candidateScopeTabs,
-    isParseStatus,
-    parseStatusMeta,
-    sourceFilterOptions,
-    businessReviewStatusMeta,
     role,
     navigate,
     requestedCandidateId,

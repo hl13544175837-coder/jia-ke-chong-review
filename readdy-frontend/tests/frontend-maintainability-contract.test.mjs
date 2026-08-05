@@ -11,6 +11,7 @@ const CANDIDATE_WORKSPACE_CEILING = 600;
 test('候选人工作台把筛选、列表、导入和详情拆到候选人业务模块', () => {
   const page = read('src/pages/candidates/page.tsx');
   const workspace = read('src/features/candidates/components/CandidateLibraryWorkspace.tsx');
+  const controller = read('src/features/candidates/library/useCandidateLibraryController.tsx');
   const detail = read('src/features/candidates/components/library/CandidateLibraryDetail.tsx');
   const overlays = read('src/features/candidates/components/library/CandidateLibraryOverlays.tsx');
   read('src/features/candidates/library.ts');
@@ -54,6 +55,25 @@ test('候选人工作台把筛选、列表、导入和详情拆到候选人业�
       `${file} 不得重新长成难以维护的大文件`,
     );
   }
+
+  const controllerReturn = controller.slice(controller.lastIndexOf('return {'));
+  for (const leakedViewDependency of [
+    'PageHeader,',
+    'CandidateDetailDrawer,',
+    'PushToReviewerModal,',
+    'AlertCircle,',
+    'LoaderCircle,',
+  ]) {
+    assert.doesNotMatch(
+      controllerReturn,
+      new RegExp(`\\n\\s{4}${leakedViewDependency}`),
+      `控制器不应向视图传递 ${leakedViewDependency}`,
+    );
+  }
+  assert.ok(
+    lineCount('src/features/candidates/library/useCandidateLibraryController.tsx') < 900,
+    '候选人控制器必须收窄到 900 行以内',
+  );
 });
 
 test('需求页把基本详情、候选人和业务筛选分成三个真实入口', () => {

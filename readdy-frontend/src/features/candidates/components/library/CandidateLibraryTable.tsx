@@ -2,6 +2,21 @@ import type { CandidateLibraryController } from '@/features/candidates/library/u
 import CandidateLibraryBulkActions from '@/features/candidates/components/library/CandidateLibraryBulkActions';
 import CandidateLibraryPagination from '@/features/candidates/components/library/CandidateLibraryPagination';
 import RowActionMenu, { type RowActionItem } from '@/components/ui/RowActionMenu';
+import { AlertCircle, Inbox, LoaderCircle, RefreshCw, RotateCcw } from 'lucide-react';
+import CandidateColumnFilterHeader from '@/features/candidates/components/library/CandidateColumnFilterHeader';
+import {
+  activeCandidateStageOptions,
+  candidateFilterControlClass,
+  candidateResumeReady,
+  cityOptions,
+  educationOptions,
+  formatDate,
+  isCandidateStage,
+  isPipelineStateFilter,
+  parseStatusMeta,
+  pipelineStateMeta,
+  stageLabels,
+} from '@/features/candidates/library';
 
 interface CandidateLibraryTableProps {
   controller: CandidateLibraryController;
@@ -9,23 +24,6 @@ interface CandidateLibraryTableProps {
 
 export default function CandidateLibraryTable({ controller }: CandidateLibraryTableProps) {
   const {
-    AlertCircle,
-    Inbox,
-    LoaderCircle,
-    RefreshCw,
-    RotateCcw,
-    activeCandidateStageOptions,
-    candidateResumeReady,
-    formatDate,
-    isCandidateStage,
-    isPipelineStateFilter,
-    parseStatusMeta,
-    pipelineStateMeta,
-    stageLabels,
-    educationOptions,
-    cityOptions,
-    filterControlClass,
-    CandidateColumnFilterHeader,
     cityFilter,
     setCityFilter,
     educationFilter,
@@ -119,7 +117,7 @@ export default function CandidateLibraryTable({ controller }: CandidateLibraryTa
                   </th>
                   <th className="min-w-52 px-3 py-3">候选人</th>
                   <CandidateColumnFilterHeader data-ui="candidate-column-filter-pipeline" label="流程状态" open={openColumnFilter === 'pipeline'} onToggle={() => toggleColumnFilter('pipeline')}>
-                    <select value={pipelineStateFilter} onChange={(event) => { const next = event.target.value; if (next === '' || isPipelineStateFilter(next)) applyPipelineState(next); }} aria-label="按精确流程状态筛选" className={filterControlClass}>
+                    <select value={pipelineStateFilter} onChange={(event) => { const next = event.target.value; if (next === '' || isPipelineStateFilter(next)) applyPipelineState(next); }} aria-label="按精确流程状态筛选" className={candidateFilterControlClass}>
                       <option value="">全部精确状态</option>
                       <option value="never_entered">未进入流程</option>
                       <option value="rejected">已淘汰</option>
@@ -128,17 +126,17 @@ export default function CandidateLibraryTable({ controller }: CandidateLibraryTa
                     </select>
                   </CandidateColumnFilterHeader>
                   <CandidateColumnFilterHeader data-ui="candidate-column-filter-education" label="学历" open={openColumnFilter === 'education'} onToggle={() => toggleColumnFilter('education')}>
-                    <select value={educationFilter} onChange={(event) => changeFilter(() => setEducationFilter(event.target.value))} aria-label="按学历筛选" className={filterControlClass}>
+                    <select value={educationFilter} onChange={(event) => changeFilter(() => setEducationFilter(event.target.value))} aria-label="按学历筛选" className={candidateFilterControlClass}>
                       <option value="">全部学历</option>
                       {educationOptions.map((education) => <option key={education} value={education}>{education}</option>)}
                     </select>
                   </CandidateColumnFilterHeader>
                   <CandidateColumnFilterHeader data-ui="candidate-column-filter-city" label="意向城市" open={openColumnFilter === 'city'} onToggle={() => toggleColumnFilter('city')}>
-                    <input list="candidate-city-options" value={cityFilter} onChange={(event) => changeFilter(() => setCityFilter(event.target.value))} placeholder="输入意向城市" aria-label="按意向城市筛选" className={filterControlClass} />
+                    <input list="candidate-city-options" value={cityFilter} onChange={(event) => changeFilter(() => setCityFilter(event.target.value))} placeholder="输入意向城市" aria-label="按意向城市筛选" className={candidateFilterControlClass} />
                   </CandidateColumnFilterHeader>
                   <th className="min-w-52 px-3 py-3">目标岗位 / 当前需求</th>
                   <CandidateColumnFilterHeader data-ui="candidate-column-filter-stage" label="当前阶段" open={openColumnFilter === 'stage'} onToggle={() => toggleColumnFilter('stage')}>
-                    <select value={stageFilter} onChange={(event) => { const next = event.target.value; if (next === '' || isCandidateStage(next)) changeFilter(() => setStageFilter(next)); }} aria-label="按当前招聘阶段筛选" className={filterControlClass}>
+                    <select value={stageFilter} onChange={(event) => { const next = event.target.value; if (next === '' || isCandidateStage(next)) changeFilter(() => setStageFilter(next)); }} aria-label="按当前招聘阶段筛选" className={candidateFilterControlClass}>
                       <option value="">全部活动阶段</option>
                       {activeCandidateStageOptions.map((stage) => <option key={stage} value={stage}>{stageLabels[stage]}</option>)}
                     </select>
