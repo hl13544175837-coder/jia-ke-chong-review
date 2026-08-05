@@ -273,6 +273,17 @@ RESUME_AI_ENABLED=false
 
 构建前端时把相同映射作为 `VITE_GATEWAY_ROLE_MAP` 传给 Makefile。未映射工号按招聘专员处理，不得回退为管理员。本轮模型简历解析关闭：文件正常入库，候选人详情自动提示并展开手动补录；招聘需求、筛选、面试、改约、反馈、Offer、人才池和入职流程仍需完整验收。Test 网关必须覆盖或清洗客户端自带的 `X-Emp-Code`，只把已认证用户的真实工号传给后端。
 
+PGS 菜单与工号角色映射是同一条权限链上的两层，发布时必须同时配置：PGS 菜单决定前端进入哪类工作台，后端工号映射决定接口和数据范围。首轮李四（工号 `100002`）面试官验收使用：
+
+```env
+AUTH_GATEWAY_ROLE_MAP=100002:interviewer
+VITE_GATEWAY_ROLE_MAP=100002:interviewer
+```
+
+PGS “智聘 → 工作台”下同时给该角色父菜单 `index` 和唯一角色标记 `dashboard_interviewer`，标记路由为 `/interviewer/dashboard`。招聘专员对应 `dashboard_recruiter` 和 `/dashboard`。普通业务菜单继续使用现有 `demands`、`candidates`、`interviews`、`pipeline`、`bi`、`settings` 编码按需授权。同一账号不得同时获得 `dashboard_recruiter` 与 `dashboard_interviewer`；前端会拒绝静默选择。PGS 菜单加载失败时不再默认显示全部入口，而是显示重试和退出登录。
+
+发布后不能只看页面样式。使用李四登录后还要核对 `/api/auth/me` 的后端角色为 `interviewer`，并用第二名面试官建立不同 assignment 做交叉验证：两人页面相同，但任务、候选人和反馈列表只包含本人被分配的数据。PGS 角色与后端角色不一致时，登录页会显示双方角色；先同步 Apollo/构建参数后再重试，不得临时放宽接口权限。
+
 镜像构建还会把经 Makefile 校验的 `RC` / `GA` 写入镜像内部 `.release-channel` 文件，而不是可被 K8S 环境变量替换的 `ENV`。GA entrypoint 会在 bootstrap/Alembic 之前核对所有严格值；运行时若尝试开启 SIT 放行、自动迁移/空库初始化、公开注册，或关闭安全头/限流，容器会在任何数据库动作前拒绝启动。缺失或未知发布标记同样 fail closed。
 
 如果点击“发布到SIT”弹出：

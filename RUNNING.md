@@ -292,6 +292,29 @@ npm run build    # 验证生产构建；readdy-frontend/out/ 是生成物，不�
 
 这是最终交付口径：通过才说明当前本地代码可作为 Test/SIT 发布候选。它不会动 Mock 数据、数据库或远端分支；公司 SIT 的密钥、网关、数据库和账号仍需单独现场验收。
 
+### 公司真人账号与角色工作台接线
+
+公司环境中，“角色决定进入哪种工作台，账号决定工作台里显示谁的数据”。不同面试官共用同一套面试官页面，但后端继续按当前登录用户、组织和实际任务分配过滤数据，不为每位面试官复制 Dashboard。
+
+PGS 的“工作台”菜单下使用唯一角色标记：
+
+| PGS 菜单名称 | 菜单编码 | 技术角色 | 首页路由 |
+|---|---|---|---|
+| 招聘专员工作台 | `dashboard_recruiter` | `recruiter` | `/dashboard` |
+| 面试官工作台 | `dashboard_interviewer` | `interviewer` | `/interviewer/dashboard` |
+
+普通功能菜单编码（如 `index`、`demands`、`candidates`、`interviews`、`bi`）控制左侧入口是否显示；`dashboard_recruiter` / `dashboard_interviewer` 只负责识别当前账号应进入哪类工作台。同一账号不能同时获得两个角色工作台标记，否则登录会提示清理重复授权。
+
+第一轮用李四（工号 `100002`）验收时，三处必须一致：
+
+```env
+# PGS：面试官角色勾选 dashboard_interviewer
+VITE_GATEWAY_ROLE_MAP=100002:interviewer
+AUTH_GATEWAY_ROLE_MAP=100002:interviewer
+```
+
+`VITE_GATEWAY_ROLE_MAP` 是前端构建参数，`AUTH_GATEWAY_ROLE_MAP` 是后端运行参数。登录时前端会读取 PGS 工作台菜单，再调用 `/api/auth/me` 对照后端角色；两边不一致时会停止进入业务页面并显示双方角色，不能只改其中一处。现场至少验证：登录落在 `/interviewer/dashboard`、`/api/auth/me` 返回 `interviewer`、第二名面试官看不到李四的任务、李四直接访问招聘专员页面或接口被拒绝。
+
 ### 公司网关不可达时的本地五角色验收
 
 普通前端开发仍可使用上面的 `npm run dev`。需要在公司网关不可达时完整点击登录页、验证五角色路由，统一使用根目录隔离启动脚本。该桥只接受本文列出的 `@mvp.local` 试用账号，调用本地后端生成真实 JWT，不会修改或替代正式公司的公司登录链路。
