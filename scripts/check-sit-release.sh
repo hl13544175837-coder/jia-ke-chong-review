@@ -6,8 +6,8 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 FRONTEND_DIR="$PROJECT_DIR/readdy-frontend"
 PYTHON_BIN="$PROJECT_DIR/.venv/bin/python"
 EXPECTED_SCHEMA="20260804_14"
-BUILD_VERSION="$(git -C "$PROJECT_DIR" rev-parse --short=12 HEAD)"
-BUILD_TIME="2026-07-30T00:00:00Z"
+BUILD_VERSION="${BUILD_VERSION:-$(git -C "$PROJECT_DIR" rev-parse --short=12 HEAD)}"
+BUILD_TIME="${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
 run_step() {
   local label="$1"
@@ -30,8 +30,7 @@ cd "$PROJECT_DIR"
 # pytest backend/tests base_agent/tests
 run_step "后端全量测试" "$PYTHON_BIN" -m pytest backend/tests base_agent/tests -q
 
-# node --test tests/*.test.mjs
-run_step "前端契约测试" bash -c 'cd "$1" && node --test tests/*.test.mjs' _ "$FRONTEND_DIR"
+run_step "前端契约测试" bash -c 'cd "$1" && npm run test:contract' _ "$FRONTEND_DIR"
 run_step "前端类型检查" bash -c 'cd "$1" && npm run type-check' _ "$FRONTEND_DIR"
 run_step "前端代码规范" bash -c 'cd "$1" && npm run lint' _ "$FRONTEND_DIR"
 run_step "前端正式构建" bash -c 'cd "$1" && npm run build' _ "$FRONTEND_DIR"
@@ -71,5 +70,5 @@ fi
 printf '\n[放行摘要]\n'
 printf '提交：%s\n' "$BUILD_VERSION"
 printf '数据库：%s\n' "$EXPECTED_SCHEMA"
-printf '范围：人才地图已真实持久化；非核心 Mock 保留；简历 AI 关闭；企微/外部日历/ZIP 解析未改；现有数据未清理。\n'
+printf '范围：Test/SIT 内部试用代码候选；产品能力和业务口径以当前真源文档为准。\n'
 printf '状态：本地检查通过，未推送、未发布。\n'

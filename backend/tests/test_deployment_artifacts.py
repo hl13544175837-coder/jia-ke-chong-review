@@ -1018,7 +1018,7 @@ def test_sit_release_gate_runs_required_checks_without_mutating_release_state():
     assert "set -euo pipefail" in release_gate
     for required in [
         "pytest backend/tests base_agent/tests",
-        "node --test tests/*.test.mjs",
+        "npm run test:contract",
         "npm run type-check",
         "npm run lint",
         "npm run build",
@@ -1037,6 +1037,9 @@ def test_sit_release_gate_runs_required_checks_without_mutating_release_state():
         "rm -rf",
     ]:
         assert forbidden not in release_gate
+    assert 'BUILD_TIME="${BUILD_TIME:-' in release_gate
+    assert 'BUILD_TIME="2026-07-30T00:00:00Z"' not in release_gate
+    assert "node --test tests/*.test.mjs" not in release_gate
 
     assert "GHSA-qwww-vcr4-c8h2" in frontend_audit
     assert "npm audit --json" in frontend_audit

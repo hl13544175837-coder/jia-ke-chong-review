@@ -27,4 +27,6 @@ test('正式构建后立即执行前端包体积门禁', () => {
   assert.ok(buildIndex >= 0, '缺少前端正式构建步骤');
   assert.ok(budgetIndex > buildIndex, '包体积门禁必须在正式构建之后执行');
   assert.match(source, /node scripts\/check-frontend-bundle-budget\.mjs/);
+  assert.match(source, /npm run test:contract/);
+  assert.doesNotMatch(source, /BUILD_TIME="2026-07-30T00:00:00Z"/);
 });
