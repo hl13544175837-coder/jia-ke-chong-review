@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import { useProductRole } from '@/auth/productRole';
@@ -110,7 +110,6 @@ export default function JobsPage() {
   const [owners, setOwners] = useState<DemandOwnerOption[]>([]);
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
   const [detailMode, setDetailMode] = useState<'view' | 'edit'>('view');
-  const preservedDetailModeDemandId = useRef<number | null>(null);
   const [candidateDemand, setCandidateDemand] = useState<RecruitmentDemand | null>(null);
   const [businessReviewDemand, setBusinessReviewDemand] = useState<RecruitmentDemand | null>(null);
   const [loading, setLoading] = useState(true);
@@ -139,10 +138,16 @@ export default function JobsPage() {
   const [reviewersLoading, setReviewersLoading] = useState(false);
   const [reviewerError, setReviewerError] = useState<string | null>(null);
 
-  const openDemandInUrl = useCallback((demandId: number | null) => {
+  const openDemandInUrl = useCallback((demandId: number | null, mode: 'view' | 'edit' = 'view') => {
     const next = new URLSearchParams(searchParams);
-    if (demandId) next.set('demand', String(demandId));
-    else next.delete('demand');
+    if (demandId) {
+      next.set('demand', String(demandId));
+      if (mode === 'edit') next.set('mode', 'edit');
+      else next.delete('mode');
+    } else {
+      next.delete('demand');
+      next.delete('mode');
+    }
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -222,8 +227,7 @@ export default function JobsPage() {
     const match = demands.find((demand) => demand.job_title === navState.openTitle || demand.request_no === navState.openTitle);
     if (match) {
       setSelectedDemand(match);
-      if (preservedDetailModeDemandId.current !== match.id) setDetailMode('view');
-      preservedDetailModeDemandId.current = null;
+      setDetailMode(searchParams.get('mode') === 'edit' ? 'edit' : 'view');
       openDemandInUrl(match.id);
     }
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
@@ -240,7 +244,7 @@ export default function JobsPage() {
       setSelectedDemand(null);
       openDemandInUrl(null);
     }
-  }, [demands, openDemandInUrl, requestedDemandId]);
+  }, [demands, openDemandInUrl, requestedDemandId, searchParams]);
 
   const filteredData = useMemo(() => filterAndSortRequisitions(requisitions, {
     activeTab,
@@ -408,9 +412,8 @@ export default function JobsPage() {
   const openDemand = async (row: RequisitionRow, mode: 'view' | 'edit' = 'view') => {
     setDetailError('');
     setDetailMode(mode);
-    preservedDetailModeDemandId.current = Number(row.id);
     setSelectedDemand(row.source);
-    openDemandInUrl(Number(row.id));
+    openDemandInUrl(Number(row.id), mode);
     try {
       setSelectedDemand(await demandsApi.getDemand(Number(row.id)));
     } catch (error) {
@@ -421,7 +424,6 @@ export default function JobsPage() {
   const closeDemandDetail = () => {
     setSelectedDemand(null);
     setDetailMode('view');
-    preservedDetailModeDemandId.current = null;
     setDetailError('');
     openDemandInUrl(null);
   };

@@ -142,7 +142,8 @@ test('用户管理提供真实账号操作且不提供删除成员', () => {
 
 test('需求编辑模式不被 URL 同步覆盖，冲突后刷新真实状态', () => {
   const page = read('src/pages/jobs/page.tsx');
-  assert.match(page, /preservedDetailModeDemandId/);
+  assert.match(page, /next\.set\('mode', 'edit'\)/);
+  assert.match(page, /searchParams\.get\('mode'\) === 'edit'/);
   assert.match(page, /refreshDemandAfterConflict/);
   assert.match(page, /error instanceof ApiError/);
 });
