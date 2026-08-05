@@ -54,7 +54,7 @@ export function CompanyPermissionsProvider({ children }: { children: ReactNode }
       setState(emptyState());
       return;
     }
-    setState((current) => ({ ...current, loading: true, error: null }));
+    setState({ ...emptyState(), loading: true });
     try {
       const response = await fetch(
         `${OAUTH_BASE}/api/queryCurrentUserMenu?clientId=${encodeURIComponent(CLIENT_ID)}`,

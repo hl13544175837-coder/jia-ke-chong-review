@@ -21,6 +21,22 @@ export class WorkspaceRoleConflictError extends Error {
   }
 }
 
+export class CompanyRoleMismatchError extends Error {
+  expectedRole: CompanyRole;
+  backendRole: CompanyRole;
+
+  constructor(
+    expectedRole: CompanyRole,
+    backendRole: CompanyRole,
+    source: 'PGS 工作台角色' | '前端回退角色',
+  ) {
+    super(`${source}为 ${expectedRole}，但后端角色为 ${backendRole}，请同步角色配置后重试`);
+    this.name = 'CompanyRoleMismatchError';
+    this.expectedRole = expectedRole;
+    this.backendRole = backendRole;
+  }
+}
+
 export function collectCompanyPermissionCodes(
   nodes: CompanyMenuNode[] | null | undefined,
 ): { menuCodes: Set<string>; buttonCodes: Set<string> } {
@@ -51,4 +67,20 @@ export function resolveWorkspaceRole(menuCodes: Iterable<string>): CompanyRole |
   )];
   if (roles.length > 1) throw new WorkspaceRoleConflictError(roles);
   return roles[0] ?? null;
+}
+
+export function resolveAlignedCompanyRole(
+  workspaceRole: CompanyRole | null,
+  fallbackRole: CompanyRole,
+  backendRole: CompanyRole,
+): CompanyRole {
+  const expectedRole = workspaceRole ?? fallbackRole;
+  if (expectedRole !== backendRole) {
+    throw new CompanyRoleMismatchError(
+      expectedRole,
+      backendRole,
+      workspaceRole ? 'PGS 工作台角色' : '前端回退角色',
+    );
+  }
+  return expectedRole;
 }

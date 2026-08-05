@@ -19,12 +19,31 @@ test('company gateway roles use an employee map and least-privilege fallback', (
 
 test('company login aligns the PGS workspace role with the backend role', () => {
   const auth = read('src/auth/companyAuth.tsx');
+  const permissionModel = read('src/auth/companyPermissionModel.ts');
+  const roleAlignment = `${auth}\n${permissionModel}`;
 
   assert.match(auth, /queryCurrentUserMenu/);
   assert.match(auth, /resolveWorkspaceRole/);
   assert.match(auth, /\/auth\/me/);
-  assert.match(auth, /PGS 工作台角色/);
-  assert.match(auth, /后端角色/);
+  assert.match(roleAlignment, /PGS 工作台角色/);
+  assert.match(roleAlignment, /后端角色/);
+});
+
+test('restored company sessions are revalidated before entering the product', () => {
+  const auth = read('src/auth/companyAuth.tsx');
+
+  assert.match(auth, /restoringSession/);
+  assert.match(auth, /gatewayMenuRole\(storedSession\.token\)/);
+  assert.match(auth, /backendProfile\(storedSession\.token, storedSession\.empCode\)/);
+  assert.match(auth, /resolveAlignedCompanyRole/);
+  assert.match(auth, /正在确认账号权限/);
+});
+
+test('local OAuth bridge emits the same recruiter and interviewer workspace markers', () => {
+  const bridge = read('../scripts/local-oauth-bridge.mjs');
+
+  assert.match(bridge, /dashboard_recruiter/);
+  assert.match(bridge, /dashboard_interviewer/);
 });
 
 test('company menu loading fails closed and filters the product navigation', () => {

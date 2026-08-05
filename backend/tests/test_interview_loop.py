@@ -38,14 +38,16 @@ def _assign(app, cid, jid, interviewer_id, round_name="interview_first"):
         from app import db
         from app.models import InterviewAssignment, RecruitmentDemand
         demand = RecruitmentDemand.query.filter_by(job_id=jid).one()
-        db.session.add(InterviewAssignment(
+        assignment = InterviewAssignment(
             candidate_id=cid,
             job_id=jid,
             demand_id=demand.id,
             round=round_name,
             interviewer_id=interviewer_id,
-        ))
+        )
+        db.session.add(assignment)
         db.session.commit()
+        return assignment.id
 
 def test_interviewer_submits_feedback(client, make_user, app):
     interviewer_id, token = make_user("iv@x.com", role="interviewer")
@@ -83,8 +85,37 @@ def test_interviewer_lists_only_own_feedback(client, make_user, app):
     )
     first_job_id, first_candidate_id = _seed(app)
     second_job_id, second_candidate_id = _seed(app)
-    _assign(app, first_candidate_id, first_job_id, interviewer_one_id)
-    _assign(app, second_candidate_id, second_job_id, interviewer_two_id)
+    first_assignment_id = _assign(
+        app, first_candidate_id, first_job_id, interviewer_one_id
+    )
+    second_assignment_id = _assign(
+        app, second_candidate_id, second_job_id, interviewer_two_id
+    )
+
+    interviewer_one_assignments = client.get(
+        "/api/interview/assignments", headers=_auth(interviewer_one_token)
+    ).get_json()
+    interviewer_two_assignments = client.get(
+        "/api/interview/assignments", headers=_auth(interviewer_two_token)
+    ).get_json()
+    assert {item["id"] for item in interviewer_one_assignments} == {
+        first_assignment_id
+    }
+    assert {item["id"] for item in interviewer_two_assignments} == {
+        second_assignment_id
+    }
+
+    cross_assignment = client.post(
+        "/api/interview/feedback",
+        headers=_auth(interviewer_one_token),
+        json={
+            "assignment_id": second_assignment_id,
+            "score": 4,
+            "passed": True,
+        },
+    )
+    assert cross_assignment.status_code == 404
+    assert cross_assignment.get_json()["code"] == "assignment_not_found"
 
     for token, candidate_id, job_id in (
         (interviewer_one_token, first_candidate_id, first_job_id),

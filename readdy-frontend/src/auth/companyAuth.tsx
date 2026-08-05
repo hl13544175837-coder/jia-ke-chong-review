@@ -14,6 +14,7 @@ import {
 } from './gatewayRoles';
 import {
   collectCompanyPermissionCodes,
+  resolveAlignedCompanyRole,
   resolveWorkspaceRole,
   type CompanyMenuNode,
 } from './companyPermissionModel';
@@ -211,15 +212,9 @@ export async function loginViaCompanyGateway(
   const token = await gatewayLogin(account, password);
   const { name, empCode, profileRole } = await gatewayProfile(token);
   const workspaceRole = await gatewayMenuRole(token);
-  const role = workspaceRole
-    ?? resolveGatewayRole(empCode, profileRole, GATEWAY_ROLE_MAP, ENV_ROLE);
+  const fallbackRole = resolveGatewayRole(empCode, profileRole, GATEWAY_ROLE_MAP, ENV_ROLE);
   const backendUser = await backendProfile(token, empCode);
-  if (workspaceRole && backendUser.role !== workspaceRole) {
-    throw new CompanyAuthError(
-      403,
-      `PGS 工作台角色为 ${workspaceRole}，但后端角色为 ${backendUser.role}，请同步角色配置后重试`,
-    );
-  }
+  const role = resolveAlignedCompanyRole(workspaceRole, fallbackRole, backendUser.role);
   localStorage.setItem(EMP_CODE_KEY, empCode);
   return {
     token,
@@ -271,8 +266,51 @@ function loadStoredSession(): CompanySession | null {
 const CompanyAuthContext = createContext<CompanyAuthValue | undefined>(undefined);
 
 export function CompanyAuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<CompanySession | null>(() => loadStoredSession());
+  const [session, setSession] = useState<CompanySession | null>(null);
+  const [restoringSession, setRestoringSession] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
+
+  useEffect(() => {
+    const storedSession = loadStoredSession();
+    if (!storedSession) {
+      setRestoringSession(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const restore = async () => {
+      try {
+        const [workspaceRole, backendUser] = await Promise.all([
+          gatewayMenuRole(storedSession.token),
+          backendProfile(storedSession.token, storedSession.empCode),
+        ]);
+        const role = resolveAlignedCompanyRole(
+          workspaceRole,
+          storedSession.role,
+          backendUser.role,
+        );
+        if (cancelled) return;
+        const restoredSession = {
+          ...storedSession,
+          role,
+          user_id: backendUser.id,
+        };
+        localStorage.setItem(ROLE_KEY, role);
+        localStorage.setItem(USER_ID_KEY, String(backendUser.id));
+        setSession(restoredSession);
+      } catch {
+        if (cancelled) return;
+        clearStoredSession();
+        setSession(null);
+      } finally {
+        if (!cancelled) setRestoringSession(false);
+      }
+    };
+    void restore();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const handleUnauthorized = () => setSessionExpired(true);
@@ -310,7 +348,11 @@ export function CompanyAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <CompanyAuthContext.Provider value={value}>
-      {children}
+      {restoringSession ? (
+        <div className="flex min-h-screen items-center justify-center text-sm text-foreground-500">
+          正在确认账号权限...
+        </div>
+      ) : children}
       {sessionExpired && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-foreground-900/40 px-4" role="presentation">
           <div

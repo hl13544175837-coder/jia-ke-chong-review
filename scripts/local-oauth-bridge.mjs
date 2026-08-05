@@ -31,6 +31,19 @@ const localMenuTree = [
   { code: 'settings', name: '系统设置' },
 ];
 
+function localMenuTreeForRole(role) {
+  const workspace = role === 'interviewer'
+    ? { code: 'dashboard_interviewer', name: '面试官工作台' }
+    : role === 'recruiter'
+      ? { code: 'dashboard_recruiter', name: '招聘专员工作台' }
+      : null;
+  return localMenuTree.map((item) => (
+    item.code === 'index' && workspace
+      ? { ...item, children: [workspace] }
+      : item
+  ));
+}
+
 function corsHeaders() {
   return {
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
@@ -130,7 +143,11 @@ async function menu(request, response, url) {
     return;
   }
 
-  sendJson(response, 200, { code: 1, succ: true, data: localMenuTree });
+  sendJson(response, 200, {
+    code: 1,
+    succ: true,
+    data: localMenuTreeForRole(user.role),
+  });
 }
 
 const server = createServer(async (request, response) => {
