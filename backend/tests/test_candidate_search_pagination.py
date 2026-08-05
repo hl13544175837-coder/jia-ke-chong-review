@@ -310,7 +310,13 @@ def test_candidates_expose_and_filter_precise_pipeline_state(client, make_user, 
 
     with app.app_context():
         from app import db
-        from app.models import Candidate, Job, PipelineStage
+        from app.models import (
+            Candidate,
+            CandidateDemandFlow,
+            Job,
+            PipelineStage,
+            RecruitmentDemand,
+        )
 
         job = Job(title="后端工程师", jd_text="负责后端开发", owner_hr_id=admin_id)
         db.session.add(job)
@@ -346,6 +352,11 @@ def test_candidates_expose_and_filter_precise_pipeline_state(client, make_user, 
             name_masked="已经转出",
             resume_json={"extracted_info": {}},
         )
+        active_with_other_rejection = Candidate(
+            owner_hr_id=admin_id,
+            name_masked="跨需求仍在流程",
+            resume_json={"extracted_info": {}},
+        )
         db.session.add_all([
             never_entered,
             active,
@@ -353,8 +364,33 @@ def test_candidates_expose_and_filter_precise_pipeline_state(client, make_user, 
             reactivated,
             onboarded,
             transferred,
+            active_with_other_rejection,
         ])
         db.session.flush()
+        active_demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=admin_id,
+            created_by=admin_id,
+            request_no="PIPE-ACTIVE",
+            job_title_snapshot="活动需求",
+        )
+        rejected_demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=admin_id,
+            created_by=admin_id,
+            request_no="PIPE-REJECTED",
+            job_title_snapshot="历史淘汰需求",
+        )
+        db.session.add_all([active_demand, rejected_demand])
+        db.session.flush()
+        active_demand_id = active_demand.id
+        active_with_other_rejection.current_demand_id = active_demand.id
+        db.session.add(CandidateDemandFlow(
+            candidate_id=active_with_other_rejection.id,
+            demand_id=active_demand.id,
+            owner_hr_id=admin_id,
+            status="active",
+        ))
         db.session.add_all([
             PipelineStage(candidate_id=active.id, job_id=job.id, stage="pending", updated_by=admin_id),
             PipelineStage(candidate_id=rejected.id, job_id=job.id, stage="rejected", updated_by=admin_id),
@@ -362,6 +398,8 @@ def test_candidates_expose_and_filter_precise_pipeline_state(client, make_user, 
             PipelineStage(candidate_id=reactivated.id, job_id=job.id, stage="pending", updated_by=admin_id),
             PipelineStage(candidate_id=onboarded.id, job_id=job.id, stage="onboarded", updated_by=admin_id),
             PipelineStage(candidate_id=transferred.id, job_id=job.id, stage="transferred", updated_by=admin_id),
+            PipelineStage(candidate_id=active_with_other_rejection.id, job_id=job.id, demand_id=active_demand.id, stage="business_review", updated_by=admin_id),
+            PipelineStage(candidate_id=active_with_other_rejection.id, job_id=job.id, demand_id=rejected_demand.id, stage="rejected", updated_by=admin_id),
         ])
         db.session.commit()
 
@@ -384,6 +422,14 @@ def test_candidates_expose_and_filter_precise_pipeline_state(client, make_user, 
     assert states["重新启用"] == ("in_pipeline", True)
     assert states["已经入职"] == ("onboarded", False)
     assert states["已经转出"] == ("transferred", False)
+    assert states["跨需求仍在流程"] == ("in_pipeline", True)
+    active_item = next(
+        item
+        for item in response.get_json()["candidates"]
+        if item["name_masked"] == "跨需求仍在流程"
+    )
+    assert active_item["current_stage"] == "business_review"
+    assert active_item["latest_demand_id"] == active_demand_id
 
     never_response = client.get(
         "/api/candidates?pipeline_status=never_entered&page=1&per_page=20",

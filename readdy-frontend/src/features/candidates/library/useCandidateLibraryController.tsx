@@ -43,6 +43,7 @@ import type {
   CandidateListItem,
   CandidatePipelineAddResult,
   CandidateStage,
+  PipelineState,
   ResumeUploadResponse,
 } from '@/features/candidates/types';
 import { businessReviewsApi } from '@/features/businessReviews/api';
@@ -63,6 +64,7 @@ import ResumeRecoveryPanel from '@/features/candidates/components/ResumeRecovery
 import CandidateColumnFilterHeader from '@/features/candidates/components/library/CandidateColumnFilterHeader';
 import {
   belongsToSourceFile,
+  activeCandidateStageOptions,
   candidateFromReviewTask,
   candidateResumeReady,
   candidateScopeTabs,
@@ -73,7 +75,7 @@ import {
   isBusinessReviewer,
   isCandidateStage,
   isParseStatus,
-  isPipelineStatus,
+  isPipelineStateFilter,
 } from '@/features/candidates/library';
 import { useCandidateLibraryFilters } from '@/features/candidates/library/useCandidateLibraryFilters';
 import { useCandidateLibraryData } from '@/features/candidates/library/useCandidateLibraryData';
@@ -106,6 +108,14 @@ const stageLabels: Record<CandidateStage, string> = {
   transferred: '已转需求',
 };
 
+const pipelineStateMeta: Record<PipelineState, { label: string; className: string }> = {
+  in_pipeline: { label: '招聘流程中', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  never_entered: { label: '未进入流程', className: 'border-background-300 bg-background-50 text-foreground-600' },
+  rejected: { label: '已淘汰', className: 'border-red-200 bg-red-50 text-red-700' },
+  onboarded: { label: '已入职', className: 'border-blue-200 bg-blue-50 text-blue-700' },
+  transferred: { label: '已转出', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+};
+
 const sourceChannels = ['BOSS直聘', '58同城', '猎聘', '鱼泡直聘', '智联招聘', '前程无忧', '内推', '官网', 'LinkedIn'];
 const sourceFilterOptions = [...sourceChannels, '其他'];
 const educationOptions = ['博士', '硕士', '本科', '大专', '高中', '中专'];
@@ -134,19 +144,18 @@ export function useCandidateLibraryController() {
     setDemandFilter,
     cityFilter,
     educationFilter,
-    skillFilter,
     sourceFilter,
     parseStatusFilter,
-    pipelineStatusFilter,
-    favoriteFilter,
+    pipelineStateFilter,
+    createdFrom,
+    createdTo,
+    libraryScope,
     stageFilter,
-    scoreFilter,
     sortBy,
     sortOrder,
     page,
     hideLocalDemoRecords,
     deferredSearch,
-    deferredSkill,
     openCandidateInUrl,
     consumeNavigationState,
   } = filters;
@@ -392,6 +401,8 @@ export function useCandidateLibraryController() {
       created_at: '',
       parse_status: 'ok' as const,
       tag_count: 0,
+      pipeline_state: 'never_entered' as const,
+      has_rejected_history: false,
     };
     setUploadOpen(false);
     openCandidateDetail(existing);
@@ -411,6 +422,8 @@ export function useCandidateLibraryController() {
       created_at: '',
       parse_status: 'failed' as const,
       tag_count: 0,
+      pipeline_state: 'never_entered' as const,
+      has_rejected_history: false,
     };
     setUploadOpen(false);
     openCandidateDetail(pending);
@@ -809,14 +822,16 @@ export function useCandidateLibraryController() {
     candidateResumeReady,
     candidateScopeTabs,
     candidateStageOptions,
+    activeCandidateStageOptions,
     formatDate,
     isCandidateStage,
     isParseStatus,
-    isPipelineStatus,
+    isPipelineStateFilter,
     supportedReplacementPattern,
     supportedResumeAccept,
     parseStatusMeta,
     stageLabels,
+    pipelineStateMeta,
     sourceChannels,
     sourceFilterOptions,
     educationOptions,

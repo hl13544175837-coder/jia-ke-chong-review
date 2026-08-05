@@ -13,14 +13,15 @@ import {
   isCandidateNavigationState,
   isCandidateStage,
   isParseStatus,
+  isPipelineStateFilter,
   positiveSearchId,
   positiveSearchPage,
   setCandidateSearchParam,
   type CandidateLibraryScope,
-  type PipelineStatusFilter,
+  type PipelineStateFilter,
 } from '@/features/candidates/library';
 
-export type CandidateColumnFilter = 'identity' | 'parse' | 'profile' | 'skills' | 'source' | 'stage' | 'created';
+export type CandidateColumnFilter = 'pipeline' | 'education' | 'city' | 'stage';
 export type CandidateSortBy = 'created_at' | 'name_masked';
 export type SortOrder = 'asc' | 'desc';
 
@@ -46,33 +47,33 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
       : '';
 
   const initialScope = initialCandidateScope(searchParams.get('scope'));
+  const [libraryScope, setLibraryScope] = useState<CandidateLibraryScope>(initialScope);
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
   const [demandFilter, setDemandFilter] = useState<number | ''>(navState?.demandId ?? requestedDemandId ?? '');
   const [cityFilter, setCityFilter] = useState(() => searchParams.get('city') ?? '');
   const [educationFilter, setEducationFilter] = useState(() => searchParams.get('education') ?? '');
-  const [skillFilter, setSkillFilter] = useState(() => searchParams.get('skill') ?? '');
   const [sourceFilter, setSourceFilter] = useState(() => searchParams.get('source') ?? '');
   const [parseStatusFilter, setParseStatusFilter] = useState<'' | ParseStatus>(() => {
     const value = searchParams.get('parse');
     return value && isParseStatus(value) ? value : '';
   });
-  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<PipelineStatusFilter>(
-    initialScope === 'in_pipeline' ? 'in_pipeline' : initialScope === 'talent_pool' ? 'not_in_pipeline' : '',
-  );
-  const [favoriteFilter, setFavoriteFilter] = useState(initialScope === 'favorite');
+  const [pipelineStateFilter, setPipelineStateFilter] = useState<PipelineStateFilter>(() => {
+    const value = searchParams.get('state');
+    return value && isPipelineStateFilter(value) ? value : '';
+  });
+  const [createdFrom, setCreatedFrom] = useState(() => searchParams.get('created_from') ?? '');
+  const [createdTo, setCreatedTo] = useState(() => searchParams.get('created_to') ?? '');
   const [stageFilter, setStageFilter] = useState<'' | CandidateStage>(() => {
     const fromNavigation = candidateStageFromNavigation(navState?.targetStage);
     const fromUrl = searchParams.get('stage');
     return fromNavigation || (fromUrl && isCandidateStage(fromUrl) ? fromUrl : '');
   });
-  const [scoreFilter, setScoreFilter] = useState(() => searchParams.get('score') ?? '0');
   const [sortBy, setSortBy] = useState<CandidateSortBy>(() => searchParams.get('sort') === 'name_masked' ? 'name_masked' : 'created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => searchParams.get('order') === 'asc' ? 'asc' : 'desc');
   const [openColumnFilter, setOpenColumnFilter] = useState<CandidateColumnFilter | null>(null);
   const [page, setPage] = useState(() => positiveSearchPage(searchParams.get('page')));
   const [hideLocalDemoRecords, setHideLocalDemoRecords] = useState(false);
   const deferredSearch = useDeferredValue(searchQuery.trim());
-  const deferredSkill = useDeferredValue(skillFilter.trim());
 
   const openCandidateInUrl = useCallback((candidateId: number | null) => {
     const next = new URLSearchParams(searchParams);
@@ -87,40 +88,36 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
 
   const syncCandidateWorkspaceUrl = useCallback(() => {
     const next = new URLSearchParams(searchParams);
-    const scope: CandidateLibraryScope = favoriteFilter
-      ? 'favorite'
-      : pipelineStatusFilter === 'in_pipeline'
-        ? 'in_pipeline'
-        : pipelineStatusFilter === 'not_in_pipeline'
-          ? 'talent_pool'
-          : 'all';
-    setCandidateSearchParam(next, 'scope', scope, 'all');
+    setCandidateSearchParam(next, 'scope', libraryScope, 'all');
     setCandidateSearchParam(next, 'q', searchQuery);
     setCandidateSearchParam(next, 'demand', demandFilter ? String(demandFilter) : '');
     setCandidateSearchParam(next, 'city', cityFilter);
     setCandidateSearchParam(next, 'education', educationFilter);
-    setCandidateSearchParam(next, 'skill', skillFilter);
     setCandidateSearchParam(next, 'source', sourceFilter);
     setCandidateSearchParam(next, 'parse', parseStatusFilter);
+    setCandidateSearchParam(next, 'state', pipelineStateFilter);
     setCandidateSearchParam(next, 'stage', stageFilter);
-    setCandidateSearchParam(next, 'score', scoreFilter, '0');
+    setCandidateSearchParam(next, 'created_from', createdFrom);
+    setCandidateSearchParam(next, 'created_to', createdTo);
     setCandidateSearchParam(next, 'sort', sortBy, 'created_at');
     setCandidateSearchParam(next, 'order', sortOrder, 'desc');
     setCandidateSearchParam(next, 'page', String(page), '1');
+    next.delete('skill');
+    next.delete('score');
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
   }, [
     cityFilter,
+    createdFrom,
+    createdTo,
     demandFilter,
     educationFilter,
-    favoriteFilter,
+    libraryScope,
     page,
     parseStatusFilter,
-    pipelineStatusFilter,
-    scoreFilter,
+    pipelineStateFilter,
     searchParams,
     searchQuery,
     setSearchParams,
-    skillFilter,
     sortBy,
     sortOrder,
     sourceFilter,
@@ -151,13 +148,13 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
     setDemandFilter('');
     setCityFilter('');
     setEducationFilter('');
-    setSkillFilter('');
     setSourceFilter('');
     setParseStatusFilter('');
-    setPipelineStatusFilter('');
-    setFavoriteFilter(false);
+    setPipelineStateFilter('');
+    setLibraryScope('all');
     setStageFilter('');
-    setScoreFilter('0');
+    setCreatedFrom('');
+    setCreatedTo('');
     setSortBy('created_at');
     setSortOrder('desc');
     setHideLocalDemoRecords(false);
@@ -171,13 +168,13 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
     || demandFilter
     || cityFilter
     || educationFilter
-    || skillFilter.trim()
     || sourceFilter
     || parseStatusFilter
-    || pipelineStatusFilter
-    || favoriteFilter
+    || pipelineStateFilter
+    || libraryScope !== 'all'
     || stageFilter
-    || scoreFilter !== '0'
+    || createdFrom
+    || createdTo
     || sortBy !== 'created_at'
     || sortOrder !== 'desc'
     || hideLocalDemoRecords,
@@ -189,20 +186,10 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
 
   const selectLibraryScope = (scope: CandidateLibraryScope) => {
     changeFilter(() => {
-      setFavoriteFilter(scope === 'favorite');
-      setPipelineStatusFilter(
-        scope === 'in_pipeline' ? 'in_pipeline' : scope === 'talent_pool' ? 'not_in_pipeline' : '',
-      );
+      setLibraryScope(scope);
+      setPipelineStateFilter('');
     });
   };
-
-  const libraryScope: CandidateLibraryScope = favoriteFilter
-    ? 'favorite'
-    : pipelineStatusFilter === 'in_pipeline'
-      ? 'in_pipeline'
-      : pipelineStatusFilter === 'not_in_pipeline'
-        ? 'talent_pool'
-        : 'all';
 
   return {
     navigate,
@@ -217,19 +204,18 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
     setCityFilter,
     educationFilter,
     setEducationFilter,
-    skillFilter,
-    setSkillFilter,
     sourceFilter,
     setSourceFilter,
     parseStatusFilter,
     setParseStatusFilter,
-    pipelineStatusFilter,
-    setPipelineStatusFilter,
-    favoriteFilter,
+    pipelineStateFilter,
+    setPipelineStateFilter,
+    createdFrom,
+    setCreatedFrom,
+    createdTo,
+    setCreatedTo,
     stageFilter,
     setStageFilter,
-    scoreFilter,
-    setScoreFilter,
     sortBy,
     setSortBy,
     sortOrder,
@@ -240,7 +226,6 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
     hideLocalDemoRecords,
     setHideLocalDemoRecords,
     deferredSearch,
-    deferredSkill,
     openCandidateInUrl,
     consumeNavigationState,
     handleSearchChange,
@@ -251,6 +236,7 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
     toggleColumnFilter,
     selectLibraryScope,
     libraryScope,
+    setLibraryScope,
   } as const;
 }
 

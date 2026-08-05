@@ -1,6 +1,7 @@
 import type { OriginalResumeInfo } from '@/features/businessReviews/types';
 
 export type ParseStatus = 'pending' | 'processing' | 'ok' | 'failed' | 'original_confirmed';
+export type PipelineState = 'in_pipeline' | 'never_entered' | 'rejected' | 'onboarded' | 'transferred';
 export type CandidateStage =
   | 'pending'
   | 'ai_screen'
@@ -48,6 +49,8 @@ export interface CandidateListItem {
   parse_error?: string | null;
   tag_count: number;
   current_stage?: CandidateStage | null;
+  pipeline_state: PipelineState;
+  has_rejected_history: boolean;
   education_summary?: string;
   top_tags?: CandidateTag[];
   max_score?: number;
@@ -85,7 +88,9 @@ export interface CandidateListQuery {
   min_score?: number;
   source_channel?: string;
   parse_status?: ParseStatus;
-  pipeline_status?: 'in_pipeline' | 'not_in_pipeline';
+  pipeline_status?: PipelineState | 'not_in_pipeline';
+  created_from?: string;
+  created_to?: string;
   favorite?: boolean;
   sort_by?: 'created_at' | 'name_masked';
   sort_order?: 'asc' | 'desc';

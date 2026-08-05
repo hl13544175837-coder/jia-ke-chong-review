@@ -20,7 +20,7 @@ import { useToast } from '@/hooks/useToast';
 import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
-import FilterBar from '@/components/ui/FilterBar';
+import FilterBar, { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
 import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import { businessReviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
@@ -255,12 +255,12 @@ export default function InterviewerScreeningPage() {
         ariaLabel="业务筛选状态"
       />
 
-      <FilterBar ariaLabel="候选人筛选查询条件" className="rounded-xl border border-background-200 bg-white p-3">
-        <input aria-label="搜索候选人" value={query} onChange={(event) => setFilter('q', event.target.value)} placeholder="搜索候选人或岗位" className="h-9 min-w-[220px] flex-1 rounded-lg border border-background-300 px-3 text-sm outline-none focus:border-primary-400" />
-        <select aria-label="按岗位筛选" value={jobFilter} onChange={(event) => setFilter('job', event.target.value)} className="h-9 min-w-[150px] rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-        <select aria-label="按部门筛选" value={departmentFilter} onChange={(event) => setFilter('department', event.target.value)} className="h-9 min-w-[130px] rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-        <select aria-label="按城市筛选" value={cityFilter} onChange={(event) => setFilter('city', event.target.value)} className="h-9 min-w-[120px] rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部城市</option>{filterOptions.cities.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-        <button type="button" onClick={resetFilters} disabled={!query && !jobFilter && !departmentFilter && !cityFilter} className="h-9 rounded-lg border border-background-300 bg-white px-3 text-sm font-medium text-foreground-600 disabled:opacity-40">重置</button>
+      <FilterBar ariaLabel="候选人筛选查询条件" className={`${FILTER_GRID_CLASS} rounded-xl border border-background-200 bg-white p-3`}>
+        <input aria-label="搜索候选人" value={query} onChange={(event) => setFilter('q', event.target.value)} placeholder="搜索候选人或岗位" className={FILTER_CONTROL_CLASS} />
+        <select aria-label="按岗位筛选" value={jobFilter} onChange={(event) => setFilter('job', event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+        <select aria-label="按部门筛选" value={departmentFilter} onChange={(event) => setFilter('department', event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+        <select aria-label="按城市筛选" value={cityFilter} onChange={(event) => setFilter('city', event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部城市</option>{filterOptions.cities.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+        <button type="button" onClick={resetFilters} disabled={!query && !jobFilter && !departmentFilter && !cityFilter} className={`${FILTER_CONTROL_CLASS} font-medium disabled:opacity-40`}>重置</button>
       </FilterBar>
 
       {requestedDemandId && (

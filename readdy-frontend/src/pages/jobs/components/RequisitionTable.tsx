@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import ActionButton from '@/components/ui/ActionButton';
-import FilterBar from '@/components/ui/FilterBar';
+import FilterBar, { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import { demandStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import type { RequisitionRow } from '@/features/demands/types';
@@ -143,50 +143,32 @@ export default function RequisitionTable({
   return (
     <>
       <div className="overflow-hidden rounded-xl border border-background-200 bg-white">
-        <div ref={toolbarRef} className="flex flex-wrap items-center gap-3 border-b border-background-100 px-5 py-3">
-          <div className="relative min-w-[260px] flex-1">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <i className="ri-search-line text-foreground-400 text-sm"></i>
-            </div>
-            <input
-              type="text"
-              placeholder="搜索需求编号、职位、负责人、部门或城市"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-50 transition-all"
-            />
-          </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <span className="whitespace-nowrap text-xs text-foreground-400">{data.length} 条</span>
-            <button
-              type="button"
-              aria-expanded={toolbarPanel === 'sort'}
-              onClick={() => setToolbarPanel((current) => current === 'sort' ? null : 'sort')}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-background-200 bg-white px-3 text-sm font-medium text-foreground-600 transition-colors hover:bg-background-50"
-            >
-              <i className="ri-sort-desc"></i>
-              排序：{activeSortLabel}
-              <span className="text-xs text-primary-600">{sortDirectionLabel}</span>
-            </button>
-          </div>
-
-          <FilterBar className="grid w-full grid-cols-1 gap-3 rounded-xl bg-background-50 p-3 sm:grid-cols-2 xl:grid-cols-5" ariaLabel="招聘需求查询条件">
-              <select aria-label="按部门筛选" value={filters.department} onChange={(event) => onFilterChange('department', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
+        <div ref={toolbarRef} className="border-b border-background-100 px-5 py-3">
+          <div className="mb-2 text-right text-xs text-foreground-400">{data.length} 条</div>
+          <FilterBar className={`${FILTER_GRID_CLASS} rounded-xl bg-background-50 p-3`} ariaLabel="招聘需求查询条件">
+              <label className="relative block">
+                <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-foreground-400"></i>
+                <input type="text" placeholder="搜索需求编号、职位、负责人、部门或城市" value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} className={`${FILTER_CONTROL_CLASS} pl-9`} />
+              </label>
+              <select aria-label="按部门筛选" value={filters.department} onChange={(event) => onFilterChange('department', event.target.value)} className={FILTER_CONTROL_CLASS}>
                 <option value="">全部部门</option>
                 {filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
-              <select aria-label="按城市筛选" value={filters.city} onChange={(event) => onFilterChange('city', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
+              <select aria-label="按城市筛选" value={filters.city} onChange={(event) => onFilterChange('city', event.target.value)} className={FILTER_CONTROL_CLASS}>
                 <option value="">全部城市</option>
                 {filterOptions.cities.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
-              <select aria-label="按负责人筛选" value={filters.owner} onChange={(event) => onFilterChange('owner', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
+              <select aria-label="按负责人筛选" value={filters.owner} onChange={(event) => onFilterChange('owner', event.target.value)} className={FILTER_CONTROL_CLASS}>
                 <option value="">全部负责人</option>
                 {filterOptions.owners.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
-              <select aria-label="按候选人阶段筛选" value={filters.stage} onChange={(event) => onFilterChange('stage', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
+              <select aria-label="按候选人阶段筛选" value={filters.stage} onChange={(event) => onFilterChange('stage', event.target.value)} className={FILTER_CONTROL_CLASS}>
                 {stageOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-              <button type="button" onClick={onClearFilters} disabled={activeFilterEntries.length === 0} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm font-medium text-foreground-600 transition-colors hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40">
+              <button type="button" aria-expanded={toolbarPanel === 'sort'} onClick={() => setToolbarPanel((current) => current === 'sort' ? null : 'sort')} className={`${FILTER_CONTROL_CLASS} inline-flex items-center justify-center gap-1.5 font-medium`}>
+                <i className="ri-sort-desc"></i>排序：{activeSortLabel}<span className="text-xs text-primary-600">{sortDirectionLabel}</span>
+              </button>
+              <button type="button" onClick={onClearFilters} disabled={activeFilterEntries.length === 0} className={`${FILTER_CONTROL_CLASS} font-medium hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40`}>
                 <i className="ri-refresh-line mr-1"></i>清空筛选
               </button>
           </FilterBar>

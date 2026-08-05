@@ -1,5 +1,5 @@
 import { CalendarDays, List, Search } from 'lucide-react';
-import FilterBar from '@/components/ui/FilterBar';
+import FilterBar, { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import {
   activeInterviewFilterCount,
@@ -31,8 +31,6 @@ const statusTabs: Array<{ key: InterviewStatusTab; label: string }> = [
   { key: 'awaiting_feedback', label: '待反馈' },
   { key: 'completed', label: '已完成' },
 ];
-
-const controlClass = 'h-9 min-w-[132px] rounded-lg border border-background-300 bg-white px-3 text-xs text-foreground-700 outline-none transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100';
 
 export default function InterviewWorkbenchToolbar({
   activeTab,
@@ -68,23 +66,23 @@ export default function InterviewWorkbenchToolbar({
         </div>
       </div>
 
-      <FilterBar ariaLabel="面试查询条件">
-        <label className="relative min-w-[220px] flex-1">
-          <Search size={14} className="pointer-events-none absolute left-3 top-2.5 text-foreground-400" />
-          <input value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="搜索候选人、岗位或面试官" className="h-9 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-xs text-foreground-700 outline-none transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100" />
+      <FilterBar ariaLabel="面试查询条件" className={FILTER_GRID_CLASS}>
+        <label className="relative block">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" />
+          <input value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="搜索候选人、岗位或面试官" className={`${FILTER_CONTROL_CLASS} pl-9`} />
         </label>
-        <select aria-label="按岗位筛选" value={filters.jobTitle} onChange={(event) => update('jobTitle', event.target.value)} className={controlClass}>
+        <select aria-label="按岗位筛选" value={filters.jobTitle} onChange={(event) => update('jobTitle', event.target.value)} className={FILTER_CONTROL_CLASS}>
           <option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
-        <select aria-label="按部门筛选" value={filters.department} onChange={(event) => update('department', event.target.value)} className={controlClass}>
+        <select aria-label="按部门筛选" value={filters.department} onChange={(event) => update('department', event.target.value)} className={FILTER_CONTROL_CLASS}>
           <option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
-        <select aria-label="按面试官筛选" value={filters.interviewerId} onChange={(event) => update('interviewerId', event.target.value)} className={controlClass}>
+        <select aria-label="按面试官筛选" value={filters.interviewerId} onChange={(event) => update('interviewerId', event.target.value)} className={FILTER_CONTROL_CLASS}>
           <option value="">全部面试官</option>{filterOptions.interviewers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
-        <input type="date" aria-label="面试开始日期" value={filters.dateFrom} onChange={(event) => update('dateFrom', event.target.value)} className={controlClass} />
-        <input type="date" aria-label="面试结束日期" value={filters.dateTo} onChange={(event) => update('dateTo', event.target.value)} className={controlClass} />
-        <button type="button" disabled={!hasFilters} onClick={onResetFilters} className="h-9 rounded-lg border border-background-300 bg-white px-3 text-xs font-medium text-foreground-600 hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40">重置</button>
+        <input type="date" aria-label="面试开始日期" value={filters.dateFrom} onChange={(event) => update('dateFrom', event.target.value)} className={FILTER_CONTROL_CLASS} />
+        <input type="date" aria-label="面试结束日期" value={filters.dateTo} onChange={(event) => update('dateTo', event.target.value)} className={FILTER_CONTROL_CLASS} />
+        <button type="button" disabled={!hasFilters} onClick={onResetFilters} className={`${FILTER_CONTROL_CLASS} font-medium hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40`}>重置</button>
       </FilterBar>
     </section>
   );

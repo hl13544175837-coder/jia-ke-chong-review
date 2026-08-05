@@ -11,7 +11,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import ActionButton from '@/components/ui/ActionButton';
-import FilterBar from '@/components/ui/FilterBar';
+import FilterBar, { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import { interviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import { businessReviewsApi } from '@/features/businessReviews/api';
@@ -428,15 +428,15 @@ export default function InterviewerInterviewsPage() {
           onChange={(tab) => changeListState(tab, searchQuery)}
           ariaLabel="我的面试状态"
         />
-        <FilterBar ariaLabel="我的面试查询条件" className="rounded-xl border border-background-200 bg-white p-3">
-          <label className="relative min-w-[220px] flex-1">
-            <Search size={15} className="pointer-events-none absolute left-3 top-2.5 text-foreground-400" />
-            <input value={searchQuery} onChange={(event) => changeListState(activeTab, event.target.value)} placeholder="搜索候选人、岗位或部门" className="h-9 w-full rounded-md border border-background-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-primary-400" />
+        <FilterBar ariaLabel="我的面试查询条件" className={`${FILTER_GRID_CLASS} rounded-xl border border-background-200 bg-white p-3`}>
+          <label className="relative block">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" />
+            <input value={searchQuery} onChange={(event) => changeListState(activeTab, event.target.value)} placeholder="搜索候选人、岗位或部门" className={`${FILTER_CONTROL_CLASS} pl-9`} />
           </label>
-          <select aria-label="按岗位筛选" value={jobFilter} onChange={(event) => changeListFilter('job', event.target.value)} className="h-9 min-w-[150px] rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-          <select aria-label="按部门筛选" value={departmentFilter} onChange={(event) => changeListFilter('department', event.target.value)} className="h-9 min-w-[130px] rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-          <input type="date" aria-label="按面试日期筛选" value={dateFilter} onChange={(event) => changeListFilter('date', event.target.value)} className="h-9 rounded-lg border border-background-300 bg-white px-3 text-sm" />
-          <button type="button" onClick={resetListFilters} disabled={!searchQuery && !jobFilter && !departmentFilter && !dateFilter && activeTab === 'all'} className="h-9 rounded-lg border border-background-300 bg-white px-3 text-sm font-medium text-foreground-600 disabled:opacity-40">重置</button>
+          <select aria-label="按岗位筛选" value={jobFilter} onChange={(event) => changeListFilter('job', event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <select aria-label="按部门筛选" value={departmentFilter} onChange={(event) => changeListFilter('department', event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <input type="date" aria-label="按面试日期筛选" value={dateFilter} onChange={(event) => changeListFilter('date', event.target.value)} className={FILTER_CONTROL_CLASS} />
+          <button type="button" onClick={resetListFilters} disabled={!searchQuery && !jobFilter && !departmentFilter && !dateFilter && activeTab === 'all'} className={`${FILTER_CONTROL_CLASS} font-medium disabled:opacity-40`}>重置</button>
         </FilterBar>
       </div>
 

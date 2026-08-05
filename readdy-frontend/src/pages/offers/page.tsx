@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
-import FilterBar from '@/components/ui/FilterBar';
+import FilterBar, { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
 import { offersApi } from '@/features/offers/api';
 import type { OfferOaRegistrationInput, OfferWorkbenchRecord } from '@/features/offers/types';
 import { useToast } from '@/hooks/useToast';
@@ -189,14 +189,14 @@ export default function OffersPage() {
         </div>
 
         <form className="border-b border-background-200 bg-background-50 p-4" onSubmit={(event) => { event.preventDefault(); setSearch(searchInput.trim()); }}>
-          <FilterBar ariaLabel="Offer 查询条件">
-            <label className="relative flex-1"><span className="sr-only">搜索 Offer</span><i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" aria-hidden="true" /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="搜索候选人、岗位、需求编号或 OA 编号" className="h-10 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-primary-400" /></label>
-            <select aria-label="按招聘需求筛选" value={demandFilter} onChange={(event) => setDemandFilter(event.target.value)} className="h-10 rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部招聘需求</option>{demandOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <select aria-label="按负责人筛选" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className="h-10 rounded-lg border border-background-300 bg-white px-3 text-sm"><option value="">全部负责人</option>{ownerOptions.map((owner) => <option key={owner} value={owner}>{owner}</option>)}</select>
-            <select aria-label="时间范围" value={rangeDays} onChange={(event) => setRangeDays(Number(event.target.value))} className="h-10 rounded-lg border border-background-300 bg-white px-3 text-sm"><option value={7}>最近 7 天</option><option value={30}>最近 30 天</option><option value={3650}>全部时间</option></select>
-            <input type="date" aria-label="按更新时间筛选" value={updatedDateFilter} onChange={(event) => setUpdatedDateFilter(event.target.value)} className="h-10 rounded-lg border border-background-300 bg-white px-3 text-sm" />
-            <button type="submit" className="h-10 rounded-lg border border-primary-200 bg-white px-4 text-sm font-medium text-primary-700 hover:bg-primary-50">搜索</button>
-            <button type="button" onClick={resetOfferFilters} disabled={!hasFilters} className="h-10 rounded-lg border border-background-300 bg-white px-4 text-sm font-medium text-foreground-600 disabled:opacity-40">重置</button>
+          <FilterBar ariaLabel="Offer 查询条件" className={FILTER_GRID_CLASS}>
+            <label className="relative block"><span className="sr-only">搜索 Offer</span><i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" aria-hidden="true" /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="搜索候选人、岗位、需求编号或 OA 编号" className={`${FILTER_CONTROL_CLASS} pl-9`} /></label>
+            <select aria-label="按招聘需求筛选" value={demandFilter} onChange={(event) => setDemandFilter(event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部招聘需求</option>{demandOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+            <select aria-label="按负责人筛选" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部负责人</option>{ownerOptions.map((owner) => <option key={owner} value={owner}>{owner}</option>)}</select>
+            <select aria-label="时间范围" value={rangeDays} onChange={(event) => setRangeDays(Number(event.target.value))} className={FILTER_CONTROL_CLASS}><option value={7}>最近 7 天</option><option value={30}>最近 30 天</option><option value={3650}>全部时间</option></select>
+            <input type="date" aria-label="按更新时间筛选" value={updatedDateFilter} onChange={(event) => setUpdatedDateFilter(event.target.value)} className={FILTER_CONTROL_CLASS} />
+            <button type="submit" className={`${FILTER_CONTROL_CLASS} font-medium text-primary-700 hover:bg-primary-50`}>搜索</button>
+            <button type="button" onClick={resetOfferFilters} disabled={!hasFilters} className={`${FILTER_CONTROL_CLASS} font-medium disabled:opacity-40`}>重置</button>
           </FilterBar>
         </form>
 

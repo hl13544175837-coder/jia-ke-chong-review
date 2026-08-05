@@ -1,7 +1,7 @@
 import type { BusinessReviewTask } from '@/features/businessReviews/types';
-import type { CandidateListItem, CandidateStage, ParseStatus } from './types';
+import type { CandidateListItem, CandidateStage, ParseStatus, PipelineState } from './types';
 
-export type PipelineStatusFilter = '' | 'in_pipeline' | 'not_in_pipeline';
+export type PipelineStateFilter = '' | Exclude<PipelineState, 'in_pipeline'>;
 export type CandidateLibraryScope = 'all' | 'in_pipeline' | 'talent_pool' | 'favorite';
 
 export const candidateStageOptions: CandidateStage[] = [
@@ -13,6 +13,14 @@ export const candidateStageOptions: CandidateStage[] = [
   'onboarded',
   'rejected',
   'transferred',
+];
+
+export const activeCandidateStageOptions: CandidateStage[] = [
+  'pending',
+  'ai_screen',
+  'business_review',
+  'interview',
+  'offer',
 ];
 
 export const candidateScopeTabs: ReadonlyArray<{ key: CandidateLibraryScope; label: string }> = [
@@ -34,8 +42,8 @@ export function candidateResumeReady(candidate: CandidateListItem) {
   return candidate.parse_status === 'ok' || candidate.parse_status === 'original_confirmed';
 }
 
-export function isPipelineStatus(value: string): value is Exclude<PipelineStatusFilter, ''> {
-  return value === 'in_pipeline' || value === 'not_in_pipeline';
+export function isPipelineStateFilter(value: string): value is Exclude<PipelineStateFilter, ''> {
+  return value === 'never_entered' || value === 'rejected' || value === 'onboarded' || value === 'transferred';
 }
 
 export function positiveSearchId(value: string | null) {
@@ -81,6 +89,8 @@ export function candidateFromReviewTask(task: BusinessReviewTask): CandidateList
     parse_status: parseStatus,
     tag_count: 0,
     current_stage: task.candidate.current_stage || 'business_review',
+    pipeline_state: 'in_pipeline',
+    has_rejected_history: false,
   };
 }
 

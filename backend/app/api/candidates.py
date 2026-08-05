@@ -294,30 +294,65 @@ def _candidate_stage_context_by_ids(candidate_ids, demand_id=None):
     candidate_ids = list(dict.fromkeys(candidate_ids))
     if not candidate_ids:
         return {}
-    latest = (
-        db.session.query(
-            PipelineStage.candidate_id.label("candidate_id"),
-            func.max(PipelineStage.id).label("max_id"),
-        )
-        .filter(
-            PipelineStage.org_id == g.org_id,
-            PipelineStage.candidate_id.in_(candidate_ids),
-        )
+    stage_query = db.session.query(PipelineStage).filter(
+        PipelineStage.org_id == g.org_id,
+        PipelineStage.candidate_id.in_(candidate_ids),
     )
     if demand_id is not None:
-        latest = latest.filter(PipelineStage.demand_id == demand_id)
-    latest = latest.group_by(PipelineStage.candidate_id).subquery()
-    rows = (
-        db.session.query(PipelineStage)
-        .join(latest, PipelineStage.id == latest.c.max_id)
+        stage_query = stage_query.filter(PipelineStage.demand_id == demand_id)
+    rows = stage_query.order_by(PipelineStage.id.desc()).all()
+
+    if demand_id is not None:
+        contexts = {}
+        for row in rows:
+            contexts.setdefault(row.candidate_id, {
+                "stage": normalize_pipeline_stage(row.stage),
+                "demand_id": row.demand_id,
+            })
+        return contexts
+
+    target_demand_by_candidate = {
+        candidate_id: current_demand_id
+        for candidate_id, current_demand_id in (
+            db.session.query(Candidate.id, Candidate.current_demand_id)
+            .filter(Candidate.id.in_(candidate_ids))
+            .all()
+        )
+        if current_demand_id is not None
+    }
+    active_flow_rows = (
+        db.session.query(
+            CandidateDemandFlow.candidate_id,
+            CandidateDemandFlow.demand_id,
+        )
+        .filter(
+            CandidateDemandFlow.org_id == g.org_id,
+            CandidateDemandFlow.candidate_id.in_(candidate_ids),
+            CandidateDemandFlow.status == "active",
+        )
+        .order_by(CandidateDemandFlow.updated_at.desc(), CandidateDemandFlow.id.desc())
         .all()
     )
-    return {
-        row.candidate_id: {
+    for candidate_id, active_demand_id in active_flow_rows:
+        target_demand_by_candidate.setdefault(candidate_id, active_demand_id)
+
+    latest_context = {}
+    active_context = {}
+    for row in rows:
+        context = {
             "stage": normalize_pipeline_stage(row.stage),
             "demand_id": row.demand_id,
         }
-        for row in rows
+        latest_context.setdefault(row.candidate_id, context)
+        if (
+            row.candidate_id not in active_context
+            and row.demand_id == target_demand_by_candidate.get(row.candidate_id)
+        ):
+            active_context[row.candidate_id] = context
+
+    return {
+        candidate_id: active_context.get(candidate_id, latest_context[candidate_id])
+        for candidate_id in latest_context
     }
 
 

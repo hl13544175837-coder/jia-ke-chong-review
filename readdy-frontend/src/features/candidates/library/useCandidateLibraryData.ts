@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { apiRequest } from '@/lib/api';
 import { candidatesApi } from '@/features/candidates/api';
-import type { CandidateListItem, CandidateListResponse } from '@/features/candidates/types';
+import type { CandidateListItem, CandidateListQuery, CandidateListResponse } from '@/features/candidates/types';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { businessReviewsApi } from '@/features/businessReviews/api';
@@ -35,15 +35,15 @@ export function useCandidateLibraryData(
 ) {
   const {
     cityFilter,
+    createdFrom,
+    createdTo,
     deferredSearch,
-    deferredSkill,
     demandFilter,
     educationFilter,
-    favoriteFilter,
+    libraryScope,
     page,
     parseStatusFilter,
-    pipelineStatusFilter,
-    scoreFilter,
+    pipelineStateFilter,
     sortBy,
     sortOrder,
     sourceFilter,
@@ -84,18 +84,23 @@ export function useCandidateLibraryData(
     setCandidatesLoading(true);
     setCandidatesError(null);
     try {
+      const scopePipelineStatus: CandidateListQuery['pipeline_status'] = libraryScope === 'in_pipeline'
+        ? 'in_pipeline'
+        : libraryScope === 'talent_pool'
+          ? 'not_in_pipeline'
+          : undefined;
       const response = await candidatesApi.listCandidates({
         search: deferredSearch || undefined,
         demand_id: demandFilter || undefined,
         city: cityFilter || undefined,
         education: educationFilter || undefined,
-        skill: deferredSkill || undefined,
-        min_score: Number(scoreFilter) || undefined,
         source_channel: sourceFilter || undefined,
         parse_status: parseStatusFilter || undefined,
-        pipeline_status: pipelineStatusFilter || undefined,
-        favorite: favoriteFilter || undefined,
+        pipeline_status: pipelineStateFilter || scopePipelineStatus,
+        favorite: libraryScope === 'favorite' || undefined,
         stage: stageFilter || undefined,
+        created_from: createdFrom || undefined,
+        created_to: createdTo || undefined,
         sort_by: sortBy,
         sort_order: sortOrder,
         page,
@@ -114,15 +119,15 @@ export function useCandidateLibraryData(
     }
   }, [
     cityFilter,
+    createdFrom,
+    createdTo,
     deferredSearch,
-    deferredSkill,
     demandFilter,
     educationFilter,
-    favoriteFilter,
+    libraryScope,
     page,
     parseStatusFilter,
-    pipelineStatusFilter,
-    scoreFilter,
+    pipelineStateFilter,
     setSelectedIds,
     sortBy,
     sortOrder,

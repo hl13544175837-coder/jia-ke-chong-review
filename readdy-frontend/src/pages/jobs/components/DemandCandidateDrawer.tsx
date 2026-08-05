@@ -346,6 +346,8 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
       created_at: '',
       parse_status: 'ok' as const,
       tag_count: 0,
+      pipeline_state: 'never_entered' as const,
+      has_rejected_history: false,
     };
     void openResume(existing);
   };
@@ -625,7 +627,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
                     {uploadResponse.results.filter((item) => item.status === 'needs_confirmation').map((item) => (
                       <div key={item.file} className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800">
                         <p className="font-medium">{item.reason || 'AI 未能识别该简历，请确认原文件'}</p>
-                        {item.candidate_id && <button type="button" onClick={() => void openResume({ id: item.candidate_id as number, name_masked: item.file, owner_hr_id: null, is_favorite: false, created_at: '', parse_status: 'failed', tag_count: 0 })} className="mt-1 font-medium text-primary-700">查看并处理</button>}
+                        {item.candidate_id && <button type="button" onClick={() => void openResume({ id: item.candidate_id as number, name_masked: item.file, owner_hr_id: null, is_favorite: false, created_at: '', parse_status: 'failed', tag_count: 0, pipeline_state: 'never_entered', has_rejected_history: false })} className="mt-1 font-medium text-primary-700">查看并处理</button>}
                       </div>
                     ))}
               </div>
