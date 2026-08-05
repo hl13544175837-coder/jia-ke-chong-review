@@ -218,6 +218,9 @@ export default function OffersPage() {
           <OfferTable
             offers={visibleOffers}
             onOpenCandidate={(offer) => navigate(`/candidates?candidate=${offer.candidate_id}&demand=${offer.demand_id}&from=offers`)}
+            onOpenDemand={(offer) => navigate(`/jobs?demand=${offer.demand_id}`)}
+            onOpenPipeline={(offer) => navigate(`/kanban?demand=${offer.demand_id}&candidate=${offer.candidate_id}`)}
+            onOpenInterviews={(offer) => navigate(`/interviews?demand=${offer.demand_id}&candidate=${offer.candidate_id}`)}
             onRegister={(offer) => { setRegisterError(''); setRegisteringOffer(offer); }}
           />
         )}

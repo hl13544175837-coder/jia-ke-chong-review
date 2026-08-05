@@ -100,3 +100,13 @@ test('简历库把查看、收藏和流程记录收入统一菜单', () => {
   assert.doesNotMatch(table, /<Star/);
   assert.doesNotMatch(table, /<Eye/);
 });
+
+test('Offer 列表保留 OA 主操作，菜单只提供真实业务导航', () => {
+  const table = read('src/pages/offers/components/OfferTable.tsx');
+  assert.match(table, /RowActionMenu/);
+  assert.match(table, /查看候选人简历/);
+  assert.match(table, /查看招聘需求/);
+  assert.match(table, /查看招聘流程/);
+  assert.match(table, /查看已完成面试/);
+  assert.match(table, /登记 OA 结果/);
+});
