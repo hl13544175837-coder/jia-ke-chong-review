@@ -152,7 +152,7 @@ export default function CandidateLibraryFilters({ controller }: CandidateLibrary
         </section>
       )}
 <section className="space-y-2">
-        <div className={`${FILTER_GRID_CLASS} rounded-xl border border-background-200 bg-background-50 p-3`}>
+        <div aria-label="候选人补充筛选" className={`${FILTER_GRID_CLASS} rounded-xl border border-background-200 bg-background-50 p-3`}>
           <label>
             <span className="mb-1 block text-xs font-medium text-foreground-500">精确搜索</span>
             <span className="relative block">
