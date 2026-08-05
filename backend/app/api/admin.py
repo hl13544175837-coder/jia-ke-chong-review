@@ -114,6 +114,19 @@ def ai_architecture():
     return jsonify(get_agent_architecture_dashboard())
 
 
+@bp.post("/admin/sit-acceptance-data")
+@require_auth
+@require_role("admin")
+def add_sit_acceptance_data():
+    """Idempotently add the fixed acceptance suite in disposable RC/SIT only."""
+    from scripts.add_sit_acceptance_data import apply_acceptance_data
+
+    try:
+        return jsonify(apply_acceptance_data())
+    except RuntimeError as error:
+        return jsonify({"error": str(error)}), 409
+
+
 def _positive_int_arg(name, default, max_value=None):
     value = request.args.get(name, default, type=int)
     value = max(1, value or default)

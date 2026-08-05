@@ -128,3 +128,41 @@ def test_apply_is_idempotent_and_preserves_unmarked_rows(app, monkeypatch):
         assert InterviewFeedback.query.count() >= 1
         assert OfferRecord.query.count() >= 5
         assert db.session.get(Candidate, sentinel_id).resume_json == {"source": "ordinary"}
+
+
+def test_admin_endpoint_adds_acceptance_data_idempotently(
+    app, client, make_user, monkeypatch
+):
+    make_user(
+        "hr01@mvp.local", role="recruiter", name="验收招聘专员"
+    )
+    make_user(
+        "100002@gateway.local", role="interviewer", name="李四"
+    )
+    _, admin_token = make_user(
+        "sit-admin@example.com", role="admin", name="验收管理员"
+    )
+    monkeypatch.setenv("BUILD_CHANNEL", "RC")
+    app.config["ALLOW_INSECURE_SIT_STARTUP"] = True
+
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    first = client.post("/api/admin/sit-acceptance-data", headers=headers)
+    second = client.post("/api/admin/sit-acceptance-data", headers=headers)
+
+    assert first.status_code == 200
+    assert first.get_json()["created"] > 0
+    assert second.status_code == 200
+    assert second.get_json()["created"] == 0
+
+
+def test_admin_endpoint_refuses_recruiter(app, client, make_user):
+    _, recruiter_token = make_user(
+        "endpoint-recruiter@example.com", role="recruiter"
+    )
+
+    response = client.post(
+        "/api/admin/sit-acceptance-data",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+    )
+
+    assert response.status_code == 403
