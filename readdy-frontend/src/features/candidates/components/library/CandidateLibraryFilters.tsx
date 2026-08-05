@@ -1,5 +1,6 @@
 import type { CandidateLibraryController } from '@/features/candidates/library/useCandidateLibraryController';
-import { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
+import CollapsibleFilterBar from '@/components/ui/CollapsibleFilterBar';
+import { FILTER_CONTROL_CLASS, FILTER_FIELD_CLASS } from '@/components/ui/FilterBar';
 
 interface CandidateLibraryFiltersProps {
   controller: CandidateLibraryController;
@@ -64,6 +65,16 @@ export default function CandidateLibraryFilters({ controller }: CandidateLibrary
     selectLibraryScope,
     libraryScope,
   } = controller;
+
+  const activeFilterCount = [
+    searchQuery.trim(),
+    demandFilter,
+    createdFrom,
+    createdTo,
+    sourceFilter.trim(),
+    parseStatusFilter,
+    sortBy !== 'created_at' || sortOrder !== 'desc' ? 'sort' : '',
+  ].filter(Boolean).length;
 
   return (
     <>
@@ -152,45 +163,41 @@ export default function CandidateLibraryFilters({ controller }: CandidateLibrary
         </section>
       )}
 <section className="space-y-2">
-        <div aria-label="候选人补充筛选" className={`${FILTER_GRID_CLASS} rounded-xl border border-background-200 bg-background-50 p-3`}>
-          <label>
-            <span className="mb-1 block text-xs font-medium text-foreground-500">精确搜索</span>
-            <span className="relative block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
-              <input type="search" value={searchQuery} onChange={handleSearchChange} placeholder="姓名、联系方式、公司或学校" className={`${FILTER_CONTROL_CLASS} pl-9`} />
-            </span>
+        <CollapsibleFilterBar ariaLabel="候选人普通筛选" activeFilterCount={activeFilterCount}>
+          <label className={`${FILTER_FIELD_CLASS} relative`}>
+            <span className="sr-only">精确搜索候选人</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
+            <input type="search" value={searchQuery} onChange={handleSearchChange} placeholder="搜索候选人" className={`${FILTER_CONTROL_CLASS} pl-9`} />
           </label>
-          <label>
-            <span className="mb-1 block text-xs font-medium text-foreground-500">招聘需求</span>
-            <span className="relative block">
-              <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
-              <select value={demandFilter} onChange={handleDemandFilterChange} disabled={demandsLoading} className={`${FILTER_CONTROL_CLASS} appearance-none pl-9 pr-8 disabled:cursor-not-allowed disabled:bg-background-50`}>
-                <option value="">{demandsLoading ? '加载需求中' : '全部招聘需求'}</option>
-                {demands.map((demand) => <option key={demand.id} value={demand.id}>{demand.request_no} · {demand.job_title}</option>)}
-              </select>
-            </span>
+          <label className={`${FILTER_FIELD_CLASS} relative`}>
+            <span className="sr-only">招聘需求</span>
+            <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
+            <select value={demandFilter} onChange={handleDemandFilterChange} disabled={demandsLoading} className={`${FILTER_CONTROL_CLASS} appearance-none pl-9 pr-8 disabled:cursor-not-allowed disabled:bg-background-50`}>
+              <option value="">{demandsLoading ? '加载需求中' : '全部招聘需求'}</option>
+              {demands.map((demand) => <option key={demand.id} value={demand.id}>{demand.request_no} · {demand.job_title}</option>)}
+            </select>
           </label>
-          <label>
-            <span className="mb-1 block text-xs font-medium text-foreground-500">入库开始日期</span>
+          <label className={FILTER_FIELD_CLASS}>
+            <span className="sr-only">入库开始日期</span>
             <input type="date" value={createdFrom} max={createdTo || undefined} onChange={(event) => changeFilter(() => setCreatedFrom(event.target.value))} className={FILTER_CONTROL_CLASS} />
           </label>
-          <label>
-            <span className="mb-1 block text-xs font-medium text-foreground-500">入库结束日期</span>
+          <label className={FILTER_FIELD_CLASS}>
+            <span className="sr-only">入库结束日期</span>
             <input type="date" value={createdTo} min={createdFrom || undefined} onChange={(event) => changeFilter(() => setCreatedTo(event.target.value))} className={FILTER_CONTROL_CLASS} />
           </label>
-          <label>
-            <span className="mb-1 block text-xs font-medium text-foreground-500">来源渠道</span>
-            <input list="candidate-source-options" value={sourceFilter} onChange={(event) => changeFilter(() => setSourceFilter(event.target.value))} placeholder="全部来源或输入渠道" className={FILTER_CONTROL_CLASS} />
+          <label className={FILTER_FIELD_CLASS}>
+            <span className="sr-only">来源渠道</span>
+            <input list="candidate-source-options" value={sourceFilter} onChange={(event) => changeFilter(() => setSourceFilter(event.target.value))} placeholder="全部来源" className={FILTER_CONTROL_CLASS} />
           </label>
-          <label>
-            <span className="mb-1 block text-xs font-medium text-foreground-500">解析状态</span>
+          <label className={FILTER_FIELD_CLASS}>
+            <span className="sr-only">解析状态</span>
             <select value={parseStatusFilter} onChange={(event) => { const next = event.target.value; if (next === '' || isParseStatus(next)) changeFilter(() => setParseStatusFilter(next)); }} className={FILTER_CONTROL_CLASS}>
-              <option value="">全部状态</option>
+              <option value="">全部解析状态</option>
               {Object.entries(parseStatusMeta).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}
             </select>
           </label>
-          <label>
-            <span className="mb-1 block text-xs font-medium text-foreground-500">排序方式</span>
+          <label className={FILTER_FIELD_CLASS}>
+            <span className="sr-only">排序方式</span>
             <select value={`${sortBy}:${sortOrder}`} onChange={(event) => { const [nextSortBy, nextSortOrder] = event.target.value.split(':'); if ((nextSortBy === 'created_at' || nextSortBy === 'name_masked') && (nextSortOrder === 'asc' || nextSortOrder === 'desc')) changeFilter(() => { setSortBy(nextSortBy); setSortOrder(nextSortOrder); }); }} className={FILTER_CONTROL_CLASS}>
               <option value="created_at:desc">最近入库</option>
               <option value="created_at:asc">最早入库</option>
@@ -198,10 +205,13 @@ export default function CandidateLibraryFilters({ controller }: CandidateLibrary
               <option value="name_masked:desc">候选人名称降序</option>
             </select>
           </label>
-          <datalist id="candidate-source-options">{sourceFilterOptions.map((source) => <option key={source} value={source} />)}</datalist>
-        </div>
+          <button type="button" onClick={resetCandidateFilters} disabled={!hasActiveFilters} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS} inline-flex items-center justify-center gap-1.5 font-medium hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-50`}>
+            <RotateCcw size={14} aria-hidden="true" />重置筛选
+          </button>
+        </CollapsibleFilterBar>
+        <datalist id="candidate-source-options">{sourceFilterOptions.map((source) => <option key={source} value={source} />)}</datalist>
         <WorkspaceTabs items={candidateScopeTabs} value={libraryScope} onChange={selectLibraryScope} ariaLabel="候选人库范围" />
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-foreground-500">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-foreground-500">
           <div className="flex flex-wrap items-center gap-3">
             <span>共 <strong className="text-foreground-900">{candidateResponse.total}</strong> 位候选人</span>
             <label className="inline-flex cursor-pointer items-center gap-2 font-medium text-foreground-600">
@@ -210,9 +220,6 @@ export default function CandidateLibraryFilters({ controller }: CandidateLibrary
             </label>
             <span className="text-[11px] text-foreground-400">仅筛选当前页已加载结果，不会删除数据</span>
           </div>
-          <button type="button" onClick={resetCandidateFilters} disabled={!hasActiveFilters} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-background-300 bg-white px-3 font-medium text-foreground-600 hover:bg-background-100 disabled:cursor-not-allowed disabled:opacity-50">
-            <RotateCcw size={14} aria-hidden="true" />重置筛选
-          </button>
         </div>
       </section>
 {demandError && (
