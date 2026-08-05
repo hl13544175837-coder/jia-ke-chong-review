@@ -4,7 +4,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
-import FilterBar, { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
+import CollapsibleFilterBar from '@/components/ui/CollapsibleFilterBar';
+import { FILTER_CONTROL_CLASS, FILTER_FIELD_CLASS } from '@/components/ui/FilterBar';
 import { offersApi } from '@/features/offers/api';
 import type { OfferOaRegistrationInput, OfferWorkbenchRecord } from '@/features/offers/types';
 import { useToast } from '@/hooks/useToast';
@@ -122,7 +123,14 @@ export default function OffersPage() {
     scopedOffers.map((offer) => offer.created_by_name).filter(Boolean),
   )).sort((left, right) => left.localeCompare(right, 'zh-CN')), [scopedOffers]);
 
-  const hasFilters = Boolean(search || demandFilter || ownerFilter || updatedDateFilter || rangeDays !== 7);
+  const hasFilters = Boolean(searchInput.trim() || demandFilter || ownerFilter || updatedDateFilter || rangeDays !== 7);
+  const activeFilterCount = [
+    searchInput.trim(),
+    demandFilter,
+    ownerFilter,
+    updatedDateFilter,
+    rangeDays !== 7 ? String(rangeDays) : '',
+  ].filter(Boolean).length;
 
   const resetOfferFilters = () => {
     setSearchInput('');
@@ -183,22 +191,22 @@ export default function OffersPage() {
         </section>
       )}
 
-      <section className="overflow-hidden rounded-lg border border-background-200 bg-white">
-        <div className="border-b border-background-200 p-3">
-          <WorkspaceTabs items={OFFER_WORKBENCH_TABS.map((tab) => ({ ...tab, count: counts[tab.key] }))} value={activeTab} onChange={selectTab} ariaLabel="Offer OA 状态" />
-        </div>
-
-        <form className="border-b border-background-200 bg-background-50 p-4" onSubmit={(event) => { event.preventDefault(); setSearch(searchInput.trim()); }}>
-          <FilterBar ariaLabel="Offer 查询条件" className={FILTER_GRID_CLASS}>
-            <label className="relative block"><span className="sr-only">搜索 Offer</span><i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" aria-hidden="true" /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="搜索候选人、岗位、需求编号或 OA 编号" className={`${FILTER_CONTROL_CLASS} pl-9`} /></label>
-            <select aria-label="按招聘需求筛选" value={demandFilter} onChange={(event) => setDemandFilter(event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部招聘需求</option>{demandOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <select aria-label="按负责人筛选" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部负责人</option>{ownerOptions.map((owner) => <option key={owner} value={owner}>{owner}</option>)}</select>
-            <select aria-label="时间范围" value={rangeDays} onChange={(event) => setRangeDays(Number(event.target.value))} className={FILTER_CONTROL_CLASS}><option value={7}>最近 7 天</option><option value={30}>最近 30 天</option><option value={3650}>全部时间</option></select>
-            <input type="date" aria-label="按更新时间筛选" value={updatedDateFilter} onChange={(event) => setUpdatedDateFilter(event.target.value)} className={FILTER_CONTROL_CLASS} />
-            <button type="submit" className={`${FILTER_CONTROL_CLASS} font-medium text-primary-700 hover:bg-primary-50`}>搜索</button>
-            <button type="button" onClick={resetOfferFilters} disabled={!hasFilters} className={`${FILTER_CONTROL_CLASS} font-medium disabled:opacity-40`}>重置</button>
-          </FilterBar>
+      <div className="space-y-2">
+        <form onSubmit={(event) => { event.preventDefault(); setSearch(searchInput.trim()); }}>
+          <CollapsibleFilterBar ariaLabel="Offer 查询条件" activeFilterCount={activeFilterCount}>
+            <label className={`${FILTER_FIELD_CLASS} relative`}><span className="sr-only">搜索 Offer</span><i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" aria-hidden="true" /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="搜索 Offer" className={`${FILTER_CONTROL_CLASS} pl-9`} /></label>
+            <select aria-label="按招聘需求筛选" value={demandFilter} onChange={(event) => setDemandFilter(event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}><option value="">全部招聘需求</option>{demandOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+            <select aria-label="按负责人筛选" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}><option value="">全部负责人</option>{ownerOptions.map((owner) => <option key={owner} value={owner}>{owner}</option>)}</select>
+            <select aria-label="时间范围" value={rangeDays} onChange={(event) => setRangeDays(Number(event.target.value))} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}><option value={7}>最近 7 天</option><option value={30}>最近 30 天</option><option value={3650}>全部时间</option></select>
+            <input type="date" aria-label="按更新时间筛选" value={updatedDateFilter} onChange={(event) => setUpdatedDateFilter(event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`} />
+            <button type="submit" className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS} font-medium text-primary-700 hover:bg-primary-50`}>搜索</button>
+            <button type="button" onClick={resetOfferFilters} disabled={!hasFilters} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS} font-medium disabled:opacity-40`}>重置筛选</button>
+          </CollapsibleFilterBar>
         </form>
+        <WorkspaceTabs items={OFFER_WORKBENCH_TABS.map((tab) => ({ ...tab, count: counts[tab.key] }))} value={activeTab} onChange={selectTab} ariaLabel="Offer OA 状态" />
+      </div>
+
+      <section className="overflow-hidden rounded-lg border border-background-200 bg-white">
 
         {loading ? (
           <PageStateCard variant="loading" title="正在加载 Offer" description="请稍候，正在读取最新 OA 登记状态。" />

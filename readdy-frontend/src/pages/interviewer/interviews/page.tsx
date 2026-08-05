@@ -11,7 +11,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import ActionButton from '@/components/ui/ActionButton';
-import FilterBar, { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
+import CollapsibleFilterBar from '@/components/ui/CollapsibleFilterBar';
+import { FILTER_CONTROL_CLASS, FILTER_FIELD_CLASS } from '@/components/ui/FilterBar';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import { interviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import { businessReviewsApi } from '@/features/businessReviews/api';
@@ -176,6 +177,12 @@ export default function InterviewerInterviewsPage() {
     const next = new URLSearchParams(searchParams);
     ['q', 'job', 'department', 'date', 'candidate', 'assignment', 'demand'].forEach((key) => next.delete(key));
     next.set('tab', 'all');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const resetOrdinaryFilters = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    ['q', 'job', 'department', 'date', 'candidate', 'assignment', 'demand'].forEach((key) => next.delete(key));
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -422,22 +429,23 @@ export default function InterviewerInterviewsPage() {
       />
 
       <div className="space-y-3">
+        <CollapsibleFilterBar ariaLabel="我的面试查询条件" activeFilterCount={[searchQuery.trim(), jobFilter, departmentFilter, dateFilter].filter(Boolean).length}>
+          <label className={`${FILTER_FIELD_CLASS} relative`}>
+            <span className="sr-only">搜索我的面试</span>
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" aria-hidden="true" />
+            <input value={searchQuery} onChange={(event) => changeListState(activeTab, event.target.value)} placeholder="搜索面试任务" className={`${FILTER_CONTROL_CLASS} pl-9`} />
+          </label>
+          <select aria-label="按岗位筛选" value={jobFilter} onChange={(event) => changeListFilter('job', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}><option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <select aria-label="按部门筛选" value={departmentFilter} onChange={(event) => changeListFilter('department', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}><option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <input type="date" aria-label="按面试日期筛选" value={dateFilter} onChange={(event) => changeListFilter('date', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`} />
+          <button type="button" onClick={resetOrdinaryFilters} disabled={!searchQuery && !jobFilter && !departmentFilter && !dateFilter} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS} font-medium disabled:opacity-40`}>重置筛选</button>
+        </CollapsibleFilterBar>
         <WorkspaceTabs<TabKey>
           items={tabs.map((tab) => ({ ...tab, count: counts[tab.key] }))}
           value={activeTab}
           onChange={(tab) => changeListState(tab, searchQuery)}
           ariaLabel="我的面试状态"
         />
-        <FilterBar ariaLabel="我的面试查询条件" className={`${FILTER_GRID_CLASS} rounded-xl border border-background-200 bg-white p-3`}>
-          <label className="relative block">
-            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" />
-            <input value={searchQuery} onChange={(event) => changeListState(activeTab, event.target.value)} placeholder="搜索候选人、岗位或部门" className={`${FILTER_CONTROL_CLASS} pl-9`} />
-          </label>
-          <select aria-label="按岗位筛选" value={jobFilter} onChange={(event) => changeListFilter('job', event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-          <select aria-label="按部门筛选" value={departmentFilter} onChange={(event) => changeListFilter('department', event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-          <input type="date" aria-label="按面试日期筛选" value={dateFilter} onChange={(event) => changeListFilter('date', event.target.value)} className={FILTER_CONTROL_CLASS} />
-          <button type="button" onClick={resetListFilters} disabled={!searchQuery && !jobFilter && !departmentFilter && !dateFilter && activeTab === 'all'} className={`${FILTER_CONTROL_CLASS} font-medium disabled:opacity-40`}>重置</button>
-        </FilterBar>
       </div>
 
       {confirmationError && (

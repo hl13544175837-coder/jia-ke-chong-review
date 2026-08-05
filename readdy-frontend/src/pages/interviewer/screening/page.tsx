@@ -20,7 +20,8 @@ import { useToast } from '@/hooks/useToast';
 import PageHeader from '@/components/ui/PageHeader';
 import PageStateCard from '@/components/ui/PageStateCard';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
-import FilterBar, { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
+import CollapsibleFilterBar from '@/components/ui/CollapsibleFilterBar';
+import { FILTER_CONTROL_CLASS, FILTER_FIELD_CLASS } from '@/components/ui/FilterBar';
 import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import { businessReviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
@@ -248,20 +249,21 @@ export default function InterviewerScreeningPage() {
         )}
       />
 
-      <WorkspaceTabs<BusinessReviewStatus>
-        items={tabs.map(({ key, label }) => ({ key, label, count: tabCounts[key] }))}
-        value={activeTab}
-        onChange={changeActiveTab}
-        ariaLabel="业务筛选状态"
-      />
-
-      <FilterBar ariaLabel="候选人筛选查询条件" className={`${FILTER_GRID_CLASS} rounded-xl border border-background-200 bg-white p-3`}>
-        <input aria-label="搜索候选人" value={query} onChange={(event) => setFilter('q', event.target.value)} placeholder="搜索候选人或岗位" className={FILTER_CONTROL_CLASS} />
-        <select aria-label="按岗位筛选" value={jobFilter} onChange={(event) => setFilter('job', event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-        <select aria-label="按部门筛选" value={departmentFilter} onChange={(event) => setFilter('department', event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-        <select aria-label="按城市筛选" value={cityFilter} onChange={(event) => setFilter('city', event.target.value)} className={FILTER_CONTROL_CLASS}><option value="">全部城市</option>{filterOptions.cities.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-        <button type="button" onClick={resetFilters} disabled={!query && !jobFilter && !departmentFilter && !cityFilter} className={`${FILTER_CONTROL_CLASS} font-medium disabled:opacity-40`}>重置</button>
-      </FilterBar>
+      <div className="space-y-2">
+        <CollapsibleFilterBar ariaLabel="候选人筛选查询条件" activeFilterCount={[query.trim(), jobFilter, departmentFilter, cityFilter].filter(Boolean).length}>
+          <input aria-label="搜索候选人" value={query} onChange={(event) => setFilter('q', event.target.value)} placeholder="搜索候选人" className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`} />
+          <select aria-label="按岗位筛选" value={jobFilter} onChange={(event) => setFilter('job', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}><option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <select aria-label="按部门筛选" value={departmentFilter} onChange={(event) => setFilter('department', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}><option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <select aria-label="按城市筛选" value={cityFilter} onChange={(event) => setFilter('city', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}><option value="">全部城市</option>{filterOptions.cities.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+          <button type="button" onClick={resetFilters} disabled={!query && !jobFilter && !departmentFilter && !cityFilter} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS} font-medium disabled:opacity-40`}>重置筛选</button>
+        </CollapsibleFilterBar>
+        <WorkspaceTabs<BusinessReviewStatus>
+          items={tabs.map(({ key, label }) => ({ key, label, count: tabCounts[key] }))}
+          value={activeTab}
+          onChange={changeActiveTab}
+          ariaLabel="业务筛选状态"
+        />
+      </div>
 
       {requestedDemandId && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-100 bg-primary-50/40 px-4 py-3 text-sm">

@@ -1,5 +1,6 @@
 import { CalendarDays, List, Search } from 'lucide-react';
-import FilterBar, { FILTER_CONTROL_CLASS, FILTER_GRID_CLASS } from '@/components/ui/FilterBar';
+import CollapsibleFilterBar from '@/components/ui/CollapsibleFilterBar';
+import { FILTER_CONTROL_CLASS, FILTER_FIELD_CLASS } from '@/components/ui/FilterBar';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import {
   activeInterviewFilterCount,
@@ -48,9 +49,30 @@ export default function InterviewWorkbenchToolbar({
 }: InterviewWorkbenchToolbarProps) {
   const update = (field: keyof InterviewFilters, value: string) => onFiltersChange({ ...filters, [field]: value });
   const hasFilters = activeInterviewFilterCount(filters) > 0 || Boolean(search);
+  const activeFilterCount = activeInterviewFilterCount(filters) + (search.trim() ? 1 : 0);
 
   return (
     <section className="space-y-3 border-b border-background-200 pb-3" data-ui="interview-single-row-toolbar">
+      <CollapsibleFilterBar ariaLabel="面试查询条件" activeFilterCount={activeFilterCount}>
+        <label className={`${FILTER_FIELD_CLASS} relative`}>
+          <span className="sr-only">搜索面试任务</span>
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" aria-hidden="true" />
+          <input value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="搜索面试任务" className={`${FILTER_CONTROL_CLASS} pl-9`} />
+        </label>
+        <select aria-label="按岗位筛选" value={filters.jobTitle} onChange={(event) => update('jobTitle', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}>
+          <option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}
+        </select>
+        <select aria-label="按部门筛选" value={filters.department} onChange={(event) => update('department', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}>
+          <option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}
+        </select>
+        <select aria-label="按面试官筛选" value={filters.interviewerId} onChange={(event) => update('interviewerId', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`}>
+          <option value="">全部面试官</option>{filterOptions.interviewers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+        <input type="date" aria-label="面试开始日期" value={filters.dateFrom} onChange={(event) => update('dateFrom', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`} />
+        <input type="date" aria-label="面试结束日期" value={filters.dateTo} onChange={(event) => update('dateTo', event.target.value)} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS}`} />
+        <button type="button" disabled={!hasFilters} onClick={onResetFilters} className={`${FILTER_FIELD_CLASS} ${FILTER_CONTROL_CLASS} font-medium hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40`}>重置筛选</button>
+      </CollapsibleFilterBar>
+
       <div className="flex min-w-0 flex-wrap items-center gap-3">
         <WorkspaceTabs
           items={statusTabs.map((tab) => ({ ...tab, count: counts[tab.key] }))}
@@ -66,24 +88,6 @@ export default function InterviewWorkbenchToolbar({
         </div>
       </div>
 
-      <FilterBar ariaLabel="面试查询条件" className={FILTER_GRID_CLASS}>
-        <label className="relative block">
-          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" />
-          <input value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="搜索候选人、岗位或面试官" className={`${FILTER_CONTROL_CLASS} pl-9`} />
-        </label>
-        <select aria-label="按岗位筛选" value={filters.jobTitle} onChange={(event) => update('jobTitle', event.target.value)} className={FILTER_CONTROL_CLASS}>
-          <option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}
-        </select>
-        <select aria-label="按部门筛选" value={filters.department} onChange={(event) => update('department', event.target.value)} className={FILTER_CONTROL_CLASS}>
-          <option value="">全部部门</option>{filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}
-        </select>
-        <select aria-label="按面试官筛选" value={filters.interviewerId} onChange={(event) => update('interviewerId', event.target.value)} className={FILTER_CONTROL_CLASS}>
-          <option value="">全部面试官</option>{filterOptions.interviewers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-        </select>
-        <input type="date" aria-label="面试开始日期" value={filters.dateFrom} onChange={(event) => update('dateFrom', event.target.value)} className={FILTER_CONTROL_CLASS} />
-        <input type="date" aria-label="面试结束日期" value={filters.dateTo} onChange={(event) => update('dateTo', event.target.value)} className={FILTER_CONTROL_CLASS} />
-        <button type="button" disabled={!hasFilters} onClick={onResetFilters} className={`${FILTER_CONTROL_CLASS} font-medium hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40`}>重置</button>
-      </FilterBar>
     </section>
   );
 }
