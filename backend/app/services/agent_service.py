@@ -41,7 +41,7 @@ from ..models import (  # noqa: E402
     User,
 )
 from .match_service import MatchService  # noqa: E402
-from ..api.access import (  # noqa: E402
+from .access_policy import (  # noqa: E402
     actor_org_id,
     can_access_candidate,
     can_manage_job,

@@ -16,6 +16,7 @@ from ..models import Candidate, Job, PipelineStage, RecruitmentDemand, User
 from ..time_utils import utc_now
 from .demand_context_service import validate_recruiter_owner
 from .headcount_service import build_headcount_state
+from .job_profile_service import extract_jd_structured
 
 
 PRIORITIES = {"A", "B", "C"}
@@ -219,8 +220,6 @@ def create_demand_from_input(data, *, org_id, actor_id, actor_role, job=None):
     )
     created_job = False
     if job is None:
-        from ..api.jobs import _extract_jd_structured
-
         job = Job(
             org_id=org_id,
             title=values["job_title_snapshot"],
@@ -228,7 +227,7 @@ def create_demand_from_input(data, *, org_id, actor_id, actor_role, job=None):
             department=values["department"],
             job_code=clean_text(data.get("job_code"), 80),
             jd_text=values["jd_text_snapshot"],
-            jd_structured=_extract_jd_structured(None, values["jd_text_snapshot"]),
+            jd_structured=extract_jd_structured(None, values["jd_text_snapshot"]),
             owner_hr_id=values["owner"].id,
             status="active",
         )

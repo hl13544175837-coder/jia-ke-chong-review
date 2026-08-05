@@ -1,7 +1,7 @@
 from flask import current_app, g
 
 from ... import db
-from ...api.access import can_access_candidate
+from ..access_policy import can_access_candidate
 from ...middleware.events import record_event
 from ...models import Candidate
 from ..candidate_library_service import find_existing_candidate_by_identity

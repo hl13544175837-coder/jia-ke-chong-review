@@ -67,3 +67,30 @@ def test_candidate_activity_and_offer_workbench_stay_in_domain_services():
     assert "def register_oa_result" not in pipeline_route
     assert "def list_offer_workbench" in offer_service
     assert "def register_oa_result" in offer_service
+
+
+def test_services_do_not_import_api_layer():
+    service_root = ROOT / "backend/app/services"
+    offenders = []
+    for path in service_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        if (
+            "api.access" in source
+            or "from ..api" in source
+            or "from ...api" in source
+        ):
+            offenders.append(str(path.relative_to(ROOT)))
+
+    assert offenders == []
+
+
+def test_access_policy_has_a_service_owner_and_api_is_only_a_facade():
+    policy_path = ROOT / "backend/app/services/access_policy.py"
+    assert policy_path.is_file(), "权限策略必须由 services 层拥有"
+
+    policy = _read("backend/app/services/access_policy.py")
+    facade = _read("backend/app/api/access.py")
+    assert "def can_access_candidate" in policy
+    assert "def visible_candidate_query" in policy
+    assert "from ..services.access_policy import" in facade
+    assert _line_count("backend/app/api/access.py") < 40

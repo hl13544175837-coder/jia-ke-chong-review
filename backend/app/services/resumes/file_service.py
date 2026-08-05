@@ -16,7 +16,7 @@ from runtime_paths import (
 )
 
 from ... import db
-from ...api.access import can_access_candidate, same_org
+from ..access_policy import can_access_candidate, same_org
 from ...middleware.events import record_event
 from ...models import Candidate
 

@@ -10,6 +10,7 @@ from ..services.demand_context_service import (
     resolve_demand_context,
 )
 from ..services.pipeline_service import PipelineServiceError, move_candidate
+from ..services.job_profile_service import extract_jd_structured as _extract_jd_structured
 from .. import db
 from ..models import Candidate, Job
 from .access import (
@@ -27,24 +28,6 @@ if str(BASE_AGENT_DIR) not in sys.path:
 
 bp = Blueprint("jobs", __name__)
 
-# JD 结构化提取：要求更完整的画像字段，提升解析准确性
-JD_EXTRACT_SYS = (
-    "你是一位资深招聘专家。请从岗位描述(JD)中提取结构化招聘画像，严格返回 JSON：\n"
-    "{\n"
-    '  "title_normalized": "规范化岗位名称",\n'
-    '  "seniority": "职级，如 初级/中级/高级/专家/管理",\n'
-    '  "education": "最低学历要求，如 本科/硕士/不限",\n'
-    '  "major": "专业要求，无则填 不限",\n'
-    '  "years_experience": "经验年限要求，如 3-5年/不限",\n'
-    '  "must_have_skills": ["硬性技能1", "硬性技能2"],\n'
-    '  "nice_to_have_skills": ["加分技能1"],\n'
-    '  "responsibilities": ["职责1", "职责2"],\n'
-    '  "skill_tags_raw": "技能1 , 4 , AI|技能2 , 3 , BE"\n'
-    "}\n"
-    "规则：只依据 JD 原文提取，不要臆造；JD 未提及的字段填 \"不限\" 或空数组；"
-    "skill_tags_raw 中分数为该技能重要度(1-5)。只返回 JSON，不含任何其他文字。"
-)
-
 # JD 澄清追问：找出 JD 中缺失/模糊、会影响匹配与出题的关键信息
 JD_CLARIFY_SYS = (
     "你是一位资深招聘顾问。请审阅岗位名称与 JD，找出其中【缺失或模糊、且会显著影响"
@@ -54,22 +37,6 @@ JD_CLARIFY_SYS = (
     "只针对真正缺失的信息提问（如未写明的学历、经验年限、核心技术栈、团队规模、汇报对象等）；"
     "若 JD 已足够完整，返回 {\"questions\":[]}。只返回 JSON，不含其他文字。"
 )
-
-
-def _extract_jd_structured(llm, jd_text):
-    """调用 LLM 提取 JD 结构化画像；失败返回空 dict。"""
-    import json as _json
-    import re
-    try:
-        if llm is None:
-            from llm_client import LLMClient
-            llm = LLMClient()
-        raw = llm.chat(JD_EXTRACT_SYS, jd_text[:4000])
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        return _json.loads(m.group()) if m else {}
-    except Exception:
-        return {}
-
 
 def _clean_optional(value, max_len):
     if value is None:

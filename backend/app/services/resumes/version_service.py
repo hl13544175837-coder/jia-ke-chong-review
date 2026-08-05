@@ -4,7 +4,7 @@ from flask import current_app, g, jsonify
 from runtime_paths import DEFAULT_UPLOAD_FOLDER, RuntimePathError, resolve_stored_upload_path
 
 from ... import db
-from ...api.access import can_access_candidate, same_org
+from ..access_policy import can_access_candidate, same_org
 from ...models import Candidate, CandidateResumeVersion
 from ...source_channels import normalize_resume_source_channel
 from .file_service import _original_resume_payload
