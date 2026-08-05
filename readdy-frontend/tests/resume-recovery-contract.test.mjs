@@ -7,16 +7,23 @@ const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const candidateLibrary = () => [
   'src/features/candidates/library/useCandidateLibraryController.tsx',
   'src/features/candidates/library/useCandidateLibraryData.ts',
+  'src/features/candidates/library/useCandidateResumeUpload.ts',
   'src/features/candidates/components/library/CandidateLibraryTable.tsx',
   'src/features/candidates/components/library/CandidateLibraryDetail.tsx',
   'src/features/candidates/components/library/CandidateLibraryOverlays.tsx',
+].map(read).join('\n');
+const demandCandidateWorkspace = () => [
+  'src/pages/jobs/components/DemandCandidateDrawer.tsx',
+  'src/pages/jobs/components/DemandCandidateResumeDetail.tsx',
+  'src/pages/jobs/components/DemandCandidateImportPanel.tsx',
+  'src/pages/jobs/components/demandCandidateModel.ts',
 ].map(read).join('\n');
 
 test('简历异常处理对用户提供完整补救入口', () => {
   const types = read('src/features/candidates/types.ts');
   const api = read('src/features/candidates/api.ts');
   const page = candidateLibrary();
-  const demandDrawer = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
+  const demandDrawer = demandCandidateWorkspace();
   const panel = read('src/features/candidates/components/ResumeRecoveryPanel.tsx');
   const ui = `${page}\n${demandDrawer}\n${panel}`;
 
@@ -53,7 +60,7 @@ test('批量导入把待确认视为已落库待处理，不会再次重复上�
 test('后台解析上传立即显示处理中并自动刷新候选人状态', () => {
   const types = read('src/features/candidates/types.ts');
   const page = candidateLibrary();
-  const drawer = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
+  const drawer = demandCandidateWorkspace();
 
   assert.match(types, /status: 'ok' \| 'processing'/);
   assert.match(page, /result\.status === 'processing'/);

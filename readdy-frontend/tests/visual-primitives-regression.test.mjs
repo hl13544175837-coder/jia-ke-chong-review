@@ -5,6 +5,11 @@ import test from 'node:test';
 
 const root = path.resolve(import.meta.dirname, '..');
 const read = (file) => readFileSync(path.join(root, file), 'utf8');
+const demandCandidateWorkspace = () => [
+  'src/pages/jobs/components/DemandCandidateDrawer.tsx',
+  'src/pages/jobs/components/DemandCandidateResults.tsx',
+  'src/pages/jobs/components/DemandCandidateResumeDetail.tsx',
+].map(read).join('\n');
 
 test('拆分后的工作台继续使用统一标题、页签、状态和弹层生命周期', () => {
   const candidateWorkspace = [
@@ -14,7 +19,7 @@ test('拆分后的工作台继续使用统一标题、页签、状态和弹层�
   ].map(read).join('\n');
   const interviewPage = read('src/pages/interviews/page.tsx');
   const overlays = read('src/features/interviews/components/RecruiterInterviewOverlays.tsx');
-  const demandWorkspace = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
+  const demandWorkspace = demandCandidateWorkspace();
 
   assert.match(candidateWorkspace, /PageHeader/);
   assert.match(candidateWorkspace, /WorkspaceTabs/);
@@ -26,7 +31,7 @@ test('拆分后的工作台继续使用统一标题、页签、状态和弹层�
 });
 
 test('候选人筛选拆分后保留原有尺寸、颜色、圆角和激活态', () => {
-  const drawer = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
+  const drawer = demandCandidateWorkspace();
 
   assert.match(drawer, /max-w-6xl/);
   assert.match(drawer, /px-5 py-3/);
