@@ -41,6 +41,7 @@ test.describe.serial('技术债解耦验收截图', () => {
     await page.getByRole('tab', { name: '候选人简历' }).click();
     const candidateScroll = page.getByTestId('candidate-detail-scroll-panel');
     await expect(candidateScroll).toBeVisible();
+    await expect(candidateScroll.getByRole('heading', { name: '个人概况' })).toBeVisible();
     await candidateScroll.evaluate((node) => node.scrollTo(0, node.scrollHeight));
     await expect.poll(() => candidateScroll.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
     await expect(page.locator('[data-ui="detail-action-bar"]')).toBeVisible();
