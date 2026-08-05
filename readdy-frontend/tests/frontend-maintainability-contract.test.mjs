@@ -28,6 +28,7 @@ test('候选人工作台把筛选、列表、导入和详情拆到候选人业�
   read('src/features/candidates/library/useCandidateLibraryData.ts');
   read('src/features/candidates/library/useCandidateLibraryFilters.ts');
   read('src/features/candidates/library/useCandidateDetail.ts');
+  read('src/features/candidates/library/useCandidateResumeUpload.ts');
   read('src/features/candidates/library/candidateLibraryViewModel.ts');
 
   assert.match(page, /CandidateLibraryWorkspace/);
@@ -71,9 +72,10 @@ test('候选人工作台把筛选、列表、导入和详情拆到候选人业�
     );
   }
   assert.ok(
-    lineCount('src/features/candidates/library/useCandidateLibraryController.tsx') < 900,
-    '候选人控制器必须收窄到 900 行以内',
+    lineCount('src/features/candidates/library/useCandidateLibraryController.tsx') < 700,
+    '候选人控制器应只负责组合，上传流程必须独立',
   );
+  assert.match(controller, /useCandidateResumeUpload/);
 });
 
 test('需求页把基本详情、候选人和业务筛选分成三个真实入口', () => {
