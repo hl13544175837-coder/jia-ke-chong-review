@@ -215,6 +215,20 @@ BI 试点时先看 Demand 进度、停滞、待补反馈、HC 和当前责任；
 
 ## 重置本地演示/试用数据
 
+### Test/SIT 非破坏性验收数据
+
+公司 Test/SIT 需要补齐可点击的需求、筛选、面试、Offer 和看板场景时，使用下面的受保护脚本。它只处理带 `ACCEPTANCE-TEST-` / `验收测试-` 标记的数据，不删除或覆盖其他记录；默认只预览，只有显式传入 `--apply` 才写入。脚本只允许在 `BUILD_CHANNEL=RC` 且开启可丢弃 SIT 启动标记的环境执行，GA/生产会直接拒绝。
+
+```bash
+# 先预览，不写数据库
+python /app/backend/scripts/add_sit_acceptance_data.py
+
+# 确认后新增或刷新同一套验收数据
+python /app/backend/scripts/add_sit_acceptance_data.py --apply
+```
+
+重复执行 `--apply` 不会重复新增场景。现场验收必须连续执行两次，并核对第二次输出 `新增=0`。
+
 下面命令只适用于本地演示库或明确可重建的试用库，会清空并重建演示数据。真实 HR 试点库不要用它重置。
 
 ```bash
