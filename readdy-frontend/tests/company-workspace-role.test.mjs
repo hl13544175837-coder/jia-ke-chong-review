@@ -26,6 +26,20 @@ test('从嵌套 PGS 菜单识别面试官工作台', () => {
   assert.equal(permissions.buttonCodes.has('interview_feedback_submit'), true);
 });
 
+test('五类公司角色都能从各自的 PGS 工作台菜单识别', () => {
+  const cases = [
+    ['dashboard_admin', 'admin'],
+    ['dashboard_manager', 'manager'],
+    ['dashboard_recruiter', 'recruiter'],
+    ['dashboard_interviewer', 'interviewer'],
+    ['dashboard_hr_director', 'hr_director'],
+  ];
+
+  for (const [menuCode, expectedRole] of cases) {
+    assert.equal(resolveWorkspaceRole(new Set([menuCode])), expectedRole);
+  }
+});
+
 test('没有角色工作台标记时返回 null', () => {
   assert.equal(resolveWorkspaceRole(new Set(['index', 'interviews'])), null);
 });

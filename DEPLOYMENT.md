@@ -280,9 +280,9 @@ AUTH_GATEWAY_ROLE_MAP=100002:interviewer
 VITE_GATEWAY_ROLE_MAP=100002:interviewer
 ```
 
-PGS “智聘 → 工作台”下同时给该角色父菜单 `index` 和唯一角色标记 `dashboard_interviewer`，标记路由为 `/interviewer/dashboard`。招聘专员对应 `dashboard_recruiter` 和 `/dashboard`。普通业务菜单继续使用现有 `demands`、`candidates`、`interviews`、`pipeline`、`bi`、`settings` 编码按需授权。同一账号不得同时获得 `dashboard_recruiter` 与 `dashboard_interviewer`；前端会拒绝静默选择。PGS 菜单加载失败时不再默认显示全部入口，而是显示重试和退出登录。
+PGS “智聘 → 工作台”下为五类角色分别配置唯一标记：`dashboard_admin`、`dashboard_manager`、`dashboard_recruiter`、`dashboard_interviewer`、`dashboard_hr_director`。管理员、主管和招聘专员进入 `/dashboard`，面试官进入 `/interviewer/dashboard`，人力资源总监进入 `/director/cockpit`。普通业务菜单继续使用现有 `demands`、`candidates`、`interviews`、`pipeline`、`bi`、`settings` 编码按需授权。同一账号不得同时获得两个角色工作台标记；前端会拒绝静默选择。PGS 菜单加载失败时不再默认显示全部入口，而是显示重试和退出登录。
 
-首轮菜单矩阵：招聘专员授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`，按需授予 `bi`；面试官授予 `index`、`demands`、`interviews`，按需授予 `bi`。同一个 `interviews` 编码会按角色进入不同页面：招聘专员进入 `/interviews` 的“面试管理”，读取本人可管理范围并执行安排、改约和后续推进；面试官进入 `/interviewer/interviews` 的“我的面试”，只读取本人任务并执行确认、改约申请和本人反馈。没有对应菜单时，左侧入口隐藏，直接输入网址也会被页面权限边界拦截；不能只隐藏菜单而保留直达入口。
+菜单矩阵：招聘主管授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`、`bi`；招聘专员授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`，按需授予 `bi`；面试官授予 `index`、`demands`、`interviews`，按需授予 `bi`；人力资源总监授予 `bi`、`pipeline`。同一个 `interviews` 编码会按角色进入不同页面：招聘专员和主管进入 `/interviews` 的“面试管理”，面试官进入 `/interviewer/interviews` 的“我的面试”。面试官的招聘需求页用于发起并查看自己的业务招聘需求，不复用招聘专员页面。没有对应菜单时，左侧入口隐藏，直接输入网址也会被页面权限边界拦截；不能只隐藏菜单而保留直达入口。
 
 发布后不能只看页面样式。使用李四登录后还要核对 `/api/auth/me` 的后端角色为 `interviewer`，并用第二名面试官建立不同 assignment 做交叉验证：两人页面相同，但任务、候选人和反馈列表只包含本人被分配的数据。PGS 角色与后端角色不一致时，登录页会显示双方角色；先同步 Apollo/构建参数后再重试，不得临时放宽接口权限。
 

@@ -40,11 +40,14 @@ test('restored company sessions are revalidated before entering the product', ()
   assert.match(auth, /正在确认账号权限/);
 });
 
-test('local OAuth bridge emits the same recruiter and interviewer workspace markers', () => {
+test('local OAuth bridge emits the same workspace markers for all five roles', () => {
   const bridge = read('../scripts/local-oauth-bridge.mjs');
 
   assert.match(bridge, /dashboard_recruiter/);
   assert.match(bridge, /dashboard_interviewer/);
+  assert.match(bridge, /dashboard_manager/);
+  assert.match(bridge, /dashboard_admin/);
+  assert.match(bridge, /dashboard_hr_director/);
 });
 
 test('company menu loading fails closed and filters the product navigation', () => {

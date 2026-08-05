@@ -7,8 +7,11 @@ export interface CompanyMenuNode {
 }
 
 export const WORKSPACE_ROLE_BY_MENU_CODE: Readonly<Record<string, CompanyRole>> = {
+  dashboard_admin: 'admin',
+  dashboard_manager: 'manager',
   dashboard_recruiter: 'recruiter',
   dashboard_interviewer: 'interviewer',
+  dashboard_hr_director: 'hr_director',
 };
 
 export class WorkspaceRoleConflictError extends Error {

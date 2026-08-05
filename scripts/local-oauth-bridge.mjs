@@ -32,11 +32,13 @@ const localMenuTree = [
 ];
 
 function localMenuTreeForRole(role) {
-  const workspace = role === 'interviewer'
-    ? { code: 'dashboard_interviewer', name: '面试官工作台' }
-    : role === 'recruiter'
-      ? { code: 'dashboard_recruiter', name: '招聘专员工作台' }
-      : null;
+  const workspace = {
+    admin: { code: 'dashboard_admin', name: '系统管理员工作台' },
+    manager: { code: 'dashboard_manager', name: '招聘主管工作台' },
+    recruiter: { code: 'dashboard_recruiter', name: '招聘专员工作台' },
+    interviewer: { code: 'dashboard_interviewer', name: '面试官工作台' },
+    hr_director: { code: 'dashboard_hr_director', name: '人力资源总监工作台' },
+  }[role] ?? null;
   return localMenuTree.map((item) => (
     item.code === 'index' && workspace
       ? { ...item, children: [workspace] }

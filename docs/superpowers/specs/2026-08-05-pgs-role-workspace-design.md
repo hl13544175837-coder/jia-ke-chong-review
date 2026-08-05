@@ -40,12 +40,15 @@ PGS 菜单决定用户应进入哪类工作台；后端工号映射决定用户�
 
 ## 菜单和角色契约
 
-第一轮只接两个角色工作台标记：
+五类公司角色使用各自唯一的工作台标记：
 
 | PGS 菜单名称 | 菜单编码 | 智聘技术角色 | 首页路由 |
 |---|---|---|---|
+| 系统管理员工作台 | `dashboard_admin` | `admin` | `/dashboard` |
+| 招聘主管工作台 | `dashboard_manager` | `manager` | `/dashboard` |
 | 招聘专员工作台 | `dashboard_recruiter` | `recruiter` | `/dashboard` |
 | 面试官工作台 | `dashboard_interviewer` | `interviewer` | `/interviewer/dashboard` |
+| 人力资源总监工作台 | `dashboard_hr_director` | `hr_director` | `/director/cockpit` |
 
 同一个账号只能命中一个角色工作台标记。若同时返回两个标记，登录失败并提示联系管理员清理重复授权；若没有返回任何标记，保留当前最小权限回退逻辑，同时记录清晰诊断信息，避免测试环境全部用户突然无法登录。
 
