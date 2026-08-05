@@ -45,7 +45,7 @@ test('所有候选人详情统一使用面试信息、候选人简历、面试�
     'src/pages/interviews/components/RecruiterInterviewDetailDrawer.tsx',
     'src/pages/interviewer/screening/components/BusinessReviewDetail.tsx',
     'src/pages/interviewer/interviews/components/InterviewerInterviewDetailDrawer.tsx',
-    'src/pages/jobs/components/DemandCandidateDrawer.tsx',
+    'src/pages/jobs/components/DemandCandidateResumeDetail.tsx',
   ];
   consumers.forEach((file) => {
     assert.match(readOptional(file), /CandidateDetailWorkspace/, file);

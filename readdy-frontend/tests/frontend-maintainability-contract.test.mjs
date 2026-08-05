@@ -82,23 +82,29 @@ test('需求页把基本详情、候选人和业务筛选分成三个真实入�
   const page = read('src/pages/jobs/page.tsx');
   const detail = read('src/pages/jobs/components/DemandDetailPanel.tsx');
   const candidates = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
+  const candidateResumeDetail = read('src/pages/jobs/components/DemandCandidateResumeDetail.tsx');
   const reviews = read('src/pages/jobs/components/DemandBusinessReviewDrawer.tsx');
 
   for (const name of ['DemandDetailPanel', 'DemandCandidateDrawer', 'DemandBusinessReviewDrawer']) {
     assert.match(page, new RegExp(name));
   }
   assert.match(detail, /DetailActionBar/);
-  assert.match(candidates, /CandidateDetailWorkspace/);
+  assert.match(candidates, /DemandCandidateResumeDetail/);
+  assert.match(candidateResumeDetail, /CandidateDetailWorkspace/);
+  assert.match(candidateResumeDetail, /CandidateFeedbackTimeline/);
+  assert.match(candidateResumeDetail, /ResumeRecoveryPanel/);
   assert.match(reviews, /DetailDrawerShell/);
   assert.ok(lineCount('src/pages/jobs/components/DemandDetailPanel.tsx') < 400);
-  assert.ok(lineCount('src/pages/jobs/components/DemandCandidateDrawer.tsx') < 800);
+  assert.ok(lineCount('src/pages/jobs/components/DemandCandidateDrawer.tsx') < 575);
 });
 
 test('需求下候选人选择直接使用真实接口、筛选和统一详情', () => {
   const drawer = read('src/pages/jobs/components/DemandCandidateDrawer.tsx');
+  const resumeDetail = read('src/pages/jobs/components/DemandCandidateResumeDetail.tsx');
   assert.match(drawer, /candidatesApi\.listCandidates/);
   assert.match(drawer, /搜索姓名、公司、学校、岗位或技能/);
-  assert.match(drawer, /CandidateDetailWorkspace/);
+  assert.match(drawer, /DemandCandidateResumeDetail/);
+  assert.match(resumeDetail, /CandidateDetailWorkspace/);
   assert.match(drawer, /DetailDrawerShell/);
 });
 

@@ -8,13 +8,6 @@ import {
   type DragEvent,
 } from 'react';
 import {
-  AlertCircle,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Eye,
-  FileUp,
   LoaderCircle,
   RefreshCw,
   Search,
@@ -24,15 +17,12 @@ import {
   X,
 } from 'lucide-react';
 import { candidatesApi } from '@/features/candidates/api';
-import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 import { businessReviewsApi } from '@/features/businessReviews/api';
-import { candidateBusinessAction } from '@/features/businessReviews/actions';
 import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import type {
   CandidateListItem,
   CandidateListResponse,
   CandidateMatchResult,
-  CandidatePipelineAddResult,
   CandidateJourney,
   CandidateResumeDetail,
   CandidateStage,
@@ -41,118 +31,29 @@ import type {
 } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import type { PushTarget } from '@/features/businessReviews/components/PushToReviewerModal';
-import ResumeRecoveryPanel from '@/features/candidates/components/ResumeRecoveryPanel';
-import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
 import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
-import CandidateFeedbackTimeline from '@/features/candidates/components/CandidateFeedbackTimeline';
 import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
-import DetailActionBar from '@/components/ui/DetailActionBar';
-import ActionButton from '@/components/ui/ActionButton';
+import DemandCandidateResumeDetail from '@/pages/jobs/components/DemandCandidateResumeDetail';
+import DemandCandidateResults from '@/pages/jobs/components/DemandCandidateResults';
+import DemandCandidateImportPanel from '@/pages/jobs/components/DemandCandidateImportPanel';
+import { supportedResumePattern } from '@/features/candidates/library';
+import {
+  candidateStatus,
+  emptyCandidateResponse,
+  messageOf,
+  parseStatusOptions,
+  PER_PAGE,
+  resultSummary,
+  stageOptions,
+  type OperationFilter,
+  type SortOption,
+} from '@/pages/jobs/components/demandCandidateModel';
 
 interface DemandCandidateDrawerProps {
   demand: RecruitmentDemand;
   onClose: () => void;
   onChanged: () => void;
   onReadyToPush: (demand: RecruitmentDemand, targets: PushTarget[], task?: BusinessReviewTask) => void;
-}
-
-type OperationFilter = 'all' | 'actionable' | 'pushable';
-type SortOption = 'created_desc' | 'created_asc' | 'name_asc';
-
-const PER_PAGE = 20;
-const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif|zip)$/i;
-const supportedResumeAccept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,.zip,image/jpeg,image/png,image/webp,image/gif,application/zip';
-const emptyCandidateResponse: CandidateListResponse = {
-  candidates: [],
-  total: 0,
-  page: 1,
-  per_page: PER_PAGE,
-  pages: 1,
-};
-
-const stageOptions: Array<{ value: '' | CandidateStage; label: string }> = [
-  { value: '', label: '全部流程阶段' },
-  { value: 'pending', label: '待初筛' },
-  { value: 'ai_screen', label: 'AI 初筛' },
-  { value: 'business_review', label: '业务筛选' },
-  { value: 'interview', label: '面试中' },
-  { value: 'offer', label: 'Offer' },
-  { value: 'onboarded', label: '已入职' },
-  { value: 'rejected', label: '已淘汰' },
-  { value: 'transferred', label: '已转入其他需求' },
-];
-
-const parseStatusOptions: Array<{ value: '' | ParseStatus; label: string }> = [
-  { value: '', label: '全部解析状态' },
-  { value: 'pending', label: '待解析' },
-  { value: 'processing', label: '解析中' },
-  { value: 'ok', label: '已解析' },
-  { value: 'failed', label: '待确认' },
-  { value: 'original_confirmed', label: '原件已确认' },
-];
-
-function messageOf(error: unknown, fallback: string) {
-  return error instanceof Error && error.message.trim() ? error.message : fallback;
-}
-
-function candidateStatus(
-  candidate: CandidateListItem,
-  demandId: number,
-  match?: CandidateMatchResult,
-  tasks: BusinessReviewTask[] = [],
-) {
-  if (['pending', 'processing', 'failed'].includes(candidate.parse_status)) {
-    return {
-      label: candidate.parse_status === 'failed' ? '简历待确认' : '简历解析中',
-      selectable: false,
-      action: 'blocked' as const,
-      task: null,
-      tone: 'text-amber-700 bg-amber-50',
-    };
-  }
-  if (candidate.current_demand_id === demandId) {
-    const demandTasks = tasks.filter((task) => task.candidate_id === candidate.id && task.demand_id === demandId);
-    const pendingTask = demandTasks.find((task) => task.status === 'pending') ?? null;
-    const action = candidateBusinessAction({
-      currentDemandId: demandId,
-      currentStage: match?.latest_stage || candidate.current_stage,
-      pendingTask,
-      latestTask: demandTasks[0] ?? null,
-    });
-    if (action.kind === 'waiting') {
-      return { label: action.label, selectable: true, action: 'reassign' as const, task: pendingTask, tone: 'text-amber-700 bg-amber-50' };
-    }
-    if (action.kind === 'push' || action.kind === 'needs_info') {
-      return { label: action.label, selectable: true, action: 'push' as const, task: null, tone: 'text-primary-700 bg-primary-50' };
-    }
-    return { label: action.label, selectable: false, action: 'blocked' as const, task: null, tone: 'text-foreground-600 bg-background-100' };
-  }
-  if (candidate.current_demand_id) {
-    return {
-      label: candidate.current_demand?.job_title
-        ? `当前岗位：${candidate.current_demand.job_title}`
-        : '其他需求流程中',
-      selectable: true,
-      action: 'transfer' as const,
-      tone: 'text-amber-700 bg-amber-50',
-    };
-  }
-  if (match?.latest_stage === 'rejected') {
-    return { label: '当前需求曾淘汰', selectable: true, action: 'add' as const, tone: 'text-red-700 bg-red-50' };
-  }
-  if (match?.latest_stage) {
-    return { label: '已有当前需求记录', selectable: false, action: 'blocked' as const, tone: 'text-foreground-600 bg-background-100' };
-  }
-  return { label: '可加入', selectable: true, action: 'add' as const, tone: 'text-emerald-700 bg-emerald-50' };
-}
-
-function resultSummary(result: CandidatePipelineAddResult) {
-  const successful = result.added + result.reactivated;
-  if (successful === 0 && result.failures.length > 0) return result.failures.map((item) => item.error).join('；');
-  const parts = [`成功加入 ${successful} 位`];
-  if (result.skipped_existing) parts.push(`${result.skipped_existing} 位已存在`);
-  if (result.skipped_conflict) parts.push(`${result.skipped_conflict} 位存在流程冲突`);
-  return parts.join('，');
 }
 
 export default function DemandCandidateDrawer({ demand, onClose, onChanged, onReadyToPush }: DemandCandidateDrawerProps) {
@@ -378,6 +279,18 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
     }
   };
 
+  const handleResumeDetailUpdated = (updated: CandidateResumeDetail) => {
+    setResumeDetail(updated);
+    setResumeCandidate((current) => current ? {
+      ...current,
+      name_masked: updated.name_masked,
+      parse_status: updated.parse_status,
+      parse_error: updated.parse_error,
+    } : current);
+    void loadCandidates();
+    onChanged();
+  };
+
   const submitSelected = async (pushAfterSave: boolean) => {
     if (selectedIds.size === 0 || saving) return;
     if (needsReactivationReason && !reactivationReason.trim()) {
@@ -525,56 +438,22 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
               </div>
             </div>
 
-            {matchConfigured === false && (
-              <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800">
-                <strong>岗位技能尚未配置。</strong> 当前不能计算真实匹配度，请先在需求/JD 中补充技能关键词；候选人仍可按简历条件筛选和查看。
-              </div>
-            )}
-            {matchConfigured && requiredSkills.length > 0 && (
-              <div className="border-b border-primary-100 bg-primary-50/40 px-5 py-2 text-xs text-primary-700">岗位必备技能：{requiredSkills.join('、')}</div>
-            )}
-
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              {loading ? (
-                <div className="flex min-h-56 items-center justify-center text-sm text-foreground-500"><LoaderCircle className="mr-2 animate-spin" size={18} />正在读取候选人与岗位信息...</div>
-              ) : loadError ? (
-                <div className="flex min-h-56 flex-col items-center justify-center text-center"><AlertCircle size={24} className="text-red-600" /><p className="mt-3 text-sm text-red-700">{loadError}</p><button type="button" onClick={() => void loadCandidates()} className="mt-3 rounded-lg border px-3 py-2 text-sm">重试</button></div>
-              ) : visibleCandidates.length === 0 ? (
-                <div className="flex min-h-56 flex-col items-center justify-center text-center text-sm text-foreground-500"><UserPlus size={26} className="mb-3 text-foreground-300" />没有符合条件的候选人，可调整筛选或在右侧直接导入简历。</div>
-              ) : (
-                <div className="space-y-2">
-                  {visibleCandidates.map((candidate) => {
-                    const match = matches.get(candidate.id);
-                    const status = candidateStatus(candidate, demand.id, match, reviewTasks);
-                    const selected = selectedIds.has(candidate.id);
-                    return (
-                      <article key={candidate.id} className={`grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-3 ${selected ? 'border-primary-400 bg-primary-50' : 'border-background-200 bg-white'}`}>
-                        <button type="button" onClick={() => toggleCandidate(candidate)} disabled={!status.selectable} aria-label={`${selected ? '取消选择' : '选择'} ${candidate.name_masked}`} className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${selected ? 'bg-primary-500 text-white' : status.selectable ? 'bg-background-100 text-foreground-600 hover:bg-primary-100' : 'cursor-not-allowed bg-background-100 text-foreground-300'}`}>{selected ? '✓' : candidate.name_masked.slice(0, 1) || '候'}</button>
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold text-foreground-900">{candidate.name_masked}</span><span className={`rounded px-2 py-0.5 text-[11px] ${status.tone}`}>{status.label}</span></div>
-                          <p className="mt-1 truncate text-xs text-foreground-500">{candidate.education_summary || '学历信息待补充'} · {candidate.intent_city || '城市待补充'} · {candidate.top_tags?.slice(0, 3).map((item) => item.tag).join('、') || '技能待补充'}</p>
-                          {match?.matched_tags.length ? <p className="mt-1 truncate text-[11px] text-primary-600">命中：{match.matched_tags.slice(0, 4).join('、')}</p> : null}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <button type="button" onClick={() => void openResume(candidate)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-background-300 bg-white px-2.5 text-xs font-medium text-foreground-700 hover:bg-background-50"><Eye size={14} />查看简历</button>
-                          <span className="min-w-16 text-right">
-                            {matchConfigured === false ? <><span className="block text-xs font-semibold text-amber-700">未配置</span><span className="text-[10px] text-foreground-400">匹配度</span></> : <><span className="block text-lg font-bold text-primary-700">{Math.round(match?.score ?? 0)}</span><span className="text-[10px] text-foreground-400">岗位匹配度</span></>}
-                          </span>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between border-t border-background-100 px-5 py-2.5">
-              <p className="text-xs text-foreground-500">第 {candidateResponse.page} / {candidateResponse.pages} 页 · 每页 {candidateResponse.per_page} 位</p>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || page <= 1} className="inline-flex h-8 items-center gap-1 rounded-lg border border-background-300 px-2.5 text-xs disabled:opacity-40"><ChevronLeft size={14} />上一页</button>
-                <button type="button" onClick={() => setPage((current) => Math.min(candidateResponse.pages, current + 1))} disabled={loading || page >= candidateResponse.pages} className="inline-flex h-8 items-center gap-1 rounded-lg border border-background-300 px-2.5 text-xs disabled:opacity-40">下一页<ChevronRight size={14} /></button>
-              </div>
-            </div>
+            <DemandCandidateResults
+              matchConfigured={matchConfigured}
+              requiredSkills={requiredSkills}
+              loading={loading}
+              loadError={loadError}
+              onReload={() => void loadCandidates()}
+              candidates={visibleCandidates}
+              matches={matches}
+              selectedIds={selectedIds}
+              getStatus={(candidate) => candidateStatus(candidate, demand.id, matches.get(candidate.id), reviewTasks)}
+              onToggle={toggleCandidate}
+              onOpenResume={(candidate) => void openResume(candidate)}
+              response={candidateResponse}
+              page={page}
+              onPageChange={setPage}
+            />
 
             <footer className="border-t border-background-200 px-5 py-3">
               {reviewTasksError && <p className="mb-2 text-xs text-red-700">{reviewTasksError}</p>}
@@ -603,107 +482,51 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
             </footer>
           </section>
 
-          <section className="p-5">
-            <h3 className="text-sm font-semibold text-foreground-900">直接导入当前需求</h3>
-            <p className="mt-1 text-xs leading-5 text-foreground-500">拖入后自动关联“{demand.job_title}”，无需再次选择需求。</p>
-            <input ref={uploadInputRef} type="file" multiple accept={supportedResumeAccept} onChange={handleUploadSelect} className="hidden" />
-            <div onDragOver={(event) => { event.preventDefault(); setUploadDragOver(true); }} onDragLeave={() => setUploadDragOver(false)} onDrop={handleUploadDrop} className={`mt-4 flex min-h-44 flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 text-center ${uploadDragOver ? 'border-primary-400 bg-primary-50' : 'border-background-300 bg-background-50'}`}>
-              {uploading ? <LoaderCircle className="animate-spin text-primary-600" size={28} /> : <FileUp className="text-foreground-400" size={28} />}
-              <p className="mt-3 text-sm font-medium text-foreground-700">拖入简历到这里</p><p className="mt-1 text-xs text-foreground-400">PDF、DOCX、图片或 ZIP</p>
-              <button type="button" onClick={() => uploadInputRef.current?.click()} disabled={uploading} className="mt-3 rounded-lg border border-background-300 bg-white px-3 py-2 text-sm text-foreground-700 disabled:opacity-50">选择文件</button>
-            </div>
-            {uploadError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{uploadError}</p>}
-            {uploadResponse && (
-              <div className="mt-3 rounded-lg border border-background-200 bg-white px-3 py-3 text-xs text-foreground-700">
-                    <p className="flex items-center gap-2 font-medium"><CheckCircle2 size={15} />已处理 {uploadResponse.total} 份文件</p>
-                    <p className="mt-1">后台解析 {uploadResponse.results.filter((item) => item.status === 'processing').length} 份，成功 {uploadResponse.results.filter((item) => item.status === 'ok').length} 份，待确认 {uploadResponse.results.filter((item) => item.status === 'needs_confirmation').length} 份，重复 {uploadResponse.results.filter((item) => item.status === 'duplicate').length} 份，其他失败 {uploadResponse.results.filter((item) => !['ok', 'processing', 'duplicate', 'needs_confirmation'].includes(item.status)).length} 份。</p>
-                {uploadResponse.results.filter((item) => item.status === 'duplicate').map((item) => (
-                  <div key={item.file} className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800">
-                    <p className="font-medium">{item.reason || '导入失败：系统中已存在重复简历'}</p>
-                    <p className="mt-0.5">已有候选人：{item.existing_candidate_name || '当前组织已有候选人'}{item.match_basis ? ` · ${item.match_basis}` : ''}</p>
-                    {item.existing_candidate_id && <button type="button" onClick={() => openDuplicateCandidate(item)} className="mt-1 font-medium text-primary-700">查看已有候选人</button>}
-                  </div>
-                    ))}
-                    {uploadResponse.results.filter((item) => item.status === 'needs_confirmation').map((item) => (
-                      <div key={item.file} className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800">
-                        <p className="font-medium">{item.reason || 'AI 未能识别该简历，请确认原文件'}</p>
-                        {item.candidate_id && <button type="button" onClick={() => void openResume({ id: item.candidate_id as number, name_masked: item.file, owner_hr_id: null, is_favorite: false, created_at: '', parse_status: 'failed', tag_count: 0, pipeline_state: 'never_entered', has_rejected_history: false })} className="mt-1 font-medium text-primary-700">查看并处理</button>}
-                      </div>
-                    ))}
-              </div>
-            )}
-          </section>
+          <DemandCandidateImportPanel
+            demand={demand}
+            inputRef={uploadInputRef}
+            dragOver={uploadDragOver}
+            onDragOverChange={setUploadDragOver}
+            uploading={uploading}
+            error={uploadError}
+            response={uploadResponse}
+            onFileSelect={handleUploadSelect}
+            onDrop={handleUploadDrop}
+            onOpenDuplicate={openDuplicateCandidate}
+            onOpenConfirmation={(item) => void openResume({
+              id: item.candidate_id as number,
+              name_masked: item.file,
+              owner_hr_id: null,
+              is_favorite: false,
+              created_at: '',
+              parse_status: 'failed',
+              tag_count: 0,
+              pipeline_state: 'never_entered',
+              has_rejected_history: false,
+            })}
+          />
         </div>
 
         {resumeCandidate && (
-          <DetailDrawerShell
-            ariaLabel={`${resumeCandidate.name_masked}候选人详情`}
-            closeLabel="关闭候选人详情"
+          <DemandCandidateResumeDetail
+            candidate={resumeCandidate}
+            demand={demand}
+            match={matches.get(resumeCandidate.id)}
+            tab={resumeTab}
+            onTabChange={setResumeTab}
+            detail={resumeDetail}
+            journey={resumeJourney}
+            loading={resumeLoading}
+            error={resumeError}
+            journeyLoading={resumeJourneyLoading}
+            journeyError={resumeJourneyError}
+            fileAction={resumeFileAction}
+            fileError={resumeFileError}
+            onDetailUpdated={handleResumeDetailUpdated}
+            onPreview={() => void openOriginalResume('preview')}
+            onDownload={() => void openOriginalResume('download')}
             onClose={() => setResumeCandidate(null)}
-            modal
-            backdropClassName="absolute inset-0 z-20 cursor-default bg-foreground-900/30"
-            panelClassName="absolute inset-y-0 right-0 z-30 flex h-full w-full max-w-xl flex-col bg-white shadow-2xl"
-          >
-              <div className="flex items-start justify-between gap-4 border-b border-background-200 px-6 py-4"><div><h3 className="text-lg font-bold text-foreground-900">{resumeCandidate.name_masked}</h3><p className="mt-1 text-sm text-foreground-500">{demand.job_title} · {demand.request_no || `需求 #${demand.id}`}</p></div><button type="button" onClick={() => setResumeCandidate(null)} className="rounded-lg p-2 text-foreground-500 hover:bg-background-100" aria-label="关闭候选人详情"><X size={18} /></button></div>
-              <CandidateDetailWorkspace value={resumeTab} onChange={setResumeTab} className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-                  {resumeTab === 'interview' && (
-                    <div className="space-y-4" role="tabpanel" aria-label="面试信息">
-                      <dl className="grid grid-cols-2 gap-4 rounded-lg border border-background-200 p-4 text-sm">
-                        <div><dt className="text-xs text-foreground-400">招聘需求</dt><dd className="mt-1 font-medium text-foreground-800">{demand.job_title}</dd></div>
-                        <div><dt className="text-xs text-foreground-400">当前阶段</dt><dd className="mt-1 text-foreground-700">{resumeCandidate.current_stage || matches.get(resumeCandidate.id)?.latest_stage || '尚未进入流程'}</dd></div>
-                        <div><dt className="text-xs text-foreground-400">部门</dt><dd className="mt-1 text-foreground-700">{demand.requester_department || demand.job_department || '未填写'}</dd></div>
-                        <div><dt className="text-xs text-foreground-400">城市</dt><dd className="mt-1 text-foreground-700">{demand.job_city || '未填写'}</dd></div>
-                      </dl>
-                      <p className="rounded-lg bg-background-50 px-4 py-3 text-sm text-foreground-600">面试轮次、时间、面试官和地点会在安排面试后显示在这里。</p>
-                    </div>
-                  )}
-
-                  {resumeTab === 'resume' && (
-                    <div role="tabpanel" aria-label="候选人简历">
-                      {resumeLoading ? <div className="py-20 text-center text-sm text-foreground-500"><LoaderCircle className="mx-auto mb-2 animate-spin" size={20} />加载完整简历中...</div> : resumeError ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{resumeError}</div> : resumeDetail ? (
-                        <div className="space-y-4">
-                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">
-                            <span>{resumeDetail.original_resume.available ? `原版文件：${resumeDetail.original_resume.filename || '未命名文件'}` : '当前没有原版文件，以下为系统解析信息'}</span>
-                            {resumeDetail.original_resume.available && (
-                              <span className="flex gap-2">
-                                <button type="button" onClick={() => void openOriginalResume('preview')} disabled={resumeFileAction !== null} className="inline-flex items-center gap-1 rounded-lg border border-background-300 bg-white px-2.5 py-1.5 text-xs font-medium text-foreground-700 disabled:opacity-50"><Eye size={13} />{resumeFileAction === 'preview' ? '打开中' : '预览原版'}</button>
-                                <button type="button" onClick={() => void openOriginalResume('download')} disabled={resumeFileAction !== null} className="inline-flex items-center gap-1 rounded-lg border border-background-300 bg-white px-2.5 py-1.5 text-xs font-medium text-foreground-700 disabled:opacity-50"><Download size={13} />{resumeFileAction === 'download' ? '下载中' : '下载原版'}</button>
-                              </span>
-                            )}
-                          </div>
-                          {resumeFileError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{resumeFileError}</p>}
-                          <ResumeRecoveryPanel
-                            detail={resumeDetail}
-                            onUpdated={(updated) => {
-                              setResumeDetail(updated);
-                              setResumeCandidate((current) => current ? {
-                                ...current,
-                                name_masked: updated.name_masked,
-                                parse_status: updated.parse_status,
-                                parse_error: updated.parse_error,
-                              } : current);
-                              void loadCandidates();
-                              onChanged();
-                            }}
-                          />
-                          <StructuredResumeView resume={resumeDetail.resume_json} />
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-
-                  {resumeTab === 'feedback' && (
-                    <div role="tabpanel" aria-label="面试评价">
-                      <CandidateFeedbackTimeline journey={resumeJourney} loading={resumeJourneyLoading} error={resumeJourneyError} />
-                    </div>
-                  )}
-                </div>
-              </CandidateDetailWorkspace>
-              <DetailActionBar>
-                <ActionButton tone="secondary" onClick={() => setResumeCandidate(null)}>关闭</ActionButton>
-              </DetailActionBar>
-          </DetailDrawerShell>
+          />
         )}
     </DetailDrawerShell>
   );
