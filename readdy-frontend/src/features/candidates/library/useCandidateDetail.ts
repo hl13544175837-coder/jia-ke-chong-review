@@ -69,6 +69,7 @@ export function useCandidateDetail({
   }, []);
 
   const openCandidateDetail = useCallback((candidate: CandidateListItem, initialTab: CandidateDetailTab = 'interview') => {
+    handledCandidateQuery.current = candidate.id;
     setDetailCandidate(candidate);
     setDetailTab(initialTab);
     setResumeDetail(null);
@@ -82,6 +83,10 @@ export function useCandidateDetail({
       candidate.current_demand_id ?? candidate.latest_demand_id ?? requestedDemandId,
     );
   }, [loadCandidateDetail, openCandidateInUrl, requestedDemandId]);
+
+  useEffect(() => {
+    if (!requestedCandidateId) handledCandidateQuery.current = null;
+  }, [requestedCandidateId]);
 
   const focusedReview = useMemo(() => reviewTasks.find((task) => (
     task.candidate_id === requestedCandidateId

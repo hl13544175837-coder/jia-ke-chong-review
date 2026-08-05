@@ -6,8 +6,10 @@ test('@smoke 长简历在详情内部滚动且右下角操作栏始终可见', a
   await page.goto('/candidates');
   await expect(page.getByRole('heading', { name: '简历库' })).toBeAttached();
 
-  await page.getByRole('button', { name: '查看 谷杨 简历' }).first().click();
-  await page.getByRole('tab', { name: '候选人简历' }).click();
+  const candidateRow = page.getByRole('row').filter({ hasText: '谷杨' }).first();
+  await candidateRow.locator('[data-ui="row-action-menu-trigger"]').click();
+  await page.getByRole('menuitem', { name: '编辑简历信息' }).click();
+  await expect(page.getByRole('tab', { name: '候选人简历' })).toHaveAttribute('aria-selected', 'true');
 
   const scrollPanel = page.getByTestId('candidate-detail-scroll-panel');
   await expect(scrollPanel).toBeVisible();
