@@ -38,19 +38,30 @@ test('候选人普通筛选紧凑可收起且绿色状态分类始终位于下�
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test('招聘需求普通筛选位于绿色状态分类和表格上方', async ({ page }) => {
+test('招聘需求普通筛选位于绿色状态分类和表格上方且没有空白计数行', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginAs(page, 'recruiter');
   await page.goto('/jobs');
 
   const filters = page.getByLabel('招聘需求查询条件', { exact: true });
   const tabs = page.getByRole('tablist', { name: '招聘需求状态' });
+  const resultCount = page.locator('[data-ui="requisition-result-count"]');
+  const firstHeader = page.getByRole('columnheader', { name: '需求 / 职位' });
   await expect(filters).toBeVisible();
   await expect(tabs).toBeVisible();
+  await expect(resultCount).toBeVisible();
+  await expect(firstHeader).toBeVisible();
 
   const filterBox = await filters.boundingBox();
   const tabsBox = await tabs.boundingBox();
+  const resultCountBox = await resultCount.boundingBox();
+  const firstHeaderBox = await firstHeader.boundingBox();
   expect((filterBox?.y ?? 0) + (filterBox?.height ?? 0)).toBeLessThan(tabsBox?.y ?? 0);
+  expect(Math.abs(
+    (tabsBox?.y ?? 0) + (tabsBox?.height ?? 0) / 2
+      - ((resultCountBox?.y ?? 0) + (resultCountBox?.height ?? 0) / 2),
+  )).toBeLessThanOrEqual(2);
+  expect((firstHeaderBox?.y ?? 0) - ((tabsBox?.y ?? 0) + (tabsBox?.height ?? 0))).toBeLessThan(44);
 
   await filters.getByRole('button', { name: '收起筛选' }).click();
   await expect(filters.getByRole('button', { name: '展开筛选' })).toBeVisible();

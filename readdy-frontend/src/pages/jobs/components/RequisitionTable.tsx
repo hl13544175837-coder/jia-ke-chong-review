@@ -69,8 +69,6 @@ export default function RequisitionTable({
   return (
     <>
       <div className="overflow-hidden rounded-xl border border-background-200 bg-white">
-        <div className="border-b border-background-100 px-5 py-3 text-right text-xs text-foreground-400">{data.length} 条</div>
-
         {/* Table */}
         {data.length === 0 ? (
           <div className="p-12 text-center">

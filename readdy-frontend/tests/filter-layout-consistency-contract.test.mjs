@@ -83,3 +83,15 @@ test('普通筛选位于绿色状态分类上方且页面复用同一套紧凑�
   assert.ok(jobsPage.indexOf('<RequisitionFilters') < jobsPage.indexOf('<RequisitionTabs'), '招聘需求普通筛选必须位于状态分类上方');
   assert.ok(jobsPage.indexOf('<RequisitionTabs') < jobsPage.indexOf('<RequisitionTable'), '招聘需求状态分类必须位于列表上方');
 });
+
+test('招聘需求条数与绿色状态分类同排且表格不保留空白计数栏', () => {
+  const tabs = read('src/pages/jobs/components/RequisitionTabs.tsx');
+  const table = read('src/pages/jobs/components/RequisitionTable.tsx');
+  const page = read('src/pages/jobs/page.tsx');
+
+  assert.match(tabs, /resultCount/);
+  assert.match(tabs, /\{resultCount\} 条/);
+  assert.match(tabs, /justify-between/);
+  assert.match(page, /resultCount=\{filteredData\.length\}/);
+  assert.doesNotMatch(table, /data\.length\} 条/);
+});

@@ -503,7 +503,7 @@ export default function JobsPage() {
         onSortDirectionToggle={() => setSortDirection((current) => current === 'asc' ? 'desc' : 'asc')}
       />
 
-      <RequisitionTabs activeTab={activeTab} onTabChange={setActiveTab} />
+      <RequisitionTabs activeTab={activeTab} resultCount={filteredData.length} onTabChange={setActiveTab} />
 
       {loading ? (
         <PageStateCard variant="loading" title="正在加载招聘需求" description="请稍候，正在读取最新需求。" />
