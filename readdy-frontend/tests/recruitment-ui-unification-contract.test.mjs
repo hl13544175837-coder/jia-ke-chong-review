@@ -81,15 +81,15 @@ test('Offer 候选人姓名进入同一套候选人详情', () => {
   assert.match(page, /navigate\(`\/candidates\?candidate=\$\{offer\.candidate_id\}&demand=\$\{offer\.demand_id\}/);
 });
 
-test('五个列表把常用查询条件直接放在页面上', () => {
+test('五个列表把普通查询条件放在可收缩工具栏中', () => {
   const consumers = [
-    'src/pages/jobs/components/RequisitionTable.tsx',
+    'src/pages/jobs/components/RequisitionFilters.tsx',
     'src/pages/interviews/components/InterviewWorkbenchToolbar.tsx',
     'src/pages/interviewer/screening/page.tsx',
     'src/pages/interviewer/interviews/page.tsx',
     'src/pages/offers/page.tsx',
   ];
-  consumers.forEach((file) => assert.match(read(file), /FilterBar/, file));
+  consumers.forEach((file) => assert.match(read(file), /CollapsibleFilterBar/, file));
 
   const screening = read('src/pages/interviewer/screening/page.tsx');
   for (const key of ['q', 'job', 'department', 'city']) {
