@@ -94,3 +94,16 @@ def test_access_policy_has_a_service_owner_and_api_is_only_a_facade():
     assert "def visible_candidate_query" in policy
     assert "from ..services.access_policy import" in facade
     assert _line_count("backend/app/api/access.py") < 40
+
+
+def test_candidate_api_delegates_read_model_to_service():
+    service_path = ROOT / "backend/app/services/candidate_library_read_service.py"
+    assert service_path.is_file(), "候选人只读模型必须由 services 层拥有"
+
+    route = _read("backend/app/api/candidates.py")
+    service = _read("backend/app/services/candidate_library_read_service.py")
+    assert "from ..services.candidate_library_read_service import" in route
+    assert "def candidate_library_payload" in service
+    assert "def candidate_search_blob" in service
+    assert _line_count("backend/app/api/candidates.py") < 450
+    assert _line_count("backend/app/services/candidate_library_read_service.py") < 700

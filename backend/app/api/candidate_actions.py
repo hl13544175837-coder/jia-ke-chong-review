@@ -50,6 +50,7 @@ from ..services.candidate_library_service import (
     resume_info,
     set_candidate_favorites,
 )
+from ..services.candidate_library_read_service import candidate_stage_context_by_ids
 from ..services.match_service import MatchService
 from ..source_channels import normalize_resume_source_channel, resume_source_channel_filter_values
 from .pipeline import LEGACY_INTERVIEW_STAGES, STAGE_ORDER, _latest_stage_subquery, normalize_pipeline_stage
@@ -64,12 +65,6 @@ from .access import (
 
 
 def register_candidate_action_routes(bp):
-    from .candidates import (
-        _candidate_library_payload,
-        _candidate_stage_context_by_ids,
-        _demand_summary,
-    )
-
     def _candidate_ids_from_payload(data, *, limit=100):
         raw_ids = data.get("candidate_ids")
         if not isinstance(raw_ids, list):
@@ -257,7 +252,7 @@ def register_candidate_action_routes(bp):
             top_n=len(candidate_ids),
             candidate_query=candidate_query,
         )
-        demand_stages = _candidate_stage_context_by_ids(candidate_ids, demand_id=demand.id)
+        demand_stages = candidate_stage_context_by_ids(candidate_ids, demand_id=demand.id)
         for item in results:
             context = demand_stages.get(item["candidate_id"])
             item["latest_stage"] = context["stage"] if context else None

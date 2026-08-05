@@ -51,6 +51,7 @@ from ..services.candidate_library_service import (
     set_candidate_favorites,
 )
 from ..services.candidate_activity_service import build_candidate_activity
+from ..services.candidate_library_read_service import decision_summary
 from ..services.match_service import MatchService
 from ..source_channels import normalize_resume_source_channel, resume_source_channel_filter_values
 from .pipeline import LEGACY_INTERVIEW_STAGES, STAGE_ORDER, _latest_stage_subquery, normalize_pipeline_stage
@@ -65,14 +66,6 @@ from .access import (
 
 
 def register_candidate_journey_routes(bp):
-    from .candidates import (
-        _candidate_source_payload,
-        _decision_summary,
-        _demand_summary,
-        _public_parse_error,
-        _resume_info,
-    )
-
     @bp.get("/candidates/<int:candidate_id>/pipelines")
     @require_auth
     def candidate_pipelines(candidate_id):
@@ -411,7 +404,7 @@ def register_candidate_journey_routes(bp):
             "activity": activity,
             "dispositions": response_dispositions,
             "offers": response_offers,
-            "decision_summary": _decision_summary(
+            "decision_summary": decision_summary(
                 response_timeline,
                 response_ai_interviews,
                 visible_feedback,

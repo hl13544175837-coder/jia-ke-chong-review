@@ -9,13 +9,12 @@ from .. import db
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from ..models import Candidate, CandidateDemandFlow, User
+from ..services.candidate_library_read_service import export_count_for_actor
 from ..time_utils import utc_now
 from .access import can_access_candidate, same_org
 
 
 def register_candidate_admin_routes(bp):
-    from .candidates import _export_count_for_actor
-
     @bp.patch("/candidates/<int:candidate_id>/owner")
     @require_auth
     @require_role("manager", "admin")
@@ -107,7 +106,10 @@ def register_candidate_admin_routes(bp):
             json.dumps(candidate.resume_json or {}, ensure_ascii=False),
         ])
 
-        export_count_10m = _export_count_for_actor() + 1
+        export_count_10m = export_count_for_actor(
+            org_id=g.org_id,
+            user_id=g.user_id,
+        ) + 1
         record_event(
             "candidate.exported",
             entity_id=candidate.id,
