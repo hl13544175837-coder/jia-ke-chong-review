@@ -158,9 +158,7 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
 
     title = clean_text(data.get("job_title") or data.get("title"), 200)
     jd_text = str(data.get("jd_text") or data.get("job_description") or "").strip()
-    if job is None and is_business_submission:
-        fields["job_id"] = "请选择当前组织内启用的职位模板"
-    elif job is None:
+    if job is None:
         if not title:
             fields["job_title"] = "请填写职位名称"
         if not jd_text:

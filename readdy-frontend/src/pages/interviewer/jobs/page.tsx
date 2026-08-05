@@ -24,6 +24,7 @@ type DemandFormMode = { kind: 'create' } | { kind: 'resubmit'; demand: Recruitme
 
 interface DemandDraft {
   jobId: string;
+  customJobTitle: string;
   ownerHrId: string;
   requesterDepartment: string;
   city: string;
@@ -68,6 +69,7 @@ function localDateValue() {
 function blankDraft(managerName: string | null): DemandDraft {
   return {
     jobId: '',
+    customJobTitle: '',
     ownerHrId: '',
     requesterDepartment: '',
     city: '',
@@ -260,6 +262,7 @@ export default function InterviewerJobsPage() {
     setFormMode({ kind: 'resubmit', demand });
     setDraft({
       jobId: String(demand.job_id),
+      customJobTitle: demand.job_title,
       ownerHrId: String(demand.owner_hr_id),
       requesterDepartment: demand.requester_department || demand.job_department,
       city: demand.job_city,
@@ -285,7 +288,8 @@ export default function InterviewerJobsPage() {
 
   const validateDraft = () => {
     const errors: Record<string, string> = {};
-    if (!draft.jobId) errors.job_id = '请选择岗位模板';
+    if (!draft.jobId) errors.job_id = '请选择岗位模板或自定义新岗位';
+    if (draft.jobId === 'custom' && !draft.customJobTitle.trim()) errors.job_title = '请填写岗位名称';
     if (formMode.kind === 'create' && !draft.ownerHrId) errors.owner_hr_id = '请选择招聘负责人';
     if (!draft.requesterDepartment.trim()) errors.requester_department = '请填写用人部门';
     if (!draft.city.trim()) errors.city = '请填写招聘城市';
@@ -329,7 +333,9 @@ export default function InterviewerJobsPage() {
         const focus_points = draft.focusPoints.split('\n').map((item) => item.trim()).filter(Boolean);
         const payload: BusinessDemandInput = {
           ...editable,
-          job_id: Number(draft.jobId),
+          ...(draft.jobId === 'custom'
+            ? { job_title: draft.customJobTitle.trim() }
+            : { job_id: Number(draft.jobId) }),
           jd_text: draft.jdText.trim(),
           owner_hr_id: Number(draft.ownerHrId),
           default_interviewer_id: userId ?? undefined,
@@ -367,7 +373,7 @@ export default function InterviewerJobsPage() {
           <button
             type="button"
             onClick={openCreate}
-            disabled={loading || templates.length === 0}
+            disabled={loading}
             className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <i className="ri-add-line text-base"></i>
@@ -473,23 +479,40 @@ export default function InterviewerJobsPage() {
               <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
                 <div className="flex-1 overflow-y-auto px-6 py-5">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <FormField label="岗位模板" error={formErrors.job_id}>
+                    <FormField label="岗位来源" error={formErrors.job_id}>
                       <select
                         required
                         disabled={formMode.kind === 'resubmit' || templateLoading}
                         value={draft.jobId}
                         onChange={(event) => {
                           const value = event.target.value;
-                          setDraft((current) => ({ ...current, jobId: value }));
-                          if (value) void loadTemplate(Number(value), true);
-                          else setSelectedTemplate(null);
+                          if (value === 'custom') {
+                            setSelectedTemplate(null);
+                            setDraft((current) => ({
+                              ...current,
+                              jobId: value,
+                              customJobTitle: '',
+                              jdText: '',
+                              focusPoints: '',
+                            }));
+                          } else {
+                            setDraft((current) => ({ ...current, jobId: value, customJobTitle: '' }));
+                            if (value) void loadTemplate(Number(value), true);
+                            else setSelectedTemplate(null);
+                          }
                         }}
                         className={inputClass}
                       >
-                        <option value="">请选择岗位模板</option>
+                        <option value="">请选择岗位模板或自定义</option>
+                        <option value="custom">自定义新岗位</option>
                         {templates.map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}
                       </select>
                     </FormField>
+                    {draft.jobId === 'custom' && (
+                      <FormField label="岗位名称" error={formErrors.job_title}>
+                        <input required value={draft.customJobTitle} onChange={(event) => setDraft((current) => ({ ...current, customJobTitle: event.target.value }))} placeholder="例如：海外履约产品经理" className={inputClass} />
+                      </FormField>
+                    )}
                     <FormField label="招聘负责人" error={formErrors.owner_hr_id}>
                       <select required disabled={formMode.kind === 'resubmit'} value={draft.ownerHrId} onChange={(event) => setDraft((current) => ({ ...current, ownerHrId: event.target.value }))} className={inputClass}>
                         <option value="">请选择招聘负责人</option>

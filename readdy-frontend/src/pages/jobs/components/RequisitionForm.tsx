@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { provinceCityData } from '@/mocks/options';
 import type { ProductRole } from '@/auth/productRoleModel';
 import type { DemandOwnerOption, RecruitmentDemandInput } from '@/features/demands/types';
@@ -18,6 +18,16 @@ const priorityOptions = [
   { value: 'normal', label: '普通', desc: '正常排期招聘，按常规流程推进' },
   { value: 'low', label: '低', desc: '储备型岗位，无明确时间压力' },
 ];
+
+const departmentSuggestions = [
+  '技术研发部', '产品部', '设计部', '数据部', '市场部', '人力资源部',
+];
+
+const locationSuggestions = Array.from(new Set([
+  ...provinceCityData.flatMap((province) => province.cities),
+  '海外',
+  '远程办公',
+]));
 
 const jdTemplates: Record<string, string> = {
   tech: `【岗位职责】
@@ -74,7 +84,6 @@ export default function RequisitionForm({
   const [formData, setFormData] = useState({
     position: '',
     department: '',
-    province: '',
     city: '',
     headcount: 1,
     startDate: localDateInputValue(),
@@ -95,12 +104,6 @@ export default function RequisitionForm({
         : { ...current, owner: ownerId });
     }
   }, [owners, role]);
-
-  const cities = useMemo(() => {
-    if (!formData.province) return [];
-    const province = provinceCityData.find((p) => p.name === formData.province);
-    return province ? province.cities : [];
-  }, [formData.province]);
 
   if (!expanded) return null;
 
@@ -168,50 +171,35 @@ export default function RequisitionForm({
             <label className="block text-sm font-medium text-foreground-700 mb-1">
               所属部门 <span className="text-red-400">*</span>
             </label>
-            <select
+            <input
+              type="text"
               required
+              list="department-suggestions"
               value={formData.department}
               onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-              className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm focus:outline-none focus:border-primary-300 cursor-pointer"
-            >
-              <option value="">请选择部门</option>
-              <option value="技术研发部">技术研发部</option>
-              <option value="产品部">产品部</option>
-              <option value="设计部">设计部</option>
-              <option value="数据部">数据部</option>
-              <option value="市场部">市场部</option>
-              <option value="人力资源部">人力资源部</option>
-            </select>
+              placeholder="请选择或输入部门"
+              className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm focus:outline-none focus:border-primary-300"
+            />
+            <datalist id="department-suggestions">
+              {departmentSuggestions.map((department) => <option key={department} value={department} />)}
+            </datalist>
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground-700 mb-1">
-              招聘城市 <span className="text-red-400">*</span>
+              招聘地点 <span className="text-red-400">*</span>
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                required
-                value={formData.province}
-                onChange={(e) => setFormData({ ...formData, province: e.target.value, city: '' })}
-                className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm focus:outline-none focus:border-primary-300 cursor-pointer"
-              >
-                <option value="">选择省份</option>
-                {provinceCityData.map((p) => (
-                  <option key={p.name} value={p.name}>{p.name}</option>
-                ))}
-              </select>
-              <select
-                required
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                disabled={!formData.province}
-                className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm focus:outline-none focus:border-primary-300 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">选择城市</option>
-                {cities.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
+            <input
+              type="text"
+              required
+              list="location-suggestions"
+              value={formData.city}
+              onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+              placeholder="例如：上海、新加坡、德国·柏林、远程办公"
+              className="w-full px-3 py-2 bg-background-50 border border-background-200 rounded-lg text-sm focus:outline-none focus:border-primary-300"
+            />
+            <datalist id="location-suggestions">
+              {locationSuggestions.map((location) => <option key={location} value={location} />)}
+            </datalist>
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground-700 mb-1">
@@ -401,7 +389,7 @@ export default function RequisitionForm({
         <button
           type="button"
           onClick={() => setFormData({
-            position: '', department: '', province: '', city: '', headcount: 1, startDate: localDateInputValue(), deadline: '',
+            position: '', department: '', city: '', headcount: 1, startDate: localDateInputValue(), deadline: '',
             priority: 'normal', owner: role === 'recruiter' && owners.length === 1 ? String(owners[0].id) : '', hiringManagerName: '', description: '', jdTemplate: '',
           })}
           className="px-4 py-2 text-sm text-foreground-500 hover:text-foreground-700 transition-colors cursor-pointer whitespace-nowrap"

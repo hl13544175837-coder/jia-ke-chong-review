@@ -84,7 +84,6 @@ export interface RecruitmentDemandInput {
 }
 
 export type BusinessDemandInput = RecruitmentDemandInput & {
-  job_id: number;
   focus_points?: string[];
 };
 

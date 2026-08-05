@@ -310,30 +310,42 @@ def test_recruiter_owner_options_only_return_current_recruiter(client, make_user
     ]
 
 
-def test_interviewer_cannot_create_a_job_template_through_demand_submission(
-    client, make_user
+def test_interviewer_can_submit_custom_job_as_pending_demand(
+    client, make_user, app
 ):
     interviewer_id, token = make_user(
-        "business-no-template@example.com", role="interviewer"
+        "business-custom-job@example.com", role="interviewer"
     )
-    hr_id, _ = make_user("hr-no-template@example.com", role="recruiter")
+    hr_id, _ = make_user("hr-custom-job@example.com", role="recruiter")
 
     response = client.post(
         "/api/demands",
         headers=_auth(token),
         json={
-            "job_title": "不应被新建的职位",
-            "jd_text": "业务负责人不能新建职位模板",
+            "job_title": "海外履约产品经理",
+            "jd_text": "负责海外履约产品设计与跨区域协同。",
             "owner_hr_id": hr_id,
-            "city": "上海",
-            "requester_department": "业务部",
+            "city": "新加坡",
+            "requester_department": "海外业务部",
             "hiring_manager_name": "业务负责人",
-            "requested_at": "2026-07-24",
-            "target_date": "2026-08-31",
+            "requested_at": "2026-08-05",
+            "target_date": "2026-09-30",
             "headcount": 1,
-            "created_by": interviewer_id,
         },
     )
 
-    assert response.status_code == 400
-    assert response.get_json()["fields"]["job_id"]
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["job_title"] == "海外履约产品经理"
+    assert body["job_city"] == "新加坡"
+    assert body["job_department"] == "海外业务部"
+    assert body["approval_status"] == "pending"
+    assert body["status"] == "pending"
+    assert body["created_by"] == interviewer_id
+
+    with app.app_context():
+        job = db.session.get(Job, body["job_id"])
+        assert job is not None
+        assert job.title == "海外履约产品经理"
+        assert job.jd_text == "负责海外履约产品设计与跨区域协同。"
+        assert job.owner_hr_id == hr_id
