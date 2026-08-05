@@ -5,12 +5,14 @@ const roleCases: Array<{
   role: TestRole;
   home: string;
   expectedNavigation: string;
+  corePath: string;
+  coreHeading: string;
 }> = [
-  { role: 'recruiter', home: '/dashboard', expectedNavigation: '简历库' },
-  { role: 'manager', home: '/dashboard', expectedNavigation: '需求审批' },
-  { role: 'interviewer', home: '/interviewer/dashboard', expectedNavigation: '我的面试' },
-  { role: 'director', home: '/director/cockpit', expectedNavigation: '管理驾驶舱' },
-  { role: 'admin', home: '/dashboard', expectedNavigation: '系统设置' },
+  { role: 'recruiter', home: '/dashboard', expectedNavigation: '简历库', corePath: '/candidates', coreHeading: '简历库' },
+  { role: 'manager', home: '/dashboard', expectedNavigation: '需求审批', corePath: '/jobs', coreHeading: '招聘需求' },
+  { role: 'interviewer', home: '/interviewer/dashboard', expectedNavigation: '我的面试', corePath: '/interviewer/interviews', coreHeading: '我的面试' },
+  { role: 'director', home: '/director/cockpit', expectedNavigation: '管理驾驶舱', corePath: '/director/cockpit', coreHeading: '管理驾驶舱' },
+  { role: 'admin', home: '/dashboard', expectedNavigation: '系统设置', corePath: '/settings', coreHeading: '系统设置' },
 ];
 
 for (const roleCase of roleCases) {
@@ -19,6 +21,11 @@ for (const roleCase of roleCases) {
     await page.goto(roleCase.home);
     await expect(page).toHaveURL(new RegExp(`${roleCase.home.replace('/', '\\/')}(?:\\?|$)`));
     await expect(page.getByText(roleCase.expectedNavigation, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('页面加载失败', { exact: true })).toHaveCount(0);
+
+    await page.goto(roleCase.corePath);
+    await expect(page).toHaveURL(new RegExp(`${roleCase.corePath.replace('/', '\\/')}(?:\\?|$)`));
+    await expect(page.getByRole('heading', { name: roleCase.coreHeading }).first()).toBeAttached();
     await expect(page.getByText('页面加载失败', { exact: true })).toHaveCount(0);
   });
 }
