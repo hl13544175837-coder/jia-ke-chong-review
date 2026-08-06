@@ -47,6 +47,11 @@ class Config:
     AI_RECRUITMENT_COMPLIANCE_ACK = os.environ.get("AI_RECRUITMENT_COMPLIANCE_ACK", "false").lower() == "true"
     CANDIDATE_PRIVACY_NOTICE_URL = os.environ.get("CANDIDATE_PRIVACY_NOTICE_URL", "")
     AI_HUMAN_REVIEW_REQUIRED = os.environ.get("AI_HUMAN_REVIEW_REQUIRED", "true").lower() == "true"
+    # 外部搜索是独立的数据出网通道，必须显式开启。
+    AGENT_WEB_SEARCH_ENABLED = os.environ.get(
+        "AGENT_WEB_SEARCH_ENABLED",
+        "false",
+    ).lower() == "true"
 
     # JWT
     JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-in-prod")

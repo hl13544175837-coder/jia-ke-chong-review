@@ -19,6 +19,8 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypedDict
 
+from flask import current_app
+
 # --- 复用 base_agent 的 LLMClient（DeepSeek）-----------------------------------
 BASE_AGENT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "base_agent"
 if str(BASE_AGENT_DIR) not in sys.path:
@@ -295,6 +297,27 @@ _CRED_PATTERNS = [
     re.compile(r"(?im)^\s*(?:api[_ ]?key|username|password|console)\s*[:=].*$"),
 ]
 
+_SEARCH_PII_PATTERNS = (
+    re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}"),
+    re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)"),
+    re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)"),
+    re.compile(r"\b(?:token|jwt|cookie|password|secret)\s*[:=]", re.I),
+)
+_RECRUITING_PRIVATE_MARKERS = (
+    "候选人",
+    "简历原文",
+    "面试评价",
+    "身份证",
+    "手机号",
+    "私人邮箱",
+)
+
+
+def _web_search_is_sensitive(query: str) -> bool:
+    return any(pattern.search(query) for pattern in _SEARCH_PII_PATTERNS) or any(
+        marker in query for marker in _RECRUITING_PRIVATE_MARKERS
+    )
+
 
 def _sanitize_search_text(text: str) -> str:
     """Redact credential-looking content before search output reaches AI/UI."""
@@ -325,11 +348,14 @@ def _tool_web_search(query: str = "", max_results: int = 5, **_) -> Dict[str, An
     """
     import os
     import subprocess
-    import shlex
 
     query = (query or "").strip()
     if not query:
         return {"error": "搜索关键词不能为空"}
+    if not current_app.config.get("AGENT_WEB_SEARCH_ENABLED", False):
+        return {"error": "联网搜索未启用"}
+    if _web_search_is_sensitive(query):
+        return {"error": "搜索内容包含招聘隐私信息，已阻止发送到外部服务"}
     try:
         max_results = max(1, min(int(max_results or 5), 10))
     except (TypeError, ValueError):
