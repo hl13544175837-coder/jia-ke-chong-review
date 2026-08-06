@@ -200,6 +200,7 @@ def _register_idempotency(app):
         # so request-scoped replay state must still be reset explicitly.
         g.idempotency_context = None
         g.idempotency_replayed = False
+        g.idempotency_reserved = False
         if request.method not in write_methods:
             return None
         key = (request.headers.get("Idempotency-Key") or "").strip()
@@ -227,54 +228,95 @@ def _register_idempotency(app):
             "body_hash": body_hash,
         }
 
+        from sqlalchemy.exc import IntegrityError
         from .models import IdempotencyRecord
 
-        record = IdempotencyRecord.query.filter_by(scope_key=scope_key).first()
-        if record is None:
-            return None
-        if record.body_hash != body_hash:
-            return jsonify({
-                "error": "Idempotency-Key 已被同一路径的不同请求体使用，请换一个 key",
-            }), 409
+        def replay_or_reject(record):
+            if record.body_hash != body_hash:
+                return jsonify({
+                    "error": "Idempotency-Key 已被同一路径的不同请求体使用，请换一个 key",
+                }), 409
+            if record.status_code == 102:
+                return jsonify({
+                    "error": "相同请求正在处理中",
+                    "code": "idempotency_in_progress",
+                }), 409
 
-        response = jsonify(record.response_json)
-        response.status_code = record.status_code
-        response.headers["X-Idempotent-Replay"] = "true"
-        g.idempotency_replayed = True
-        return response
+            response = jsonify(record.response_json)
+            response.status_code = record.status_code
+            response.headers["X-Idempotent-Replay"] = "true"
+            g.idempotency_replayed = True
+            return response
+
+        record = IdempotencyRecord.query.filter_by(scope_key=scope_key).first()
+        if record is not None:
+            return replay_or_reject(record)
+
+        reservation = IdempotencyRecord(
+            scope_key=g.idempotency_context["scope_key"],
+            idempotency_key=g.idempotency_context["idempotency_key"],
+            actor_scope=g.idempotency_context["actor_scope"],
+            method=g.idempotency_context["method"],
+            path=g.idempotency_context["path"],
+            body_hash=g.idempotency_context["body_hash"],
+            status_code=102,
+            response_json={"status": "processing"},
+        )
+        try:
+            db.session.add(reservation)
+            db.session.commit()
+            g.idempotency_reserved = True
+            return None
+        except IntegrityError:
+            db.session.rollback()
+            winner = IdempotencyRecord.query.filter_by(
+                scope_key=scope_key,
+            ).first()
+            if winner is not None:
+                return replay_or_reject(winner)
+            return jsonify({
+                "error": "相同请求正在处理中",
+                "code": "idempotency_in_progress",
+            }), 409
 
     @app.after_request
     def remember_idempotent_write(response):
         context = getattr(g, "idempotency_context", None)
         if not context or getattr(g, "idempotency_replayed", False):
             return response
-        if response.status_code < 200 or response.status_code >= 300:
-            return response
-        if not response.is_json:
+        if not getattr(g, "idempotency_reserved", False):
             return response
 
-        payload = response.get_json(silent=True)
-        if payload is None:
-            return response
-
-        from sqlalchemy.exc import IntegrityError
         from .models import IdempotencyRecord
 
+        successful_json = (
+            200 <= response.status_code < 300
+            and response.is_json
+        )
+        payload = response.get_json(silent=True) if successful_json else None
         try:
-            if IdempotencyRecord.query.filter_by(scope_key=context["scope_key"]).first() is None:
-                db.session.add(IdempotencyRecord(
+            if payload is None:
+                db.session.rollback()
+                pending = IdempotencyRecord.query.filter_by(
                     scope_key=context["scope_key"],
-                    idempotency_key=context["idempotency_key"],
-                    actor_scope=context["actor_scope"],
-                    method=context["method"],
-                    path=context["path"],
-                    body_hash=context["body_hash"],
-                    status_code=response.status_code,
-                    response_json=payload,
-                ))
+                    status_code=102,
+                ).first()
+                if pending is not None:
+                    db.session.delete(pending)
+                    db.session.commit()
+                return response
+
+            pending = IdempotencyRecord.query.filter_by(
+                scope_key=context["scope_key"],
+                status_code=102,
+            ).first()
+            if pending is not None:
+                pending.status_code = response.status_code
+                pending.response_json = payload
                 db.session.commit()
-        except IntegrityError:
+        except Exception:
             db.session.rollback()
+            app.logger.exception("更新幂等请求记录失败")
         return response
 
 

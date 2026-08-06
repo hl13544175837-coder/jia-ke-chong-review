@@ -1,5 +1,53 @@
+import hashlib
+
+
 def _auth(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_pending_idempotency_record_blocks_duplicate(
+    client,
+    make_user,
+    app,
+):
+    user_id, token = make_user("idem-pending@example.com", role="admin")
+    key = "create-user:pending"
+    body = (
+        b'{"email":"pending@example.com","name":"Pending",'
+        b'"password":"pw123456","role":"recruiter"}'
+    )
+    scope_key = hashlib.sha256(
+        f"user:{user_id}:POST:/api/admin/users:{key}".encode()
+    ).hexdigest()
+    with app.app_context():
+        from app import db
+        from app.models import IdempotencyRecord
+
+        db.session.add(
+            IdempotencyRecord(
+                scope_key=scope_key,
+                idempotency_key=key,
+                actor_scope=f"user:{user_id}",
+                method="POST",
+                path="/api/admin/users",
+                body_hash=hashlib.sha256(body).hexdigest(),
+                status_code=102,
+                response_json={"status": "processing"},
+            )
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/api/admin/users",
+        data=body,
+        content_type="application/json",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": key,
+        },
+    )
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "idempotency_in_progress"
 
 
 def test_json_write_replay_with_same_idempotency_key_returns_first_result(client, make_user, app):
