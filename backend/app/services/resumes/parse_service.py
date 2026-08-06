@@ -1,3 +1,5 @@
+import logging
+
 from flask import current_app, g
 
 from ... import db
@@ -6,12 +8,15 @@ from ...middleware.events import record_event
 from ...models import Candidate
 from ..candidate_library_service import find_existing_candidate_by_identity
 from ..pipeline_service import PipelineServiceError, move_candidate
+from ..public_errors import PUBLIC_RESUME_PARSE_ERROR
 from .file_service import _file_sha256, _remove_uploaded_file
 
 
 RESUME_AI_DISABLED_MESSAGE = (
     "当前测试环境未启用模型解析，原始简历已保留，请手动补录基础信息。"
 )
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -211,6 +216,7 @@ def _process_resume(
             upload_batch_id=upload_batch_id,
         )
     except Exception as e:
+        logger.exception("简历 %s 同步解析失败", display_name)
         db.session.rollback()
         candidate = svc.create_failed_candidate(
             fpath,
@@ -227,14 +233,14 @@ def _process_resume(
             entity_id=candidate.id,
             entity_type="candidate",
             demand_id=target_demand_id,
-            payload={"file": display_name, "reason": str(e)[:500]},
+            payload={"file": display_name, "reason": "resume_parse_failed"},
         )
         results.append({
             "file": display_name,
             "status": "needs_confirmation",
             "candidate_id": candidate.id,
             "reason": "AI 未能识别该简历，请确认原文件或重新上传",
-            "parse_error": str(e)[:500],
+            "parse_error": PUBLIC_RESUME_PARSE_ERROR,
         })
         return
 

@@ -164,9 +164,16 @@ def _run(args: List[str], timeout: int = 60, want_json: bool = True,
         )
     except subprocess.TimeoutExpired:
         return {"ok": False, "data": None, "error": {"code": "timeout", "message": f"boss 命令执行超时（{timeout}s）"}}
-    except Exception as e:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         logger.exception("boss 命令执行失败: %s", cmd)
-        return {"ok": False, "data": None, "error": {"code": "exec_error", "message": f"执行失败：{e}"}}
+        return {
+            "ok": False,
+            "data": None,
+            "error": {
+                "code": "exec_error",
+                "message": "BOSS 服务暂时不可用，请稍后重试",
+            },
+        }
 
     out = (proc.stdout or "").strip()
     err = (proc.stderr or "").strip()
@@ -530,8 +537,15 @@ class BossService:
             return {"ok": False, "error": {"code": "not_found", "message": "账号不存在或无权操作"}}
         try:
             cookies = _json.loads(decrypt(acct.cookies_encrypted))
-        except Exception as e:
-            return {"ok": False, "error": {"code": "decrypt_error", "message": f"解密 cookies 失败：{e}"}}
+        except Exception:
+            logger.exception("BOSS 账号 %s 的 cookies 解密失败", account_id)
+            return {
+                "ok": False,
+                "error": {
+                    "code": "decrypt_error",
+                    "message": "账号凭据读取失败，请重新导入账号",
+                },
+            }
         cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
         result = _run(["status"], timeout=30, cookies_override=cookie_header)
         authenticated = bool(result.get("ok") and result.get("data", {}).get("authenticated"))

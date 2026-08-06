@@ -59,6 +59,7 @@ from .demand_context_service import (  # noqa: E402
     visible_demand_query,
 )
 from .pipeline_service import normalize_pipeline_stage, pipeline_counts  # noqa: E402
+from .public_errors import PUBLIC_AI_TOOL_ERROR  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -382,7 +383,8 @@ def _tool_web_search(query: str = "", max_results: int = 5, **_) -> Dict[str, An
             msg = err or "无输出"
             if "Connection" in msg or "Timeout" in msg or "timed out" in msg:
                 return {"error": "联网搜索服务暂时不可达（网络问题），请稍后重试"}
-            return {"error": f"搜索失败：{_sanitize_search_text(msg)[:200]}"}
+            logger.warning("联网搜索没有返回可用结果")
+            return {"error": PUBLIC_AI_TOOL_ERROR}
         if _is_search_quota_or_credential_leak(out):
             return {"error": "联网搜索服务当前不可用（额度已用尽或需重新配置），请稍后重试或改用系统内数据回答"}
         # CLI 可能返回 JSON 或 Markdown；尝试 JSON，失败则原样返回文本
@@ -393,9 +395,9 @@ def _tool_web_search(query: str = "", max_results: int = 5, **_) -> Dict[str, An
             return {"query": query, "results_text": _sanitize_search_text(out)[:4000]}
     except subprocess.TimeoutExpired:
         return {"error": "联网搜索超时（45s），请稍后重试"}
-    except Exception as e:
+    except Exception:
         logger.exception("web_search 失败")
-        return {"error": f"联网搜索执行失败：{e}"}
+        return {"error": PUBLIC_AI_TOOL_ERROR}
 
 
 # =============================================================================
@@ -616,8 +618,8 @@ def execute_write_tool(
         wrapped = {"ok": True, "result": result}
         _record_agent_write_event(user_id, name, args or {}, wrapped, commit=commit)
         return wrapped
-    except Exception as e:
-        logger.error("写工具 %s 执行失败", name)
+    except Exception:
+        logger.exception("写工具 %s 执行失败", name)
         db.session.rollback()
         if not commit:
             raise
@@ -792,9 +794,9 @@ class RecruitingAgent:
                 thinking=self.decision_route["thinking"],
             )
             decision = _safe_parse_json(raw)
-        except Exception as e:
+        except Exception:
             logger.exception("决策节点 LLM 调用失败")
-            decision = {"action": "final", "answer": f"决策失败：{e}"}
+            decision = {"action": "final", "answer": PUBLIC_AI_TOOL_ERROR}
 
         events = state.setdefault("_events", [])
         thought = decision.get("thought")
@@ -848,9 +850,9 @@ class RecruitingAgent:
                     result = tool_def["execute"](**clean_args)
                 else:
                     result = tool_def["execute"]()
-            except Exception as e:
+            except Exception:
                 logger.exception("工具 %s 执行失败", tool_name)
-                result = {"error": f"工具执行失败：{e}"}
+                result = {"error": PUBLIC_AI_TOOL_ERROR}
 
         events.append({"type": "tool_result", "tool": tool_name, "result": result})
         state.setdefault("tool_results", []).append({
@@ -915,9 +917,9 @@ class RecruitingAgent:
                     full.append(piece)
                     yield {"type": "token", "text": piece}
                 # reasoning 事件不作为答案展示，此处略过
-        except Exception as e:
+        except Exception:
             logger.exception("最终答案流式生成失败")
-            msg = f"（生成回答时出错：{e}）"
+            msg = PUBLIC_AI_TOOL_ERROR
             full.append(msg)
             yield {"type": "token", "text": msg}
         return "".join(full)
@@ -962,9 +964,9 @@ class RecruitingAgent:
                 while emitted < len(events):
                     yield events[emitted]
                     emitted += 1
-        except Exception as e:
+        except Exception:
             logger.exception("LangGraph 执行失败")
-            yield {"type": "done", "answer": f"执行出错：{e}"}
+            yield {"type": "done", "answer": PUBLIC_AI_TOOL_ERROR}
             return
 
         # 最终答案：用 chat_stream 流式产出 token（_stream_final_answer 是子生成器）

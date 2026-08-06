@@ -216,6 +216,10 @@ def register_resume_history_routes(bp):
         try:
             parse_result = service.parse_file(new_path)
         except Exception as error:
+            current_app.logger.exception(
+                "候选人 %s 的替换简历解析失败",
+                candidate.id,
+            )
             archived = _archive_current_resume(candidate, reason="manual_replace")
             candidate = service.mark_replacement_parse_failed(
                 candidate,
@@ -230,7 +234,7 @@ def register_resume_history_routes(bp):
                 entity_type="candidate",
                 payload={
                     "file": file_storage.filename,
-                    "reason": str(error)[:500],
+                    "reason": "resume_parse_failed",
                     "archived_version_id": archived.id,
                 },
             )

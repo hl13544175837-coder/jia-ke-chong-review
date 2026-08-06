@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 from flask import Blueprint, request, jsonify, g
@@ -27,6 +28,7 @@ if str(BASE_AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_AGENT_DIR))
 
 bp = Blueprint("jobs", __name__)
+logger = logging.getLogger(__name__)
 
 # JD 澄清追问：找出 JD 中缺失/模糊、会影响匹配与出题的关键信息
 JD_CLARIFY_SYS = (
@@ -100,9 +102,13 @@ def clarify_job():
                     "placeholder": str(q.get("placeholder", ""))[:120],
                 })
         return jsonify({"questions": clean})
-    except Exception as e:
+    except Exception:
         # 澄清失败不应阻塞流程：返回空追问，前端可直接保存
-        return jsonify({"questions": [], "warning": f"澄清生成失败：{e}"}), 200
+        logger.exception("JD 澄清生成失败")
+        return jsonify({
+            "questions": [],
+            "warning": "澄清生成暂时不可用，可直接保存职位信息",
+        }), 200
 
 
 @bp.post("/jobs")

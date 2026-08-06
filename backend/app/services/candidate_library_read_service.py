@@ -24,6 +24,7 @@ from ..time_utils import utc_now
 from .candidate_library_service import education_summary, latest_experience, resume_info
 from .demand_context_service import visible_demand_query
 from .pipeline_service import normalize_pipeline_stage
+from .public_errors import public_resume_parse_error as mask_parse_error
 
 
 TERMINAL_PIPELINE_STATES = {"rejected", "onboarded", "transferred"}
@@ -179,12 +180,7 @@ def demand_summary(demand):
 
 
 def public_parse_error(candidate):
-    error = str(candidate.parse_error or "")
-    if candidate.parse_status in {"pending", "processing"} and error.startswith(
-        ("queued:", "worker:")
-    ):
-        return None
-    return candidate.parse_error
+    return mask_parse_error(candidate.parse_status, candidate.parse_error)
 
 
 def _candidate_library_item(
@@ -598,4 +594,3 @@ def decision_summary(timeline, ai_interviews, feedback, dispositions):
         "risks": risks,
         "recommendation": recommendation,
     }
-

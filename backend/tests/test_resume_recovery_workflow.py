@@ -306,7 +306,7 @@ def test_replacement_parse_failure_keeps_new_original_as_confirmation_item(
 
         candidate = app.extensions["sqlalchemy"].session.get(Candidate, candidate_id)
         assert Path(candidate.raw_file_path).read_bytes() == b"%PDF-1.4 correct but ai failed"
-        assert "图像模型暂时不可用" in candidate.parse_error
+        assert candidate.parse_error == "简历解析失败，请重试或人工补录"
         archived = CandidateResumeVersion.query.filter_by(candidate_id=candidate_id).one()
         assert archived.raw_file_path == str(old_file)
         assert archived.created_by == owner_id

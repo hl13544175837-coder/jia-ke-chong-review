@@ -219,10 +219,19 @@ def _process_zip(
                             dst.write(chunk)
                         extracted_total += written
                 except Exception as ex:
+                    if isinstance(ex, ValueError) and str(ex) == "解压大小超过限制":
+                        reason = "解压失败：解压大小超过限制"
+                    else:
+                        current_app.logger.exception(
+                            "压缩包 %s 内文件 %s 解压失败",
+                            zip_display_name,
+                            base,
+                        )
+                        reason = "解压失败，请检查压缩包内容"
                     results.append({
                         "file": f"{zip_display_name} → {base}",
                         "status": "error",
-                        "reason": f"解压失败：{ex}",
+                        "reason": reason,
                     })
                     continue
 
@@ -268,8 +277,13 @@ def _process_zip(
 
     except zipfile.BadZipFile:
         results.append({"file": zip_display_name, "status": "error", "reason": "压缩包已损坏或不是有效的 ZIP 文件"})
-    except Exception as e:
-        results.append({"file": zip_display_name, "status": "error", "reason": f"压缩包处理失败：{e}"})
+    except Exception:
+        current_app.logger.exception("压缩包 %s 处理失败", zip_display_name)
+        results.append({
+            "file": zip_display_name,
+            "status": "error",
+            "reason": "压缩包处理失败，请检查文件后重试",
+        })
 
 
 def handle_resume_upload():

@@ -1,3 +1,4 @@
+import logging
 import os
 import socket
 import sys
@@ -13,6 +14,10 @@ if str(BASE_AGENT_DIR) not in sys.path:
 from resume_parser import ResumeParser
 from .. import db
 from ..models import Candidate, CandidateTag, User
+from .public_errors import stored_resume_parse_error
+
+
+logger = logging.getLogger(__name__)
 
 
 def resume_parse_node_id() -> str:
@@ -102,7 +107,7 @@ class ResumeBatchService:
             resume_json={},
             raw_file_path=file_path,
             parse_status="failed",
-            parse_error=str(error)[:500],
+            parse_error=stored_resume_parse_error(error),
         )
         db.session.add(candidate)
         db.session.commit()
@@ -127,11 +132,12 @@ class ResumeBatchService:
             db.session.commit()
             return candidate
         except Exception as exc:
+            logger.exception("候选人 %s 重新解析失败", candidate_id)
             db.session.rollback()
             failed_candidate = db.session.get(Candidate, candidate_id)
             if failed_candidate:
                 failed_candidate.parse_status = "failed"
-                failed_candidate.parse_error = str(exc)[:500]
+                failed_candidate.parse_error = stored_resume_parse_error(exc)
                 db.session.commit()
             raise
 
@@ -175,7 +181,7 @@ class ResumeBatchService:
         candidate.phone_masked = ""
         candidate.resume_json = {}
         candidate.parse_status = "failed"
-        candidate.parse_error = str(error)[:500]
+        candidate.parse_error = stored_resume_parse_error(error)
         self._replace_candidate_tags(candidate, [])
         db.session.commit()
         return candidate

@@ -7,6 +7,7 @@ from ... import db
 from ..access_policy import can_access_candidate, same_org
 from ...models import Candidate, CandidateResumeVersion
 from ...source_channels import normalize_resume_source_channel
+from ..public_errors import public_resume_parse_error
 from .file_service import _original_resume_payload
 
 
@@ -35,12 +36,10 @@ def _resume_detail_payload(candidate):
 
 
 def _public_parse_error(candidate):
-    error = str(candidate.parse_error or "")
-    if candidate.parse_status in {"pending", "processing"} and error.startswith(
-        ("queued:", "worker:")
-    ):
-        return None
-    return candidate.parse_error
+    return public_resume_parse_error(
+        candidate.parse_status,
+        candidate.parse_error,
+    )
 
 
 def _actionable_parse_failure_message(error):

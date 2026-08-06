@@ -159,8 +159,8 @@ def process_next_pending(app) -> bool:
                     entity_id=failed.id,
                     entity_type="candidate",
                     result="failure",
-                    failure_reason=str(error)[:240],
-                    payload={"reason": str(error)[:500]},
+                    failure_reason="resume_parse_failed",
+                    payload={"error_type": type(error).__name__},
                 )
             _logger.exception("后台简历解析失败: candidate_id=%s", candidate_id)
         return True

@@ -185,7 +185,7 @@ def test_failed_resume_upload_keeps_retryable_candidate(client, make_user, app, 
     candidate_id = body["results"][0]["candidate_id"]
     detail = client.get(f"/api/resume/{candidate_id}", headers=_auth(token)).get_json()
     assert detail["parse_status"] == "failed"
-    assert "PDF 内容无法解析" in detail["parse_error"]
+    assert detail["parse_error"] == "简历解析失败，请重试或人工补录"
 
     library = client.get("/api/candidates", headers=_auth(token)).get_json()
     item = next(c for c in library if c["id"] == candidate_id)
