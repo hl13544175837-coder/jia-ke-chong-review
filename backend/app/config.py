@@ -85,6 +85,9 @@ class Config:
     # 试点上线安全头和轻量限流。Nginx 层也应配置限流，这里是应用侧兜底。
     SECURITY_HEADERS_ENABLED = os.environ.get("SECURITY_HEADERS_ENABLED", "true").lower() == "true"
     RATE_LIMIT_ENABLED = os.environ.get("RATE_LIMIT_ENABLED", "true").lower() == "true"
+    # 只有明确配置了受信反向代理层数，才读取 X-Forwarded-For。
+    TRUST_PROXY_HOPS = int(os.environ.get("TRUST_PROXY_HOPS", "0"))
+    RATE_LIMIT_BUCKET_MAX = int(os.environ.get("RATE_LIMIT_BUCKET_MAX", "10000"))
     RATE_LIMITS = {
         "auth.login": {"limit": int(os.environ.get("RATE_LIMIT_LOGIN", "10")), "window_seconds": 60},
         "agent.chat": {"limit": int(os.environ.get("RATE_LIMIT_AGENT_CHAT", "20")), "window_seconds": 60},
