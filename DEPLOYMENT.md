@@ -267,17 +267,17 @@ CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 
 
 ```env
 AUTH_GATEWAY_USER_ROLE=recruiter
-AUTH_GATEWAY_ROLE_MAP=EMP_HR:recruiter,EMP_INTERVIEWER_1:interviewer,EMP_INTERVIEWER_2:interviewer,EMP_MANAGER:manager,EMP_DIRECTOR:hr_director
+AUTH_GATEWAY_ROLE_MAP=100001:recruiter,100000:interviewer,100002:interviewer
 RESUME_AI_ENABLED=false
 ```
 
-构建前端时把相同映射作为 `VITE_GATEWAY_ROLE_MAP` 传给 Makefile。未映射工号按招聘专员处理，不得回退为管理员。本轮模型简历解析关闭：文件正常入库，候选人详情自动提示并展开手动补录；招聘需求、筛选、面试、改约、反馈、Offer、人才池和入职流程仍需完整验收。Test 网关必须覆盖或清洗客户端自带的 `X-Emp-Code`，只把已认证用户的真实工号传给后端。
+构建前端时把相同映射作为 `VITE_GATEWAY_ROLE_MAP` 传给 Makefile。当前 RC/SIT 镜像在 Makefile 中使用上述三账号映射作为可审计的测试默认值，同时注入前端和后端；GA 镜像会强制清空该映射，不携带测试工号。未映射工号按招聘专员处理，不得回退为管理员。本轮模型简历解析关闭：文件正常入库，候选人详情自动提示并展开手动补录；招聘需求、筛选、面试、改约、反馈、Offer、人才池和入职流程仍需完整验收。Test 网关必须覆盖或清洗客户端自带的 `X-Emp-Code`，只把已认证用户的真实工号传给后端。
 
-PGS 菜单与工号角色映射是同一条权限链上的两层：PGS 菜单标记用于显式确认前端工作台，后端工号映射决定最终角色、接口和数据范围。PGS 尚未补齐工作台标记时，前端采用 `/api/auth/me` 返回的后端真实角色，不再让构建期默认 `recruiter` 阻断管理员等账号；PGS 一旦返回工作台标记，仍必须与后端角色一致。首轮李四（工号 `100002`）面试官验收使用：
+PGS 菜单与工号角色映射是同一条权限链上的两层：PGS 菜单标记用于显式确认前端工作台，后端工号映射决定最终角色、接口和数据范围。PGS 尚未补齐工作台标记时，前端采用 `/api/auth/me` 返回的后端真实角色，不再让构建期默认 `recruiter` 阻断管理员等账号；PGS 一旦返回工作台标记，仍必须与后端角色一致。当前三账号验收使用：
 
 ```env
-AUTH_GATEWAY_ROLE_MAP=100002:interviewer
-VITE_GATEWAY_ROLE_MAP=100002:interviewer
+AUTH_GATEWAY_ROLE_MAP=100001:recruiter,100000:interviewer,100002:interviewer
+VITE_GATEWAY_ROLE_MAP=100001:recruiter,100000:interviewer,100002:interviewer
 ```
 
 PGS “智聘 → 工作台”下为五类角色分别配置唯一标记：`dashboard_admin`、`dashboard_manager`、`dashboard_recruiter`、`dashboard_interviewer`、`dashboard_hr_director`。管理员、主管和招聘专员进入 `/dashboard`，面试官进入 `/interviewer/dashboard`，人力资源总监进入 `/director/cockpit`。普通业务菜单继续使用现有 `demands`、`candidates`、`interviews`、`pipeline`、`bi`、`settings` 编码按需授权。同一账号不得同时获得两个角色工作台标记；前端会拒绝静默选择。PGS 菜单加载失败时不再默认显示全部入口，而是显示重试和退出登录。

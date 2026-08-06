@@ -59,6 +59,30 @@ def test_sit_server_build_is_explicitly_unrestricted_but_ga_is_strict():
         assert f"--build-arg {build_arg}={ga_value}" in ga.stdout
 
 
+def test_rc_images_receive_three_account_role_map_but_ga_does_not():
+    role_map = "100001:recruiter,100000:interviewer,100002:interviewer"
+    rc = subprocess.run(
+        ["make", "-n", "build", "PKG_TAG=RC", "PKG_VERSION=role-map-test"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    ga = subprocess.run(
+        ["make", "-n", "build", "PKG_TAG=GA", "PKG_VERSION=role-map-test"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert rc.returncode == 0
+    assert ga.returncode == 0
+    assert rc.stdout.count(role_map) == 2
+    assert "--build-arg AUTH_GATEWAY_USER_ROLE=recruiter" in rc.stdout
+    assert role_map not in ga.stdout
+
+
 def test_make_rejects_unknown_package_tags():
     for tag in ["QA", "production", "RC2"]:
         result = subprocess.run(
