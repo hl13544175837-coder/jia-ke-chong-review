@@ -1,9 +1,10 @@
 from datetime import datetime
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
+from ..middleware.rate_limit import rate_limit
 from ..services.interview_service import PreScreenService
 from ..services.interview_workflow_service import (
     FeedbackValidationError,
@@ -110,6 +111,45 @@ FEEDBACK_REASON_TAGS = {
     "面试官暂未形成结论",
     "其他",
 }
+
+
+def _validated_qa_pairs(value):
+    max_pairs = int(current_app.config.get("INTERVIEW_QA_MAX_PAIRS", 20))
+    max_question = int(
+        current_app.config.get("INTERVIEW_QA_MAX_QUESTION_LENGTH", 1000)
+    )
+    max_answer = int(
+        current_app.config.get("INTERVIEW_QA_MAX_ANSWER_LENGTH", 5000)
+    )
+    max_total = int(
+        current_app.config.get("INTERVIEW_QA_MAX_TOTAL_LENGTH", 30000)
+    )
+    if not isinstance(value, list) or not value or len(value) > max_pairs:
+        raise ValueError("invalid_qa_pairs")
+
+    result = []
+    total = 0
+    for item in value:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("q"), str)
+            or not isinstance(item.get("a"), str)
+        ):
+            raise ValueError("invalid_qa_pairs")
+        question = item["q"].strip()
+        answer = item["a"].strip()
+        if (
+            not question
+            or not answer
+            or len(question) > max_question
+            or len(answer) > max_answer
+        ):
+            raise ValueError("invalid_qa_pairs")
+        total += len(question) + len(answer)
+        if total > max_total:
+            raise ValueError("invalid_qa_pairs")
+        result.append((question, answer))
+    return result
 
 
 def _parse_datetime(value):
@@ -499,14 +539,21 @@ def start_interview():
 
 @bp.post("/interview/submit")
 @require_auth
+@rate_limit("interview.submit")
 def submit_interview():
     """候选人提交答案，AI 评估并生成报告"""
     data = request.get_json() or {}
     candidate_id = data.get("candidate_id")
-    qa_pairs = data.get("qa_pairs", [])  # [{"q": "...", "a": "..."}, ...]
-    if not candidate_id or not (data.get("demand_id") or data.get("job_id")) or not qa_pairs:
+    if not candidate_id or not (data.get("demand_id") or data.get("job_id")):
         return jsonify({"error": "candidate_id, demand_id, qa_pairs required",
                         "code": "demand_id_required"}), 400
+    try:
+        pairs = _validated_qa_pairs(data.get("qa_pairs"))
+    except ValueError:
+        return jsonify({
+            "error": "面试问答格式或长度不符合要求",
+            "code": "invalid_qa_pairs",
+        }), 400
     if g.role not in ("recruiter", "manager", "admin"):
         return jsonify({"error": "Forbidden"}), 403
 
@@ -528,7 +575,6 @@ def submit_interview():
     jd_text = context.demand.jd_text_snapshot or context.job.jd_text
     db.session.rollback()
     svc = PreScreenService()
-    pairs = [(item["q"], item["a"]) for item in qa_pairs]
     report = svc.build_report(pairs, jd_text)
     try:
         context = resolve_interview_context(

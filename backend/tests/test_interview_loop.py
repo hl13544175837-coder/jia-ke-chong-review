@@ -1,3 +1,6 @@
+import pytest
+
+
 def _auth(t): return {"Authorization": f"Bearer {t}"}
 
 def _seed(app, owner_id=None):
@@ -48,6 +51,53 @@ def _assign(app, cid, jid, interviewer_id, round_name="interview_first"):
         db.session.add(assignment)
         db.session.commit()
         return assignment.id
+
+
+@pytest.mark.parametrize(
+    "qa_pairs",
+    ["bad", [{}], [{"q": 1, "a": "回答"}]],
+)
+def test_interview_submit_rejects_malformed_pairs(
+    client,
+    make_user,
+    app,
+    qa_pairs,
+):
+    owner_id, token = make_user(
+        "interview-input@example.com",
+        role="recruiter",
+    )
+    job_id, candidate_id = _seed(app, owner_id)
+    response = client.post(
+        "/api/interview/submit",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "candidate_id": candidate_id,
+            "job_id": job_id,
+            "qa_pairs": qa_pairs,
+        },
+    )
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "invalid_qa_pairs"
+
+
+def test_interview_submit_rejects_too_many_pairs(client, make_user, app):
+    owner_id, token = make_user(
+        "interview-input-many@example.com",
+        role="recruiter",
+    )
+    job_id, candidate_id = _seed(app, owner_id)
+    response = client.post(
+        "/api/interview/submit",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "candidate_id": candidate_id,
+            "job_id": job_id,
+            "qa_pairs": [{"q": "问题", "a": "回答"}] * 21,
+        },
+    )
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "invalid_qa_pairs"
 
 def test_interviewer_submits_feedback(client, make_user, app):
     interviewer_id, token = make_user("iv@x.com", role="interviewer")

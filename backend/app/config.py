@@ -97,7 +97,18 @@ class Config:
         "auth.login": {"limit": int(os.environ.get("RATE_LIMIT_LOGIN", "10")), "window_seconds": 60},
         "agent.chat": {"limit": int(os.environ.get("RATE_LIMIT_AGENT_CHAT", "20")), "window_seconds": 60},
         "resume.upload": {"limit": int(os.environ.get("RATE_LIMIT_RESUME_UPLOAD", "8")), "window_seconds": 60},
+        "interview.submit": {"limit": int(os.environ.get("RATE_LIMIT_INTERVIEW_SUBMIT", "10")), "window_seconds": 60},
     }
+    INTERVIEW_QA_MAX_PAIRS = int(os.environ.get("INTERVIEW_QA_MAX_PAIRS", "20"))
+    INTERVIEW_QA_MAX_QUESTION_LENGTH = int(
+        os.environ.get("INTERVIEW_QA_MAX_QUESTION_LENGTH", "1000")
+    )
+    INTERVIEW_QA_MAX_ANSWER_LENGTH = int(
+        os.environ.get("INTERVIEW_QA_MAX_ANSWER_LENGTH", "5000")
+    )
+    INTERVIEW_QA_MAX_TOTAL_LENGTH = int(
+        os.environ.get("INTERVIEW_QA_MAX_TOTAL_LENGTH", "30000")
+    )
 
     # 视为弱/默认的密钥，生产启动时拒绝
     WEAK_SECRETS = {
