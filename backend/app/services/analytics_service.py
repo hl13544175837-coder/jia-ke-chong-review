@@ -3,6 +3,8 @@
 import csv
 import io
 from collections import Counter, defaultdict
+
+from .csv_security import safe_csv_cell
 from datetime import date, datetime
 
 from ..models import Candidate, OfferRecord, RecruitmentDemand, UploadBatch, User
@@ -410,7 +412,10 @@ def analytics_csv(payload):
     writer.writerow(["需求编号", "岗位", "部门", "HC", "已入职", "流程中", "剩余HC"])
     for item in payload["demands"]:
         writer.writerow([
-            item["request_no"], item["title"], item["department"], item["headcount"],
+            safe_csv_cell(item["request_no"]),
+            safe_csv_cell(item["title"]),
+            safe_csv_cell(item["department"]),
+            item["headcount"],
             item["onboarded"], item["in_progress"], item["remaining"],
         ])
     return stream.getvalue()

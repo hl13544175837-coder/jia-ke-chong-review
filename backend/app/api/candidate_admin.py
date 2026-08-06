@@ -10,6 +10,7 @@ from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from ..models import Candidate, CandidateDemandFlow, User
 from ..services.candidate_library_read_service import export_count_for_actor
+from ..services.csv_security import safe_csv_cell
 from ..time_utils import utc_now
 from .access import can_access_candidate, same_org
 
@@ -98,12 +99,18 @@ def register_candidate_admin_routes(bp):
         ])
         writer.writerow([
             candidate.id,
-            candidate.name_masked or "",
-            candidate.email_masked or "",
-            candidate.phone_masked or "",
+            safe_csv_cell(candidate.name_masked or ""),
+            safe_csv_cell(candidate.email_masked or ""),
+            safe_csv_cell(candidate.phone_masked or ""),
             candidate.owner_hr_id or "",
-            candidate.created_at.isoformat() if candidate.created_at else "",
-            json.dumps(candidate.resume_json or {}, ensure_ascii=False),
+            safe_csv_cell(
+                candidate.created_at.isoformat()
+                if candidate.created_at
+                else ""
+            ),
+            safe_csv_cell(
+                json.dumps(candidate.resume_json or {}, ensure_ascii=False)
+            ),
         ])
 
         export_count_10m = export_count_for_actor(
