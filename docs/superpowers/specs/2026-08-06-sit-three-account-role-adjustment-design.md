@@ -6,9 +6,9 @@
 
 | 工号 | 技术角色 | 业务角色 |
 |---|---|---|
-| `1000001` | `recruiter` | 招聘专员 |
+| `100001` | `recruiter` | 招聘专员 |
 | `100000` | `interviewer` | 面试官 |
-| `1000002` | `interviewer` | 面试官 |
+| `100002` | `interviewer` | 面试官 |
 
 本轮只调整 Test/SIT 账号权限配置，不改业务代码、数据表结构或招聘流程。
 
@@ -25,14 +25,14 @@
 
 ```env
 AUTH_GATEWAY_USER_ROLE=recruiter
-AUTH_GATEWAY_ROLE_MAP=1000001:recruiter,100000:interviewer,1000002:interviewer
-VITE_GATEWAY_ROLE_MAP=1000001:recruiter,100000:interviewer,1000002:interviewer
+AUTH_GATEWAY_ROLE_MAP=100001:recruiter,100000:interviewer,100002:interviewer
+VITE_GATEWAY_ROLE_MAP=100001:recruiter,100000:interviewer,100002:interviewer
 ```
 
 PGS 工作台菜单必须与上述角色一致：
 
-- `1000001` 只授予 `dashboard_recruiter`。
-- `100000` 和 `1000002` 只授予 `dashboard_interviewer`。
+- `100001` 只授予 `dashboard_recruiter`。
+- `100000` 和 `100002` 只授予 `dashboard_interviewer`。
 - 三个账号都不得同时拥有两个角色工作台标记。
 
 前端映射是构建时配置，后端映射是运行时配置。因此变更后需要用同一批配置更新前后端 Test/SIT 环境，不允许只改一边。
@@ -40,8 +40,8 @@ PGS 工作台菜单必须与上述角色一致：
 ## 数据与权限
 
 - 两个面试官共用同一套面试官页面，但后端按登录账号和任务分配过滤数据。
-- `100000` 和 `1000002` 只能查看和处理分配给自己的业务筛选、面试和反馈。
-- `1000001` 保留招聘专员的需求、候选人、面试安排和流程推进权限。
+- `100000` 和 `100002` 只能查看和处理分配给自己的业务筛选、面试和反馈。
+- `100001` 保留招聘专员的需求、候选人、面试安排和流程推进权限。
 - 配置变更不删除现有测试数据；旧任务是否可见仍由当前的任务分配决定。
 
 ## 异常处理
@@ -52,8 +52,8 @@ PGS 工作台菜单必须与上述角色一致：
 
 ## 验收
 
-1. `1000001` 登录后 `/api/auth/me` 返回 `recruiter`，进入招聘专员工作台。
-2. `100000` 和 `1000002` 登录后 `/api/auth/me` 均返回 `interviewer`，进入面试官工作台。
+1. `100001` 登录后 `/api/auth/me` 返回 `recruiter`，进入招聘专员工作台。
+2. `100000` 和 `100002` 登录后 `/api/auth/me` 均返回 `interviewer`，进入面试官工作台。
 3. 招聘专员能分别给两名面试官分配不同任务。
 4. 两名面试官只看到自己的任务，不能操作对方的反馈。
 5. 前端页面角色、PGS 工作台标记和后端权限三者一致。

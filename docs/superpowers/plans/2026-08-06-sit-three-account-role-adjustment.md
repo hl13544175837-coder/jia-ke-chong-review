@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 将 Test/SIT 的 `1000001` 配置为招聘专员，将 `100000` 和 `1000002` 配置为两个相互隔离的面试官账号。
+**Goal:** 将 Test/SIT 的 `100001` 配置为招聘专员，将 `100000` 和 `100002` 配置为两个相互隔离的面试官账号。
 
 **Architecture:** 继续使用现有的“PGS 工作台菜单 + 前后端工号角色映射 + 后端 RBAC”权限链。同一份工号映射同时注入前端构建和后端运行环境，不改业务代码或数据表。
 
@@ -49,13 +49,13 @@ Set the three target entries to:
 
 ```env
 AUTH_GATEWAY_USER_ROLE=recruiter
-AUTH_GATEWAY_ROLE_MAP=1000001:recruiter,100000:interviewer,1000002:interviewer
-VITE_GATEWAY_ROLE_MAP=1000001:recruiter,100000:interviewer,1000002:interviewer
+AUTH_GATEWAY_ROLE_MAP=100001:recruiter,100000:interviewer,100002:interviewer
+VITE_GATEWAY_ROLE_MAP=100001:recruiter,100000:interviewer,100002:interviewer
 ```
 
 If the current maps contain other valid employees, merge these three entries into the existing comma-separated list instead of replacing unrelated entries. Each target employee code must appear exactly once.
 
-Expected: 预览值中 `1000001` 仅对应 `recruiter`，`100000` 和 `1000002` 仅对应 `interviewer`，其他工号映射不变。
+Expected: 预览值中 `100001` 仅对应 `recruiter`，`100000` 和 `100002` 仅对应 `interviewer`，其他工号映射不变。
 
 - [ ] **Step 2: 保存前后端配置**
 
@@ -77,14 +77,14 @@ Expected: all tests pass with zero failures.
 ### Task 3: 对齐 PGS 工作台授权
 
 **Files:**
-- Modify: PGS `1000001` workbench marker
+- Modify: PGS `100001` workbench marker
 - Modify: PGS `100000` workbench marker
-- Modify: PGS `1000002` workbench marker
+- Modify: PGS `100002` workbench marker
 - Test: PGS saved assignment readback
 
 - [ ] **Step 1: 配置招聘专员工作台**
 
-For employee `1000001`, keep exactly one role workbench marker:
+For employee `100001`, keep exactly one role workbench marker:
 
 ```text
 dashboard_recruiter
@@ -92,11 +92,11 @@ dashboard_recruiter
 
 Remove `dashboard_interviewer`, `dashboard_manager`, `dashboard_admin`, and `dashboard_hr_director` only if any of them are currently assigned to this same employee.
 
-Expected: PGS readback shows exactly `dashboard_recruiter` for `1000001`.
+Expected: PGS readback shows exactly `dashboard_recruiter` for `100001`.
 
 - [ ] **Step 2: 配置两个面试官工作台**
 
-For employees `100000` and `1000002`, keep exactly one role workbench marker each:
+For employees `100000` and `100002`, keep exactly one role workbench marker each:
 
 ```text
 dashboard_interviewer
@@ -164,9 +164,9 @@ Expected: command exits 0; backend build info, frontend asset, database migratio
 Log in as each employee in the Tabbit task space and inspect `/api/auth/me`:
 
 ```text
-1000001 -> recruiter
+100001  -> recruiter
 100000  -> interviewer
-1000002 -> interviewer
+100002  -> interviewer
 ```
 
 Expected: HTTP 200 and the exact role above for each account. Do not record authentication tokens or personal data in screenshots or documents.
@@ -176,16 +176,16 @@ Expected: HTTP 200 and the exact role above for each account. Do not record auth
 Expected:
 
 ```text
-1000001 -> /dashboard
+100001  -> /dashboard
 100000  -> /interviewer/dashboard
-1000002 -> /interviewer/dashboard
+100002  -> /interviewer/dashboard
 ```
 
 The recruiter must not be presented as an interviewer; the interviewers must not see recruiter-only workflow controls.
 
 - [ ] **Step 3: 验证两名面试官任务隔离**
 
-Using `1000001`, assign one distinct Test/SIT interview task to `100000` and another to `1000002`. Log in as each interviewer and confirm they can access only their own assignment and cannot submit or edit the other interviewer's feedback.
+Using `100001`, assign one distinct Test/SIT interview task to `100000` and another to `100002`. Log in as each interviewer and confirm they can access only their own assignment and cannot submit or edit the other interviewer's feedback.
 
 Expected: own task succeeds; cross-account task access is absent or returns 403; no real candidate data is used.
 
