@@ -21,7 +21,7 @@ import { ApiError, apiRequest } from '@/lib/api';
 import { userFacingError } from '@/lib/userFacingError';
 import { useToast } from '@/hooks/useToast';
 import RequisitionTabs from './components/RequisitionTabs';
-import RequisitionForm from './components/RequisitionForm';
+import RequisitionForm from '@/features/demands/components/RequisitionForm';
 import RequisitionTable from './components/RequisitionTable';
 import DemandDetailPanel from './components/DemandDetailPanel';
 import DemandCandidateDrawer from './components/DemandCandidateDrawer';

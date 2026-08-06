@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { CalendarDays, List, Search } from 'lucide-react';
+import ActionButton from '@/components/ui/ActionButton';
 import FilterBar from '@/components/ui/FilterBar';
 import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import {
@@ -50,6 +52,10 @@ export default function InterviewWorkbenchToolbar({
 }: InterviewWorkbenchToolbarProps) {
   const update = (field: keyof InterviewFilters, value: string) => onFiltersChange({ ...filters, [field]: value });
   const hasFilters = activeInterviewFilterCount(filters) > 0 || Boolean(search);
+  // 搜索显式触发：本地维护输入值，点「搜索」或回车后才应用到列表
+  const [searchInput, setSearchInput] = useState(search);
+  useEffect(() => { setSearchInput(search); }, [search]);
+  const submitSearch = () => onSearchChange(searchInput.trim());
 
   return (
     <section className="space-y-3 border-b border-background-200 pb-3" data-ui="interview-single-row-toolbar">
@@ -69,10 +75,26 @@ export default function InterviewWorkbenchToolbar({
       </div>
 
       <FilterBar ariaLabel="面试查询条件">
-        <label className="relative min-w-[220px] flex-1">
-          <Search size={14} className="pointer-events-none absolute left-3 top-2.5 text-foreground-400" />
-          <input value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="搜索候选人、岗位或面试官" className="h-9 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-xs text-foreground-700 outline-none transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100" />
-        </label>
+        <div className="flex min-w-[220px] flex-1 items-center gap-2 sm:max-w-md">
+          <label className="relative min-w-0 flex-1">
+            <Search size={14} className="pointer-events-none absolute left-3 top-2.5 text-foreground-400" />
+            <input
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  submitSearch();
+                }
+              }}
+              placeholder="搜索候选人、岗位或面试官"
+              className="h-9 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-xs text-foreground-700 outline-none transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+            />
+          </label>
+          <ActionButton type="button" tone="primary" onClick={submitSearch} icon={<Search size={14} aria-hidden="true" />} className="shrink-0">
+            搜索
+          </ActionButton>
+        </div>
         <select aria-label="按岗位筛选" value={filters.jobTitle} onChange={(event) => update('jobTitle', event.target.value)} className={controlClass}>
           <option value="">全部岗位</option>{filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}
         </select>

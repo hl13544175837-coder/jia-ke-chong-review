@@ -48,6 +48,7 @@ import CandidateFeedbackTimeline from '@/features/candidates/components/Candidat
 import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 import DetailActionBar from '@/components/ui/DetailActionBar';
 import ActionButton from '@/components/ui/ActionButton';
+import { candidateStagePresentation, candidateStageLabel } from '@/components/ui/candidateStagePresentation';
 
 interface DemandCandidateDrawerProps {
   demand: RecruitmentDemand;
@@ -60,8 +61,8 @@ type OperationFilter = 'all' | 'actionable' | 'pushable';
 type SortOption = 'created_desc' | 'created_asc' | 'name_asc';
 
 const PER_PAGE = 20;
-const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif|zip)$/i;
-const supportedResumeAccept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,.zip,image/jpeg,image/png,image/webp,image/gif,application/zip';
+const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif)$/i;
+const supportedResumeAccept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif';
 const emptyCandidateResponse: CandidateListResponse = {
   candidates: [],
   total: 0,
@@ -72,14 +73,10 @@ const emptyCandidateResponse: CandidateListResponse = {
 
 const stageOptions: Array<{ value: '' | CandidateStage; label: string }> = [
   { value: '', label: '全部流程阶段' },
-  { value: 'pending', label: '待初筛' },
-  { value: 'ai_screen', label: 'AI 初筛' },
-  { value: 'business_review', label: '业务筛选' },
-  { value: 'interview', label: '面试中' },
-  { value: 'offer', label: 'Offer' },
-  { value: 'onboarded', label: '已入职' },
-  { value: 'rejected', label: '已淘汰' },
-  { value: 'transferred', label: '已转入其他需求' },
+  ...Object.entries(candidateStagePresentation).map(([value, presentation]) => ({
+    value: value as CandidateStage,
+    label: presentation.label,
+  })),
 ];
 
 const parseStatusOptions: Array<{ value: '' | ParseStatus; label: string }> = [
@@ -190,7 +187,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   const [resumeError, setResumeError] = useState('');
   const [resumeFileAction, setResumeFileAction] = useState<'preview' | 'download' | null>(null);
   const [resumeFileError, setResumeFileError] = useState('');
-  const [resumeTab, setResumeTab] = useState<CandidateDetailTab>('interview');
+  const [resumeTab, setResumeTab] = useState<CandidateDetailTab>('process');
   const [resumeJourney, setResumeJourney] = useState<CandidateJourney | null>(null);
   const [resumeJourneyLoading, setResumeJourneyLoading] = useState(false);
   const [resumeJourneyError, setResumeJourneyError] = useState('');
@@ -314,7 +311,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
 
   const openResume = async (candidate: CandidateListItem) => {
     setResumeCandidate(candidate);
-    setResumeTab('interview');
+    setResumeTab('process');
     setResumeDetail(null);
     setResumeError('');
     setResumeFileError('');
@@ -446,7 +443,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
   const uploadFiles = async (files: File[]) => {
     const accepted = files.filter((file) => supportedResumePattern.test(file.name));
     if (accepted.length === 0 || uploading) {
-      if (files.length > 0 && accepted.length === 0) setUploadError('文件格式不支持，请上传 PDF、DOCX、图片或 ZIP。');
+      if (files.length > 0 && accepted.length === 0) setUploadError('文件格式不支持，请上传 PDF、DOCX、图片。');
       return;
     }
     setUploading(true);
@@ -607,7 +604,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
             <input ref={uploadInputRef} type="file" multiple accept={supportedResumeAccept} onChange={handleUploadSelect} className="hidden" />
             <div onDragOver={(event) => { event.preventDefault(); setUploadDragOver(true); }} onDragLeave={() => setUploadDragOver(false)} onDrop={handleUploadDrop} className={`mt-4 flex min-h-44 flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 text-center ${uploadDragOver ? 'border-primary-400 bg-primary-50' : 'border-background-300 bg-background-50'}`}>
               {uploading ? <LoaderCircle className="animate-spin text-primary-600" size={28} /> : <FileUp className="text-foreground-400" size={28} />}
-              <p className="mt-3 text-sm font-medium text-foreground-700">拖入简历到这里</p><p className="mt-1 text-xs text-foreground-400">PDF、DOCX、图片或 ZIP</p>
+              <p className="mt-3 text-sm font-medium text-foreground-700">拖入简历到这里</p><p className="mt-1 text-xs text-foreground-400">PDF、DOCX、图片</p>
               <button type="button" onClick={() => uploadInputRef.current?.click()} disabled={uploading} className="mt-3 rounded-lg border border-background-300 bg-white px-3 py-2 text-sm text-foreground-700 disabled:opacity-50">选择文件</button>
             </div>
             {uploadError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{uploadError}</p>}
@@ -645,20 +642,21 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
               <div className="flex items-start justify-between gap-4 border-b border-background-200 px-6 py-4"><div><h3 className="text-lg font-bold text-foreground-900">{resumeCandidate.name_masked}</h3><p className="mt-1 text-sm text-foreground-500">{demand.job_title} · {demand.request_no || `需求 #${demand.id}`}</p></div><button type="button" onClick={() => setResumeCandidate(null)} className="rounded-lg p-2 text-foreground-500 hover:bg-background-100" aria-label="关闭候选人详情"><X size={18} /></button></div>
               <CandidateDetailWorkspace value={resumeTab} onChange={setResumeTab} className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-                  {resumeTab === 'interview' && (
-                    <div className="space-y-4" role="tabpanel" aria-label="面试信息">
+                  {resumeTab === 'process' && (
+                    <div className="space-y-4" role="tabpanel" aria-label="招聘流程">
                       <dl className="grid grid-cols-2 gap-4 rounded-lg border border-background-200 p-4 text-sm">
                         <div><dt className="text-xs text-foreground-400">招聘需求</dt><dd className="mt-1 font-medium text-foreground-800">{demand.job_title}</dd></div>
-                        <div><dt className="text-xs text-foreground-400">当前阶段</dt><dd className="mt-1 text-foreground-700">{resumeCandidate.current_stage || matches.get(resumeCandidate.id)?.latest_stage || '尚未进入流程'}</dd></div>
+                        <div><dt className="text-xs text-foreground-400">当前阶段</dt><dd className="mt-1 text-foreground-700">{candidateStageLabel(resumeCandidate.current_stage || matches.get(resumeCandidate.id)?.latest_stage) || '尚未进入流程'}</dd></div>
                         <div><dt className="text-xs text-foreground-400">部门</dt><dd className="mt-1 text-foreground-700">{demand.requester_department || demand.job_department || '未填写'}</dd></div>
                         <div><dt className="text-xs text-foreground-400">城市</dt><dd className="mt-1 text-foreground-700">{demand.job_city || '未填写'}</dd></div>
                       </dl>
                       <p className="rounded-lg bg-background-50 px-4 py-3 text-sm text-foreground-600">面试轮次、时间、面试官和地点会在安排面试后显示在这里。</p>
+                      <CandidateFeedbackTimeline journey={resumeJourney} loading={resumeJourneyLoading} error={resumeJourneyError} />
                     </div>
                   )}
 
                   {resumeTab === 'resume' && (
-                    <div role="tabpanel" aria-label="候选人简历">
+                    <div role="tabpanel" aria-label="简历">
                       {resumeLoading ? <div className="py-20 text-center text-sm text-foreground-500"><LoaderCircle className="mx-auto mb-2 animate-spin" size={20} />加载完整简历中...</div> : resumeError ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{resumeError}</div> : resumeDetail ? (
                         <div className="space-y-4">
                           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">
@@ -688,12 +686,6 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
                           <StructuredResumeView resume={resumeDetail.resume_json} />
                         </div>
                       ) : null}
-                    </div>
-                  )}
-
-                  {resumeTab === 'feedback' && (
-                    <div role="tabpanel" aria-label="面试评价">
-                      <CandidateFeedbackTimeline journey={resumeJourney} loading={resumeJourneyLoading} error={resumeJourneyError} />
                     </div>
                   )}
                 </div>

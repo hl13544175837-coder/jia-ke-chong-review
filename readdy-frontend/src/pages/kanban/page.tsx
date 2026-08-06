@@ -21,17 +21,26 @@ import type {
   PipelineHistory,
   PipelineStage,
 } from '@/features/pipeline/types';
+import StructuredResumeView from '@/components/candidates/StructuredResumeView';
+import ActionButton from '@/components/ui/ActionButton';
+import DetailActionBar from '@/components/ui/DetailActionBar';
+import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
+import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
+import { candidatesApi } from '@/features/candidates/api';
+import type { CandidateJourney, CandidateResumeDetail } from '@/features/candidates/types';
+import { candidateStagePresentation } from '@/components/ui/candidateStagePresentation';
+import { statusToneClasses } from '@/components/ui/recruitmentPresentation';
+import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 
-const stages: Array<{ key: PipelineStage; label: string; tone: string }> = [
-  { key: 'pending', label: '简历收录', tone: 'border-sky-200 bg-sky-50 text-sky-700' },
-  { key: 'ai_screen', label: 'HR 筛选', tone: 'border-cyan-200 bg-cyan-50 text-cyan-700' },
-  { key: 'business_review', label: '业务筛选', tone: 'border-amber-200 bg-amber-50 text-amber-700' },
-  { key: 'interview', label: '面试中', tone: 'border-violet-200 bg-violet-50 text-violet-700' },
-  { key: 'offer', label: 'Offer', tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  { key: 'rejected', label: '已淘汰', tone: 'border-red-200 bg-red-50 text-red-700' },
-];
+const KANBAN_STAGE_KEYS = ['pending', 'ai_screen', 'business_review', 'interview', 'offer', 'rejected'] as const;
+const stages = KANBAN_STAGE_KEYS.map((key) => {
+  const presentation = candidateStagePresentation[key];
+  return { key, label: presentation.label, tone: statusToneClasses[presentation.tone] };
+});
 
-const stageLabels = Object.fromEntries(stages.map((item) => [item.key, item.label])) as Record<string, string>;
+const stageLabels = Object.fromEntries(
+  KANBAN_STAGE_KEYS.map((key) => [key, candidateStagePresentation[key].label]),
+) as Record<string, string>;
 const KANBAN_DEMAND_MEMORY_KEY = 'zhipin.kanban.last-demand';
 
 function rememberedKanbanDemandId() {
@@ -156,6 +165,13 @@ export default function KanbanPage() {
   const [history, setHistory] = useState<PipelineHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
+  const [detailTab, setDetailTab] = useState<CandidateDetailTab>('process');
+  const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [resumeError, setResumeError] = useState('');
+  const [journey, setJourney] = useState<CandidateJourney | null>(null);
+  const [journeyLoading, setJourneyLoading] = useState(false);
+  const [journeyError, setJourneyError] = useState('');
   const [moveCandidate, setMoveCandidate] = useState<PipelineBoardCandidate | null>(null);
   const [moveBusy, setMoveBusy] = useState(false);
   const [moveError, setMoveError] = useState('');
@@ -234,6 +250,10 @@ export default function KanbanPage() {
     setHistoryError('');
     setMoveCandidate(null);
     setMoveError('');
+    setResumeDetail(null);
+    setResumeError('');
+    setJourney(null);
+    setJourneyError('');
     handledCandidateId.current = null;
     handledDetailCandidateId.current = null;
 
@@ -256,21 +276,38 @@ export default function KanbanPage() {
     setSelectedCandidate(candidate);
     setHistory(null);
     setHistoryError('');
+    setResumeDetail(null);
+    setResumeError('');
+    setJourney(null);
+    setJourneyError('');
     if (updateAddress) rememberDetailCandidate(candidate.candidate_id);
     setHistoryLoading(true);
-    try {
-      setHistory(await pipelineApi.getHistory(demandId, candidate.candidate_id));
-    } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : '加载流程历史失败');
-    } finally {
-      setHistoryLoading(false);
-    }
+    setResumeLoading(true);
+    setJourneyLoading(true);
+    const [historyResult, resumeResult, journeyResult] = await Promise.allSettled([
+      pipelineApi.getHistory(demandId, candidate.candidate_id),
+      candidatesApi.getResume(candidate.candidate_id),
+      candidatesApi.getJourney(candidate.candidate_id, demandId),
+    ]);
+    if (historyResult.status === 'fulfilled') setHistory(historyResult.value);
+    else setHistoryError(historyResult.reason instanceof Error ? historyResult.reason.message : '加载流程历史失败');
+    if (resumeResult.status === 'fulfilled') setResumeDetail(resumeResult.value);
+    else setResumeError(resumeResult.reason instanceof Error ? resumeResult.reason.message : '简历暂时无法读取');
+    if (journeyResult.status === 'fulfilled') setJourney(journeyResult.value);
+    else setJourneyError(journeyResult.reason instanceof Error ? journeyResult.reason.message : '面试评价暂时无法读取');
+    setHistoryLoading(false);
+    setResumeLoading(false);
+    setJourneyLoading(false);
   }, [demandId, rememberDetailCandidate]);
 
   const closeHistory = useCallback(() => {
     setSelectedCandidate(null);
     setHistory(null);
     setHistoryError('');
+    setResumeDetail(null);
+    setResumeError('');
+    setJourney(null);
+    setJourneyError('');
     handledDetailCandidateId.current = null;
     rememberDetailCandidate(null);
   }, [rememberDetailCandidate]);
@@ -434,15 +471,6 @@ export default function KanbanPage() {
                             <Clock3 size={12} /> {formatTime(candidate.updated_at)}
                           </p>
                         </button>
-                        {moveTargets(candidate.stage).length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => { setMoveError(''); setMoveCandidate(candidate); }}
-                            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-foreground-900 px-2 py-1.5 text-xs font-medium text-white hover:bg-foreground-800"
-                          >
-                            <ArrowRight size={13} /> 更新阶段
-                          </button>
-                        )}
                       </article>
                     ))}
                     {candidates.length === 0 && <p className="py-8 text-center text-xs text-foreground-400">暂无候选人</p>}
@@ -457,7 +485,7 @@ export default function KanbanPage() {
       {selectedCandidate && (
         <>
           <button type="button" aria-label="关闭历史" onClick={closeHistory} className="workspace-detail-backdrop fixed inset-0 z-40 bg-foreground-900/40 lg:left-[var(--workspace-sidebar-width)] lg:top-14" />
-          <aside role="dialog" aria-label="候选人流程历史" data-ui="pipeline-history-drawer" className="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-[480px] flex-col bg-white shadow-2xl lg:top-14">
+          <aside role="dialog" aria-label="候选人详情" data-ui="pipeline-history-drawer" className="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-[640px] flex-col bg-white shadow-2xl lg:top-14">
             <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
               <div>
                 <h2 className="text-lg font-bold text-foreground-900">{selectedCandidate.name_masked}</h2>
@@ -465,37 +493,76 @@ export default function KanbanPage() {
               </div>
               <button type="button" onClick={closeHistory} aria-label="关闭" className="rounded-md p-2 text-foreground-400 hover:bg-background-100"><X size={18} /></button>
             </div>
-            <div className="flex-1 overflow-y-auto px-6 py-5">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900"><History size={16} /> 流程历史</h3>
-              {historyLoading ? (
-                <RefreshCw size={18} className="mx-auto mt-16 animate-spin text-foreground-400" />
-              ) : historyError ? (
-                <div className="mt-4 rounded-md bg-red-50 px-3 py-3 text-sm text-red-700">
-                  <p>{historyError}</p>
-                  <button
-                    type="button"
-                    onClick={() => void openHistory(selectedCandidate, false)}
-                    className="mt-3 rounded-md border border-red-200 bg-white px-3 py-1.5 font-medium text-red-700"
-                  >重新加载</button>
-                </div>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {(history?.timeline || []).map((item, index) => (
-                    <div key={`${item.stage}-${item.ts}-${index}`} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-50 text-primary-700"><UserRound size={14} /></span>
-                      <div className="rounded-md border border-background-200 px-3 py-2.5">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm font-semibold text-foreground-800">{stageLabels[item.stage] || item.stage}</span>
-                          <span className="text-xs text-foreground-400">{formatTime(item.ts)}</span>
+            <CandidateDetailWorkspace value={detailTab} onChange={setDetailTab} className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                {detailTab === 'resume' ? (
+                  <div role="tabpanel" aria-label="简历">
+                    {resumeLoading ? <p className="py-16 text-center text-sm text-foreground-500">正在加载简历...</p> : resumeError ? (
+                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{resumeError}</p>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-background-200 bg-background-50 px-4 py-3 text-sm text-foreground-600">
+                          <span>{resumeDetail?.original_resume.available ? `原版文件：${resumeDetail?.original_resume.filename || '未命名文件'}` : '当前没有原版文件，以下为系统解析信息'}</span>
                         </div>
-                        <p className="mt-1 text-xs text-foreground-500">{item.updated_by_name || '系统'}{item.note ? ` · ${item.note}` : ''}</p>
-                      </div>
+                        <div className="mt-4">
+                          <StructuredResumeView resume={resumeDetail?.resume_json || {}} />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-6" role="tabpanel" aria-label="招聘流程">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground-900">当前阶段</span>
+                      <SemanticStatusBadge tone={candidateStagePresentation[selectedCandidate.stage]?.tone ?? 'neutral'}>
+                        {stageLabels[selectedCandidate.stage] || selectedCandidate.stage}
+                      </SemanticStatusBadge>
                     </div>
-                  ))}
-                  {(history?.timeline || []).length === 0 && <p className="py-12 text-center text-sm text-foreground-500">暂无流程历史</p>}
-                </div>
+                    <div>
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900"><History size={16} /> 流程历史</h3>
+                      {historyLoading ? (
+                        <RefreshCw size={18} className="mx-auto mt-16 animate-spin text-foreground-400" />
+                      ) : historyError ? (
+                        <div className="mt-4 rounded-md bg-red-50 px-3 py-3 text-sm text-red-700">
+                          <p>{historyError}</p>
+                          <button
+                            type="button"
+                            onClick={() => void openHistory(selectedCandidate, false)}
+                            className="mt-3 rounded-md border border-red-200 bg-white px-3 py-1.5 font-medium text-red-700"
+                          >重新加载</button>
+                        </div>
+                      ) : (
+                        <div className="mt-4 space-y-3">
+                          {(history?.timeline || []).map((item, index) => (
+                            <div key={`${item.stage}-${item.ts}-${index}`} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-50 text-primary-700"><UserRound size={14} /></span>
+                              <div className="rounded-md border border-background-200 px-3 py-2.5">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-sm font-semibold text-foreground-800">{stageLabels[item.stage] || item.stage}</span>
+                                  <span className="text-xs text-foreground-400">{formatTime(item.ts)}</span>
+                                </div>
+                                <p className="mt-1 text-xs text-foreground-500">{item.updated_by_name || '系统'}{item.note ? ` · ${item.note}` : ''}</p>
+                              </div>
+                            </div>
+                          ))}
+                          {(history?.timeline || []).length === 0 && <p className="py-12 text-center text-sm text-foreground-500">暂无流程历史</p>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CandidateDetailWorkspace>
+            <DetailActionBar
+              status={<span className="text-xs text-foreground-500">招聘进度 · 更新后自动刷新看板</span>}
+            >
+              <ActionButton tone="secondary" onClick={closeHistory}>关闭</ActionButton>
+              {moveTargets(selectedCandidate.stage).length > 0 && (
+                <ActionButton tone="primary" onClick={() => { setMoveError(''); setMoveCandidate(selectedCandidate); }} icon={<ArrowRight size={16} />}>
+                  更新阶段
+                </ActionButton>
               )}
-            </div>
+            </DetailActionBar>
           </aside>
         </>
       )}

@@ -1,5 +1,6 @@
 import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
+import type { PendingRescheduleRequestItem } from '@/features/interviews/api';
 import type { InterviewManagementRow } from '@/features/interviews/types';
 import type { OfferRecord, OfferStatus } from '@/features/offers/types';
 import { buildCommunicationTasks } from '@/features/workbench/communicationTasks';
@@ -9,6 +10,8 @@ export interface DashboardFacts {
   interviews: InterviewManagementRow[];
   offers: OfferRecord[];
   reviews: BusinessReviewTask[];
+  rescheduleRequests: PendingRescheduleRequestItem[];
+  pendingResumeCount: number;
 }
 
 const recruiterOfferActions = new Set<OfferStatus>(['draft', 'rejected', 'approved', 'accepted']);
@@ -137,7 +140,13 @@ export function buildDashboardSummary(
     const date = interviewDate(item.scheduled_at);
     return date ? date.getTime() < now.getTime() : false;
   });
-  const communicationTasks = managerView ? [] : buildCommunicationTasks(activeInterviews);
+  const builtCommunicationTasks = buildCommunicationTasks(activeInterviews);
+  const communicationTasks = managerView
+    ? []
+    : builtCommunicationTasks.communicationTasks;
+  const nextRoundTasks = managerView
+    ? []
+    : builtCommunicationTasks.nextRoundTasks;
   const stageSummary = activeDemands.reduce((total, demand) => {
     const currentStages = demand.metrics.current_stage_counts ?? {};
     total.hrScreening += currentStages.pending ?? 0;
@@ -173,11 +182,22 @@ export function buildDashboardSummary(
     waitingConfirmation,
     overdueFeedback,
     communicationTasks,
+    nextRoundTasks,
+    pendingReschedules: facts.rescheduleRequests,
+    pendingResumeCount: facts.pendingResumeCount,
     stageSummary,
     demandProgress,
     myOfferActions,
     waitingOfferActions,
-    myTaskCount: pendingApprovals.length + completionDemands.length + unassignedInterviews.length + waitingConfirmation.length + communicationTasks.length + myOfferActions.length,
+    myTaskCount: pendingApprovals.length
+      + completionDemands.length
+      + unassignedInterviews.length
+      + waitingConfirmation.length
+      + communicationTasks.length
+      + nextRoundTasks.length
+      + facts.rescheduleRequests.length
+      + (facts.pendingResumeCount > 0 ? 1 : 0)
+      + myOfferActions.length,
     waitingOthersCount: pendingReviews.length + waitingFeedback.length + waitingOfferActions.length,
   };
 }

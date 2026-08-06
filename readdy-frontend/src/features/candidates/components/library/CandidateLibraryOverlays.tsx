@@ -140,7 +140,7 @@ export default function CandidateLibraryOverlays({ controller }: CandidateLibrar
                 <input ref={uploadInputRef} type="file" multiple accept={supportedResumeAccept} onChange={handleUploadFileSelect} className="hidden" />
                 <Upload className="text-foreground-400" size={24} aria-hidden="true" />
                 <p className="mt-2 text-sm font-medium text-foreground-800">拖入简历，或选择文件</p>
-                <p className="mt-1 text-xs text-foreground-400">PDF、DOC、DOCX、JPG、PNG、WebP、GIF、ZIP</p>
+                <p className="mt-1 text-xs text-foreground-400">PDF、DOC、DOCX、JPG、PNG、WebP、GIF</p>
                 <button
                   type="button"
                   onClick={() => uploadInputRef.current?.click()}

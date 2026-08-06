@@ -7,6 +7,8 @@ import type { CandidateListItem } from '@/features/candidates/types';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { useToast } from '@/hooks/useToast';
 import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
+import { statusToneClasses } from '@/components/ui/recruitmentPresentation';
+import { businessReviewStatusPresentation } from '@/components/ui/recruitmentPresentation';
 
 interface Props {
   demand: RecruitmentDemand;
@@ -17,10 +19,10 @@ interface Props {
 }
 
 const statusMeta: Record<BusinessReviewStatus, { label: string; className: string; description: string }> = {
-  pending: { label: '等待业务反馈', className: 'bg-amber-50 text-amber-700', description: '业务负责人还没有提交结论' },
-  approved: { label: '业务已通过', className: 'bg-emerald-50 text-emerald-700', description: '等待招聘专员安排下一步' },
-  rejected: { label: '业务不合适', className: 'bg-red-50 text-red-700', description: '等待招聘专员确认淘汰去向' },
-  needs_info: { label: '需要补充信息', className: 'bg-sky-50 text-sky-700', description: '等待招聘专员补充材料后重新推送' },
+  pending: { label: businessReviewStatusPresentation.pending.label, className: statusToneClasses[businessReviewStatusPresentation.pending.tone], description: '业务负责人还没有提交结论' },
+  approved: { label: businessReviewStatusPresentation.approved.label, className: statusToneClasses[businessReviewStatusPresentation.approved.tone], description: '等待招聘专员安排下一步' },
+  rejected: { label: businessReviewStatusPresentation.rejected.label, className: statusToneClasses[businessReviewStatusPresentation.rejected.tone], description: '等待招聘专员确认淘汰去向' },
+  needs_info: { label: businessReviewStatusPresentation.needs_info.label, className: statusToneClasses[businessReviewStatusPresentation.needs_info.tone], description: '等待招聘专员补充材料后重新推送' },
 };
 
 function waitingLabel(value: string) {

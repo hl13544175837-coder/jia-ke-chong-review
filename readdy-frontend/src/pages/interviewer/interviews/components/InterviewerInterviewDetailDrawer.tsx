@@ -28,6 +28,10 @@ import type {
   Satisfaction,
 } from '@/features/interviews/types';
 import RescheduleHistory from '@/features/interviews/components/RescheduleHistory';
+import {
+  interviewStatusPresentation,
+  statusPresentation,
+} from '@/components/ui/recruitmentPresentation';
 
 export type DetailActionLabel =
   | '面试尚未开始'
@@ -79,17 +83,11 @@ const recommendationLabels: Record<string, string> = {
   reject: '不建议继续',
 };
 
-const statusLabels: Record<string, string> = {
-  scheduled: '已安排',
-  awaiting_feedback: '待填写评价',
-  feedback_submitted: '评价已提交',
-  completed: '已完成',
-  cancelled: '已取消',
-};
-
 function taskStatus(assignment: InterviewAssignment) {
-  if (assignment.feedback_submitted) return '已完成';
-  return statusLabels[assignment.status] || assignment.status || '状态未记录';
+  if (assignment.feedback_submitted) {
+    return statusPresentation(interviewStatusPresentation, 'feedback_submitted').label;
+  }
+  return statusPresentation(interviewStatusPresentation, assignment.status).label;
 }
 
 function evaluationText(feedback: InterviewFeedback, key: string) {
@@ -121,10 +119,10 @@ export default function InterviewerInterviewDetailDrawer({
   onConfirmAndStartFeedback,
   onRequestReschedule,
 }: InterviewerInterviewDetailDrawerProps) {
-  const [activeTab, setActiveTab] = useState<CandidateDetailTab>('interview');
+  const [activeTab, setActiveTab] = useState<CandidateDetailTab>('process');
 
   useEffect(() => {
-    setActiveTab('interview');
+    setActiveTab('process');
   }, [assignment.id]);
 
   const actionDisabled = detailLoading || (!canSubmit && !canSelfConfirm);
@@ -184,8 +182,43 @@ export default function InterviewerInterviewDetailDrawer({
                 className="mt-3 rounded-md border border-red-200 bg-white px-3 py-2 font-medium text-red-700 hover:bg-red-50"
               >重新加载</button>
             </div>
-          ) : activeTab === 'interview' ? (
-            <div className="space-y-5">
+          ) : activeTab === 'resume' ? (
+            <section>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
+                  <FileSearch size={16} /> 简历
+                </h3>
+                {resume?.original_resume.available && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={onViewOriginal}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-background-200 px-3 py-1.5 text-xs font-medium text-foreground-600 hover:bg-background-50"
+                    >
+                      <FileText size={14} /> 查看原版
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onDownloadOriginal}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-background-200 px-3 py-1.5 text-xs font-medium text-foreground-600 hover:bg-background-50"
+                    >
+                      <Download size={14} /> 下载
+                    </button>
+                  </div>
+                )}
+              </div>
+              {!resume?.original_resume.available && (
+                <p className="mt-3 rounded-md border border-background-200 bg-background-50 px-3 py-2 text-xs text-foreground-500">
+                  当前没有原版文件，以下为系统解析信息
+                </p>
+              )}
+              <div className="mt-4">
+                <StructuredResumeView resume={resume?.resume_json || {}} compact />
+              </div>
+            </section>
+          ) : (
+            <div className="space-y-6">
+              <div role="tabpanel" aria-label="招聘流程-当前轮次">
               <section className="grid gap-3 rounded-lg border border-background-200 p-4 sm:grid-cols-2">
                 <p className="flex items-start gap-2 text-sm text-foreground-600">
                   <CalendarDays size={16} className="mt-0.5 flex-shrink-0 text-foreground-400" />
@@ -235,43 +268,9 @@ export default function InterviewerInterviewDetailDrawer({
                   </ul>
                 </section>
               )}
-            </div>
-          ) : activeTab === 'resume' ? (
-            <section>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
-                  <FileSearch size={16} /> 简历
-                </h3>
-                {resume?.original_resume.available && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={onViewOriginal}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-background-200 px-3 py-1.5 text-xs font-medium text-foreground-600 hover:bg-background-50"
-                    >
-                      <FileText size={14} /> 查看原版
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onDownloadOriginal}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-background-200 px-3 py-1.5 text-xs font-medium text-foreground-600 hover:bg-background-50"
-                    >
-                      <Download size={14} /> 下载
-                    </button>
-                  </div>
-                )}
               </div>
-              {!resume?.original_resume.available && (
-                <p className="mt-3 rounded-md border border-background-200 bg-background-50 px-3 py-2 text-xs text-foreground-500">
-                  当前没有原版文件，以下为系统解析信息
-                </p>
-              )}
-              <div className="mt-4">
-                <StructuredResumeView resume={resume?.resume_json || {}} compact />
-              </div>
-            </section>
-          ) : (
-            <div className="space-y-5" role="tabpanel" aria-label="面试评价">
+
+              <div role="tabpanel" aria-label="招聘流程-面试评价">
               <section>
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
                   <MessageSquareText size={16} /> 本轮评价
@@ -299,6 +298,7 @@ export default function InterviewerInterviewDetailDrawer({
               {journey
                 ? <CandidateJourneySummary journey={journey} interviewOnly />
                 : !journeyError && <p className="rounded-md bg-background-50 px-4 py-6 text-center text-sm text-foreground-500">暂无历史面试评价和操作记录</p>}
+              </div>
             </div>
           )}
         </div>

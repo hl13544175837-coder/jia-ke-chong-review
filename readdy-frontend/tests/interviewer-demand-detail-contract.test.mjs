@@ -9,6 +9,7 @@ const demandTypesSource = readFileSync(path.join(root, 'src/features/demands/typ
 const screeningSource = readFileSync(path.join(root, 'src/pages/interviewer/screening/page.tsx'), 'utf8');
 const drawerPath = path.join(root, 'src/pages/interviewer/jobs/components/InterviewerDemandDetailDrawer.tsx');
 const drawerSource = existsSync(drawerPath) ? readFileSync(drawerPath, 'utf8') : '';
+const formSource = readFileSync(path.join(root, 'src/features/demands/components/RequisitionForm.tsx'), 'utf8');
 
 test('面试官需求整行可点击并通过地址恢复完整详情', () => {
   assert.match(pageSource, /data-ui="interviewer-demand-row"/);
@@ -38,7 +39,7 @@ test('从已通过需求进入筛选页时只显示该需求的任务', () => {
 
 test('面试官修改的是本次需求 JD 并随重提请求保存', () => {
   assert.match(demandTypesSource, /interface DemandUpdateInput[\s\S]*jd_text\?: string/);
-  assert.match(pageSource, /jd_text: draft\.jdText\.trim\(\)/);
+  assert.match(pageSource, /jd_text: payload\.jd_text\?\.trim\(\)/);
   assert.doesNotMatch(pageSource, /<textarea readOnly rows=\{10\} value=\{templateLoading/);
-  assert.match(pageSource, /本次需求的 JD/);
+  assert.match(formSource, /不影响公共岗位模板/);
 });

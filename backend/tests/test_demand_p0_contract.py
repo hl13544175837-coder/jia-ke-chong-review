@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from app import db
 from app.models import Candidate, CandidateDemandFlow, Job, PipelineStage, RecruitmentDemand
@@ -303,6 +303,18 @@ def test_demand_list_filters_by_delivery_date_and_latest_pipeline_facts(
     assert incomplete["total"] == 2
     assert complete_id not in [item["id"] for item in incomplete["items"]]
 
+    # 前端命名别名：仍有名额(available) 等价 incomplete，已达成(reached) 等价 complete
+    available = client.get(
+        "/api/demands?hc_status=available", headers=_auth(token)
+    ).get_json()
+    assert available["total"] == 2
+    assert complete_id not in [item["id"] for item in available["items"]]
+
+    reached = client.get(
+        "/api/demands?hc_status=reached", headers=_auth(token)
+    ).get_json()
+    assert [item["id"] for item in reached["items"]] == [complete_id]
+
 
 def test_pipeline_stage_filter_uses_same_single_demand_legacy_scope_as_metrics(
     client, make_user, app
@@ -570,6 +582,62 @@ def test_demand_list_filters_by_owner_department_and_created_date(
     assert [item["request_no"] for item in response.get_json()["items"]] == [
         "REQ-P0-SECOND"
     ]
+
+
+def test_demand_list_filters_by_deadline_window(client, make_user, app):
+    owner_id, token = make_user("demand-deadline-p0@example.com", role="recruiter")
+    job_id = _make_job(app, owner_id)
+    today = date.today()
+
+    created_ids = {}
+    for suffix, target_date in [
+        ("OVERDUE", (today - timedelta(days=5)).isoformat()),
+        ("SOON", (today + timedelta(days=3)).isoformat()),
+        ("LATER", (today + timedelta(days=30)).isoformat()),
+    ]:
+        response = client.post(
+            "/api/demands",
+            headers=_auth(token),
+            json=_valid_payload(
+                job_id,
+                owner_id,
+                suffix,
+                requested_at=(today - timedelta(days=30)).isoformat(),
+                target_date=target_date,
+            ),
+        )
+        assert response.status_code == 201
+        created_ids[suffix] = response.get_json()["id"]
+
+    with app.app_context():
+        db.session.get(RecruitmentDemand, created_ids["LATER"]).target_date = None
+        db.session.commit()
+
+    overdue = client.get(
+        "/api/demands?deadline=overdue", headers=_auth(token)
+    ).get_json()
+    assert [item["id"] for item in overdue["items"]] == [created_ids["OVERDUE"]]
+
+    due_soon = client.get(
+        "/api/demands?deadline=dueSoon", headers=_auth(token)
+    ).get_json()
+    assert [item["id"] for item in due_soon["items"]] == [created_ids["SOON"]]
+
+    unset_result = client.get(
+        "/api/demands?deadline=unset", headers=_auth(token)
+    ).get_json()
+    assert [item["id"] for item in unset_result["items"]] == [created_ids["LATER"]]
+
+    # 规格命名别名：within_7d 等价 dueSoon，none 等价 unset
+    within_7d = client.get(
+        "/api/demands?deadline=within_7d", headers=_auth(token)
+    ).get_json()
+    assert [item["id"] for item in within_7d["items"]] == [created_ids["SOON"]]
+
+    none_result = client.get(
+        "/api/demands?deadline=none", headers=_auth(token)
+    ).get_json()
+    assert [item["id"] for item in none_result["items"]] == [created_ids["LATER"]]
 
 
 def test_current_candidate_owner_cannot_be_changed_outside_demand_transfer(

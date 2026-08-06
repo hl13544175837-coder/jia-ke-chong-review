@@ -10,6 +10,7 @@ from ..services.interview_workflow_service import (
     InterviewAssignmentWorkflowError,
     InterviewFeedbackEditError,
     active_assignment_filter,
+    auto_create_next_round,
     assignment_is_cancelled,
     cancel_interview_assignment,
     can_manage_interview_context,
@@ -176,12 +177,21 @@ def _simple_feedback_fields(feedback):
     }
 
 
-def _feedback_write_payload(feedback, *, deduplicated, round_completed):
+def _feedback_write_payload(
+    feedback,
+    *,
+    deduplicated,
+    round_completed,
+    next_round_created=False,
+    next_round_sequence=None,
+):
     return {
         "id": feedback.id,
         "status": "ok",
         "deduplicated": deduplicated,
         "round_completed": round_completed,
+        "next_round_created": next_round_created,
+        "next_round_sequence": next_round_sequence,
         "next_action": (
             "awaiting_hr_decision"
             if round_completed
@@ -847,10 +857,30 @@ def submit_feedback():
     except Exception:
         db.session.rollback()
         raise
+    # 主面试官推荐 next_round 时，在反馈提交成功后用独立事务自动创建下一轮主面试任务。
+    # 创建失败（含已有活跃下一轮）静默降级：不影响反馈提交结果，保留原「待 HR 确认下一步」通知。
+    next_round_created = False
+    next_round_sequence = None
+    if (
+        round_completed
+        and simple_feedback is not None
+        and simple_feedback.get("recommendation") == "next_round"
+    ):
+        next_round_sequence = assignment.round_sequence + 1
+        next_round_created = (
+            auto_create_next_round(
+                context=context,
+                assignment=assignment,
+                created_by=g.user_id,
+            )
+            is not None
+        )
     return jsonify(_feedback_write_payload(
         fb,
         deduplicated=False,
         round_completed=round_completed,
+        next_round_created=next_round_created,
+        next_round_sequence=next_round_sequence,
     )), 201
 
 

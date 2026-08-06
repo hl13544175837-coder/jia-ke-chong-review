@@ -191,6 +191,31 @@ def test_upload_rejects_legacy_doc_macro_risk_before_parse(client, make_user, mo
     assert "candidate_id" not in result
 
 
+def test_upload_rejects_zip_archive_before_parse(client, make_user, monkeypatch):
+    _, token = make_user("upload-zip@x.com", role="recruiter")
+
+    def fail_if_called(self, *args, **kwargs):
+        raise AssertionError("parser should not receive a zip archive")
+
+    monkeypatch.setattr(
+        "app.services.resume_service.ResumeBatchService.parse_and_save",
+        fail_if_called,
+    )
+
+    response = client.post(
+        "/api/resume/upload",
+        headers=_auth(token),
+        data={"files": (io.BytesIO(b"PK\x03\x04 fake zip payload"), "resume.zip")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 202
+    result = response.get_json()["results"][0]
+    assert result["status"] == "skipped"
+    assert "不支持该格式" in result["reason"]
+    assert "candidate_id" not in result
+
+
 def test_interviewer_cannot_upload_resume(client, make_user):
     _, token = make_user("interviewer-upload@x.com", role="interviewer")
 

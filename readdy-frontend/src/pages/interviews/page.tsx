@@ -42,6 +42,7 @@ export default function RecruiterInterviewsPage() {
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
   const requestedAssignmentId = Number(searchParams.get('assignment')) || null;
+  const requestedAction = searchParams.get('action');
   const fromJobs = searchParams.get('from') === 'jobs';
   const fromDashboard = searchParams.get('from') === 'dashboard';
   const dashboardScheduleHandledInUrl = searchParams.get('quickSchedule') === 'handled';
@@ -122,7 +123,7 @@ export default function RecruiterInterviewsPage() {
   }, [searchParams, setSearchParams, setSelectedRow]);
 
   useEffect(() => {
-    const deepLinkKey = `${requestedCandidateId || ''}:${requestedAssignmentId || ''}`;
+    const deepLinkKey = `${requestedCandidateId || ''}:${requestedAssignmentId || ''}:${requestedAction || ''}`;
     if (!requestedCandidateId || loading || handledDeepLink.current === deepLinkKey) return;
     const row = latestCandidateManagementRow(
       rows,
@@ -132,12 +133,15 @@ export default function RecruiterInterviewsPage() {
     );
     if (!row) return;
     handledDeepLink.current = deepLinkKey;
-    if (rowStatus(row) === 'unassigned' && (fromJobs || fromDashboard)) {
+    if (requestedAction === 'reschedule' || requestedAction === 'next-round') {
+      openInterviewDetail(row);
+    }
+    else if (rowStatus(row) === 'unassigned' && (fromJobs || fromDashboard)) {
       setScheduleIsPrimary(true);
       setScheduleRow(row);
     }
     else setSelectedRow(row);
-  }, [fromDashboard, fromJobs, loading, requestedAssignmentId, requestedCandidateId, requestedDemandId, rows, setSelectedRow]);
+  }, [fromDashboard, fromJobs, loading, openInterviewDetail, requestedAction, requestedAssignmentId, requestedCandidateId, requestedDemandId, rows, setSelectedRow]);
 
   const scopedRows = useMemo(
     () => requestedDemandId

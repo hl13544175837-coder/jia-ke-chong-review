@@ -12,13 +12,14 @@ const readOptional = (file) => {
 
 test('公共组件统一状态颜色、操作按钮、查询条和详情底栏', () => {
   const badge = readOptional('src/components/ui/SemanticStatusBadge.tsx');
+  const presentations = readOptional('src/components/ui/recruitmentPresentation.ts');
   const action = readOptional('src/components/ui/ActionButton.tsx');
   const actionBar = readOptional('src/components/ui/DetailActionBar.tsx');
   const filters = readOptional('src/components/ui/FilterBar.tsx');
 
   assert.notEqual(badge, '', '缺少统一状态组件');
   assert.match(badge, /data-ui="semantic-status-badge"/);
-  assert.match(badge, /neutral[\s\S]*pending[\s\S]*info[\s\S]*success[\s\S]*danger/);
+  assert.match(presentations, /neutral[\s\S]*pending[\s\S]*info[\s\S]*success[\s\S]*danger/);
   assert.notEqual(action, '', '缺少统一操作按钮');
   assert.match(action, /primary[\s\S]*secondary[\s\S]*danger/);
   assert.notEqual(actionBar, '', '缺少详情固定操作区');
@@ -29,13 +30,13 @@ test('公共组件统一状态颜色、操作按钮、查询条和详情底栏',
   assert.match(filters, /flex-wrap/);
 });
 
-test('所有候选人详情统一使用面试信息、候选人简历、面试评价三个页签', () => {
+test('所有候选人详情统一使用简历、招聘流程两个页签', () => {
   const tabs = readOptional('src/features/candidates/components/CandidateDetailTabs.tsx');
   const workspace = readOptional('src/features/candidates/components/CandidateDetailWorkspace.tsx');
   assert.notEqual(tabs, '', '缺少统一详情页签');
   assert.notEqual(workspace, '', '缺少统一候选人详情工作区');
   const labels = [...tabs.matchAll(/label:\s*'([^']+)'/g)].map((match) => match[1]);
-  assert.deepEqual(labels, ['面试信息', '候选人简历', '面试评价']);
+  assert.deepEqual(labels, ['简历', '招聘流程']);
   assert.match(tabs, /role="tablist"/);
   assert.match(tabs, /aria-selected/);
   assert.match(workspace, /CandidateDetailTabs/);

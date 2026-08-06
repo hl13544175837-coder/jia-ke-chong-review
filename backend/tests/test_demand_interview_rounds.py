@@ -1196,3 +1196,173 @@ def test_ai_interview_revalidates_current_demand_after_llm(
     assert response.get_json()["code"] == "candidate_not_in_demand"
     with app.app_context():
         assert Interview.query.count() == 0
+
+
+def _submit_next_round_feedback(client, interviewer_token, assignment_id, demand_id, candidate_id):
+    return client.post(
+        "/api/interview/feedback",
+        headers=_auth(interviewer_token),
+        json={
+            "assignment_id": assignment_id,
+            "candidate_id": candidate_id,
+            "demand_id": demand_id,
+            "round": "round_1",
+            "satisfaction": "satisfied",
+            "job_match": "high",
+            "recommendation": "next_round",
+            "strengths": "基础扎实，沟通顺畅",
+            "concerns": "",
+            "note": "",
+        },
+    )
+
+
+def test_next_round_recommendation_auto_creates_next_round(client, make_user, app):
+    owner_id, owner_token = make_user("iv-auto-next-owner@example.com", role="recruiter")
+    interviewer_id, interviewer_token = make_user(
+        "iv-auto-next-primary@example.com", role="interviewer", name="主面试官"
+    )
+    _, demand_id, candidate_id = _seed_demand_flow(app, owner_id, "AUTO")
+
+    primary = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": candidate_id,
+            "demand_id": demand_id,
+            "round": "round_1",
+            "round_sequence": 1,
+            "is_primary": True,
+            "interviewer_id": interviewer_id,
+        },
+    )
+    assert primary.status_code == 201
+    primary_id = primary.get_json()["id"]
+
+    with app.app_context():
+        row = db.session.get(InterviewAssignment, primary_id)
+        row.status = "awaiting_feedback"
+        db.session.commit()
+
+    feedback = _submit_next_round_feedback(
+        client, interviewer_token, primary_id, demand_id, candidate_id
+    )
+    assert feedback.status_code == 201
+    payload = feedback.get_json()
+    assert payload["round_completed"] is True
+    assert payload["next_round_created"] is True
+    assert payload["next_round_sequence"] == 2
+
+    with app.app_context():
+        assert db.session.get(InterviewAssignment, primary_id).status == "completed"
+        next_assignment = InterviewAssignment.query.filter_by(
+            org_id=1,
+            demand_id=demand_id,
+            candidate_id=candidate_id,
+            round_sequence=2,
+            is_primary=True,
+        ).one()
+        assert next_assignment.round == "round_2"
+        assert next_assignment.interviewer_id == interviewer_id
+        assert next_assignment.scheduled_at is None
+        assert next_assignment.location == ""
+        assert next_assignment.note == "由第 1 轮评价自动创建，待安排"
+        assert next_assignment.status == "scheduled"
+        assert next_assignment.created_by == interviewer_id
+
+        # owner_hr：保留原「待 HR 确认下一步」通知，并追加「已自动创建第 2 轮待安排」通知
+        titles = [
+            n.title
+            for n in Notification.query.filter_by(
+                user_id=owner_id,
+                demand_id=demand_id,
+                type="interview_feedback_ready",
+            ).all()
+        ]
+        assert any("待 HR 确认下一步" in title for title in titles)
+        assert any("已自动创建第 2 轮待安排" in title for title in titles)
+        # 原主面试官收到新一轮「新的面试安排」通知
+        notices = Notification.query.filter_by(
+            user_id=interviewer_id,
+            demand_id=demand_id,
+            type="interview_assignment",
+        ).all()
+        assert any("第 2 轮" in (n.body or "") for n in notices)
+
+
+def test_next_round_recommendation_skips_when_active_next_round_exists(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user("iv-auto-skip-owner@example.com", role="recruiter")
+    interviewer_id, interviewer_token = make_user(
+        "iv-auto-skip-primary@example.com", role="interviewer", name="主面试官"
+    )
+    _, demand_id, candidate_id = _seed_demand_flow(app, owner_id, "SKIP")
+
+    primary = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": candidate_id,
+            "demand_id": demand_id,
+            "round": "round_1",
+            "round_sequence": 1,
+            "is_primary": True,
+            "interviewer_id": interviewer_id,
+        },
+    )
+    assert primary.status_code == 201
+    primary_id = primary.get_json()["id"]
+
+    # HR 已提前安排好第 2 轮主面试任务
+    existing_next = client.post(
+        "/api/interview/assignments",
+        headers=_auth(owner_token),
+        json={
+            "candidate_id": candidate_id,
+            "demand_id": demand_id,
+            "round": "round_2",
+            "round_sequence": 2,
+            "is_primary": True,
+            "interviewer_id": interviewer_id,
+            "scheduled_at": "2026-08-10T10:00:00",
+        },
+    )
+    assert existing_next.status_code == 201
+    existing_next_id = existing_next.get_json()["id"]
+
+    with app.app_context():
+        row = db.session.get(InterviewAssignment, primary_id)
+        row.status = "awaiting_feedback"
+        db.session.commit()
+
+    feedback = _submit_next_round_feedback(
+        client, interviewer_token, primary_id, demand_id, candidate_id
+    )
+    assert feedback.status_code == 201
+    payload = feedback.get_json()
+    assert payload["round_completed"] is True
+    assert payload["next_round_created"] is False
+    assert payload["next_round_sequence"] == 2
+
+    with app.app_context():
+        # 不重复创建：第 2 轮主面试任务仍是 HR 提前安排的那一条
+        next_rows = InterviewAssignment.query.filter_by(
+            org_id=1,
+            demand_id=demand_id,
+            candidate_id=candidate_id,
+            round_sequence=2,
+            is_primary=True,
+        ).all()
+        assert [row.id for row in next_rows] == [existing_next_id]
+        # 保留原「待 HR 确认下一步」通知，且不追加「已自动创建」通知
+        titles = [
+            n.title
+            for n in Notification.query.filter_by(
+                user_id=owner_id,
+                demand_id=demand_id,
+                type="interview_feedback_ready",
+            ).all()
+        ]
+        assert any("待 HR 确认下一步" in title for title in titles)
+        assert not any("已自动创建" in title for title in titles)

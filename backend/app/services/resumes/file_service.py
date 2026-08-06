@@ -24,7 +24,7 @@ from ...models import Candidate
 DOCUMENT_RESUME_EXTS = {"pdf", "docx"}
 RESUME_EXTS = DOCUMENT_RESUME_EXTS | set(IMAGE_RESUME_EXTENSIONS)
 BLOCKED_RESUME_EXTS = {"doc"}
-ALLOWED = RESUME_EXTS | BLOCKED_RESUME_EXTS | {"zip"}
+ALLOWED = RESUME_EXTS | BLOCKED_RESUME_EXTS
 RESUME_MAX_FILE_SIZE = 20 * 1024 * 1024
 FILE_SIGNATURES = {
     "pdf": (b"%PDF-",),
@@ -34,7 +34,6 @@ FILE_SIGNATURES = {
     "jpeg": (b"\xff\xd8\xff",),
     "png": (b"\x89PNG\r\n\x1a\n",),
     "gif": (b"GIF87a", b"GIF89a"),
-    "zip": (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"),
 }
 IMAGE_FORMAT_BY_EXT = {
     "jpg": "JPEG",

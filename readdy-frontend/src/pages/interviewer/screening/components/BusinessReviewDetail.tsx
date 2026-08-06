@@ -45,7 +45,7 @@ function actionError(error: unknown) {
 }
 
 export default function BusinessReviewDetail({ task, onReview }: BusinessReviewDetailProps) {
-  const [activeTab, setActiveTab] = useState<CandidateDetailTab>('interview');
+  const [activeTab, setActiveTab] = useState<CandidateDetailTab>('process');
   const [resumeAction, setResumeAction] = useState<'preview' | 'download' | null>(null);
   const [resumeError, setResumeError] = useState('');
   const [journey, setJourney] = useState<CandidateJourney | null>(null);
@@ -159,7 +159,7 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
 
       <CandidateDetailWorkspace value={activeTab} onChange={setActiveTab}>
 
-      <div className={activeTab === 'feedback' ? 'block' : 'hidden'} role="tabpanel" aria-label="面试评价">
+      <div className={activeTab === 'process' ? 'block' : 'hidden'} role="tabpanel" aria-label="招聘流程">
       <section className="border-b border-background-200 px-5 py-5 sm:px-6">
         {journey ? <CandidateJourneySummary journey={journey} interviewOnly /> : journeyError ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>
@@ -169,7 +169,7 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
       </section>
       </div>
 
-      <div className={activeTab === 'interview' ? 'block' : 'hidden'} role="tabpanel" aria-label="面试信息">
+      <div className={activeTab === 'process' ? 'block' : 'hidden'} role="tabpanel" aria-label="招聘流程-筛选信息">
       <section className="border-b border-background-200 px-5 py-5 sm:px-6">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-900">
           <MessageSquareText size={16} aria-hidden="true" /> HR 备注

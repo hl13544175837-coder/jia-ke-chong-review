@@ -91,7 +91,7 @@ export default function CandidateLibraryDetail({ controller }: CandidateLibraryD
                 </div>
               ) : resumeDetail ? (
                 <div className="space-y-6">
-                  <div className={detailTab === 'interview' ? 'space-y-6' : 'hidden'} role="tabpanel" aria-label="面试信息">
+                  <div className={detailTab === 'process' ? 'space-y-6' : 'hidden'} role="tabpanel" aria-label="招聘流程">
                   {(detailCandidate.desired_position || detailCandidate.current_demand || detailCandidate.latest_demand) && (
                     <section className="rounded-lg border border-background-200 bg-background-50 px-4 py-3">
                       <p className="text-xs text-foreground-400">简历求职目标</p>
@@ -125,9 +125,6 @@ export default function CandidateLibraryDetail({ controller }: CandidateLibraryD
                     </section>
                   )}
 
-                  </div>
-
-                  <div className={detailTab === 'feedback' ? 'space-y-6' : 'hidden'} role="tabpanel" aria-label="面试评价">
                   {candidateJourney && <CandidateJourneySummary journey={candidateJourney} />}
                   {journeyError && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{journeyError}</div>
@@ -137,7 +134,7 @@ export default function CandidateLibraryDetail({ controller }: CandidateLibraryD
                   )}
                   </div>
 
-                  <div className={detailTab === 'resume' ? 'space-y-6' : 'hidden'} role="tabpanel" aria-label="候选人简历">
+                  <div className={detailTab === 'resume' ? 'space-y-6' : 'hidden'} role="tabpanel" aria-label="简历">
                   <ResumeRecoveryPanel
                     detail={resumeDetail}
                     onUpdated={(updated) => {

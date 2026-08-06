@@ -59,7 +59,7 @@ export default function ResumeUploadModal({ open, onClose, onImported }: ResumeU
           <header className="flex items-center justify-between border-b border-background-100 px-6 py-4">
             <div>
               <h2 className="text-lg font-bold text-foreground-900">上传新简历</h2>
-              <p className="mt-1 text-xs text-foreground-500">图片与 ZIP 已保留真实接口格式，本地先更新演示数据。</p>
+              <p className="mt-1 text-xs text-foreground-500">图片已保留真实接口格式，本地先更新演示数据。</p>
             </div>
             <button type="button" onClick={resetAndClose} aria-label="关闭上传简历弹窗" className="h-9 w-9 rounded-lg text-foreground-500 hover:bg-background-100 cursor-pointer">
               <i className="ri-close-line text-xl"></i>
@@ -82,7 +82,7 @@ export default function ResumeUploadModal({ open, onClose, onImported }: ResumeU
             >
               <i className="ri-upload-cloud-2-line text-3xl text-primary-500"></i>
               <span className="mt-2 block text-sm font-semibold text-foreground-800">选择或拖入简历文件</span>
-              <span className="mt-1 block text-xs text-foreground-500">PDF、DOCX、JPG、PNG、WebP、GIF、ZIP，可多选</span>
+              <span className="mt-1 block text-xs text-foreground-500">支持 PDF、Word 或图片，可多选</span>
             </button>
 
             {files.length > 0 && (

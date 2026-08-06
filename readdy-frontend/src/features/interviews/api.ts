@@ -15,7 +15,25 @@ import type {
   InterviewerOption,
 } from './types';
 
+export interface PendingRescheduleRequestItem {
+  id: number;
+  assignment_id: number;
+  candidate_id: number;
+  candidate_name: string;
+  demand_id: number;
+  job_title: string;
+  round: string;
+  round_sequence: number;
+  requested_at: string | null;
+  reason: string;
+  proposed_times: string[];
+  original_scheduled_at: string | null;
+}
+
 export const interviewsApi = {
+  listPendingRescheduleRequests(): Promise<PendingRescheduleRequestItem[]> {
+    return apiRequest('/interview/reschedule-requests/pending');
+  },
   listManagementRows(): Promise<InterviewManagementRow[]> {
     return apiRequest('/interview/management-rows');
   },

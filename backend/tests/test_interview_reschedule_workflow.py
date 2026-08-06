@@ -420,6 +420,56 @@ def test_cancel_and_wait_then_create_linked_replacement_with_same_interviewer(
         assert "interview_reschedule_reassigned" in notification_types
 
 
+def test_pending_reschedule_list_scopes_by_role_and_returns_latest_first(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "reschedule-pending-owner@example.com", role="recruiter", name="招聘专员乙"
+    )
+    interviewer_id, interviewer_token = make_user(
+        "reschedule-pending-interviewer@example.com", role="interviewer", name="面试官乙"
+    )
+    seeded = _seed_assignment(
+        app, owner_id=owner_id, interviewer_id=interviewer_id, suffix="PENDING"
+    )
+    requested, _, _ = _request_reschedule(
+        client, interviewer_token, seeded["assignment_id"]
+    )
+    assert requested.status_code == 201
+
+    interviewer_view = client.get(
+        "/api/interview/reschedule-requests/pending", headers=_auth(interviewer_token)
+    )
+    assert interviewer_view.status_code == 403
+
+    owner_view = client.get(
+        "/api/interview/reschedule-requests/pending", headers=_auth(owner_token)
+    )
+    assert owner_view.status_code == 200
+    items = owner_view.get_json()
+    assert len(items) == 1
+    item = items[0]
+    assert item["candidate_id"] == seeded["candidate_id"]
+    assert item["demand_id"] == seeded["demand_id"]
+    assert item["assignment_id"] == seeded["assignment_id"]
+    assert item["candidate_name"] == "候选人-PENDING"
+    assert item["job_title"] == "改约岗位-PENDING"
+    assert item["round_sequence"] == 1
+    assert item["reason"] == "与客户会议冲突，请协助改约"
+    assert item["proposed_times"]
+    assert item["original_scheduled_at"] == seeded["scheduled_at"].isoformat()
+    assert item["requested_at"]
+
+    with app.app_context():
+        item_model = db.session.get(InterviewRescheduleRequest, item["id"])
+        item_model.status = "approved"
+        db.session.commit()
+    owner_view_after = client.get(
+        "/api/interview/reschedule-requests/pending", headers=_auth(owner_token)
+    )
+    assert owner_view_after.get_json() == []
+
+
 def test_revision_13_adds_reschedule_history_table_and_indexes(tmp_path):
     database_url = f"sqlite:///{tmp_path / 'interview-reschedule.db'}"
     engine = create_engine(database_url)

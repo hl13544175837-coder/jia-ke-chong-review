@@ -1,5 +1,13 @@
 export type SemanticStatusTone = 'neutral' | 'pending' | 'info' | 'success' | 'danger';
 
+export const statusToneClasses: Record<SemanticStatusTone, string> = {
+  neutral: 'border-background-300 bg-background-100 text-foreground-600',
+  pending: 'border-amber-200 bg-amber-50 text-amber-700',
+  info: 'border-blue-200 bg-blue-50 text-blue-700',
+  success: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  danger: 'border-red-200 bg-red-50 text-red-700',
+};
+
 export interface StatusPresentation {
   label: string;
   tone: SemanticStatusTone;
@@ -20,15 +28,16 @@ export const demandStatusPresentation: Record<string, StatusPresentation> = {
 
 export const businessReviewStatusPresentation: Record<string, StatusPresentation> = {
   pending: { label: '待筛选', tone: 'pending' },
-  approved: { label: '通过', tone: 'success' },
+  approved: { label: '已通过', tone: 'success' },
   rejected: { label: '不合适', tone: 'danger' },
-  need_more_info: { label: '需补充信息', tone: 'pending' },
+  needs_info: { label: '需补充信息', tone: 'pending' },
 };
 
 export const interviewStatusPresentation: Record<string, StatusPresentation> = {
   unassigned: { label: '待安排', tone: 'pending' },
   scheduled: { label: '已安排', tone: 'info' },
   awaiting_feedback: { label: '待反馈', tone: 'pending' },
+  feedback_submitted: { label: '评价已提交', tone: 'pending' },
   completed: { label: '已完成', tone: 'success' },
   cancelled: { label: '已取消', tone: 'neutral' },
 };

@@ -1,13 +1,15 @@
 """Interview reschedule requests, durable schedule history, and replacement links."""
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from .. import db
 from ..middleware.events import record_event
 from ..models import (
+    Candidate,
     InterviewAssignment,
     InterviewFeedback,
     InterviewRescheduleRequest,
+    Job,
     Notification,
     RecruitmentDemand,
     User,
@@ -112,6 +114,74 @@ def pending_request_for_assignment(assignment):
         .order_by(InterviewRescheduleRequest.id.desc())
         .first()
     )
+
+
+def list_pending_reschedule_requests(*, org_id, visible_demand_ids):
+    """当前组织可见需求下待确认的改约申请，按申请时间倒序，供工作台聚合。
+
+    返回内容含候选人名、岗位、轮次、原时间、建议时间、申请原因与申请时间，
+    用于工作台「待确认改约」待办直接深链到面试抽屉。
+    """
+    if visible_demand_ids is None:
+        return []
+    rows = (
+        db.session.query(
+            InterviewRescheduleRequest,
+            Candidate,
+            RecruitmentDemand,
+            Job,
+        )
+        .join(
+            Candidate,
+            and_(
+                Candidate.id == InterviewRescheduleRequest.candidate_id,
+                Candidate.org_id == InterviewRescheduleRequest.org_id,
+            ),
+        )
+        .join(
+            RecruitmentDemand,
+            and_(
+                RecruitmentDemand.id == InterviewRescheduleRequest.demand_id,
+                RecruitmentDemand.org_id == InterviewRescheduleRequest.org_id,
+            ),
+        )
+        .join(
+            Job,
+            and_(
+                Job.id == RecruitmentDemand.job_id,
+                Job.org_id == RecruitmentDemand.org_id,
+            ),
+        )
+        .filter(
+            InterviewRescheduleRequest.org_id == org_id,
+            InterviewRescheduleRequest.status == "pending",
+            InterviewRescheduleRequest.demand_id.in_(visible_demand_ids),
+        )
+        .order_by(
+            InterviewRescheduleRequest.requested_at.desc(),
+            InterviewRescheduleRequest.id.desc(),
+        )
+        .all()
+    )
+    return [
+        {
+            "id": item.id,
+            "assignment_id": item.assignment_id,
+            "candidate_id": item.candidate_id,
+            "candidate_name": candidate.name_masked,
+            "demand_id": item.demand_id,
+            "job_title": demand.job_title_snapshot or job.title,
+            "round": item.round,
+            "round_sequence": item.round_sequence,
+            "requested_at": _iso(item.requested_at),
+            "reason": item.reason or "",
+            "proposed_times": (
+                item.proposed_times if isinstance(item.proposed_times, list) else []
+            ),
+            "original_scheduled_at": _iso(item.original_scheduled_at),
+        }
+        for item, candidate, demand, job in rows
+    ]
 
 
 def open_requests_for_rows(*, org_id, candidate_demand_pairs):

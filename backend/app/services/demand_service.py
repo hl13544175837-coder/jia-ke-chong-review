@@ -4,7 +4,7 @@ This module owns demand validation, snapshots and demand-scoped metrics. API
 handlers should not reconstruct these business rules independently.
 """
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from math import ceil
 from uuid import uuid4
 
@@ -686,6 +686,8 @@ def apply_list_filters(query, args):
         query = query.filter(latest_stage_query.exists())
 
     hc_status = clean_text(args.get("hc_status"), 20).lower()
+    # 兼容前端命名：仍有名额(available) 等价于 incomplete，已达成(reached) 等价于 complete
+    hc_status = {"available": "incomplete", "reached": "complete"}.get(hc_status, hc_status)
     if hc_status in {"complete", "incomplete"}:
         latest_stage_query, latest_stage = _latest_list_stage_query()
         onboarded_count = (
@@ -701,6 +703,27 @@ def apply_list_filters(query, args):
             query = query.filter(onboarded_count >= target_headcount)
         else:
             query = query.filter(onboarded_count < target_headcount)
+
+    deadline = clean_text(args.get("deadline"), 20).lower()
+    # 兼容两种命名：前端 dueSoon/unset，规格 within_7d/none 等价
+    deadline = {"within_7d": "dueSoon", "none": "unset"}.get(deadline, deadline)
+    if deadline in {"overdue", "dueSoon", "unset"}:
+        today = date.today()
+        if deadline == "overdue":
+            # 已逾期：target_date 非空且早于今天
+            query = query.filter(
+                RecruitmentDemand.target_date.isnot(None),
+                RecruitmentDemand.target_date < today,
+            )
+        elif deadline == "dueSoon":
+            # 7 天内到期：target_date 落在 [今天, 今天+7天]
+            query = query.filter(
+                RecruitmentDemand.target_date >= today,
+                RecruitmentDemand.target_date <= today + timedelta(days=7),
+            )
+        else:
+            # 未设置：target_date 为空
+            query = query.filter(RecruitmentDemand.target_date.is_(None))
     return query
 
 

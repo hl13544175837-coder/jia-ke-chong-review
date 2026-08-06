@@ -554,6 +554,85 @@ def create_interview_assignment(
     return assignment, False
 
 
+def round_name_for_sequence(round_sequence):
+    """按轮次序号生成轮次名：第 1-3 轮固定 round_N，之后统一归入 additional。
+
+    与前端「安排下一轮」的命名保持一致（features/interviews/useRecruiterInterviewWorkbench）。
+    """
+    return f"round_{round_sequence}" if round_sequence <= 3 else "additional"
+
+
+def auto_create_next_round(*, context, assignment, created_by):
+    """主面试官评价推荐 next_round 后，自动创建下一轮主面试任务。
+
+    - 独立事务执行：与反馈提交事务完全解耦，任何失败只回滚本次创建，
+      不影响已提交的反馈结果，并保留原「待 HR 确认下一步」通知；
+    - 下一轮已有活跃主面试任务时静默跳过，避免重复创建；
+    - 创建成功会同步给需求 owner_hr 追加「已自动创建第 N+1 轮待安排」通知，
+      并沿用 create_interview_assignment 的面试官「新的面试安排」通知。
+
+    返回新建的 InterviewAssignment；跳过或失败返回 None（静默降级）。
+    """
+    from flask import current_app
+
+    next_sequence = assignment.round_sequence + 1
+    if active_primary_assignment(
+        org_id=context.demand.org_id,
+        demand_id=context.demand_id,
+        candidate_id=context.candidate.id,
+        round_sequence=next_sequence,
+    ) is not None:
+        return None
+    try:
+        next_assignment, _ = create_interview_assignment(
+            context=context,
+            interviewer_id=assignment.interviewer_id,
+            round_name=round_name_for_sequence(next_sequence),
+            round_sequence=next_sequence,
+            is_primary=True,
+            scheduled_at=None,
+            location="",  # 待安排：地点由 HR 确认排期时填写
+            note=f"由第 {assignment.round_sequence} 轮评价自动创建，待安排",
+            created_by=created_by,
+            commit=False,
+        )
+        owner_id = context.demand.owner_hr_id
+        if owner_id:
+            db.session.add(Notification(
+                org_id=context.demand.org_id,
+                user_id=owner_id,
+                demand_id=context.demand_id,
+                type="interview_feedback_ready",
+                title=(
+                    f"第 {assignment.round_sequence} 轮评价完成，"
+                    f"已自动创建第 {next_sequence} 轮待安排"
+                ),
+                body=(
+                    f"{context.candidate.name_masked or '候选人'}的第 "
+                    f"{assignment.round_sequence} 轮主面试反馈已完成，已自动创建"
+                    f"第 {next_sequence} 轮待安排，请尽快确认面试官和时间。"
+                ),
+                link=(
+                    f"/interviews?demand={context.demand_id}"
+                    f"&candidate={context.candidate.id}"
+                    f"&assignment={next_assignment.id}"
+                ),
+            ))
+        db.session.commit()
+        return next_assignment
+    except Exception as exc:  # noqa: BLE001 - 自动创建失败必须静默降级，不影响反馈提交结果
+        db.session.rollback()
+        current_app.logger.warning(
+            "自动创建第 %s 轮主面试任务失败，已保留原「待 HR 确认下一步」通知: "
+            "assignment_id=%s demand_id=%s error=%s",
+            next_sequence,
+            assignment.id,
+            context.demand_id,
+            exc,
+        )
+        return None
+
+
 def cancel_interview_assignment(*, assignment, reason):
     """Cancel an unfinished assignment and atomically release its slot."""
 

@@ -38,6 +38,9 @@ import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import ActionButton from '@/components/ui/ActionButton';
 import DetailActionBar from '@/components/ui/DetailActionBar';
 import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
+import { statusToneClasses } from '@/components/ui/recruitmentPresentation';
+import { businessReviewStatusPresentation } from '@/components/ui/recruitmentPresentation';
+import { candidateStagePresentation } from '@/components/ui/candidateStagePresentation';
 import { candidatesApi } from '@/features/candidates/api';
 import type {
   CandidateListItem,
@@ -82,7 +85,7 @@ import { buildCandidateLibraryViewModel } from '@/features/candidates/library/ca
 
 const supportedResumePattern = /\.(pdf|doc|docx|jpe?g|png|webp|gif|zip)$/i;
 const supportedReplacementPattern = /\.(pdf|docx|jpe?g|png|webp|gif)$/i;
-const supportedResumeAccept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,.zip,image/jpeg,image/png,image/webp,image/gif,application/zip';
+const supportedResumeAccept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif';
 
 type ResumeUploadResult = ResumeUploadResponse['results'][number];
 type UploadRowAction = 'keeping' | 'replacing' | 'replaced' | 'retrying' | 'retry_failed';
@@ -95,27 +98,20 @@ const parseStatusMeta = {
   original_confirmed: { label: '原件已确认', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
 } as const;
 
-const stageLabels: Record<CandidateStage, string> = {
-  pending: 'HR 初筛',
-  ai_screen: 'AI 筛选',
-  business_review: '业务筛选',
-  interview: '面试',
-  offer: 'Offer',
-  onboarded: '已入职',
-  rejected: '已淘汰',
-  transferred: '已转需求',
-};
+const stageLabels = Object.fromEntries(
+  Object.entries(candidateStagePresentation).map(([stage, presentation]) => [stage, presentation.label]),
+) as Record<CandidateStage, string>;
 
 const sourceChannels = ['BOSS直聘', '58同城', '猎聘', '鱼泡直聘', '智联招聘', '前程无忧', '内推', '官网', 'LinkedIn'];
 const sourceFilterOptions = [...sourceChannels, '其他'];
 const educationOptions = ['博士', '硕士', '本科', '大专', '高中', '中专'];
 const cityOptions = ['北京', '上海', '深圳', '广州', '杭州', '成都', '武汉', '南京', '苏州', '西安', '长沙', '重庆', '天津', '厦门', '合肥', '郑州', '青岛', '宁波', '佛山'];
-const businessReviewStatusMeta: Record<BusinessReviewStatus, { label: string; className: string }> = {
-  pending: { label: '等待业务负责人', className: 'border-amber-200 bg-amber-50 text-amber-700' },
-  approved: { label: '已通过', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  rejected: { label: '不合适', className: 'border-red-200 bg-red-50 text-red-700' },
-  needs_info: { label: '待 HR 补充', className: 'border-sky-200 bg-sky-50 text-sky-700' },
-};
+const businessReviewStatusMeta: Record<BusinessReviewStatus, { label: string; className: string }> = Object.fromEntries(
+  Object.entries(businessReviewStatusPresentation).map(([status, presentation]) => [
+    status,
+    { label: presentation.label, className: statusToneClasses[presentation.tone] },
+  ]),
+) as Record<BusinessReviewStatus, { label: string; className: string }>;
 
 const filterControlClass = 'h-9 w-full rounded-lg border border-background-300 bg-white px-2.5 text-xs text-foreground-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100';
 

@@ -1,39 +1,22 @@
 import { BriefcaseBusiness, CalendarClock, CheckCircle2, CircleDot, FileCheck2, MessageSquareText, XCircle } from 'lucide-react';
 import type { CandidateJourney } from '@/features/candidates/types';
+import { statusToneClasses } from '@/components/ui/recruitmentPresentation';
+import {
+  businessReviewStatusPresentation,
+  demandStatusPresentation,
+  interviewStatusPresentation,
+  offerStatusPresentation,
+  statusPresentation,
+  type StatusPresentation,
+} from '@/components/ui/recruitmentPresentation';
 
-const approvalLabels: Record<string, string> = {
-  pending: '待审核',
-  approved: '已通过',
-  rejected: '已驳回',
-};
+function toneClassFor(value: string, presentations: Record<string, StatusPresentation>) {
+  return statusToneClasses[statusPresentation(presentations, value).tone];
+}
 
-const reviewLabels: Record<string, string> = {
-  pending: '待处理',
-  approved: '已通过',
-  rejected: '不合适',
-  needs_info: '待补充',
-};
-
-const offerLabels: Record<string, string> = {
-  draft: '草稿',
-  pending: '审批中',
-  approved: '待发放',
-  rejected: '已退回',
-  sent: '已发放',
-  accepted: '已接受',
-  declined: '已拒绝',
-  withdrawn: '已撤回',
-  expired: '已过期',
-  onboarded: '已入职',
-};
-
-const interviewStatusLabels: Record<string, string> = {
-  scheduled: '已安排',
-  awaiting_feedback: '待反馈',
-  feedback_submitted: '评价已提交',
-  completed: '已完成',
-  cancelled: '已取消',
-};
+function labelFor(value: string, presentations: Record<string, StatusPresentation>) {
+  return statusPresentation(presentations, value).label;
+}
 
 function formatDate(value: string | null) {
   if (!value) return '时间未记录';
@@ -47,12 +30,6 @@ function formatDate(value: string | null) {
     minute: '2-digit',
     hour12: false,
   }).format(parsed);
-}
-
-function statusTone(value: string) {
-  if (['approved', 'accepted', 'onboarded', 'completed', 'feedback_submitted'].includes(value)) return 'bg-emerald-50 text-emerald-700';
-  if (['rejected', 'declined', 'expired', 'withdrawn'].includes(value)) return 'bg-stone-100 text-stone-600';
-  return 'bg-amber-50 text-amber-700';
 }
 
 export default function CandidateJourneySummary({
@@ -82,7 +59,7 @@ export default function CandidateJourneySummary({
         {!interviewOnly && <div className="rounded-lg bg-background-50 px-3 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground-700"><FileCheck2 size={14} />需求审核记录</p>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(approval.status)}`}>{approvalLabels[approval.status] || approval.status}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${toneClassFor(approval.status, demandStatusPresentation)}`}>{labelFor(approval.status, demandStatusPresentation)}</span>
           </div>
           <div className="mt-2 grid gap-2 text-xs text-foreground-600 sm:grid-cols-2">
             <p>提交：{approval.submitted_by_name || '未记录'} · {formatDate(approval.submitted_at)}</p>
@@ -97,7 +74,7 @@ export default function CandidateJourneySummary({
             <div className="mt-2 space-y-2">
               {journey.business_reviews.map((item) => (
                 <div key={item.id} className="rounded-lg border border-background-100 px-3 py-2.5 text-xs text-foreground-600">
-                  <div className="flex items-center justify-between gap-2"><span>{item.reviewer_name || '业务负责人未记录'}</span><span className={`rounded-full px-2 py-0.5 ${statusTone(item.status)}`}>{reviewLabels[item.status] || item.status}</span></div>
+                  <div className="flex items-center justify-between gap-2"><span>{item.reviewer_name || '业务负责人未记录'}</span><span className={`rounded-full px-2 py-0.5 ${toneClassFor(item.status, businessReviewStatusPresentation)}`}>{labelFor(item.status, businessReviewStatusPresentation)}</span></div>
                   <p className="mt-1">推送：{formatDate(item.created_at)}{item.decided_at ? ` · 处理：${formatDate(item.decided_at)}` : ''}</p>
                   {(item.business_note || item.hr_note) && <p className="mt-1 text-foreground-700">{item.business_note || item.hr_note}</p>}
                 </div>
@@ -123,13 +100,7 @@ export default function CandidateJourneySummary({
                     ? '通过'
                     : item.feedback
                       ? '已评价'
-                      : item.status === 'awaiting_feedback'
-                        ? '待反馈'
-                        : item.status === 'scheduled'
-                          ? '已安排'
-                          : item.status === 'completed'
-                            ? '已完成'
-                            : interviewStatusLabels[item.status] || item.status || '状态未记录';
+                      : labelFor(item.status, interviewStatusPresentation);
                 return (
                   <div data-ui="interview-round-node" key={item.assignment_id} className="grid gap-2 rounded-lg border border-background-200 bg-white px-3 py-3 text-xs text-foreground-600 sm:grid-cols-[92px_minmax(0,1fr)_auto] sm:items-start">
                     <span className="flex items-center gap-1.5 font-medium text-foreground-800"><RoundIcon size={14} className={feedbackFailed ? 'text-red-500' : item.feedback ? 'text-emerald-600' : 'text-amber-500'} />第 {item.round_sequence} 轮</span>
@@ -137,7 +108,7 @@ export default function CandidateJourneySummary({
                       <p>{item.interviewer_name || '面试官未记录'} · {formatDate(item.scheduled_at)}</p>
                       <p className="mt-1 text-foreground-500">{item.location || '地点未记录'}{item.feedback?.note ? ` · 评价：${item.feedback.note}` : ''}</p>
                     </div>
-                    <span className={`w-fit rounded-full px-2 py-0.5 ${feedbackFailed ? 'bg-red-50 text-red-700' : statusTone(item.feedback ? 'completed' : item.status)}`}>{resultLabel}</span>
+                    <span className={`w-fit rounded-full px-2 py-0.5 ${feedbackFailed ? 'bg-red-50 text-red-700' : toneClassFor(item.feedback ? 'completed' : item.status, interviewStatusPresentation)}`}>{resultLabel}</span>
                   </div>
                 );
               })}
@@ -167,7 +138,7 @@ export default function CandidateJourneySummary({
               {journey.offers.map((item) => (
                 <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-background-100 px-3 py-2.5 text-xs text-foreground-600">
                   <span>{item.salary_range || '薪资未填写'}{item.onboard_date ? ` · 预计入职 ${item.onboard_date}` : ''}</span>
-                  <span className={`rounded-full px-2 py-0.5 ${statusTone(item.status)}`}>{offerLabels[item.status] || item.status}</span>
+                  <span className={`rounded-full px-2 py-0.5 ${toneClassFor(item.status, offerStatusPresentation)}`}>{labelFor(item.status, offerStatusPresentation)}</span>
                 </div>
               ))}
             </div>

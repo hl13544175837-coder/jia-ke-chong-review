@@ -23,6 +23,7 @@ import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import FilterBar from '@/components/ui/FilterBar';
 import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
+import { statusToneClasses } from '@/components/ui/recruitmentPresentation';
 import { businessReviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import { userFacingError } from '@/lib/userFacingError';
 import ReviewActionModal from '@/features/businessReviews/components/ReviewActionModal';
@@ -31,10 +32,10 @@ import BusinessReviewDetail from './components/BusinessReviewDetail';
 type Decision = BusinessReviewDecisionInput['decision'];
 
 const statusMeta: Record<BusinessReviewStatus, { label: string; badge: string; icon: LucideIcon }> = {
-  pending: { label: '待筛选', badge: 'bg-amber-50 text-amber-700 border-amber-200', icon: FileSearch },
-  approved: { label: '已通过', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
-  rejected: { label: '不合适', badge: 'bg-red-50 text-red-700 border-red-200', icon: XCircle },
-  needs_info: { label: '待 HR 补充', badge: 'bg-sky-50 text-sky-700 border-sky-200', icon: CircleHelp },
+  pending: { label: businessReviewStatusPresentation.pending.label, badge: statusToneClasses[businessReviewStatusPresentation.pending.tone], icon: FileSearch },
+  approved: { label: businessReviewStatusPresentation.approved.label, badge: statusToneClasses[businessReviewStatusPresentation.approved.tone], icon: CheckCircle2 },
+  rejected: { label: businessReviewStatusPresentation.rejected.label, badge: statusToneClasses[businessReviewStatusPresentation.rejected.tone], icon: XCircle },
+  needs_info: { label: businessReviewStatusPresentation.needs_info.label, badge: statusToneClasses[businessReviewStatusPresentation.needs_info.tone], icon: CircleHelp },
 };
 
 const tabs = (Object.keys(statusMeta) as BusinessReviewStatus[]).map((key) => ({
@@ -46,7 +47,7 @@ const emptyLabels: Record<BusinessReviewStatus, string> = {
   pending: '暂无待筛选任务',
   approved: '暂无已通过任务',
   rejected: '暂无不合适任务',
-  needs_info: '暂无待 HR 补充任务',
+  needs_info: '暂无需补充信息任务',
 };
 
 function formatDate(value: string | null) {

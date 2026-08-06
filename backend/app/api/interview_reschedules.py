@@ -37,6 +37,7 @@ from ..services.interview_reschedule_service import (
     create_replacement_assignment,
     create_reschedule_request,
     history_for_assignment,
+    list_pending_reschedule_requests,
     load_request_for_update,
     pending_request_for_assignment,
     resolve_reschedule_request,
@@ -57,6 +58,7 @@ from ..models import (
     InterviewRescheduleRequest,
     Job,
     Notification,
+    RecruitmentDemand,
     User,
 )
 from ..time_utils import utc_now
@@ -287,3 +289,18 @@ def register_interview_reschedule_routes(bp):
             "assignment": _assignment_payload(assignment),
             "reschedule_request": serialize_reschedule_request(item),
         }), 201
+
+
+    @bp.get("/interview/reschedule-requests/pending")
+    @require_auth
+    @require_role("recruiter", "manager", "admin")
+    def pending_reschedule_requests():
+        """工作台待确认改约聚合：当前角色可见需求下的 pending 申请，按申请时间倒序。"""
+        visible_demand_ids = visible_demand_query(
+            g.user_id, g.role, g.org_id
+        ).with_entities(RecruitmentDemand.id)
+        items = list_pending_reschedule_requests(
+            org_id=g.org_id,
+            visible_demand_ids=visible_demand_ids,
+        )
+        return jsonify(items)

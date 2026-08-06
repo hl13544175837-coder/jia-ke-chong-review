@@ -33,7 +33,7 @@ export function useCandidateDetail({
   openCandidateInUrl,
 }: CandidateDetailOptions) {
   const [detailCandidate, setDetailCandidate] = useState<CandidateListItem | null>(null);
-  const [detailTab, setDetailTab] = useState<CandidateDetailTab>('interview');
+  const [detailTab, setDetailTab] = useState<CandidateDetailTab>('process');
   const [resumeDetail, setResumeDetail] = useState<CandidateResumeDetail | null>(null);
   const [candidateJourney, setCandidateJourney] = useState<CandidateJourney | null>(null);
   const [journeyError, setJourneyError] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export function useCandidateDetail({
 
   const openCandidateDetail = useCallback((candidate: CandidateListItem) => {
     setDetailCandidate(candidate);
-    setDetailTab('interview');
+    setDetailTab('process');
     setResumeDetail(null);
     setCandidateJourney(null);
     setJourneyError(null);

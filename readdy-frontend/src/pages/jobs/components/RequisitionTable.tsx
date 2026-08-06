@@ -87,6 +87,10 @@ export default function RequisitionTable({
   const [toolbarPanel, setToolbarPanel] = useState<'sort' | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
+  // 搜索显式触发：本地维护输入值，点「搜索」或回车后才应用到列表
+  const [searchInput, setSearchInput] = useState(searchQuery);
+  useEffect(() => { setSearchInput(searchQuery); }, [searchQuery]);
+  const submitSearch = () => onSearchChange(searchInput.trim());
 
   const filterOptions = useMemo(() => buildDemandFilterOptions(optionSource), [optionSource]);
 
@@ -144,17 +148,28 @@ export default function RequisitionTable({
     <>
       <div className="overflow-hidden rounded-xl border border-background-200 bg-white">
         <div ref={toolbarRef} className="flex flex-wrap items-center gap-3 border-b border-background-100 px-5 py-3">
-          <div className="relative min-w-[260px] flex-1">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <i className="ri-search-line text-foreground-400 text-sm"></i>
+          <div className="flex min-w-[260px] flex-1 items-center gap-2 sm:max-w-md">
+            <div className="relative min-w-0 flex-1">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i className="ri-search-line text-foreground-400 text-sm"></i>
+              </div>
+              <input
+                type="text"
+                placeholder="搜索需求编号、职位、负责人、部门或城市"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    submitSearch();
+                  }
+                }}
+                className="w-full pl-9 pr-4 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-50 transition-all"
+              />
             </div>
-            <input
-              type="text"
-              placeholder="搜索需求编号、职位、负责人、部门或城市"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-50 transition-all"
-            />
+            <ActionButton type="button" tone="primary" onClick={submitSearch} icon={<i className="ri-search-line" aria-hidden="true"></i>} className="shrink-0">
+              搜索
+            </ActionButton>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <span className="whitespace-nowrap text-xs text-foreground-400">{data.length} 条</span>
@@ -170,7 +185,7 @@ export default function RequisitionTable({
             </button>
           </div>
 
-          <FilterBar className="grid w-full grid-cols-1 gap-3 rounded-xl bg-background-50 p-3 sm:grid-cols-2 xl:grid-cols-5" ariaLabel="招聘需求查询条件">
+          <FilterBar className="grid w-full grid-cols-1 gap-3 rounded-xl bg-background-50 p-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7" ariaLabel="招聘需求查询条件">
               <select aria-label="按部门筛选" value={filters.department} onChange={(event) => onFilterChange('department', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
                 <option value="">全部部门</option>
                 {filterOptions.departments.map((value) => <option key={value} value={value}>{value}</option>)}
@@ -185,6 +200,17 @@ export default function RequisitionTable({
               </select>
               <select aria-label="按候选人阶段筛选" value={filters.stage} onChange={(event) => onFilterChange('stage', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
                 {stageOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <select aria-label="按HC状态筛选" value={filters.headcount} onChange={(event) => onFilterChange('headcount', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
+                <option value="">全部HC状态</option>
+                <option value="available">仍有名额</option>
+                <option value="reached">已达成</option>
+              </select>
+              <select aria-label="按截止时间筛选" value={filters.deadline} onChange={(event) => onFilterChange('deadline', event.target.value)} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm text-foreground-700 outline-none focus:border-primary-300">
+                <option value="">全部截止时间</option>
+                <option value="overdue">已逾期</option>
+                <option value="dueSoon">7天内到期</option>
+                <option value="unset">未设置</option>
               </select>
               <button type="button" onClick={onClearFilters} disabled={activeFilterEntries.length === 0} className="h-9 rounded-lg border border-background-200 bg-white px-3 text-sm font-medium text-foreground-600 transition-colors hover:bg-background-50 disabled:cursor-not-allowed disabled:opacity-40">
                 <i className="ri-refresh-line mr-1"></i>清空筛选

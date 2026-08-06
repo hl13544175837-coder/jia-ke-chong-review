@@ -24,10 +24,12 @@ import { formatInterviewDateTime, interviewHasStarted } from '@/features/intervi
 import type {
   InterviewAssignment,
   InterviewFeedback,
+  InterviewFeedbackMutationResult,
   InterviewRescheduleRequest,
   InterviewRescheduleRequestInput,
   StructuredInterviewFeedbackValues,
 } from '@/features/interviews/types';
+import { useToast } from '@/hooks/useToast';
 import { userFacingError } from '@/lib/userFacingError';
 import InterviewerInterviewDetailDrawer from './components/InterviewerInterviewDetailDrawer';
 import type { DetailActionLabel } from './components/InterviewerInterviewDetailDrawer';
@@ -97,6 +99,7 @@ function latestCandidateAssignment(
 }
 
 export default function InterviewerInterviewsPage() {
+  const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
@@ -380,13 +383,17 @@ export default function InterviewerInterviewsPage() {
     setFeedbackSaving(true);
     setFeedbackError('');
     try {
+      let mutationResult: InterviewFeedbackMutationResult | null = null;
       if (selectedFeedback?.assignment_id === feedbackAssignment.id) {
-        await interviewsApi.updateFeedback(selectedFeedback.id, payload);
+        mutationResult = await interviewsApi.updateFeedback(selectedFeedback.id, payload);
       } else {
-        await interviewsApi.saveFeedback({
+        mutationResult = await interviewsApi.saveFeedback({
           assignment_id: feedbackAssignment.id,
           ...payload,
         });
+      }
+      if (mutationResult?.next_round_created && mutationResult.next_round_sequence) {
+        showToast(`已自动创建第 ${mutationResult.next_round_sequence} 轮面试，待安排面试官和时间`);
       }
       const completedAssignment: InterviewAssignment = {
         ...feedbackAssignment,

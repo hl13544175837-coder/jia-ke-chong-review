@@ -1,4 +1,4 @@
-export type CandidateDetailTab = 'interview' | 'resume' | 'feedback';
+export type CandidateDetailTab = 'resume' | 'process';
 
 interface CandidateDetailTabsProps {
   value: CandidateDetailTab;
@@ -7,9 +7,8 @@ interface CandidateDetailTabsProps {
 }
 
 const tabs: Array<{ key: CandidateDetailTab; label: string }> = [
-  { key: 'interview', label: '面试信息' },
-  { key: 'resume', label: '候选人简历' },
-  { key: 'feedback', label: '面试评价' },
+  { key: 'resume', label: '简历' },
+  { key: 'process', label: '招聘流程' },
 ];
 
 export default function CandidateDetailTabs({ value, onChange, className = '' }: CandidateDetailTabsProps) {

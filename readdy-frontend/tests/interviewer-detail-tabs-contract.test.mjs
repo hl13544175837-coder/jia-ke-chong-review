@@ -26,10 +26,10 @@ const actionBarSource = fs.readFileSync(
   'utf8',
 );
 
-test('面试详情统一为面试信息、候选人简历和面试评价三个页签', () => {
+test('面试详情统一为简历、招聘流程两个页签', () => {
   assert.notEqual(drawerSource, '', '详情抽屉组件尚未创建');
   const tabLabels = [...detailTabsSource.matchAll(/label:\s*'([^']+)'/g)].map((match) => match[1]);
-  assert.deepEqual(tabLabels, ['面试信息', '候选人简历', '面试评价']);
+  assert.deepEqual(tabLabels, ['简历', '招聘流程']);
   assert.match(drawerSource, /CandidateDetailWorkspace/);
   assert.match(detailTabsSource, /role="tablist"/);
   assert.match(detailTabsSource, /role="tab"/);
@@ -69,12 +69,12 @@ test('固定底部操作区只显示规定的任务动作', () => {
   ];
   for (const action of allowedActions) assert.match(drawerSource, new RegExp(action));
   assert.doesNotMatch(drawerSource, /当前状态不可填写|请等待招聘专员确认/);
-  assert.match(drawerSource, /if \(assignment\.feedback_submitted\) return '已完成'/);
+  assert.match(drawerSource, /statusPresentation\(interviewStatusPresentation, 'feedback_submitted'\)/);
 });
 
 test('历史轮次状态不显示后端英文值', () => {
-  assert.match(journeySource, /item\.status === 'completed'/);
-  assert.match(journeySource, /'已完成'/);
+  assert.match(journeySource, /labelFor\(item\.status, interviewStatusPresentation\)/);
+  assert.match(journeySource, /interviewStatusPresentation/);
 });
 
 test('详情加载失败保留原错误并可重新加载', () => {

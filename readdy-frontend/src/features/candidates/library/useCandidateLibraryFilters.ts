@@ -46,7 +46,9 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
       : '';
 
   const initialScope = initialCandidateScope(searchParams.get('scope'));
+  // 搜索维护两个状态：searchQuery 为输入框当前值（键入即变），appliedSearch 为已应用的值（点「搜索」或回车后才生效）
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
+  const [appliedSearch, setAppliedSearch] = useState(() => searchParams.get('q') ?? '');
   const [demandFilter, setDemandFilter] = useState<number | ''>(navState?.demandId ?? requestedDemandId ?? '');
   const [cityFilter, setCityFilter] = useState(() => searchParams.get('city') ?? '');
   const [educationFilter, setEducationFilter] = useState(() => searchParams.get('education') ?? '');
@@ -71,7 +73,7 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
   const [openColumnFilter, setOpenColumnFilter] = useState<CandidateColumnFilter | null>(null);
   const [page, setPage] = useState(() => positiveSearchPage(searchParams.get('page')));
   const [hideLocalDemoRecords, setHideLocalDemoRecords] = useState(false);
-  const deferredSearch = useDeferredValue(searchQuery.trim());
+  const deferredSearch = useDeferredValue(appliedSearch.trim());
   const deferredSkill = useDeferredValue(skillFilter.trim());
 
   const openCandidateInUrl = useCallback((candidateId: number | null) => {
@@ -95,7 +97,7 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
           ? 'talent_pool'
           : 'all';
     setCandidateSearchParam(next, 'scope', scope, 'all');
-    setCandidateSearchParam(next, 'q', searchQuery);
+    setCandidateSearchParam(next, 'q', appliedSearch);
     setCandidateSearchParam(next, 'demand', demandFilter ? String(demandFilter) : '');
     setCandidateSearchParam(next, 'city', cityFilter);
     setCandidateSearchParam(next, 'education', educationFilter);
@@ -117,8 +119,8 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
     parseStatusFilter,
     pipelineStatusFilter,
     scoreFilter,
+    appliedSearch,
     searchParams,
-    searchQuery,
     setSearchParams,
     skillFilter,
     sortBy,
@@ -130,7 +132,13 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
   useEffect(() => { syncCandidateWorkspaceUrl(); }, [syncCandidateWorkspaceUrl]);
 
   const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
+    // 键入时只更新输入框内容，不触发搜索
     setSearchQuery(event.target.value);
+  };
+
+  const submitSearch = () => {
+    setAppliedSearch(searchQuery.trim());
+    clearSelection();
     setPage(1);
   };
 
@@ -148,6 +156,7 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
 
   const resetCandidateFilters = () => {
     setSearchQuery('');
+    setAppliedSearch('');
     setDemandFilter('');
     setCityFilter('');
     setEducationFilter('');
@@ -167,7 +176,7 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
   };
 
   const hasActiveFilters = Boolean(
-    searchQuery.trim()
+    appliedSearch.trim()
     || demandFilter
     || cityFilter
     || educationFilter
@@ -211,6 +220,7 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
     navState,
     workflowSourceQuery,
     searchQuery,
+    appliedSearch,
     demandFilter,
     setDemandFilter,
     cityFilter,
@@ -244,6 +254,7 @@ export function useCandidateLibraryFilters({ clearSelection }: CandidateLibraryF
     openCandidateInUrl,
     consumeNavigationState,
     handleSearchChange,
+    submitSearch,
     handleDemandFilterChange,
     changeFilter,
     resetCandidateFilters,

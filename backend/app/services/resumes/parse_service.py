@@ -133,7 +133,7 @@ def _process_resume(
     target_job_id=None,
 ):
     """解析单份简历并入库，把结果（成功/失败）追加到 results。
-    display_name 用于结果展示（zip 内文件会带 "xxx.zip → 文件名" 前缀）。"""
+    display_name 为简历的展示名（通常即原文件名），用于结果展示。"""
     content_sha256 = _file_sha256(fpath)
     existing_by_file = Candidate.query.filter(
         Candidate.org_id == g.org_id,

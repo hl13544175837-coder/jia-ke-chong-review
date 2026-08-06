@@ -15,6 +15,7 @@ export default function CandidateLibraryFilters({ controller }: CandidateLibrary
     Upload,
     PageHeader,
     WorkspaceTabs,
+    ActionButton,
     candidateScopeTabs,
     candidateStageOptions,
     isCandidateStage,
@@ -68,6 +69,7 @@ export default function CandidateLibraryFilters({ controller }: CandidateLibrary
     loadDemands,
     loadReviewTasks,
     handleSearchChange,
+    submitSearch,
     handleDemandFilterChange,
     changeFilter,
     resetCandidateFilters,
@@ -174,17 +176,28 @@ export default function CandidateLibraryFilters({ controller }: CandidateLibrary
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
-            <label className="relative block min-w-0 flex-1 sm:max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
-              <span className="sr-only">搜索候选人</span>
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={handleSearchChange}
-                placeholder="搜索姓名、联系方式、公司、学校或简历内容"
-                className="h-10 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-sm text-foreground-900 outline-none placeholder:text-foreground-400 focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
-              />
-            </label>
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:max-w-md">
+              <label className="relative block min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
+                <span className="sr-only">搜索候选人</span>
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      submitSearch();
+                    }
+                  }}
+                  placeholder="搜索姓名、联系方式、公司、学校或简历内容"
+                  className="h-10 w-full rounded-lg border border-background-300 bg-white pl-9 pr-3 text-sm text-foreground-900 outline-none placeholder:text-foreground-400 focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+                />
+              </label>
+              <ActionButton type="button" tone="primary" onClick={() => submitSearch()} icon={<Search size={16} aria-hidden="true" />} className="shrink-0">
+                搜索
+              </ActionButton>
+            </div>
             <label className="relative block sm:w-80">
               <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400" size={16} aria-hidden="true" />
               <span className="sr-only">按招聘需求筛选</span>

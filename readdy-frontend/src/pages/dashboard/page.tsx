@@ -15,6 +15,7 @@ import ActionButton from '@/components/ui/ActionButton';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import type { SemanticStatusTone } from '@/components/ui/recruitmentPresentation';
 import { businessReviewsApi } from '@/features/businessReviews/api';
+import { candidatesApi } from '@/features/candidates/api';
 import { demandsApi } from '@/features/demands/api';
 import { interviewsApi } from '@/features/interviews/api';
 import { offersApi } from '@/features/offers/api';
@@ -27,6 +28,8 @@ const emptyFacts: DashboardFacts = {
   interviews: [],
   offers: [],
   reviews: [],
+  rescheduleRequests: [],
+  pendingResumeCount: 0,
 };
 
 const offerStatusLabels: Record<OfferStatus, string> = {
@@ -177,16 +180,23 @@ export default function DashboardPage() {
       interviewsApi.listManagementRows(),
       offersApi.listOffers(),
       businessReviewsApi.listForHr(),
+      interviewsApi.listPendingRescheduleRequests(),
+      candidatesApi.listCandidates({ parse_status: 'failed', per_page: 1 }),
+      candidatesApi.listCandidates({ parse_status: 'pending', per_page: 1 }),
     ]);
-    const labels = ['需求', '面试', 'Offer', '业务筛选'];
+    const labels = ['需求', '面试', 'Offer', '业务筛选', '改约申请', '简历解析', '简历解析'];
     setErrors(results.flatMap((result, index) => (
       result.status === 'rejected' ? [`${labels[index]}数据暂不可用`] : []
     )));
+    const parseFailedTotal = results[5].status === 'fulfilled' ? results[5].value.total : 0;
+    const parsePendingTotal = results[6].status === 'fulfilled' ? results[6].value.total : 0;
     setFacts((current) => ({
       demands: results[0].status === 'fulfilled' ? results[0].value.items : current.demands,
       interviews: results[1].status === 'fulfilled' ? results[1].value : current.interviews,
       offers: results[2].status === 'fulfilled' ? results[2].value.items : current.offers,
       reviews: results[3].status === 'fulfilled' ? results[3].value.items : current.reviews,
+      rescheduleRequests: results[4].status === 'fulfilled' ? results[4].value : current.rescheduleRequests,
+      pendingResumeCount: parseFailedTotal + parsePendingTotal,
     }));
     setLoading(false);
   }, []);
@@ -283,6 +293,42 @@ export default function DashboardPage() {
       priority: 84,
       action: () => navigate(`/interviews?candidate=${item.candidateId}&demand=${item.demandId}&from=dashboard&action=communicate`),
     })),
+    ...summary.nextRoundTasks.map((item) => ({
+      key: item.key,
+      tag: '安排下一轮',
+      title: `${item.candidateName} · ${item.jobTitle}`,
+      detail: `第 ${item.roundSequence || '-'} 轮评价已完成，请安排下一轮面试`,
+      time: item.scheduledAt ? shortDateLabel(item.scheduledAt) : '评价已提交',
+      actionLabel: '去安排',
+      tone: 'blue' as const,
+      urgent: false,
+      priority: 85,
+      action: () => navigate(`/interviews?demand=${item.demandId}&candidate=${item.candidateId}&action=next-round`),
+    })),
+    ...summary.pendingReschedules.map((item) => ({
+      key: `reschedule-${item.id}`,
+      tag: '待确认改约',
+      title: `${item.candidate_name} · ${item.job_title}`,
+      detail: `第 ${item.round_sequence || '-'} 轮改约申请：${item.reason}`,
+      time: item.requested_at ? `申请于 ${shortDateLabel(item.requested_at)}` : '申请时间待确认',
+      actionLabel: '去确认',
+      tone: 'blue' as const,
+      urgent: false,
+      priority: 87,
+      action: () => navigate(`/interviews?demand=${item.demand_id}&candidate=${item.candidate_id}&assignment=${item.assignment_id}&action=reschedule`),
+    })),
+    ...(summary.pendingResumeCount > 0 ? [{
+      key: 'pending-resumes',
+      tag: '待处理简历',
+      title: `${summary.pendingResumeCount} 份简历待处理`,
+      detail: '解析失败或等待解析，请尽快处理后进入流程',
+      time: '随时可处理',
+      actionLabel: '去处理',
+      tone: 'amber' as const,
+      urgent: false,
+      priority: 82,
+      action: () => navigate('/candidates?parse=failed'),
+    }] : []),
     ...summary.myOfferActions.map((item) => ({
       key: `offer-${item.id}`,
       tag: '待处理 Offer',
@@ -302,6 +348,9 @@ export default function DashboardPage() {
     summary.unassignedInterviews,
     summary.waitingConfirmation,
     summary.communicationTasks,
+    summary.nextRoundTasks,
+    summary.pendingReschedules,
+    summary.pendingResumeCount,
     summary.myOfferActions,
     summary.pendingApprovals,
     isManager,

@@ -192,4 +192,8 @@ export interface InterviewFeedbackMutationResult {
   deduplicated?: boolean;
   round_completed?: boolean;
   next_action?: string;
+  /** 主面试官推荐 next_round 后是否已自动创建下一轮待安排任务 */
+  next_round_created?: boolean;
+  /** 自动创建的下一轮序号（未创建时为 null/undefined） */
+  next_round_sequence?: number | null;
 }
