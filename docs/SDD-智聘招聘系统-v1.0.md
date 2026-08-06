@@ -253,7 +253,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `CandidateDemandFlow` / `candidate_demand_flows` | `org_id`, `candidate_id`, `demand_id`, `owner_hr_id`, `status`, `started_at`, `ended_at`, `transfer_from_demand_id`, `transfer_reason`；唯一约束 `(org_id, candidate_id, demand_id)` | 候选人在某 Demand 下的应聘关系与活动状态；当前阶段从该 Demand 的最新 `PipelineStage` 取得，P0 仅允许一个 active flow |
 | 主流程与业务事实 | `pipeline_stages`, `interviews`, `interview_assignments`, `interview_feedback`, `offers`, `dispositions`, `events`, `notifications`, `upload_batches` 增加可回填的 `demand_id` | 所有业务事实在严格切换后按 Demand 归属；`job_id` 仅保留画像或兼容语义 |
 | `InterviewAssignment` | `demand_id`, `round_sequence`, `is_primary`, `primary_slot`；唯一索引 `(org_id,demand_id,candidate_id,primary_slot)` | 有效 primary 的 `primary_slot=round_sequence`，辅助/取消安排为 NULL；数据库保证每轮最多一个有效主面试官 |
-| `InterviewFeedback` | `assignment_id`, `demand_id`；`assignment_id` 唯一索引 | 反馈归属具体安排，同一 assignment 不产生第二份反馈；legacy NULL 仅为兼容，反馈永不自动推进主流程 |
+| `InterviewFeedback` | `assignment_id`, `demand_id`；`assignment_id` 唯一索引 | 反馈归属具体安排，同一 assignment 不产生第二份反馈；legacy NULL 仅为兼容，反馈不自动淘汰/进 Offer/改需求阶段；主面试官推荐“进入下一轮”时由 `interview_workflow_service.auto_create_next_round` 自动创建下一轮待安排任务（独立事务，失败静默降级） |
 | `Match` | 继续使用 `job_id` | 匹配是候选人与岗位画像的可复用计算；“加入哪个招聘任务”由 `demand_id` 决定 |
 
 ### 6.1 招聘阶段枚举
