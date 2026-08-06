@@ -11,11 +11,9 @@ import io
 import zipfile
 from pathlib import Path
 
-from ..middleware.auth import authenticate_token, require_auth, require_role
+from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from ..services.boss_service import BossService
-from ..models import User
-from .. import db
 
 bp = Blueprint("boss", __name__)
 
@@ -23,25 +21,6 @@ _svc = BossService()
 
 # 招聘端操作允许的角色
 _RECRUITER_ROLES = ("recruiter", "manager", "admin")
-
-
-def _require_query_token():
-    """为 window.open 触发的下载接口做 query-token 鉴权（require_auth 仅支持 header）。
-
-    成功 → 设置 g.user_id/g.role 并返回 None；失败 → 返回 (jsonify, status)。
-    """
-    token = request.args.get("token", "")
-    if not token:
-        return jsonify({"error": "Missing token"}), 401
-    user, error = authenticate_token(token)
-    if error is not None:
-        return error
-    if user.role not in _RECRUITER_ROLES:
-        return jsonify({"error": "Forbidden"}), 403
-    g.user_id = user.id
-    g.role = user.role
-    g.org_id = user.org_id or 1
-    return None
 
 
 def _ok_or_fail(result: dict, *, success_code: int = 200, installed_err_code: int = 503):
@@ -193,14 +172,10 @@ def boss_candidate_resume(encrypt_geek_id: str):
 
 
 @bp.get("/boss/candidates/<encrypt_geek_id>/resume/download")
+@require_auth
+@require_role(*_RECRUITER_ROLES)
 def boss_candidate_resume_download(encrypt_geek_id: str):
-    """下载候选人简历 Markdown 文件。query: job?, security_id?, token=
-
-    用 ?token= 传 JWT（window.open 无法带 Authorization 头），手动鉴权 + 角色校验。
-    """
-    err = _require_query_token()
-    if err is not None:
-        return err
+    """下载候选人简历 Markdown 文件。query: job?, security_id?"""
     cookies = _svc.active_cookies_header(g.user_id)
     if not cookies:
         return jsonify({"ok": False, "error": {
@@ -361,15 +336,14 @@ def boss_export():
 
 # ── 浏览器扩展下载 ──────────────────────────────────────────────
 @bp.get("/boss/extension/download")
+@require_auth
+@require_role(*_RECRUITER_ROLES)
 def boss_extension_download():
     """下载 BOSS Cookie 采集浏览器扩展（ZIP 包）。
 
     将 extension/ 目录打包为 ZIP 返回，用户解压后在 Chrome 加载即可使用。
-    用 ?token= 传 JWT（window.open 无法带 Authorization 头），手动鉴权。
+    调用方必须通过 Authorization 请求头携带 JWT。
     """
-    err = _require_query_token()
-    if err is not None:
-        return err
     ext_dir = Path(__file__).resolve().parent.parent.parent.parent / "extension"
     if not ext_dir.is_dir():
         return jsonify({"ok": False, "error": {"code": "not_found", "message": "扩展目录不存在"}}), 404
