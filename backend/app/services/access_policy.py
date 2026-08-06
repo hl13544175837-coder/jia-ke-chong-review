@@ -67,6 +67,8 @@ def interviewer_has_business_review(user_id, candidate_id):
 def visible_candidate_query(user_id, role):
     org_id = actor_org_id(user_id)
     query = active_candidate_query().filter(Candidate.org_id == org_id)
+    if role in {"admin", "manager", "hr_director"}:
+        return query
     if role == "recruiter":
         return query.filter(
             db.or_(
@@ -77,7 +79,7 @@ def visible_candidate_query(user_id, role):
     if role == "interviewer":
         assigned_ids = assigned_candidate_ids_for_interviewer(user_id)
         return query.filter(Candidate.id.in_(assigned_ids or [-1]))
-    return query
+    return query.filter(db.false())
 
 
 def visible_job_query(user_id, role):
