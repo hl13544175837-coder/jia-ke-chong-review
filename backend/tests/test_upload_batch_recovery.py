@@ -27,6 +27,8 @@ def test_upload_batch_rollback_soft_deletes_candidates_and_audits(client, make_u
                 phone_masked="13800000000",
                 resume_json={"extracted_info": {"name": "误导入A"}},
                 raw_file_path=str(first_file),
+                raw_file_name=first_file.name,
+                raw_file_data=first_file.read_bytes(),
             ),
             Candidate(
                 org_id=1,
@@ -37,6 +39,8 @@ def test_upload_batch_rollback_soft_deletes_candidates_and_audits(client, make_u
                 phone_masked="13900000000",
                 resume_json={"extracted_info": {"name": "误导入B"}},
                 raw_file_path=str(second_file),
+                raw_file_name=second_file.name,
+                raw_file_data=second_file.read_bytes(),
             ),
         ]
         db.session.add_all(candidates)
@@ -67,6 +71,7 @@ def test_upload_batch_rollback_soft_deletes_candidates_and_audits(client, make_u
         assert all(row.name_masked == "已撤回导入候选人" for row in rows)
         assert all(row.email_masked == "" and row.phone_masked == "" for row in rows)
         assert all(row.resume_json == {} and row.raw_file_path is None for row in rows)
+        assert all(row.raw_file_name is None and row.raw_file_data is None for row in rows)
 
         event = Event.query.filter_by(action="resume.upload_batch.rolled_back", entity_id=batch_id).first()
         assert event is not None

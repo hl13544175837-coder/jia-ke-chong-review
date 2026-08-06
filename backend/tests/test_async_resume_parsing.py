@@ -182,7 +182,7 @@ def test_background_worker_recovers_stale_processing_after_pod_restart(
         assert recovered.parse_error == "queued:pod-stale"
 
 
-def test_background_worker_only_claims_files_owned_by_its_pod(
+def test_background_worker_can_claim_database_backed_file_from_a_new_pod(
     client, make_user, app, monkeypatch
 ):
     owner_id, token = make_user("async-resume-pod@example.com", role="recruiter")
@@ -199,15 +199,12 @@ def test_background_worker_only_claims_files_owned_by_its_pod(
 
     from app.services.resume_parse_worker import process_next_pending
 
-    monkeypatch.setenv("HOSTNAME", "pod-b")
-    assert process_next_pending(app) is False
-
     class Parser:
         def parse_resume(self, file_path):
-            return {"extracted_info": {"name": "同 Pod 候选人"}, "skills": []}
+            return {"extracted_info": {"name": "跨 Pod 候选人"}, "skills": []}
 
     monkeypatch.setattr("app.services.resume_service.ResumeParser", lambda: Parser())
-    monkeypatch.setenv("HOSTNAME", "pod-a")
+    monkeypatch.setenv("HOSTNAME", "pod-b")
     assert process_next_pending(app) is True
 
     with app.app_context():
@@ -216,4 +213,4 @@ def test_background_worker_only_claims_files_owned_by_its_pod(
 
         completed = db.session.get(Candidate, candidate_id)
         assert completed.parse_status == "ok"
-        assert completed.name_masked == "同 Pod 候选人"
+        assert completed.name_masked == "跨 Pod 候选人"

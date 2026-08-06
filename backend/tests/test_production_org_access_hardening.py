@@ -235,6 +235,25 @@ def test_delete_candidate_soft_deletes_anonymizes_and_removes_raw_file(client, m
     raw_file = upload_root / "resume.pdf"
     raw_file.write_bytes(b"%PDF-1.4\nprivate resume")
     _, candidate_id = _seed_job_candidate(app, owner_id, raw_file_path=str(raw_file))
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, CandidateResumeVersion
+
+        candidate = db.session.get(Candidate, candidate_id)
+        candidate.raw_file_name = raw_file.name
+        candidate.raw_file_data = raw_file.read_bytes()
+        db.session.add(CandidateResumeVersion(
+            org_id=1,
+            candidate_id=candidate_id,
+            version_no=1,
+            resume_json={},
+            raw_file_path=str(raw_file),
+            raw_file_name=raw_file.name,
+            raw_file_data=raw_file.read_bytes(),
+            parse_status="ok",
+            reason="manual_replace",
+        ))
+        db.session.commit()
 
     response = client.delete(
         f"/api/candidates/{candidate_id}",
@@ -245,7 +264,7 @@ def test_delete_candidate_soft_deletes_anonymizes_and_removes_raw_file(client, m
     assert response.status_code == 200
     with app.app_context():
         from app import db
-        from app.models import Candidate
+        from app.models import Candidate, CandidateResumeVersion
 
         candidate = db.session.get(Candidate, candidate_id)
         assert candidate.deleted_at is not None
@@ -255,6 +274,12 @@ def test_delete_candidate_soft_deletes_anonymizes_and_removes_raw_file(client, m
         assert candidate.phone_masked == ""
         assert candidate.resume_json == {}
         assert candidate.raw_file_path is None
+        assert candidate.raw_file_name is None
+        assert candidate.raw_file_data is None
+        version = CandidateResumeVersion.query.filter_by(candidate_id=candidate_id).one()
+        assert version.raw_file_path is None
+        assert version.raw_file_name is None
+        assert version.raw_file_data is None
         assert not raw_file.exists()
 
     listed = client.get("/api/candidates", headers=_auth(owner_token))

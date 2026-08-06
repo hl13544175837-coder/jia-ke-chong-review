@@ -82,7 +82,8 @@
 flowchart LR
   Browser["浏览器 / React SPA"] --> Flask["Flask API + 静态托管 :5000"]
   Flask --> SQLite["SQLite hireinsight.db"]
-  Flask --> Uploads["本地 uploads/ 简历文件"]
+  Flask --> Uploads["本地 uploads/ 解析工作文件"]
+  Flask --> DBFiles["数据库原简历副本"]
   Flask --> Services["Backend Services"]
   Services --> BaseAgent["base_agent AI 能力"]
   BaseAgent --> DeepSeek["DeepSeek / OpenAI兼容接口"]
@@ -230,7 +231,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | 表 | 模型 | 关键字段 | 用途 |
 |---|---|---|---|
 | `users` | `User` | `org_id`, `name`, `email`, `role`, `password_hash`, `is_active`, `token_version` | 用户、角色、启停；`org_id` 是多组织隔离边界；改密/重置密码、角色或启停变化递增 `token_version` 让旧 token 失效 |
-| `candidates` | `Candidate` | `org_id`, `owner_hr_id`, `current_demand_id`, `name_masked`, `resume_json`, `raw_file_path`, `deleted_at`, `deleted_by`, `anonymized_at` | 候选人主档与当前唯一活跃 Demand 指针；支持软删除与匿名化 |
+| `candidates` | `Candidate` | `org_id`, `owner_hr_id`, `current_demand_id`, `name_masked`, `resume_json`, `raw_file_path`, `raw_file_name`, `raw_file_data`, `deleted_at`, `deleted_by`, `anonymized_at` | 候选人主档与当前唯一活跃 Demand 指针；原简历保留数据库副本，支持软删除与匿名化 |
 | `upload_batches` | `UploadBatch` | `org_id`, `owner_hr_id`, `target_job_id`, `demand_id`, `source_channel`, `note` | 批量上传元数据；误导入撤回按批次定位候选人 |
 | `candidate_tags` | `CandidateTag` | `org_id`, `candidate_id`, `tag`, `score` | 简历技能标签及评分 |
 | `candidate_favorites` | `CandidateFavorite` | `org_id`, `user_id`, `candidate_id`, `created_at` | 当前用户对候选人的收藏；组织、用户、候选人三元唯一 |
@@ -511,7 +512,7 @@ sequenceDiagram
 flowchart TD
   A["HR 选择多个 PDF/DOCX 或 ZIP"] --> B["POST /api/resume/upload files[]"]
   B --> C{"文件类型"}
-  C -->|"pdf/docx"| D["保存到 uploads/"]
+  C -->|"pdf/docx"| D["保存解析工作文件并写数据库副本"]
   C -->|"doc"| X["跳过: 旧版 DOC 宏风险"]
   C -->|"zip"| E["安全解压: 数量/大小/路径限制"]
   E --> D
@@ -852,7 +853,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 发布通道另有一层不受运行时环境变量覆盖的边界：Makefile 只接受精确 `RC` / `GA`，并把发布通道写入镜像内 `.release-channel` 文件。entrypoint 先读取该标记；GA 镜像若被 K8S env 覆盖为 SIT 放行、自动迁移/空库初始化、公开注册或关闭安全头/限流，会在任何 DDL 之前拒绝启动。RC 镜像则保留本轮已授权的完全宽松测试配置。
 
-当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07` → `20260724_08` → `20260726_09` → `20260728_10` → `20260729_11` → `20260729_12` → `20260730_13` → `20260804_14`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。08 补齐 Demand 审批、业务筛选任务与反馈更新字段。09 新建个人收藏和候选人合并审计表。10 新增组织设置持久化和用户部门字段。11 为候选人增加可空 `resume_sha256` 与 `(org_id, resume_sha256)` 普通索引，不回填历史值，用于精确阻止同文件重复导入；12 新增候选人简历版本留档；13 新增面试改约申请与处理历史；14 新增 Offer 本地 OA 结果登记字段与索引，不调用外部 OA。09 至 14 都不支持破坏性在线 downgrade。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配、简历指纹列/索引，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
+当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07` → `20260724_08` → `20260726_09` → `20260728_10` → `20260729_11` → `20260729_12` → `20260730_13` → `20260804_14` → `20260806_15`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。08 补齐 Demand 审批、业务筛选任务与反馈更新字段。09 新建个人收藏和候选人合并审计表。10 新增组织设置持久化和用户部门字段。11 为候选人增加可空 `resume_sha256` 与 `(org_id, resume_sha256)` 普通索引，不回填历史值，用于精确阻止同文件重复导入；12 新增候选人简历版本留档；13 新增面试改约申请与处理历史；14 新增 Offer 本地 OA 结果登记字段与索引，不调用外部 OA；15 为当前及历史简历增加数据库原件副本，新 Pod 可继续解析并提供预览。09 至 15 都不支持破坏性在线 downgrade。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配、简历指纹列/索引，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|

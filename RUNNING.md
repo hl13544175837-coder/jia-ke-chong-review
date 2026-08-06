@@ -30,6 +30,8 @@ Libra/SIT 的 RC server 镜像在 Gunicorn 启动前依次执行受控空库 boo
 
 当前 RC 只给项目负责人使用可丢弃测试数据。镜像显式设置 `ALLOW_INSECURE_SIT_STARTUP=true`，不再因弱测试密钥、空 CORS 白名单、AI 生产合规项或临时 uploads 路径拒绝启动；同时使用 `SECURITY_HEADERS_ENABLED=false`、`RATE_LIMIT_ENABLED=false`、`ALLOW_PUBLIC_REGISTRATION=true` 和留空的 `CORS_ORIGINS`。容器仍保持 `FLASK_DEBUG=false`，不开 Werkzeug 调试器，也不因此获得应用内 `create_all()` 权限。
 
+新上传和替换的原简历会同时写入数据库；`uploads` 继续作为解析工作文件和旧数据兼容路径。Pod 更新后即使临时文件消失，数据库副本仍可用于后台解析、预览和下载。数据库备份因此包含候选人原件，容量和访问权限都必须按敏感招聘数据管理。
+
 手工运行可复制 `backend/sit-unrestricted.env.example`。`check_pilot_readiness.py` 是给真实 HR 数据试点/GA 的生产自检，它会要求 `ALLOW_INSECURE_SIT_STARTUP=false`，不得拿该脚本的 FAIL 去阻断当前宽松 SIT 构建。若要导入真实候选人数据或开放给其他人，必须先切回下文严格配置并完成试点检查。
 
 ---
@@ -88,7 +90,7 @@ python seed_dev.py
 ```bash
 cd backend
 alembic upgrade head
-alembic current  # 当前收口候选应为 20260804_14
+alembic current  # 当前收口候选应为 20260806_15
 python scripts/audit_demand_scope.py --database <local-sqlite-fixture> \
   --output <audit-report.json> --manifest-output <mapping-to-review.json>
 # 必须由 Product/Data Owner 将审批后的条目标记 approved=true

@@ -1,4 +1,5 @@
 import hashlib
+import io
 import mimetypes
 import os
 import uuid
@@ -144,35 +145,63 @@ def _original_resume_urls(candidate_id):
     }
 
 
-def _resolve_original_resume(candidate):
-    """Resolve a stored resume only when it remains inside UPLOAD_FOLDER.
+def _resume_record_suffix(record):
+    for value in (record.raw_file_name, record.raw_file_path):
+        suffix = Path(value or "").suffix.lower()
+        if suffix:
+            return suffix
+    return ""
+
+
+def _resolve_resume_record(record, *, download_stem):
+    """Resolve a resume from disk, then fall back to its database copy.
 
     The return value deliberately separates an internal path from public
     metadata so callers never serialize the server filesystem location.
     """
-    if not candidate.raw_file_path:
-        return None, "missing_path"
+    reason = "missing_path"
+    resolved = None
+    if record.raw_file_path:
+        upload_root = current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER
+        try:
+            resolved = resolve_stored_upload_path(record.raw_file_path, upload_root)
+        except RuntimePathError:
+            reason = "out_of_root"
+        else:
+            if not resolved.is_file():
+                resolved = None
+                reason = "missing_file"
 
-    upload_root = current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER
-    try:
-        resolved = resolve_stored_upload_path(candidate.raw_file_path, upload_root)
-    except RuntimePathError:
-        return None, "out_of_root"
-    if not resolved.is_file():
-        return None, "missing_file"
-
-    suffix = resolved.suffix.lower()
+    suffix = resolved.suffix.lower() if resolved is not None else _resume_record_suffix(record)
     mime_type = ORIGINAL_RESUME_MIME_TYPES.get(suffix)
     if mime_type is None:
-        guessed, _ = mimetypes.guess_type(resolved.name)
+        guessed, _ = mimetypes.guess_type(
+            resolved.name if resolved is not None else (record.raw_file_name or "")
+        )
         if guessed not in ORIGINAL_RESUME_MIME_TYPES.values():
             return None, "unsupported_type"
         mime_type = guessed
-    return {
-        "path": resolved,
-        "filename": f"candidate-{candidate.id}-resume{suffix}",
+
+    payload = {
+        "filename": f"{download_stem}{suffix}",
         "mime_type": mime_type,
-    }, None
+    }
+    if resolved is not None:
+        payload["path"] = resolved
+        return payload, None
+
+    stored_data = bytes(record.raw_file_data or b"")
+    if not stored_data:
+        return None, reason
+    payload["data"] = stored_data
+    return payload, None
+
+
+def _resolve_original_resume(candidate):
+    return _resolve_resume_record(
+        candidate,
+        download_stem=f"candidate-{candidate.id}-resume",
+    )
 
 
 def _original_resume_payload(candidate):
@@ -230,8 +259,9 @@ def _serve_original_resume(candidate_id, *, as_attachment):
         entity_type="candidate",
         payload={"mime_type": resolved["mime_type"]},
     )
+    source = resolved.get("path") or io.BytesIO(resolved["data"])
     response = send_file(
-        resolved["path"],
+        source,
         mimetype=resolved["mime_type"],
         as_attachment=as_attachment,
         download_name=resolved["filename"],

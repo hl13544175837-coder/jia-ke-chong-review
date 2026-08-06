@@ -40,5 +40,5 @@ def test_kpi_standards_migration_round_trip(tmp_path):
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260804_14"
+        ).scalar_one() == "20260806_15"
     engine.dispose()

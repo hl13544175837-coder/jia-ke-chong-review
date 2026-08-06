@@ -957,7 +957,7 @@ def test_small_team_sit_release_uses_safe_roles_manual_resume_and_clean_context(
     assert "/docs/acceptance-assets/" in gitignore
     assert "diagrams" in dockerignore
     assert "docs/acceptance-assets" in dockerignore
-    assert "20260804_14" in deployment
+    assert "20260806_15" in deployment
     assert "AUTH_GATEWAY_ROLE_MAP" in deployment
 
 

@@ -19,7 +19,7 @@ def test_actuator_info_exposes_only_non_secret_build_identity(client):
         "version": "local",
         "channel": "local",
         "build_time": "unknown",
-        "schema": "20260804_14",
+        "schema": "20260806_15",
     }
     serialized = str(payload).lower()
     assert "secret" not in serialized

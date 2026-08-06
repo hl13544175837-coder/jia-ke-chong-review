@@ -1,4 +1,6 @@
 from sqlalchemy import event, inspect
+from sqlalchemy.dialects.mysql import LONGBLOB
+from sqlalchemy.orm import deferred
 
 from . import db
 from .time_utils import utc_now
@@ -48,6 +50,10 @@ class Candidate(db.Model):
     phone_masked = db.Column(db.String(30))
     resume_json = db.Column(db.JSON, nullable=False)
     raw_file_path = db.Column(db.Text)
+    raw_file_name = db.Column(db.String(255))
+    raw_file_data = deferred(
+        db.Column(db.LargeBinary().with_variant(LONGBLOB(), "mysql"))
+    )
     resume_sha256 = db.Column(db.String(64))
     created_at = db.Column(db.DateTime, default=utc_now)
     deleted_at = db.Column(db.DateTime)
@@ -99,6 +105,10 @@ class CandidateResumeVersion(db.Model):
     phone_masked = db.Column(db.String(30))
     resume_json = db.Column(db.JSON, nullable=False, default=dict)
     raw_file_path = db.Column(db.Text)
+    raw_file_name = db.Column(db.String(255))
+    raw_file_data = deferred(
+        db.Column(db.LargeBinary().with_variant(LONGBLOB(), "mysql"))
+    )
     resume_sha256 = db.Column(db.String(64))
     parse_status = db.Column(db.String(20), nullable=False, default="ok")
     parse_error = db.Column(db.Text)

@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from flask import current_app, g
 
@@ -139,6 +140,8 @@ def _process_resume(
 ):
     """解析单份简历并入库，把结果（成功/失败）追加到 results。
     display_name 用于结果展示（zip 内文件会带 "xxx.zip → 文件名" 前缀）。"""
+    file_data = Path(fpath).read_bytes()
+    raw_file_name = Path(fpath).name
     content_sha256 = _file_sha256(fpath)
     existing_by_file = Candidate.query.filter(
         Candidate.org_id == g.org_id,
@@ -165,6 +168,8 @@ def _process_resume(
             display_name=display_name,
             error=RuntimeError(RESUME_AI_DISABLED_MESSAGE),
             upload_batch_id=upload_batch_id,
+            raw_file_name=raw_file_name,
+            raw_file_data=file_data,
         )
         candidate.org_id = g.org_id
         candidate.resume_sha256 = content_sha256
@@ -193,6 +198,8 @@ def _process_resume(
             upload_batch_id=upload_batch_id,
             org_id=g.org_id,
             resume_sha256=content_sha256,
+            raw_file_name=raw_file_name,
+            raw_file_data=file_data,
         )
         record_event(
             "resume.parse_queued",
@@ -224,6 +231,8 @@ def _process_resume(
             display_name=display_name,
             error=e,
             upload_batch_id=upload_batch_id,
+            raw_file_name=raw_file_name,
+            raw_file_data=file_data,
         )
         candidate.org_id = g.org_id
         candidate.resume_sha256 = content_sha256
@@ -247,6 +256,8 @@ def _process_resume(
     # Parsing succeeded. Audit/storage/pipeline failures are infrastructure
     # errors and must not create a second, falsely "parse failed" candidate.
     candidate.org_id = g.org_id
+    candidate.raw_file_name = raw_file_name
+    candidate.raw_file_data = file_data
     candidate.resume_sha256 = content_sha256
     existing_by_identity, match_basis = find_existing_candidate_by_identity(candidate)
     if existing_by_identity is not None:

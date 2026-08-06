@@ -2,6 +2,8 @@ import logging
 import os
 import socket
 import sys
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from flask import current_app
 from runtime_paths import DEFAULT_UPLOAD_FOLDER, resolve_stored_upload_path
@@ -42,7 +44,14 @@ class ResumeBatchService:
         user = db.session.get(User, owner_hr_id) if owner_hr_id else None
         return (user.org_id if user else None) or 1
 
-    def parse_and_save(self, file_path: str, owner_hr_id: int, upload_batch_id: int = None) -> Candidate:
+    def parse_and_save(
+        self,
+        file_path: str,
+        owner_hr_id: int,
+        upload_batch_id: int = None,
+        raw_file_name: str | None = None,
+        raw_file_data: bytes | None = None,
+    ) -> Candidate:
         """解析单份简历，存入数据库，返回 Candidate 对象"""
         result = self.parser.parse_resume(file_path)
 
@@ -51,6 +60,8 @@ class ResumeBatchService:
             owner_hr_id=owner_hr_id,
             upload_batch_id=upload_batch_id,
             raw_file_path=file_path,
+            raw_file_name=raw_file_name or Path(file_path).name,
+            raw_file_data=raw_file_data,
             resume_json={},
             parse_status="ok",
         )
@@ -68,6 +79,8 @@ class ResumeBatchService:
         upload_batch_id: int = None,
         org_id: int | None = None,
         resume_sha256: str | None = None,
+        raw_file_name: str | None = None,
+        raw_file_data: bytes | None = None,
     ) -> Candidate:
         """先安全落库，模型解析交给后台任务，避免上传请求被网关截断。"""
         candidate = Candidate(
@@ -77,6 +90,8 @@ class ResumeBatchService:
             name_masked=display_name[:100],
             resume_json={},
             raw_file_path=file_path,
+            raw_file_name=raw_file_name or Path(file_path).name,
+            raw_file_data=raw_file_data,
             resume_sha256=resume_sha256,
             parse_status="pending",
             parse_error=resume_parse_queue_marker(),
@@ -98,6 +113,8 @@ class ResumeBatchService:
         display_name: str,
         error: Exception,
         upload_batch_id: int = None,
+        raw_file_name: str | None = None,
+        raw_file_data: bytes | None = None,
     ) -> Candidate:
         candidate = Candidate(
             org_id=self._owner_org_id(owner_hr_id),
@@ -106,6 +123,8 @@ class ResumeBatchService:
             name_masked=display_name[:100],
             resume_json={},
             raw_file_path=file_path,
+            raw_file_name=raw_file_name or Path(file_path).name,
+            raw_file_data=raw_file_data,
             parse_status="failed",
             parse_error=stored_resume_parse_error(error),
         )
@@ -114,7 +133,7 @@ class ResumeBatchService:
         return candidate
 
     def reparse_candidate(self, candidate: Candidate) -> Candidate:
-        if not candidate.raw_file_path:
+        if not candidate.raw_file_path and not candidate.raw_file_data:
             raise ValueError("这条候选人没有可重试的原始文件")
 
         candidate_id = candidate.id
@@ -123,11 +142,8 @@ class ResumeBatchService:
             candidate.parse_error = None
             db.session.flush()
 
-            source_path = resolve_stored_upload_path(
-                candidate.raw_file_path,
-                current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER,
-            )
-            result = self.parser.parse_resume(str(source_path))
+            with self._candidate_source_path(candidate) as source_path:
+                result = self.parser.parse_resume(str(source_path))
             self._apply_parse_result(candidate, result)
             db.session.commit()
             return candidate
@@ -156,9 +172,13 @@ class ResumeBatchService:
         file_path: str,
         content_sha256: str,
         parse_result: dict,
+        raw_file_name: str | None = None,
+        raw_file_data: bytes | None = None,
     ) -> Candidate:
         """用新原件和新解析结果覆盖简历档案，保留候选人 ID 和业务历史。"""
         candidate.raw_file_path = file_path
+        candidate.raw_file_name = raw_file_name or Path(file_path).name
+        candidate.raw_file_data = raw_file_data
         candidate.resume_sha256 = content_sha256
         self._apply_parse_result(candidate, parse_result)
         db.session.commit()
@@ -172,9 +192,13 @@ class ResumeBatchService:
         content_sha256: str,
         display_name: str,
         error: Exception,
+        raw_file_name: str | None = None,
+        raw_file_data: bytes | None = None,
     ) -> Candidate:
         """新原件解析失败时，保留新原件供人工确认，不留用旧结构化内容。"""
         candidate.raw_file_path = file_path
+        candidate.raw_file_name = raw_file_name or Path(file_path).name
+        candidate.raw_file_data = raw_file_data
         candidate.resume_sha256 = content_sha256
         candidate.name_masked = display_name[:100]
         candidate.email_masked = ""
@@ -185,6 +209,32 @@ class ResumeBatchService:
         self._replace_candidate_tags(candidate, [])
         db.session.commit()
         return candidate
+
+    @contextmanager
+    def _candidate_source_path(self, candidate: Candidate):
+        upload_root = current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER
+        try:
+            source_path = resolve_stored_upload_path(candidate.raw_file_path, upload_root)
+        except (TypeError, RuntimeError, ValueError):
+            source_path = None
+
+        if source_path is not None and source_path.is_file():
+            yield source_path
+            return
+
+        file_data = bytes(candidate.raw_file_data or b"")
+        if not file_data:
+            raise ValueError("这条候选人没有可重试的原始文件")
+
+        suffix = Path(candidate.raw_file_name or candidate.raw_file_path or "").suffix
+        temporary = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        temporary_path = Path(temporary.name)
+        try:
+            with temporary:
+                temporary.write(file_data)
+            yield temporary_path
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
     def _apply_parse_result(self, candidate: Candidate, result: dict) -> None:
         info = result.get("extracted_info", {}) if isinstance(result, dict) else {}

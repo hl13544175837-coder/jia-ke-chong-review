@@ -8,7 +8,7 @@ from runtime_paths import DEFAULT_UPLOAD_FOLDER, RuntimePathError, resolve_store
 from .. import db
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
-from ..models import Candidate, CandidateDemandFlow, User
+from ..models import Candidate, CandidateDemandFlow, CandidateResumeVersion, User
 from ..services.candidate_library_read_service import export_count_for_actor
 from ..services.csv_security import safe_csv_cell
 from ..time_utils import utc_now
@@ -169,6 +169,8 @@ def register_candidate_admin_routes(bp):
         candidate.phone_masked = ""
         candidate.resume_json = {}
         candidate.raw_file_path = None
+        candidate.raw_file_name = None
+        candidate.raw_file_data = None
         candidate.parse_error = None
         candidate.deleted_at = utc_now()
         candidate.deleted_by = g.user_id
@@ -177,6 +179,13 @@ def register_candidate_admin_routes(bp):
             tag.tag = "已删除"
             tag.score = None
             tag.org_id = g.org_id
+        for version in CandidateResumeVersion.query.filter_by(
+            org_id=g.org_id,
+            candidate_id=candidate.id,
+        ).all():
+            version.raw_file_path = None
+            version.raw_file_name = None
+            version.raw_file_data = None
         db.session.commit()
         record_event(
             "candidate.deleted",

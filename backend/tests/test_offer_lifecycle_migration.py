@@ -66,7 +66,7 @@ def test_offer_lifecycle_migration_preserves_existing_offer_rows(tmp_path):
         ).scalar_one() == "30-35K"
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260804_14"
+        ).scalar_one() == "20260806_15"
         assert connection.execute(
             text("SELECT oa_status FROM offer_records WHERE id = 1")
         ).scalar_one() == "not_started"

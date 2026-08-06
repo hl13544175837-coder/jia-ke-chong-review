@@ -1,13 +1,8 @@
-import mimetypes
+import io
 from pathlib import Path
 
 from flask import current_app, g, jsonify, request, send_file
-
-from runtime_paths import (
-    DEFAULT_UPLOAD_FOLDER,
-    RuntimePathError,
-    resolve_stored_upload_path,
-)
+from runtime_paths import DEFAULT_UPLOAD_FOLDER
 
 from .. import db
 from ..middleware.auth import require_auth
@@ -22,13 +17,13 @@ from .access import can_access_candidate, same_org
 def register_resume_history_routes(bp):
     from ..services.resumes.file_service import (
         BLOCKED_RESUME_EXTS,
-        ORIGINAL_RESUME_MIME_TYPES,
         _ext,
         _file_sha256,
         _is_resume,
         _original_resume_candidate,
         _remove_uploaded_file,
         _resolve_original_resume,
+        _resolve_resume_record,
         _serve_original_resume,
         _stored_resume_filename,
         _validate_upload_file,
@@ -107,24 +102,12 @@ def register_resume_history_routes(bp):
         ).first()
         if version is None:
             return jsonify({"error": "历史简历版本不存在"}), 404
-        if not version.raw_file_path:
+        resolved, _reason = _resolve_resume_record(
+            version,
+            download_stem=f"candidate-{candidate.id}-resume-v{version.version_no}",
+        )
+        if resolved is None:
             return jsonify({"error": "历史简历原件不可用"}), 404
-
-        upload_root = current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER
-        try:
-            resolved = resolve_stored_upload_path(version.raw_file_path, upload_root)
-        except RuntimePathError:
-            return jsonify({"error": "历史简历原件不可用"}), 404
-        if not resolved.is_file():
-            return jsonify({"error": "历史简历原件不可用"}), 404
-
-        suffix = resolved.suffix.lower()
-        mime_type = ORIGINAL_RESUME_MIME_TYPES.get(suffix)
-        if mime_type is None:
-            guessed, _ = mimetypes.guess_type(resolved.name)
-            if guessed not in ORIGINAL_RESUME_MIME_TYPES.values():
-                return jsonify({"error": "该历史简历格式暂不支持下载"}), 400
-            mime_type = guessed
 
         record_event(
             "resume.version.downloaded",
@@ -132,11 +115,12 @@ def register_resume_history_routes(bp):
             entity_type="candidate",
             payload={"version_id": version.id, "version_no": version.version_no},
         )
+        source = resolved.get("path") or io.BytesIO(resolved["data"])
         response = send_file(
-            resolved,
-            mimetype=mime_type,
+            source,
+            mimetype=resolved["mime_type"],
             as_attachment=True,
-            download_name=f"candidate-{candidate.id}-resume-v{version.version_no}{suffix}",
+            download_name=resolved["filename"],
             conditional=True,
             max_age=0,
         )
@@ -197,6 +181,8 @@ def register_resume_history_routes(bp):
         Path(folder).mkdir(parents=True, exist_ok=True)
         new_path = str(Path(folder) / _stored_resume_filename(file_storage.filename))
         file_storage.save(new_path)
+        raw_file_data = Path(new_path).read_bytes()
+        raw_file_name = Path(new_path).name
         content_sha256 = _file_sha256(new_path)
 
         existing_by_file = Candidate.query.filter(
@@ -227,6 +213,8 @@ def register_resume_history_routes(bp):
                 content_sha256=content_sha256,
                 display_name=file_storage.filename,
                 error=error,
+                raw_file_name=raw_file_name,
+                raw_file_data=raw_file_data,
             )
             record_event(
                 "resume.replaced_parse_failed",
@@ -262,6 +250,8 @@ def register_resume_history_routes(bp):
             file_path=new_path,
             content_sha256=content_sha256,
             parse_result=parse_result,
+            raw_file_name=raw_file_name,
+            raw_file_data=raw_file_data,
         )
         rematched_jobs = _refresh_related_job_matches(candidate)
         record_event(

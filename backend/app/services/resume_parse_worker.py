@@ -1,9 +1,9 @@
 """Durable-enough in-app dispatcher for long-running resume model calls.
 
 The HTTP upload path persists a ``pending`` candidate and returns immediately.
-Gunicorn workers on the same pod poll those rows, atomically claim one, and run
-the model outside the gateway request lifecycle. Node-scoped markers prevent a
-rolling-deployment pod from claiming another pod's local upload file.
+Gunicorn workers poll those rows, atomically claim one, and run the model outside
+the gateway request lifecycle. Database-backed originals allow a replacement pod
+to finish work queued by a pod that disappeared during a rolling deployment.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from datetime import datetime
 from time import monotonic, sleep
 
 from flask import g
+from sqlalchemy import and_, or_
 
 from .. import db
 from ..middleware.events import record_event
@@ -35,8 +36,17 @@ def _claim_next_candidate() -> int | None:
         db.session.query(Candidate.id)
         .filter(
             Candidate.parse_status == "pending",
-            Candidate.parse_error == f"queued:{node_id}",
-            Candidate.raw_file_path.isnot(None),
+            or_(
+                Candidate.parse_error == f"queued:{node_id}",
+                and_(
+                    Candidate.raw_file_data.isnot(None),
+                    Candidate.parse_error.like("queued:%"),
+                ),
+            ),
+            or_(
+                Candidate.raw_file_path.isnot(None),
+                Candidate.raw_file_data.isnot(None),
+            ),
             Candidate.deleted_at.is_(None),
         )
         .order_by(Candidate.id.asc())
@@ -72,7 +82,13 @@ def recover_stale_processing(app, *, max_age_seconds: int = 600) -> int:
     with app.app_context():
         rows = Candidate.query.filter(
             Candidate.parse_status == "processing",
-            Candidate.parse_error.like(f"worker:{resume_parse_node_id()}:%"),
+            or_(
+                Candidate.parse_error.like(f"worker:{resume_parse_node_id()}:%"),
+                and_(
+                    Candidate.raw_file_data.isnot(None),
+                    Candidate.parse_error.like("worker:%"),
+                ),
+            ),
             Candidate.deleted_at.is_(None),
         ).all()
         for candidate in rows:

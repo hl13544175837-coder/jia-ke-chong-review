@@ -182,7 +182,11 @@ def test_replacing_resume_updates_same_candidate_and_keeps_business_history(
 
     with app.app_context():
         from app import db
-        from app.models import Job, PipelineStage, RecruitmentDemand
+        from app.models import Candidate, Job, PipelineStage, RecruitmentDemand
+
+        candidate = db.session.get(Candidate, candidate_id)
+        candidate.raw_file_name = old_file.name
+        candidate.raw_file_data = old_file.read_bytes()
 
         job = Job(org_id=1, title="后端工程师", jd_text="Python", owner_hr_id=owner_id)
         db.session.add(job)
@@ -246,14 +250,18 @@ def test_replacing_resume_updates_same_candidate_and_keeps_business_history(
         candidate = app.extensions["sqlalchemy"].session.get(Candidate, candidate_id)
         assert candidate.resume_json["extracted_info"]["email"] == "new@example.com"
         assert candidate.raw_file_path != str(old_file)
+        assert candidate.raw_file_data == b"%PDF-1.4 new"
         assert PipelineStage.query.filter_by(
             candidate_id=candidate_id,
             demand_id=demand_id,
         ).count() == 1
         archived = CandidateResumeVersion.query.filter_by(candidate_id=candidate_id).one()
         assert archived.raw_file_path == str(old_file)
+        assert archived.raw_file_data == b"%PDF-1.4 old"
         assert archived.parse_status == "failed"
         assert archived.created_by == owner_id
+
+    old_file.unlink()
 
     history = client.get(
         f"/api/resume/{candidate_id}/versions",

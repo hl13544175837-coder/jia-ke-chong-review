@@ -177,7 +177,7 @@ python backend/scripts/cleanup_demo_data.py --confirm
 
 ### 数据库生命周期
 
-RC/SIT/生产的 Flask 应用工厂不会执行 `create_all`、补列或其他 DDL。真正空库只能显式运行 `python backend/scripts/bootstrap_database.py --allow-empty`：脚本验证数据库完全为空后创建 metadata 并写入当前 Alembic head；缺失任一 `20260710_01` 之前的旧基线业务表都会拒绝继续且不 stamp，`candidate_demand_flows` 则由该 Expand revision 新建。已有库统一使用 `alembic upgrade head`，当前收口候选 head 为 `20260804_14`；revision 11 增加简历指纹，revision 12 增加简历版本，revision 13 增加面试改约申请与历史索引，revision 14 增加本地 OA 结果登记字段和索引，均不回填或改写已有业务行。只有自动化测试或显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 本地兼容路径允许应用侧建表。
+RC/SIT/生产的 Flask 应用工厂不会执行 `create_all`、补列或其他 DDL。真正空库只能显式运行 `python backend/scripts/bootstrap_database.py --allow-empty`：脚本验证数据库完全为空后创建 metadata 并写入当前 Alembic head；缺失任一 `20260710_01` 之前的旧基线业务表都会拒绝继续且不 stamp，`candidate_demand_flows` 则由该 Expand revision 新建。已有库统一使用 `alembic upgrade head`，当前收口候选 head 为 `20260806_15`；revision 11 增加简历指纹，revision 12 增加简历版本，revision 13 增加面试改约申请与历史索引，revision 14 增加本地 OA 结果登记字段和索引，revision 15 为当前简历和历史版本增加数据库原件副本，均不回填或改写已有业务行。只有自动化测试或显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 本地兼容路径允许应用侧建表。
 
 因此 Gunicorn/Flask worker 只消费已准备好的 schema；生产必须由唯一 migration job 执行升级。禁止用手工 SQL、多个 worker 并发迁移或“启动失败后让应用补一补”替代受测试的 revision。
 
@@ -257,7 +257,7 @@ Libra 页面操作先进入执行 pipeline 页，选择 `test` 分支构建 `zhi
 
 CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 和 Makefile 会兜底使用 `RC` 和当前时间戳，避免生成 `zhipin-frontend:` / `zhipin-server:` 这类空镜像标签导致构建失败；Libra 包记录也会使用同一个 `RC_<时间戳>` 版本号。
 
-为了让当前可丢弃数据的 SIT 同时支持空库和旧库，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 与 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 先让 bootstrap 仅在真正空库创建并 stamp 当前 head，再执行一次 `alembic -c /app/backend/alembic.ini upgrade head`；部分建表的库会直接阻断，绝对配置路径避免 K8S 工作目录变化导致 `script_location` 丢失。`GA` 对两个开关都明确传入 `false`。SIT 扩展迁移发布时不得同时扩容多个新副本；如果待升级库尚未到 `20260711_04`，还必须先停止 Demand 写入并排空所有旧 server 实例，不能让旧 Pod 与新容器 entrypoint 并行读改编号。发布后必须核对 revision（本候选为 `20260804_14`）、verify 报告和受控 API；正式环境仍按唯一 migration job 门禁执行。
+为了让当前可丢弃数据的 SIT 同时支持空库和旧库，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 与 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 先让 bootstrap 仅在真正空库创建并 stamp 当前 head，再执行一次 `alembic -c /app/backend/alembic.ini upgrade head`；部分建表的库会直接阻断，绝对配置路径避免 K8S 工作目录变化导致 `script_location` 丢失。`GA` 对两个开关都明确传入 `false`。SIT 扩展迁移发布时不得同时扩容多个新副本；如果待升级库尚未到 `20260711_04`，还必须先停止 Demand 写入并排空所有旧 server 实例，不能让旧 Pod 与新容器 entrypoint 并行读改编号。发布后必须核对 revision（本候选为 `20260806_15`）、verify 报告和受控 API；正式环境仍按唯一 migration job 门禁执行。
 
 当前 RC/SIT 还会显式传入 `ALLOW_INSECURE_SIT_STARTUP=true`、`SECURITY_HEADERS_ENABLED=false`、`RATE_LIMIT_ENABLED=false` 和 `ALLOW_PUBLIC_REGISTRATION=true`，CORS 留空时允许测试跨域。这是项目负责人单人、可丢弃数据测试的明确授权，不开 `FLASK_DEBUG`，也不改动 Demand/候选人/面试/BI 的业务数据约束。`GA` 对这些值使用严格反向配置，且 `ALLOW_INSECURE_SIT_STARTUP=false`。完整测试模板见 `backend/sit-unrestricted.env.example`；`check_pilot_readiness.py` 只是真实数据试点/GA 门禁，不是当前 SIT 构建阻断器。
 
@@ -744,7 +744,7 @@ cd backend
 python -c "from app import create_app; app=create_app(); print('后端 OK')"
 
 # 3. schema 独立验证（应用可构造不等于数据库 ready）
-alembic current  # 当前代码候选应为 20260804_14
+alembic current  # 当前代码候选应为 20260806_15
 
 # 4. 前端构建验证
 cd ../readdy-frontend

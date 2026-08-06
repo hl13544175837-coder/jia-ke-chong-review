@@ -1,14 +1,13 @@
 from types import SimpleNamespace
 
-from flask import current_app, g, jsonify
-from runtime_paths import DEFAULT_UPLOAD_FOLDER, RuntimePathError, resolve_stored_upload_path
+from flask import g, jsonify
 
 from ... import db
 from ..access_policy import can_access_candidate, same_org
 from ...models import Candidate, CandidateResumeVersion
 from ...source_channels import normalize_resume_source_channel
 from ..public_errors import public_resume_parse_error
-from .file_service import _original_resume_payload
+from .file_service import _original_resume_payload, _resolve_resume_record
 
 
 
@@ -58,16 +57,11 @@ def _actionable_parse_failure_message(error):
 
 
 def _resume_version_payload(version):
-    available = False
-    if version.raw_file_path:
-        upload_root = current_app.config.get("UPLOAD_FOLDER") or DEFAULT_UPLOAD_FOLDER
-        try:
-            available = resolve_stored_upload_path(
-                version.raw_file_path,
-                upload_root,
-            ).is_file()
-        except RuntimePathError:
-            available = False
+    resolved, _reason = _resolve_resume_record(
+        version,
+        download_stem=f"candidate-{version.candidate_id}-resume-v{version.version_no}",
+    )
+    available = resolved is not None
     return {
         "id": version.id,
         "version_no": version.version_no,
@@ -101,6 +95,8 @@ def _archive_current_resume(candidate, *, reason):
         phone_masked=candidate.phone_masked,
         resume_json=(dict(candidate.resume_json) if isinstance(candidate.resume_json, dict) else {}),
         raw_file_path=candidate.raw_file_path,
+        raw_file_name=candidate.raw_file_name,
+        raw_file_data=candidate.raw_file_data,
         resume_sha256=candidate.resume_sha256,
         parse_status=candidate.parse_status or "ok",
         parse_error=candidate.parse_error,

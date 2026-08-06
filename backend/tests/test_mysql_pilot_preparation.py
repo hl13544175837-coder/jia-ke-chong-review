@@ -23,7 +23,7 @@ from scripts import audit_mysql_pilot_schema, backup_pilot_data, prepare_mysql_p
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPECTED_REVISION = "20260804_14"
+EXPECTED_REVISION = "20260806_15"
 
 
 def _sqlite_schema(

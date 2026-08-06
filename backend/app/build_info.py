@@ -3,7 +3,7 @@
 import os
 
 
-EXPECTED_SCHEMA_REVISION = "20260804_14"
+EXPECTED_SCHEMA_REVISION = "20260806_15"
 
 
 def _public_value(name: str, fallback: str) -> str:

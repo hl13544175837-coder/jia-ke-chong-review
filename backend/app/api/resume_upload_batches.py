@@ -9,7 +9,7 @@ from runtime_paths import (
 from .. import db
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
-from ..models import Candidate, UploadBatch
+from ..models import Candidate, CandidateResumeVersion, UploadBatch
 from ..time_utils import utc_now
 from .access import same_org
 
@@ -57,6 +57,8 @@ def register_resume_batch_routes(bp):
             candidate.phone_masked = ""
             candidate.resume_json = {}
             candidate.raw_file_path = None
+            candidate.raw_file_name = None
+            candidate.raw_file_data = None
             candidate.parse_error = None
             candidate.deleted_at = now
             candidate.deleted_by = g.user_id
@@ -65,6 +67,13 @@ def register_resume_batch_routes(bp):
                 tag.tag = "已撤回"
                 tag.score = None
                 tag.org_id = g.org_id
+            for version in CandidateResumeVersion.query.filter_by(
+                org_id=g.org_id,
+                candidate_id=candidate.id,
+            ).all():
+                version.raw_file_path = None
+                version.raw_file_name = None
+                version.raw_file_data = None
 
         db.session.commit()
         record_event(
