@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -17,6 +18,7 @@ import {
   supportedReplacementPattern,
   supportedResumePattern,
 } from '@/features/candidates/library';
+import { reconcileResumeUploadProgress } from '@/features/candidates/library/resumeUploadProgress';
 
 type ResumeUploadResult = ResumeUploadResponse['results'][number];
 type UploadRowAction = 'keeping' | 'replacing' | 'replaced' | 'retrying' | 'retry_failed';
@@ -54,6 +56,12 @@ export function useCandidateResumeUpload({
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [uploadDragOver, setUploadDragOver] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setUploadResponse((current) => (
+      current ? reconcileResumeUploadProgress(current, candidates) : current
+    ));
+  }, [candidates]);
 
   const openUploadDialog = () => {
     setUploadOpen(true);
