@@ -3,6 +3,17 @@ import type {
   ResumeUploadResponse,
 } from '@/features/candidates/types';
 
+export async function refreshCandidatesAfterUpload(
+  loadCandidates: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await loadCandidates();
+  } catch {
+    // The upload result is already authoritative. A temporary list refresh
+    // failure must not be presented as an upload failure.
+  }
+}
+
 export function reconcileResumeUploadProgress(
   response: ResumeUploadResponse,
   candidates: CandidateListItem[],

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { reconcileResumeUploadProgress } from '../src/features/candidates/library/resumeUploadProgress.ts';
+import {
+  reconcileResumeUploadProgress,
+  refreshCandidatesAfterUpload,
+} from '../src/features/candidates/library/resumeUploadProgress.ts';
 
 const response = (candidateId) => ({
   batch_id: 1,
@@ -59,4 +62,15 @@ test('网络尚未返回新状态时保持解析中且不制造新对象', () =>
   assert.equal(missing, initial);
   assert.equal(pending, initial);
   assert.equal(initial.results[0].status, 'processing');
+});
+
+test('上传已成功后列表刷新超时不会再误报成上传失败', async () => {
+  let calls = 0;
+
+  await assert.doesNotReject(() => refreshCandidatesAfterUpload(async () => {
+    calls += 1;
+    throw new Error('Gateway Timeout');
+  }));
+
+  assert.equal(calls, 1);
 });

@@ -18,7 +18,10 @@ import {
   supportedReplacementPattern,
   supportedResumePattern,
 } from '@/features/candidates/library';
-import { reconcileResumeUploadProgress } from '@/features/candidates/library/resumeUploadProgress';
+import {
+  reconcileResumeUploadProgress,
+  refreshCandidatesAfterUpload,
+} from '@/features/candidates/library/resumeUploadProgress';
 
 type ResumeUploadResult = ResumeUploadResponse['results'][number];
 type UploadRowAction = 'keeping' | 'replacing' | 'replaced' | 'retrying' | 'retry_failed';
@@ -146,7 +149,7 @@ export function useCandidateResumeUpload({
       setUploadFiles((current) => (
         current.filter((file) => failedSourceNames.has(file.name))
       ));
-      await loadCandidates();
+      await refreshCandidatesAfterUpload(loadCandidates);
 
       const successfulCount = response.results.filter((result) => result.status === 'ok').length;
       const processingCount = response.results.filter((result) => result.status === 'processing').length;
