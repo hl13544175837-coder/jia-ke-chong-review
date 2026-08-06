@@ -1,9 +1,7 @@
 import mimetypes
-import uuid
 from pathlib import Path
 
 from flask import current_app, g, jsonify, request, send_file
-from werkzeug.utils import secure_filename
 
 from runtime_paths import (
     DEFAULT_UPLOAD_FOLDER,
@@ -32,6 +30,7 @@ def register_resume_history_routes(bp):
         _remove_uploaded_file,
         _resolve_original_resume,
         _serve_original_resume,
+        _stored_resume_filename,
         _validate_upload_file,
     )
     from ..services.resumes.parse_service import (
@@ -196,7 +195,7 @@ def register_resume_history_routes(bp):
 
         folder = current_app.config.get("UPLOAD_FOLDER") or str(DEFAULT_UPLOAD_FOLDER)
         Path(folder).mkdir(parents=True, exist_ok=True)
-        new_path = str(Path(folder) / f"{uuid.uuid4()}_{secure_filename(file_storage.filename)}")
+        new_path = str(Path(folder) / _stored_resume_filename(file_storage.filename))
         file_storage.save(new_path)
         content_sha256 = _file_sha256(new_path)
 

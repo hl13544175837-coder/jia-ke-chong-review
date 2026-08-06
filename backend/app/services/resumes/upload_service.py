@@ -8,7 +8,6 @@ from pathlib import Path, PurePosixPath
 from flask import current_app, g, jsonify, request
 from image_resume_parser import IMAGE_RESUME_EXTENSIONS, IMAGE_RESUME_MAX_FILE_SIZE, inspect_image_file
 from runtime_paths import DEFAULT_UPLOAD_FOLDER
-from werkzeug.utils import secure_filename
 
 from ... import db
 from ...middleware.events import record_event
@@ -23,6 +22,7 @@ from .file_service import (
     _allowed,
     _ext,
     _is_resume,
+    _stored_resume_filename,
     _validate_upload_file,
 )
 from .parse_service import (
@@ -194,7 +194,7 @@ def _process_zip(
                     continue
 
                 # 解压目标路径，并再次校验最终路径仍在目标目录内（双保险防穿越）
-                out_name = f"{uuid.uuid4().hex}_{secure_filename(base)}"
+                out_name = _stored_resume_filename(base)
                 out_path = (extract_dir / out_name).resolve()
                 if extract_root not in out_path.parents and out_path != extract_root:
                     # 解压后路径跳出了目标目录，忽略
@@ -376,7 +376,7 @@ def handle_resume_upload():
             continue
 
         # 落盘（普通简历直接落盘并保留路径供 raw_file_path 使用）
-        fname = f"{uuid.uuid4()}_{secure_filename(f.filename)}"
+        fname = _stored_resume_filename(f.filename)
         fpath = str(Path(folder) / fname)
         f.save(fpath)
 

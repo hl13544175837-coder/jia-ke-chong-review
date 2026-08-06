@@ -1,6 +1,7 @@
 import hashlib
 import mimetypes
 import os
+import uuid
 from pathlib import Path
 
 from flask import current_app, g, jsonify, send_file
@@ -14,6 +15,7 @@ from runtime_paths import (
     RuntimePathError,
     resolve_stored_upload_path,
 )
+from werkzeug.utils import secure_filename
 
 from ... import db
 from ..access_policy import can_access_candidate, same_org
@@ -58,6 +60,16 @@ ORIGINAL_RESUME_MIME_TYPES = {
 def _ext(filename):
     """取小写扩展名（不含点）；无扩展名返回空串"""
     return filename.rsplit(".", 1)[1].lower() if "." in filename else ""
+
+
+def _stored_resume_filename(original_name):
+    """Create an ASCII-safe private filename while preserving the validated suffix."""
+    base = os.path.basename(str(original_name).replace("\\", "/"))
+    extension = _ext(base)
+    stem = base.rsplit(".", 1)[0] if extension else base
+    safe_stem = secure_filename(stem) or "resume"
+    suffix = f".{extension}" if extension else ""
+    return f"{uuid.uuid4().hex}_{safe_stem}{suffix}"
 
 
 def _allowed(filename):
