@@ -220,10 +220,9 @@ def interview_management_rows(*, user_id, role, org_id):
         InterviewAssignment.round_sequence.asc(),
         InterviewAssignment.id.asc(),
     ).all()
-    rows = []
+    rows_by_candidate_demand = {}
     for candidate, demand, job, stage, assignment, assigned_user, feedback, disposition in records:
-        rows.append(
-            {
+        rows_by_candidate_demand[(candidate.id, demand.id)] = {
                 "candidate_id": candidate.id,
                 "name_masked": candidate.name_masked,
                 "demand_id": demand.id,
@@ -260,7 +259,7 @@ def interview_management_rows(*, user_id, role, org_id):
                     bool(disposition.enter_talent_pool) if disposition else None
                 ),
             }
-        )
+    rows = list(rows_by_candidate_demand.values())
     if rows:
         from .interview_reschedule_service import (
             open_requests_for_rows,

@@ -219,6 +219,64 @@ def test_management_rows_include_unassigned_and_enforce_role_demand_and_org_scop
     }
 
 
+def test_management_rows_return_one_latest_row_for_multiple_interview_rounds(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user(
+        "mgmt-multiple-rounds-owner@example.com", role="recruiter"
+    )
+    first_interviewer_id, _ = make_user(
+        "mgmt-multiple-rounds-first@example.com", role="interviewer", name="一面面试官"
+    )
+    latest_interviewer_id, _ = make_user(
+        "mgmt-multiple-rounds-latest@example.com", role="interviewer", name="最新面试官"
+    )
+    seeded = _seed_interview_candidate(
+        app,
+        owner_id=owner_id,
+        suffix="MULTIPLE-ROUNDS",
+        interviewer_id=first_interviewer_id,
+        scheduled_at=datetime(2026, 8, 6, 16, 14),
+        assignment_status="completed",
+    )
+
+    with app.app_context():
+        latest_assignment = InterviewAssignment(
+            org_id=1,
+            candidate_id=seeded["candidate_id"],
+            job_id=seeded["job_id"],
+            demand_id=seeded["demand_id"],
+            round="round_3",
+            round_sequence=3,
+            is_primary=True,
+            primary_slot=3,
+            interviewer_id=latest_interviewer_id,
+            scheduled_at=datetime(2026, 8, 6, 17, 52),
+            location="三面会议室",
+            note="最新一轮",
+            status="completed",
+            created_by=owner_id,
+        )
+        db.session.add(latest_assignment)
+        db.session.commit()
+        latest_assignment_id = latest_assignment.id
+
+    response = client.get(
+        "/api/interview/management-rows", headers=_auth(owner_token)
+    )
+
+    assert response.status_code == 200
+    rows = response.get_json()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["assignment_id"] == latest_assignment_id
+    assert row["round"] == "round_3"
+    assert row["round_sequence"] == 3
+    assert row["interviewer_id"] == latest_interviewer_id
+    assert row["interviewer_name"] == "最新面试官"
+    assert row["scheduled_at"] == "2026-08-06T17:52:00"
+
+
 def test_approved_business_review_is_ready_to_schedule_and_notifies_interviewer_route(
     client, make_user, app
 ):
