@@ -26,6 +26,7 @@ interface NavItem {
 const recruiterNavItems: NavItem[] = [
   { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['recruiter'], menuCode: 'index' },
   { path: '/jobs', icon: 'ri-briefcase-line', label: '招聘需求', roles: ['recruiter'], menuCode: 'demands' },
+  { path: '/online-resumes', icon: 'ri-chat-history-line', label: '在线简历', roles: ['recruiter'], menuCode: 'candidates' },
   { path: '/candidates', icon: 'ri-file-list-3-line', label: '简历库', roles: ['recruiter'], menuCode: 'candidates' },
   { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['recruiter'], menuCode: 'interviews' },
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['recruiter'], menuCode: 'pipeline' },

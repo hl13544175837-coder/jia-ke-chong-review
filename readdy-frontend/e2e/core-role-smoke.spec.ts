@@ -8,7 +8,7 @@ const roleCases: Array<{
   corePath: string;
   coreHeading: string;
 }> = [
-  { role: 'recruiter', home: '/dashboard', expectedNavigation: '简历库', corePath: '/candidates', coreHeading: '简历库' },
+  { role: 'recruiter', home: '/dashboard', expectedNavigation: '在线简历', corePath: '/candidates', coreHeading: '简历库' },
   { role: 'manager', home: '/dashboard', expectedNavigation: '需求审批', corePath: '/jobs', coreHeading: '招聘需求' },
   { role: 'interviewer', home: '/interviewer/dashboard', expectedNavigation: '我的面试', corePath: '/interviewer/interviews', coreHeading: '我的面试' },
   { role: 'director', home: '/director/cockpit', expectedNavigation: '管理驾驶舱', corePath: '/director/cockpit', coreHeading: '管理驾驶舱' },
@@ -29,3 +29,11 @@ for (const roleCase of roleCases) {
     await expect(page.getByText('页面加载失败', { exact: true })).toHaveCount(0);
   });
 }
+
+test('@smoke recruiter 可以打开在线简历库', async ({ page }) => {
+  await loginAs(page, 'recruiter');
+  await page.goto('/online-resumes');
+  await expect(page).toHaveURL(/\/online-resumes(?:\?|$)/);
+  await expect(page.getByRole('heading', { name: '在线简历' }).first()).toBeAttached();
+  await expect(page.getByText('页面加载失败', { exact: true })).toHaveCount(0);
+});

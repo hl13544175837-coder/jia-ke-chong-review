@@ -18,6 +18,7 @@ const HiredPage = lazy(() => import('@/pages/dashboard/hired/page'));
 const CyclePage = lazy(() => import('@/pages/dashboard/cycle/page'));
 const OffersPage = lazy(() => import('@/pages/offers/page'));
 const JobsPage = lazy(() => import('@/pages/jobs/page'));
+const OnlineResumesPage = lazy(() => import('@/pages/online-resumes/page'));
 const CandidatesPage = lazy(() => import('@/pages/candidates/page'));
 const KanbanPage = lazy(() => import('@/pages/kanban/page'));
 const SettingsPage = lazy(() => import('@/pages/settings/page'));
@@ -76,6 +77,10 @@ const routes: RouteObject[] = [
       {
         path: '/jobs',
         element: <RequireCompanyRole allow={hrRoles}><JobsPage /></RequireCompanyRole>,
+      },
+      {
+        path: '/online-resumes',
+        element: <RequireCompanyRole allow={hrRoles}><OnlineResumesPage /></RequireCompanyRole>,
       },
       {
         path: '/candidates',

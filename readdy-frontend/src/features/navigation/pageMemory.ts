@@ -6,6 +6,7 @@ export interface PageMemoryEntry {
 const rememberedModulePaths = [
   '/dashboard',
   '/jobs',
+  '/online-resumes',
   '/candidates',
   '/interviews',
   '/offers',

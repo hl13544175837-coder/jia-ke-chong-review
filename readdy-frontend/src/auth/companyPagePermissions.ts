@@ -13,6 +13,7 @@ const PAGE_MENU_RULES: ReadonlyArray<readonly [string, string]> = [
   ['/dashboard/cycle', 'bi'],
   ['/dashboard', 'index'],
   ['/talent-map', 'candidates'],
+  ['/online-resumes', 'candidates'],
   ['/candidates', 'candidates'],
   ['/interviews', 'interviews'],
   ['/analytics', 'bi'],

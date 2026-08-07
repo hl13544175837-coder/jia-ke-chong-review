@@ -36,7 +36,9 @@ test('主导航记住面试官工作页和招聘看板，但不带回已经关�
 
 test('招聘专员页面只恢复筛选条件，不重新弹出旧详情或操作弹窗', async () => {
   const moduleUrl = pathToFileURL(path.join(root, 'src/features/navigation/pageMemory.ts'));
-  const { safeRememberedHref } = await import(moduleUrl);
+  const { memoryKeyForPath, safeRememberedHref } = await import(moduleUrl);
+
+  assert.equal(memoryKeyForPath('/online-resumes'), '/online-resumes');
 
   assert.equal(
     safeRememberedHref('/jobs', '/jobs?tab=approved&q=java&demand=17'),

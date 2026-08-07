@@ -29,6 +29,7 @@ test('招聘专员和面试官的同类页面使用各自路由并接受同一�
 });
 
 test('其他受保护页面也不能绕过 PGS 菜单直接输入网址进入', () => {
+  assert.equal(requiredMenuCodeForPath('/online-resumes'), 'candidates');
   assert.equal(requiredMenuCodeForPath('/candidates'), 'candidates');
   assert.equal(requiredMenuCodeForPath('/talent-map'), 'candidates');
   assert.equal(requiredMenuCodeForPath('/kanban'), 'pipeline');
