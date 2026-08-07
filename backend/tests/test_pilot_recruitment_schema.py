@@ -11,6 +11,7 @@ from app.models import (
     CandidateMerge,
     CandidateResumeVersion,
     InterviewFeedback,
+    OnlineResume,
     RecruitmentDemand,
 )
 
@@ -88,6 +89,7 @@ def test_revision_11_adds_candidate_resume_fingerprint_without_backfilling_histo
     database_url = f"sqlite:///{tmp_path / 'candidate-resume-fingerprint.db'}"
     engine = create_engine(database_url)
     db.metadata.create_all(bind=engine)
+    OnlineResume.__table__.drop(bind=engine)
     with engine.begin() as connection:
         connection.execute(text("DROP INDEX ix_candidates_org_resume_sha256"))
         connection.execute(text("ALTER TABLE candidates DROP COLUMN resume_sha256"))
@@ -111,7 +113,7 @@ def test_revision_11_adds_candidate_resume_fingerprint_without_backfilling_histo
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260806_15"
+            ).scalar_one() == "20260807_16"
     finally:
         engine.dispose()
 
@@ -120,6 +122,7 @@ def test_revision_12_adds_candidate_resume_version_history_additively(tmp_path):
     database_url = f"sqlite:///{tmp_path / 'candidate-resume-versions.db'}"
     engine = create_engine(database_url)
     db.metadata.create_all(bind=engine)
+    OnlineResume.__table__.drop(bind=engine)
     CandidateResumeVersion.__table__.drop(bind=engine)
     engine.dispose()
 
@@ -154,7 +157,7 @@ def test_revision_12_adds_candidate_resume_version_history_additively(tmp_path):
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260806_15"
+            ).scalar_one() == "20260807_16"
     finally:
         engine.dispose()
 
@@ -164,6 +167,7 @@ def test_revisions_08_and_09_accept_preexisting_orm_contract(tmp_path):
     engine = create_engine(database_url)
     try:
         db.metadata.create_all(bind=engine)
+        OnlineResume.__table__.drop(bind=engine)
     finally:
         engine.dispose()
 
@@ -177,7 +181,7 @@ def test_revisions_08_and_09_accept_preexisting_orm_contract(tmp_path):
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260806_15"
+            ).scalar_one() == "20260807_16"
     finally:
         engine.dispose()
 
@@ -186,6 +190,7 @@ def test_revision_09_creates_candidate_talent_pool_tables(tmp_path):
     database_url = f"sqlite:///{tmp_path / 'candidate-talent-pool.db'}"
     engine = create_engine(database_url)
     db.metadata.create_all(bind=engine)
+    OnlineResume.__table__.drop(bind=engine)
     CandidateMerge.__table__.drop(bind=engine)
     CandidateFavorite.__table__.drop(bind=engine)
     engine.dispose()
@@ -222,6 +227,6 @@ def test_revision_09_creates_candidate_talent_pool_tables(tmp_path):
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == "20260806_15"
+            ).scalar_one() == "20260807_16"
     finally:
         engine.dispose()

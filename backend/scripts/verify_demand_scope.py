@@ -22,7 +22,7 @@ except ImportError:  # Direct execution: python backend/scripts/verify_demand_sc
     from audit_demand_scope import FACT_SPECS, fact_context
 
 
-EXPECTED_REVISION = "20260806_15"
+EXPECTED_REVISION = "20260807_16"
 EXPECTED_COLUMNS = {
     "recruitment_demands": {
         "approval_status",
@@ -168,6 +168,21 @@ EXPECTED_COLUMNS = {
         "updated_at",
     },
     "users": {"department"},
+    "online_resumes": {
+        "id",
+        "org_id",
+        "owner_hr_id",
+        "demand_id",
+        "boss_account",
+        "source_platform",
+        "external_record_id",
+        "display_name",
+        "resume_json",
+        "chat_json",
+        "source_url",
+        "created_at",
+        "updated_at",
+    },
 }
 EXPECTED_UNIQUE_INDEXES = {
     "recruitment_demands": {
@@ -207,6 +222,14 @@ EXPECTED_UNIQUE_INDEXES = {
     },
     "organization_settings": {
         "uq_organization_settings_org": ("org_id",),
+    },
+    "online_resumes": {
+        "uq_online_resume_owner_external": (
+            "org_id",
+            "owner_hr_id",
+            "source_platform",
+            "external_record_id",
+        ),
     },
 }
 EXPECTED_INDEXES = {
@@ -271,6 +294,14 @@ EXPECTED_INDEXES = {
     "organization_settings": {
         "ix_organization_settings_org_id": ("org_id",),
     },
+    "online_resumes": {
+        "ix_online_resumes_owner_created": (
+            "org_id",
+            "owner_hr_id",
+            "created_at",
+        ),
+        "ix_online_resumes_demand": ("org_id", "demand_id"),
+    },
 }
 EXPECTED_NOT_NULL_COLUMNS = {
     "recruitment_demands": {"approval_status", "request_no"},
@@ -288,6 +319,20 @@ EXPECTED_NOT_NULL_COLUMNS = {
     },
     "organization_settings": {"org_id", "config_json", "version", "updated_by", "created_at", "updated_at"},
     "users": {"department"},
+    "online_resumes": {
+        "id",
+        "org_id",
+        "owner_hr_id",
+        "demand_id",
+        "boss_account",
+        "source_platform",
+        "external_record_id",
+        "display_name",
+        "resume_json",
+        "chat_json",
+        "created_at",
+        "updated_at",
+    },
 }
 EXPECTED_FOREIGN_KEYS = {
     "recruitment_demands": {

@@ -178,7 +178,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 |---|---|---|
 | `admin` | 工作台、AI 助手、候选人、上传、岗位、流程、BI、系统设置 | 当前组织内用户管理、BI、候选人、岗位、流程、AI 助手；面试任务通过工作台待办或候选人流程深链进入 |
 | `manager` | 工作台、AI 助手、候选人、上传、岗位、流程、BI | 当前组织内团队视角管理、候选人转派、BI 查看；面试任务通过工作台待办或候选人流程深链进入 |
-| `recruiter` | 工作台、AI 助手、候选人、上传、岗位、流程 | 仅负责自己的候选人和岗位；不能查看或操作别人负责的岗位；面试任务通过工作台待办或候选人流程深链进入 |
+| `recruiter` | 工作台、AI 助手、在线简历、候选人、上传、岗位、流程 | 在线简历只读写本人 owner scope；仅负责自己的候选人和岗位；不能查看或操作别人负责的岗位；面试任务通过工作台待办或候选人流程深链进入 |
 | `interviewer` | 工作台、我的面试、候选人详情 | 只处理分配给自己的面试安排与反馈；不浏览全量简历库、不推进候选人流程、不使用 AI 助手 |
 | `hr_director` | 管理驾驶舱、招聘进展、人才供需、审批与风险、数据看板 | 当前组织内只读管理分析；定位风险、责任人和建议动作，不代替 `manager` 执行需求或 Offer 审批 |
 
@@ -193,6 +193,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 | `/agent` | `AgentPage` | recruiter / manager / admin |
 | `/notifications` | `NotificationCenterPage` | 全部登录角色 |
 | `/candidates` | `CandidatesPage` | recruiter / manager / admin |
+| `/online-resumes` | `OnlineResumesPage` | recruiter；复用 `candidates` 菜单权限，manager/admin 不显示该菜单 |
 | `/candidates/:id` | `CandidateProfilePage` | recruiter / manager / admin / interviewer |
 | `/upload` | `UploadPage` | recruiter / manager / admin |
 | `/jobs` | `DemandsPage` （Readdy 招聘管理别名） | recruiter / manager / admin |
@@ -220,6 +221,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 
 - 前端隐藏菜单不是安全边界，后端 RBAC 才是安全边界。
 - `recruiter` 在候选人、流程、面试和 BI 上以 `demand_id`、Demand owner 和当前组织校验；AI 工具目录不含主流程写能力。
+- `recruiter` 的在线简历列表、详情、编辑和删除始终附加 `owner_hr_id == 当前用户`；manager/admin 的组织内读取能力不通过主导航暴露，不能把菜单隐藏当作接口权限。
 - `manager`、`admin` 只能看当前组织内数据；一期不提供跨组织管理后台。
 - 已存在 Demand 的流程/面试写入权限由 Demand 状态和 Demand RBAC 决定，不由 Job 状态反向决定；只有 legacy job-only 上下文需要先唯一解析 Demand。
 - `admin` 不能停用或降级自己的账号。
@@ -232,6 +234,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 |---|---|---|---|
 | `users` | `User` | `org_id`, `name`, `email`, `role`, `password_hash`, `is_active`, `token_version` | 用户、角色、启停；`org_id` 是多组织隔离边界；改密/重置密码、角色或启停变化递增 `token_version` 让旧 token 失效 |
 | `candidates` | `Candidate` | `org_id`, `owner_hr_id`, `current_demand_id`, `name_masked`, `resume_json`, `raw_file_path`, `raw_file_name`, `raw_file_data`, `deleted_at`, `deleted_by`, `anonymized_at` | 候选人主档与当前唯一活跃 Demand 指针；原简历保留数据库副本，支持软删除与匿名化 |
+| `online_resumes` | `OnlineResume` | `org_id`, `owner_hr_id`, `demand_id`, `boss_account`, `source_platform`, `external_record_id`, `display_name`, `resume_json`, `chat_json`, `source_url`, `created_at`, `updated_at` | 独立在线简历库；保存结构化在线简历与完整聊天快照，按招聘专员 owner scope 使用，不自动关联、搬移、覆盖或删除正式候选人 |
 | `upload_batches` | `UploadBatch` | `org_id`, `owner_hr_id`, `target_job_id`, `demand_id`, `source_channel`, `note` | 批量上传元数据；误导入撤回按批次定位候选人 |
 | `candidate_tags` | `CandidateTag` | `org_id`, `candidate_id`, `tag`, `score` | 简历技能标签及评分 |
 | `candidate_favorites` | `CandidateFavorite` | `org_id`, `user_id`, `candidate_id`, `created_at` | 当前用户对候选人的收藏；组织、用户、候选人三元唯一 |
@@ -315,6 +318,9 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | 方法 | 路径 | 权限 | 作用 |
 |---|---|---|---|
 | `POST` | `/resume/upload` | recruiter/manager/admin | 批量上传 PDF / DOCX / ZIP 简历，AI 解析入库；旧版 `.doc` 跳过；旧调用若带 `target_job_id`，后端会校验岗位负责人、组织和在招状态；原文件 SHA-256、完整手机号或完整邮箱命中活动候选人时返回 `duplicate` 和“导入失败：系统中已存在重复简历”，不创建第二份档案；同一用户 10 分钟内重复上传同一批文件也按重复结果返回 |
+| `POST` | `/agent-imports/online-resumes` | recruiter | 外部 Agent 单向批量导入结构化在线简历和完整聊天快照；绑定当前招聘专员及其可管理的具体 Demand，同一外部记录重复导入时更新而不重复计数 |
+| `POST` | `/agent-imports/full-resumes` | recruiter | 外部 Agent 单向导入完整简历文件、对应结构化信息和具体 Demand；复用现有上传、原件、查重及候选人库，不调用模型再次解析 |
+| `GET/PATCH/DELETE` | `/online-resumes[/<id>]` | recruiter 本人 scope；manager/admin 组织内读取/管理 API | 列表、详情、基础结构化信息编辑和硬删除；完整聊天只由 Agent 整体更新，人工 PATCH 不修改聊天 |
 | `POST` | `/resume/batches/<batch_id>/rollback` | 批次上传人/manager/admin | 撤回误导入批次，候选人软删除、匿名化、删除原文件并写审计 |
 | `GET` | `/resume/<candidate_id>` | 登录 + 候选人可见权限 | 候选人简历详情与技能标签，返回 `owner_hr_id` 供负责人展示与转派 |
 | `GET` | `/candidates` | 登录 | 候选人列表，recruiter 只看当前组织内自己负责的；`search` 会覆盖姓名、邮箱、电话、技能标签和简历解析 JSON 中的公司、岗位、学校等文本；分页查询支持意向城市、学历、技能关键词、最低技能分、解析状态、活动流程状态、个人收藏、任一 Demand 当前阶段，以及 `created_from` / `created_to` 入库日期范围；日期使用 `YYYY-MM-DD` 且结束日期包含当天。`pipeline_status` 兼容 `in_pipeline` / `not_in_pipeline`，并支持 `never_entered` / `rejected` / `onboarded` / `transferred` 精确状态。列表项返回后端派生的 `pipeline_state` 与 `has_rejected_history`，活动流程优先于其他 Demand 的历史淘汰记录；同时返回 `desired_position`、`current_stage`、`current_demand_id`、`latest_demand_id`、`is_favorite`，软删除候选人不返回 |
@@ -410,6 +416,7 @@ Offer 主状态顺序为 `draft → pending → approved → sent → accepted �
 |---|---|---|---|
 | `GET` | `/bi/overview` | manager/admin | `funnel + alerts + demands` 的 Demand 运营协同响应；不含人员绩效/排名 |
 | `GET` | `/bi/staff/<hr_id>` | recruiter 仅自己；manager/admin 可看组织内用户 | `workload + demands` 当前工作盘子；不含 `performance`、个人通过率、转化率或排名 |
+| `GET` | `/bi/staff/<hr_id>/monthly?month=YYYY-MM` | recruiter 仅自己；manager/admin 可看组织内用户 | 月度客观事实，`online_resume_imports` 只计成功导入份数；不代表平台收件总量，不用于排名或自动绩效判断 |
 | `GET` | `/bi/job/<job_id>` | 有唯一 Demand 读取权的登录用户 | 仅在 Job 唯一解析一个 Demand 时兼容代理；多 Demand 返回 409 `demand_id_required` |
 | `GET` | `/bi/demand/<demand_id>` | 有 Demand 读取权的登录用户 | 漏斗、阶段停留、待补反馈、Offer、HC 和当前责任的可解释明细 |
 | `GET` | `/admin/users` | admin | 用户列表 |
@@ -493,6 +500,12 @@ sequenceDiagram
 后续所有 API 请求由 `frontend/src/lib/api.ts` 注入 `Authorization: Bearer <token>`。
 
 ### 8.2 简历批量导入流程
+
+外部 Agent 另有两个单向导入口，但智聘不启动、选择或控制 Agent：
+
+- `/api/agent-imports/online-resumes` 把 Agent 挑选的在线简历与完整聊天快照写入独立 `online_resumes` 表，招聘专员页面只查询本人 owner scope。
+- `/api/agent-imports/full-resumes` 把 Agent 已取得的完整简历及结构化结果直接写入现有候选人库，复用原件保存、查重和具体 Demand 绑定。
+- 两条入口彼此可选；在线简历库与完整简历库不自动关联、搬移、覆盖或删除。获得完整简历后也不要求清理在线简历。
 
 入口：
 
@@ -800,6 +813,8 @@ AI_HUMAN_REVIEW_REQUIRED=true
 | 候选人列表 | `features/candidates/components/CandidateLibraryWorkspace.tsx` | `api/candidates.py` | `candidates`, `candidate_tags` |
 | 候选人详情 | `features/candidates/components/library/CandidateLibraryDetail.tsx` | `api/resume_history.py`, `api/candidates.py` | `resume_json`, tags, journey |
 | 简历批量上传 | `features/candidates/components/library/*` | `api/resume.py`, `services/resumes/upload_service.py` | 调用 `resume_service.py` 和 `resume_parser.py` 并写候选人；招聘需求流程加入放在简历库完成 |
+| Agent 在线简历导入 | `pages/online-resumes/*`, `features/onlineResumes/*` | `api/agent_imports.py`, `api/online_resumes.py`, `services/online_resume_service.py` | 写独立 `online_resumes` 和完整聊天快照；招聘专员只看本人，和正式候选人库不自动关联 |
+| Agent 完整简历导入 | 复用候选人库 | `api/agent_imports.py`, `services/resumes/upload_service.py` | 复用现有原件、结构化信息、查重和 Demand 绑定，不调用模型再次解析 |
 | 简历解析字段 | `features/candidates/library/useCandidateDetail.ts` | `services/resumes/parse_service.py`, `services/resume_service.py` | 高风险，影响 `resume_json` 兼容 |
 | 岗位列表/编辑 | `JobsPage.tsx` | `api/jobs.py` | `jobs.jd_structured` |
 | JD AI 澄清 | `JobsPage.tsx` | `api/jobs.py` | LLM，只读或写结构化 |
@@ -824,6 +839,7 @@ API 层只负责参数解析、身份入口和响应映射，不在多个路由�
 | `pipeline_service` | active flow 不变量、人工阶段推进、阶段修正和原子转 Demand |
 | `interview_workflow_service` | Demand 下的安排、轮次、primary 面试官、反馈完成语义；不改主流程 |
 | `bi_service` | Demand 维度指标、下钻和口径一致性；禁止人员排名/绩效推断 |
+| `online_resume_service` | 外部 Agent 在线简历批量导入、完整聊天快照、owner scope 列表/编辑/删除和客观导入事件 |
 | `agent_service` | 只组合受权限裁剪的读取、解析、匹配、总结和建议能力 |
 | `resumes/file_service` | 简历文件校验、原件预览/下载与安全删除 |
 | `resumes/parse_service` | 单份简历解析、重复识别、匹配刷新和流程加入 |
@@ -853,7 +869,7 @@ Demand P0 属于高风险数据归属变更，必须使用版本化 Alembic 迁�
 
 发布通道另有一层不受运行时环境变量覆盖的边界：Makefile 只接受精确 `RC` / `GA`，并把发布通道写入镜像内 `.release-channel` 文件。entrypoint 先读取该标记；GA 镜像若被 K8S env 覆盖为 SIT 放行、自动迁移/空库初始化、公开注册或关闭安全头/限流，会在任何 DDL 之前拒绝启动。RC 镜像则保留本轮已授权的完全宽松测试配置。
 
-当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07` → `20260724_08` → `20260726_09` → `20260728_10` → `20260729_11` → `20260729_12` → `20260730_13` → `20260804_14` → `20260806_15`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。08 补齐 Demand 审批、业务筛选任务与反馈更新字段。09 新建个人收藏和候选人合并审计表。10 新增组织设置持久化和用户部门字段。11 为候选人增加可空 `resume_sha256` 与 `(org_id, resume_sha256)` 普通索引，不回填历史值，用于精确阻止同文件重复导入；12 新增候选人简历版本留档；13 新增面试改约申请与处理历史；14 新增 Offer 本地 OA 结果登记字段与索引，不调用外部 OA；15 为当前及历史简历增加数据库原件副本，新 Pod 可继续解析并提供预览。09 至 15 都不支持破坏性在线 downgrade。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配、简历指纹列/索引，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
+当前加性迁移链为 `20260710_01` → `20260711_02` → `20260711_03` → `20260711_04` → `20260721_05` → `20260721_06` → `20260722_07` → `20260724_08` → `20260726_09` → `20260728_10` → `20260729_11` → `20260729_12` → `20260730_13` → `20260804_14` → `20260806_15` → `20260807_16`。02 使用 `lower(trim(status))` 识别历史取消态，在回填 `primary_slot` 和创建面试主安排/assignment feedback 唯一索引前先检查存量重复。03 为 Demand 增加可空默认面试官外键，不猜测旧行人员，并将字段、FK、索引分开校验/创建以支持中断后重跑。04 将空需求编号确定性补为 `LEGACY-DEMAND-<id>`，对非空值做去空格/大写规范化，在建 `(org_id, request_no)` 唯一索引前检测规范化重复；发现冲突即中止并输出证据，不自动挑选保留行。05 保留旧 `offer_records` 行，增加审批、发放、回复、撤回、过期和入职时间/原因字段，并新建 `offer_events` 操作历史表。06 新建组织级 `kpi_standards`，只保存招聘流程口径并通过版本号避免静默覆盖。07 兼容升级旧 AI 会话表，新建组织级脱敏调用日志，并在创建 `(org_id, demand_id, candidate_id)` Offer 唯一约束前检查存量重复；发现重复即中止，不自动删除或选赢家。08 补齐 Demand 审批、业务筛选任务与反馈更新字段。09 新建个人收藏和候选人合并审计表。10 新增组织设置持久化和用户部门字段。11 为候选人增加可空 `resume_sha256` 与 `(org_id, resume_sha256)` 普通索引，不回填历史值，用于精确阻止同文件重复导入；12 新增候选人简历版本留档；13 新增面试改约申请与处理历史；14 新增 Offer 本地 OA 结果登记字段与索引，不调用外部 OA；15 为当前及历史简历增加数据库原件副本，新 Pod 可继续解析并提供预览；16 新增独立 `online_resumes` 表、负责人/需求索引和外部记录唯一约束，保存结构化在线简历与完整聊天快照。09 至 16 都不支持破坏性在线 downgrade。`verify_demand_scope.py` 同时检查需求编号非空/规范化/唯一索引、默认面试官索引/FK/孤儿与跨组织错配、简历指纹列/索引、`online_resumes` 表及索引，以及 `assignment_slot_conflicts`；停用或角色变化只作为默认面试官 warning。生产仍由唯一 migration job 执行；执行 04 前必须冻结 Demand 写入并排空旧实例，RC/SIT 的容器 entrypoint 只是在数据可丢弃测试环境中的受控例外。
 
 | 阶段 | 系统行为 | 进入下一阶段的门禁 |
 |---|---|---|

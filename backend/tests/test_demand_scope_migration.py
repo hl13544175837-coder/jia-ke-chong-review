@@ -281,7 +281,7 @@ def test_alembic_expand_is_additive_revisioned_and_idempotent(tmp_path):
     )
     with engine.connect() as connection:
         assert connection.execute(text("SELECT COUNT(*) FROM pipeline_stages")).scalar_one() == 1
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260806_15"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260807_16"
     engine.dispose()
 
 
@@ -310,7 +310,7 @@ def test_interview_uniqueness_revision_adds_primary_slot_and_unique_indexes(tmp_
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260806_15"
+        ).scalar_one() == "20260807_16"
     engine.dispose()
 
 
@@ -618,8 +618,8 @@ def test_verify_checks_revision_completeness_and_job_consistency(tmp_path):
     verified = verify.verify_database(url)
     assert verified["ok"] is True
     assert verified["schema_revision"] == {
-        "current": "20260806_15",
-        "expected": "20260806_15",
+        "current": "20260807_16",
+        "expected": "20260807_16",
         "ok": True,
     }
     assert verified["unmapped_total"] == 0

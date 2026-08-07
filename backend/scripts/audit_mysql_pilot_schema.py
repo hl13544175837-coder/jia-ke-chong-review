@@ -21,7 +21,7 @@ if str(BACKEND_DIR) not in sys.path:
 from database_urls import normalize_database_url
 
 
-EXPECTED_REVISION = "20260806_15"
+EXPECTED_REVISION = "20260807_16"
 KNOWN_PREDECESSOR_REVISIONS = {
     "20260710_01",
     "20260711_02",
@@ -35,6 +35,9 @@ KNOWN_PREDECESSOR_REVISIONS = {
     "20260728_10",
     "20260729_11",
     "20260729_12",
+    "20260730_13",
+    "20260804_14",
+    "20260806_15",
 }
 
 EXPECTED_COLUMNS = {
@@ -135,6 +138,21 @@ EXPECTED_COLUMNS = {
         "reason": {"family": "string", "length": 240, "nullable": False},
         "created_at": {"family": "datetime", "nullable": False},
     },
+    "online_resumes": {
+        "id": {"family": "integer", "nullable": False, "primary_key": True},
+        "org_id": {"family": "integer", "nullable": False},
+        "owner_hr_id": {"family": "integer", "nullable": False},
+        "demand_id": {"family": "integer", "nullable": False},
+        "boss_account": {"family": "string", "length": 160, "nullable": False},
+        "source_platform": {"family": "string", "length": 60, "nullable": False},
+        "external_record_id": {"family": "string", "length": 200, "nullable": False},
+        "display_name": {"family": "string", "length": 100, "nullable": False},
+        "resume_json": {"family": "json", "nullable": False},
+        "chat_json": {"family": "json", "nullable": False},
+        "source_url": {"family": "text", "nullable": True},
+        "created_at": {"family": "datetime", "nullable": False},
+        "updated_at": {"family": "datetime", "nullable": False},
+    },
 }
 
 EXPECTED_INDEXES = {
@@ -191,6 +209,16 @@ EXPECTED_INDEXES = {
             "unique": False,
         },
     },
+    "online_resumes": {
+        "ix_online_resumes_owner_created": {
+            "columns": ("org_id", "owner_hr_id", "created_at"),
+            "unique": False,
+        },
+        "ix_online_resumes_demand": {
+            "columns": ("org_id", "demand_id"),
+            "unique": False,
+        },
+    },
 }
 
 EXPECTED_UNIQUE_CONSTRAINTS = {
@@ -212,6 +240,14 @@ EXPECTED_UNIQUE_CONSTRAINTS = {
         "uq_candidate_merges_org_duplicate": (
             "org_id",
             "duplicate_candidate_id",
+        ),
+    },
+    "online_resumes": {
+        "uq_online_resume_owner_external": (
+            "org_id",
+            "owner_hr_id",
+            "source_platform",
+            "external_record_id",
         ),
     },
 }

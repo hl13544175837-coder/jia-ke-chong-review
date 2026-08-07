@@ -10,6 +10,7 @@ from app.models import (
     CandidateDemandFlow,
     InterviewAssignment,
     InterviewRescheduleRequest,
+    OnlineResume,
     Job,
     Notification,
     PipelineStage,
@@ -424,6 +425,7 @@ def test_revision_13_adds_reschedule_history_table_and_indexes(tmp_path):
     database_url = f"sqlite:///{tmp_path / 'interview-reschedule.db'}"
     engine = create_engine(database_url)
     db.metadata.create_all(bind=engine)
+    OnlineResume.__table__.drop(bind=engine)
     InterviewRescheduleRequest.__table__.drop(bind=engine)
     engine.dispose()
 
@@ -456,5 +458,5 @@ def test_revision_13_adds_reschedule_history_table_and_indexes(tmp_path):
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260806_15"
+        ).scalar_one() == "20260807_16"
     engine.dispose()

@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, inspect, text
 
 from app import db
 from app import models as _models  # noqa: F401
+from app.models import OnlineResume
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -22,6 +23,7 @@ def test_kpi_standards_migration_round_trip(tmp_path):
     path = tmp_path / "kpi-standards.db"
     engine = create_engine(f"sqlite:///{path}")
     db.metadata.create_all(bind=engine)
+    OnlineResume.__table__.drop(bind=engine)
     engine.dispose()
     config = _config(path)
     command.stamp(config, "20260721_06")
@@ -40,5 +42,5 @@ def test_kpi_standards_migration_round_trip(tmp_path):
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260806_15"
+        ).scalar_one() == "20260807_16"
     engine.dispose()

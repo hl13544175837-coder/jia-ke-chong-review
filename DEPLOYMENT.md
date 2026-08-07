@@ -177,7 +177,7 @@ python backend/scripts/cleanup_demo_data.py --confirm
 
 ### 数据库生命周期
 
-RC/SIT/生产的 Flask 应用工厂不会执行 `create_all`、补列或其他 DDL。真正空库只能显式运行 `python backend/scripts/bootstrap_database.py --allow-empty`：脚本验证数据库完全为空后创建 metadata 并写入当前 Alembic head；缺失任一 `20260710_01` 之前的旧基线业务表都会拒绝继续且不 stamp，`candidate_demand_flows` 则由该 Expand revision 新建。已有库统一使用 `alembic upgrade head`，当前收口候选 head 为 `20260806_15`；revision 11 增加简历指纹，revision 12 增加简历版本，revision 13 增加面试改约申请与历史索引，revision 14 增加本地 OA 结果登记字段和索引，revision 15 为当前简历和历史版本增加数据库原件副本，均不回填或改写已有业务行。只有自动化测试或显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 本地兼容路径允许应用侧建表。
+RC/SIT/生产的 Flask 应用工厂不会执行 `create_all`、补列或其他 DDL。真正空库只能显式运行 `python backend/scripts/bootstrap_database.py --allow-empty`：脚本验证数据库完全为空后创建 metadata 并写入当前 Alembic head；缺失任一 `20260710_01` 之前的旧基线业务表都会拒绝继续且不 stamp，`candidate_demand_flows` 则由该 Expand revision 新建。已有库统一使用 `alembic upgrade head`，当前收口候选 head 为 `20260807_16`；revision 11 增加简历指纹，revision 12 增加简历版本，revision 13 增加面试改约申请与历史索引，revision 14 增加本地 OA 结果登记字段和索引，revision 15 为当前简历和历史版本增加数据库原件副本，revision 16 增加独立 `online_resumes` 表，均不回填或改写已有业务行。只有自动化测试或显式 `FLASK_DEBUG=true + LOCAL_SCHEMA_COMPAT=true + SQLite` 本地兼容路径允许应用侧建表。
 
 因此 Gunicorn/Flask worker 只消费已准备好的 schema；生产必须由唯一 migration job 执行升级。禁止用手工 SQL、多个 worker 并发迁移或“启动失败后让应用补一补”替代受测试的 revision。
 
@@ -257,7 +257,7 @@ Libra 页面操作先进入执行 pipeline 页，选择 `test` 分支构建 `zhi
 
 CI 触发构建时如果未显式传入 `PKG_TAG` 或 `PKG_VERSION`，GitLab CI 和 Makefile 会兜底使用 `RC` 和当前时间戳，避免生成 `zhipin-frontend:` / `zhipin-server:` 这类空镜像标签导致构建失败；Libra 包记录也会使用同一个 `RC_<时间戳>` 版本号。
 
-为了让当前可丢弃数据的 SIT 同时支持空库和旧库，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 与 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 先让 bootstrap 仅在真正空库创建并 stamp 当前 head，再执行一次 `alembic -c /app/backend/alembic.ini upgrade head`；部分建表的库会直接阻断，绝对配置路径避免 K8S 工作目录变化导致 `script_location` 丢失。`GA` 对两个开关都明确传入 `false`。SIT 扩展迁移发布时不得同时扩容多个新副本；如果待升级库尚未到 `20260711_04`，还必须先停止 Demand 写入并排空所有旧 server 实例，不能让旧 Pod 与新容器 entrypoint 并行读改编号。发布后必须核对 revision（本候选为 `20260806_15`）、verify 报告和受控 API；正式环境仍按唯一 migration job 门禁执行。
+为了让当前可丢弃数据的 SIT 同时支持空库和旧库，Makefile 只对非 `GA` 的 RC/SIT server 镜像传入 `ALLOW_EMPTY_DATABASE_BOOTSTRAP=true` 与 `AUTO_MIGRATE_DATABASE=true`。容器 entrypoint 先让 bootstrap 仅在真正空库创建并 stamp 当前 head，再执行一次 `alembic -c /app/backend/alembic.ini upgrade head`；部分建表的库会直接阻断，绝对配置路径避免 K8S 工作目录变化导致 `script_location` 丢失。`GA` 对两个开关都明确传入 `false`。SIT 扩展迁移发布时不得同时扩容多个新副本；如果待升级库尚未到 `20260711_04`，还必须先停止 Demand 写入并排空所有旧 server 实例，不能让旧 Pod 与新容器 entrypoint 并行读改编号。发布后必须核对 revision（本候选为 `20260807_16`）、verify 报告和受控 API；正式环境仍按唯一 migration job 门禁执行。
 
 当前 RC/SIT 还会显式传入 `ALLOW_INSECURE_SIT_STARTUP=true`、`SECURITY_HEADERS_ENABLED=false`、`RATE_LIMIT_ENABLED=false` 和 `ALLOW_PUBLIC_REGISTRATION=true`，CORS 留空时允许测试跨域。这是项目负责人单人、可丢弃数据测试的明确授权，不开 `FLASK_DEBUG`，也不改动 Demand/候选人/面试/BI 的业务数据约束。`GA` 对这些值使用严格反向配置，且 `ALLOW_INSECURE_SIT_STARTUP=false`。完整测试模板见 `backend/sit-unrestricted.env.example`；`check_pilot_readiness.py` 只是真实数据试点/GA 门禁，不是当前 SIT 构建阻断器。
 
@@ -282,7 +282,7 @@ VITE_GATEWAY_ROLE_MAP=100001:recruiter,100000:interviewer,100002:interviewer
 
 PGS “智聘 → 工作台”下为五类角色分别配置唯一标记：`dashboard_admin`、`dashboard_manager`、`dashboard_recruiter`、`dashboard_interviewer`、`dashboard_hr_director`。管理员、主管和招聘专员进入 `/dashboard`，面试官进入 `/interviewer/dashboard`，人力资源总监进入 `/director/cockpit`。普通业务菜单继续使用现有 `demands`、`candidates`、`interviews`、`pipeline`、`bi`、`settings` 编码按需授权。同一账号不得同时获得两个角色工作台标记；前端会拒绝静默选择。PGS 菜单加载失败时不再默认显示全部入口，而是显示重试和退出登录。
 
-菜单矩阵：招聘主管授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`、`bi`；招聘专员授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`，按需授予 `bi`；面试官授予 `index`、`demands`、`interviews`，按需授予 `bi`；人力资源总监授予 `bi`、`pipeline`。同一个 `interviews` 编码会按角色进入不同页面：招聘专员和主管进入 `/interviews` 的“面试管理”，面试官进入 `/interviewer/interviews` 的“我的面试”。面试官的招聘需求页用于发起并查看自己的业务招聘需求，不复用招聘专员页面。没有对应菜单时，左侧入口隐藏，直接输入网址也会被页面权限边界拦截；不能只隐藏菜单而保留直达入口。
+菜单矩阵：招聘主管授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`、`bi`；招聘专员授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`，按需授予 `bi`；面试官授予 `index`、`demands`、`interviews`，按需授予 `bi`；人力资源总监授予 `bi`、`pipeline`。招聘专员在 `candidates` 权限下额外看到 `/online-resumes`“在线简历”，主管和管理员不显示该菜单。在线简历接口仍以后端 owner scope 限定本人数据，不能只依赖菜单隐藏。同一个 `interviews` 编码会按角色进入不同页面：招聘专员和主管进入 `/interviews` 的“面试管理”，面试官进入 `/interviewer/interviews` 的“我的面试”。面试官的招聘需求页用于发起并查看自己的业务招聘需求，不复用招聘专员页面。没有对应菜单时，左侧入口隐藏，直接输入网址也会被页面权限边界拦截；不能只隐藏菜单而保留直达入口。
 
 发布后不能只看页面样式。使用李四登录后还要核对 `/api/auth/me` 的后端角色为 `interviewer`，并用第二名面试官建立不同 assignment 做交叉验证：两人页面相同，但任务、候选人和反馈列表只包含本人被分配的数据。PGS 已返回角色工作台标记但与后端角色不一致时，登录页会显示双方角色；先同步 PGS 与 Apollo 后再重试，不得临时放宽接口权限。
 
@@ -649,6 +649,7 @@ MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录 Demand/�
 |------|------|------|
 | 工作台 | `/` | 角色化欢迎页 + KPI 看板 + 快速入口 |
 | AI 助手 | `/agent` | LangGraph ReAct 智能体，自然语言查询系统数据 |
+| 在线简历 | `/online-resumes` | 招聘专员本人从外部 Agent 导入的结构化在线简历与完整聊天；可编辑基础信息、手动删除，与正式简历库独立 |
 | 候选人 | `/candidates` | 公司人才库 + 多维筛选 + 个人收藏 + 匹配后入流程 + 受控精确查重合并 + 档案详情/导出 |
 | 简历上传 | `/upload` | 拖拽上传 PDF/DOCX/ZIP，AI 自动解析技能标签；旧版 DOC 跳过 |
 | 岗位管理 | `/jobs` | 创建岗位，AI 追问补全 JD，智能解析技能要求 |
@@ -659,6 +660,8 @@ MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录 Demand/�
 | BOSS 直聘实验辅助 | 无可达前端路由（源码保留 `/boss`） | P0 `featureRegistry` 未注册该 feature；后端只读/账号实验接口保留，批量导入与 AI 初筛固定 410。若重新开放，必须确认 `demand_id` 写契约、`FIELD_ENCRYPTION_KEY`、boss CLI 来源和 Cookie 使用边界 |
 
 ---
+
+外部 Agent 通过 `/api/agent-imports/online-resumes` 或 `/api/agent-imports/full-resumes` 单向推送数据。前者写独立 `online_resumes` 表并保留完整聊天快照，后者复用现有完整简历上传与候选人库。智聘不会启动、选择或控制 Agent；两个库不自动关联、搬移、覆盖或删除。
 
 ## 10. 常见问题
 
@@ -744,7 +747,7 @@ cd backend
 python -c "from app import create_app; app=create_app(); print('后端 OK')"
 
 # 3. schema 独立验证（应用可构造不等于数据库 ready）
-alembic current  # 当前代码候选应为 20260806_15
+alembic current  # 当前代码候选应为 20260807_16
 
 # 4. 前端构建验证
 cd ../readdy-frontend

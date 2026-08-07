@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, inspect, text
 
 from app import db
 from app import models as _models  # noqa: F401
+from app.models import OnlineResume
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -22,6 +23,7 @@ def test_offer_lifecycle_migration_preserves_existing_offer_rows(tmp_path):
     db_path = tmp_path / "offer-lifecycle.db"
     engine = create_engine(f"sqlite:///{db_path}")
     db.metadata.create_all(bind=engine)
+    OnlineResume.__table__.drop(bind=engine)
     config = _config(db_path)
     command.stamp(config, "20260721_05")
 
@@ -66,7 +68,7 @@ def test_offer_lifecycle_migration_preserves_existing_offer_rows(tmp_path):
         ).scalar_one() == "30-35K"
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260806_15"
+        ).scalar_one() == "20260807_16"
         assert connection.execute(
             text("SELECT oa_status FROM offer_records WHERE id = 1")
         ).scalar_one() == "not_started"

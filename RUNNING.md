@@ -90,7 +90,7 @@ python seed_dev.py
 ```bash
 cd backend
 alembic upgrade head
-alembic current  # 当前收口候选应为 20260806_15
+alembic current  # 当前收口候选应为 20260807_16
 python scripts/audit_demand_scope.py --database <local-sqlite-fixture> \
   --output <audit-report.json> --manifest-output <mapping-to-review.json>
 # 必须由 Product/Data Owner 将审批后的条目标记 approved=true
@@ -151,6 +151,8 @@ DATABASE_URL="sqlite:////Users/yenns/Documents/新版招聘/zhipin-mvp/runtime/z
 
 推荐给招聘专员一人一个账号。系统会把当前流程负责人、上传人、流程推进人和面试反馈人记录到具体用户 ID，用于找到当前责任与留痕。BI 只服务于进度、卡点和责任协同，不作个人绩效排名或奖金结算。
 
+招聘专员侧边栏的“在线简历”与现有“简历库”是两个独立入口。外部 Agent 可选择性导入在线简历及完整聊天，也可把拿到的完整简历直接导入现有简历库；智聘只接收导入结果，不启动或控制外部 Agent。在线简历只对所属招聘专员本人展示，可编辑基础信息或手动删除；两个库不会自动关联、搬移、覆盖或删除。
+
 如果多人共用一个账号，系统无法说明当前应由谁处理，审计也无法还原谁做了哪个动作。MVP 试用阶段应各自登录自己的账号。
 
 推荐用 **manager01@mvp.local** 或 **lead01@mvp.local** 登录，可看到完整 BI 看板和团队数据。
@@ -208,6 +210,8 @@ AI 助手首页的示例问题会按角色变化：招聘专员看到自己负�
 如果流程负责人分错，经理或管理员在具体 Demand 下选择新招聘专员并填写原因。转派更新 Demand 和活动 Flow 的当前责任，历史推进人、面试官和审计 actor 不重写。
 
 BI 试点时先看 Demand 进度、停滞、待补反馈、HC 和当前责任；详细口径以 BI 设计文档为准。不展示个人绩效排名，不从当前负责人反推历史功劳。
+
+月度专员视图中的“在线简历导入”只统计 Agent 成功导入的客观份数。重复更新不重复计数，后来删除在线简历也不扣减历史数量；该数字不代表 BOSS 实际收件总量，不用于排名或奖金。
 
 ### 可直接转发的试用说明
 

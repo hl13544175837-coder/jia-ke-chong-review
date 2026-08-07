@@ -23,7 +23,7 @@ from scripts import audit_mysql_pilot_schema, backup_pilot_data, prepare_mysql_p
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPECTED_REVISION = "20260806_15"
+EXPECTED_REVISION = "20260807_16"
 
 
 def _sqlite_schema(
@@ -232,6 +232,41 @@ def _sqlite_schema(
         "ix_candidate_merges_org_primary",
         merges.c.org_id,
         merges.c.primary_candidate_id,
+    )
+    online_resumes = Table(
+        "online_resumes",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("org_id", Integer, nullable=False),
+        Column("owner_hr_id", Integer, nullable=False),
+        Column("demand_id", Integer, nullable=False),
+        Column("boss_account", String(160), nullable=False),
+        Column("source_platform", String(60), nullable=False),
+        Column("external_record_id", String(200), nullable=False),
+        Column("display_name", String(100), nullable=False),
+        Column("resume_json", JSON, nullable=False),
+        Column("chat_json", JSON, nullable=False),
+        Column("source_url", Text),
+        Column("created_at", DateTime, nullable=False),
+        Column("updated_at", DateTime, nullable=False),
+        UniqueConstraint(
+            "org_id",
+            "owner_hr_id",
+            "source_platform",
+            "external_record_id",
+            name="uq_online_resume_owner_external",
+        ),
+    )
+    Index(
+        "ix_online_resumes_owner_created",
+        online_resumes.c.org_id,
+        online_resumes.c.owner_hr_id,
+        online_resumes.c.created_at,
+    )
+    Index(
+        "ix_online_resumes_demand",
+        online_resumes.c.org_id,
+        online_resumes.c.demand_id,
     )
 
     engine = create_engine(database_url)
