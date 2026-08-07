@@ -10,6 +10,7 @@ from datetime import date, datetime
 from .. import db
 from ..models import (
     Candidate,
+    Event,
     InterviewAssignment,
     InterviewFeedback,
     OfferRecord,
@@ -631,6 +632,14 @@ def build_monthly_staff_performance(org_id, hr_id, month):
     user = User.query.filter_by(id=hr_id, org_id=org_id, role="recruiter").first()
     if user is None:
         return None
+    online_resume_imports = Event.query.filter(
+        Event.org_id == org_id,
+        Event.actor_id == hr_id,
+        Event.action == "online_resume.imported",
+        Event.result == "success",
+        Event.ts >= start,
+        Event.ts < end,
+    ).count()
     demands = RecruitmentDemand.query.filter_by(
         org_id=org_id,
         owner_hr_id=hr_id,
@@ -682,6 +691,7 @@ def build_monthly_staff_performance(org_id, hr_id, month):
         "owner": {"id": user.id, "name": user.name, "department": user.department},
         "summary": {
             "demand_count": len(demand_rows),
+            "online_resume_imports": online_resume_imports,
             "funnel": total_funnel,
             "conversion_rates": _monthly_conversion_rates(total_funnel),
             "overall_conversion_rate": _monthly_rate(total_funnel["hired"], total_funnel["resumes"]),

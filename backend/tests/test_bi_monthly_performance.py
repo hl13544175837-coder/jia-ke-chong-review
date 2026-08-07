@@ -1,7 +1,14 @@
 from datetime import datetime
 
 from app import db
-from app.models import Candidate, Job, PipelineStage, RecruitmentDemand
+from app.models import (
+    Candidate,
+    Event,
+    Job,
+    OnlineResume,
+    PipelineStage,
+    RecruitmentDemand,
+)
 
 
 def _auth(token):
@@ -107,6 +114,85 @@ def test_monthly_staff_performance_is_scoped_by_owner_and_month(
     )
     seeded = _seed_monthly_facts(app, owner_a_id, owner_b_id)
 
+    with app.app_context():
+        online_resume = OnlineResume(
+            org_id=1,
+            owner_hr_id=owner_a_id,
+            demand_id=seeded["demand_a_id"],
+            boss_account="monthly-owner-a-boss",
+            source_platform="BOSS直聘",
+            external_record_id="monthly-online-resume-deleted",
+            display_name="已删除在线简历",
+            resume_json={},
+            chat_json=[],
+        )
+        db.session.add(online_resume)
+        db.session.flush()
+        db.session.add_all(
+            [
+                Event(
+                    org_id=1,
+                    actor_id=owner_a_id,
+                    actor_role="recruiter",
+                    action="online_resume.imported",
+                    entity_id=online_resume.id,
+                    entity_type="online_resume",
+                    demand_id=seeded["demand_a_id"],
+                    result="success",
+                    source="agent",
+                    ts=datetime(2026, 7, 1, 0, 0),
+                ),
+                Event(
+                    org_id=1,
+                    actor_id=owner_a_id,
+                    actor_role="recruiter",
+                    action="online_resume.imported",
+                    entity_id=online_resume.id,
+                    entity_type="online_resume",
+                    demand_id=seeded["demand_a_id"],
+                    result="success",
+                    source="agent",
+                    ts=datetime(2026, 7, 31, 23, 59),
+                ),
+                Event(
+                    org_id=1,
+                    actor_id=owner_a_id,
+                    actor_role="recruiter",
+                    action="online_resume.imported",
+                    entity_id=online_resume.id,
+                    entity_type="online_resume",
+                    demand_id=seeded["demand_a_id"],
+                    result="success",
+                    source="agent",
+                    ts=datetime(2026, 8, 1, 0, 0),
+                ),
+                Event(
+                    org_id=1,
+                    actor_id=owner_b_id,
+                    actor_role="recruiter",
+                    action="online_resume.imported",
+                    entity_type="online_resume",
+                    demand_id=seeded["demand_b_id"],
+                    result="success",
+                    source="agent",
+                    ts=datetime(2026, 7, 10, 9, 0),
+                ),
+                Event(
+                    org_id=1,
+                    actor_id=owner_a_id,
+                    actor_role="recruiter",
+                    action="online_resume.imported",
+                    entity_type="online_resume",
+                    demand_id=seeded["demand_a_id"],
+                    result="failure",
+                    source="agent",
+                    ts=datetime(2026, 7, 11, 9, 0),
+                ),
+            ]
+        )
+        db.session.delete(online_resume)
+        db.session.commit()
+
     response = client.get(
         f"/api/bi/staff/{owner_a_id}/monthly?month=2026-07",
         headers=_auth(owner_a_token),
@@ -116,6 +202,7 @@ def test_monthly_staff_performance_is_scoped_by_owner_and_month(
     payload = response.get_json()
     assert payload["month"] == "2026-07"
     assert payload["owner"]["name"] == "专员A"
+    assert payload["summary"]["online_resume_imports"] == 2
     assert payload["summary"]["funnel"] == {
         "resumes": 4,
         "screened": 3,

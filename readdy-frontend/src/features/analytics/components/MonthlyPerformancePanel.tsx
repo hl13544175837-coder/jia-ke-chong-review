@@ -192,8 +192,9 @@ export default function MonthlyPerformancePanel({ onStageClick }: { onStageClick
             }}
           />
 
-          <div className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-4 lg:grid-cols-7">
+          <div className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-4 lg:grid-cols-8">
             <SummaryMetric label="负责招聘需求" value={performance.summary.demand_count} suffix=" 个" />
+            <SummaryMetric label="在线简历导入" value={performance.summary.online_resume_imports} suffix=" 份" />
             <SummaryMetric label="简历进入" value={performance.summary.funnel.resumes} suffix=" 人" />
             <SummaryMetric label="初筛推进" value={performance.summary.funnel.screened} suffix=" 人" />
             <SummaryMetric label="面试推进" value={performance.summary.funnel.interview} suffix=" 人" />

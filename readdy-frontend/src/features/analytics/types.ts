@@ -150,6 +150,7 @@ export interface MonthlyPerformance {
   owner: { id: number; name: string; department: string };
   summary: {
     demand_count: number;
+    online_resume_imports: number;
     funnel: MonthlyPerformanceFunnel;
     conversion_rates: MonthlyPerformanceConversionRates;
     overall_conversion_rate: number | null;
