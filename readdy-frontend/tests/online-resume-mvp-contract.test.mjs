@@ -33,9 +33,11 @@ test('在线简历页面只组合 onlineResumes feature', () => {
 test('在线简历 API 使用真实的查询、详情、修改和删除接口', () => {
   const api = readOptional(files.api);
   assert.notEqual(api, '', '缺少在线简历 API');
-  assert.match(api, /list\(page[^)]*perPage/);
-  assert.match(api, /page=\$\{page\}/);
-  assert.match(api, /per_page=\$\{perPage\}/);
+  assert.match(api, /list\(params:\s*OnlineResumeListParams/);
+  assert.match(api, /query\.set\(['"]page['"],\s*String\(params\.page\)\)/);
+  assert.match(api, /query\.set\(['"]per_page['"],\s*String\(params\.perPage\)\)/);
+  assert.match(api, /listRecruiterOwners\(\)/);
+  assert.match(api, /apiRequest<[^>]+>\(['"]\/candidates\/owner-options['"]\)/);
   assert.match(api, /apiRequest<[^>]+>\(`\/online-resumes\/\$\{id\}`\)/);
   assert.match(api, /method:\s*['"]PATCH['"]/);
   assert.match(api, /method:\s*['"]DELETE['"]/);
@@ -58,6 +60,11 @@ test('列表覆盖加载、失败重试、空态和真实数据展示', () => {
   assert.match(list, /page > validLastPage/);
   assert.match(list, /setPage\(validLastPage\)/);
   assert.match(list, /keepLoadingForPageCorrection/);
+  assert.match(list, /onlineResumesApi\.listRecruiterOwners/);
+  assert.match(list, /useDebouncedValue/);
+  assert.match(list, /latestRequestId/);
+  assert.doesNotMatch(list, /fetch\(['"]\/api\/candidates\/owner-options/);
+  assert.doesNotMatch(list, /localStorage/);
   assert.doesNotMatch(list, /@\/mocks/);
 });
 

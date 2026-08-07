@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from flask import Blueprint, g, jsonify, request
 
 from ..middleware.auth import require_auth, require_role
@@ -10,18 +12,62 @@ from ..services.online_resume_service import (
 bp = Blueprint("online_resumes", __name__)
 
 
+def _optional_int_arg(name: str) -> int | None:
+    value = request.args.get(name)
+    if value is None or not value.strip():
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise OnlineResumeValidationError("年龄格式无效") from exc
+
+
+def _optional_utc_datetime_arg(name: str) -> datetime | None:
+    value = request.args.get(name)
+    if value is None or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise OnlineResumeValidationError("导入时间格式无效") from exc
+    if parsed.tzinfo is not None and parsed.utcoffset() is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
 @bp.get("/online-resumes")
 @require_auth
 @require_role("recruiter", "manager", "admin")
 def list_online_resumes():
-    result = OnlineResumeService().list_for_actor(
-        org_id=g.org_id,
-        actor_id=g.user_id,
-        role=g.role,
-        page=max(1, request.args.get("page", 1, type=int)),
-        per_page=min(100, max(1, request.args.get("per_page", 20, type=int))),
-        demand_id=request.args.get("demand_id", type=int),
-    )
+    try:
+        age_from = _optional_int_arg("age_from")
+        age_to = _optional_int_arg("age_to")
+        created_from = _optional_utc_datetime_arg("created_from")
+        created_to = _optional_utc_datetime_arg("created_to")
+        if age_from is not None and age_to is not None and age_from > age_to:
+            raise OnlineResumeValidationError("最小年龄不能大于最大年龄")
+        if created_from is not None and created_to is not None and created_from > created_to:
+            raise OnlineResumeValidationError("开始时间不能晚于结束时间")
+        result = OnlineResumeService().list_for_actor(
+            org_id=g.org_id,
+            actor_id=g.user_id,
+            role=g.role,
+            page=max(1, request.args.get("page", 1, type=int)),
+            per_page=min(100, max(1, request.args.get("per_page", 20, type=int))),
+            demand_id=request.args.get("demand_id", type=int),
+            gender=request.args.get("gender"),
+            age_from=age_from,
+            age_to=age_to,
+            created_from=created_from,
+            created_to=created_to,
+            source_platform=request.args.get("source_platform"),
+            education_level=request.args.get("education_level"),
+            location=request.args.get("location"),
+            keyword=request.args.get("keyword"),
+            owner_hr_id=request.args.get("owner_hr_id", type=int),
+        )
+    except OnlineResumeValidationError as exc:
+        return jsonify({"error": exc.message}), 400
     return jsonify(result)
 
 

@@ -98,11 +98,27 @@ export function AgentConnectionDialog({ onClose }: AgentConnectionDialogProps) {
     <div className="fixed inset-0 z-[250] flex items-center justify-center bg-foreground-900/40 p-4" onMouseDown={() => { if (!generating) onClose(); }}>
       <section ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="agent-connection-title" onMouseDown={(event) => event.stopPropagation()} className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl outline-none">
         <header className="border-b border-background-200 px-6 py-5">
-          <h2 id="agent-connection-title" className="text-lg font-bold text-foreground-900">连接外部 Agent</h2>
-          <p className="mt-1 text-sm text-foreground-500">选择本次招聘需求，系统会生成可直接交给 Ego 的完整提示词。</p>
+          <h2 id="agent-connection-title" className="text-lg font-bold text-foreground-900">AI 招聘助手</h2>
+          <p className="mt-1 text-sm text-foreground-500">配置你的 AI 招聘助手：告诉它这次招什么、用哪个 BOSS 账号帮你筛人，然后生成授权指令发给它。</p>
         </header>
+
         <div className="space-y-4 overflow-y-auto px-6 py-5">
-          <label className="block text-sm font-medium text-foreground-700">招聘需求
+          {/* 三步使用流程 */}
+          <div className="grid gap-2 rounded-xl border border-background-200 bg-background-50 p-4 sm:grid-cols-4">
+            {[
+              { step: '①', text: '选需求、填 BOSS 账号' },
+              { step: '②', text: '生成并复制授权指令' },
+              { step: '③', text: '把指令发给你的 AI 助手' },
+              { step: '✓', text: 'AI 筛完，简历自动出现在本页' },
+            ].map((item) => (
+              <div key={item.step} className="flex items-start gap-2 rounded-lg bg-white px-3 py-2.5">
+                <span className="shrink-0 text-sm font-medium text-primary-700">{item.step}</span>
+                <span className="text-xs leading-5 text-foreground-700">{item.text}</span>
+              </div>
+            ))}
+          </div>
+
+          <label className="block text-sm font-medium text-foreground-700">本次招聘需求
             <select aria-label="招聘需求" value={selectedDemandId || ''} onChange={(event) => { setSelectedDemandId(Number(event.target.value)); setPrompt(''); setError(''); }} disabled={loading || generating || Boolean(prompt)} className="mt-2 h-10 w-full rounded-lg border border-background-300 bg-white px-3 text-sm disabled:bg-background-50">
               {loading && <option value="">正在加载招聘需求...</option>}
               {!loading && demands.length === 0 && <option value="">暂无正在招聘的需求</option>}
@@ -111,26 +127,30 @@ export function AgentConnectionDialog({ onClose }: AgentConnectionDialogProps) {
           </label>
           <label className="block text-sm font-medium text-foreground-700">BOSS账号
             <input aria-label="BOSS账号" value={bossAccount} onChange={(event) => { setBossAccount(event.target.value); setPrompt(''); setError(''); }} disabled={generating || Boolean(prompt)} maxLength={160} placeholder="例如：何龙-BOSS账号" className="mt-2 h-10 w-full rounded-lg border border-background-300 px-3 text-sm disabled:bg-background-50" />
+            <span className="mt-1.5 block text-xs text-foreground-500">用于标记简历的来源账号，方便之后区分是谁导入的。</span>
           </label>
-          {isLocalOnly && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">当前是本机地址，只能给同一台电脑上的 Ego 使用；云端 Agent 需要 Test/SIT 接口地址。</p>}
-          {!loading && demands.length === 0 && <p className="rounded-lg bg-background-50 px-3 py-2 text-sm text-foreground-600">请先创建并启用一个招聘需求，再连接 Agent。</p>}
+          {isLocalOnly && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">当前是本机地址，只能给同一台电脑上的 AI 助手使用；云端 AI 需要 Test/SIT 接口地址。</p>}
+          {!loading && demands.length === 0 && <p className="rounded-lg bg-background-50 px-3 py-2 text-sm text-foreground-600">请先创建并启用一个招聘需求，再配置 AI 助手。</p>}
           {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
           {prompt && (
             <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium text-foreground-700">完整连接提示词</p>
-                <p className="text-xs text-foreground-500">有效至 {formatExpiry(expiresAt)} · 凭证关闭后不再显示</p>
+              <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2.5">
+                <p className="text-xs leading-5 text-primary-800">下面这段就是给 AI 助手的授权指令（已绑定本次需求和你的 BOSS 账号）。复制后发给你的 AI 助手，它就会按这个需求开始筛人、导简历。凭证 30 天内有效，关闭后不再显示。</p>
               </div>
-              <textarea aria-label="完整连接提示词" readOnly value={prompt} rows={16} className="w-full resize-y rounded-lg border border-background-300 bg-background-50 px-3 py-2 font-mono text-xs leading-5 text-foreground-800" />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium text-foreground-700">AI 助手授权指令</p>
+                <p className="text-xs text-foreground-500">有效至 {formatExpiry(expiresAt)}</p>
+              </div>
+              <textarea aria-label="AI 助手授权指令" readOnly value={prompt} rows={16} className="w-full resize-y rounded-lg border border-background-300 bg-background-50 px-3 py-2 font-mono text-xs leading-5 text-foreground-800" />
             </div>
           )}
         </div>
         <footer className="flex flex-wrap justify-end gap-3 border-t border-background-200 px-6 py-4">
           <ActionButton disabled={generating} onClick={onClose}>关闭</ActionButton>
           {!prompt ? (
-            <ActionButton tone="primary" disabled={loading || generating || !selectedDemand || !bossAccount.trim()} onClick={() => void generate()}>{generating ? '正在生成...' : '生成连接提示词'}</ActionButton>
+            <ActionButton tone="primary" disabled={loading || generating || !selectedDemand || !bossAccount.trim()} onClick={() => void generate()}>{generating ? '正在生成...' : '生成授权指令'}</ActionButton>
           ) : (
-            <ActionButton tone="primary" onClick={() => void copyPrompt()}>{copied ? '已复制' : '复制全部提示词'}</ActionButton>
+            <ActionButton tone="primary" onClick={() => void copyPrompt()}>{copied ? '已复制' : '复制指令，发给我的 AI 助手'}</ActionButton>
           )}
         </footer>
       </section>
@@ -142,7 +162,7 @@ export default function AgentConnectionDialogEntry() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <ActionButton tone="primary" onClick={() => setOpen(true)}>连接 Agent</ActionButton>
+      <ActionButton tone="primary" onClick={() => setOpen(true)}>AI 招聘助手</ActionButton>
       {open && <AgentConnectionDialog onClose={() => setOpen(false)} />}
     </>
   );

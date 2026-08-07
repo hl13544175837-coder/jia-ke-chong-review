@@ -290,6 +290,20 @@ export default function OnlineResumeDetailDrawer({
             </section>
 
             <section>
+              <h3 className="mb-3 text-base font-semibold text-foreground-900">完整简历原文</h3>
+              {(() => {
+                const raw = (resume.resume_json as Record<string, unknown>)?.raw_text;
+                return typeof raw === 'string' && raw.trim() ? (
+                  <pre className="max-h-[420px] overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-background-200 bg-background-50 px-4 py-3 text-sm leading-6 text-foreground-700">
+                    {raw}
+                  </pre>
+                ) : (
+                  <p className="rounded-lg border border-background-200 bg-background-50 px-4 py-6 text-center text-sm text-foreground-500">暂无简历原文</p>
+                );
+              })()}
+            </section>
+
+            <section>
               <h3 className="mb-3 text-base font-semibold text-foreground-900">完整聊天记录</h3>
               {timeline.length === 0 ? (
                 <p className="rounded-lg border border-background-200 bg-background-50 px-4 py-6 text-center text-sm text-foreground-500">暂无聊天记录</p>

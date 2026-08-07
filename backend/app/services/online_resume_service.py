@@ -1,13 +1,14 @@
 """Recruiter-owned online resume imports and library operations."""
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from flask import current_app
 
 from .. import db
-from ..models import Event, OnlineResume, RecruitmentDemand
+from ..models import Event, OnlineResume, RecruitmentDemand, User
 from ..services.demand_context_service import (
     DemandContextError,
     can_manage_demand,
@@ -139,26 +140,129 @@ class OnlineResumeService:
         page: int,
         per_page: int,
         demand_id: int | None = None,
+        gender: str | None = None,
+        age_from: int | None = None,
+        age_to: int | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+        source_platform: str | None = None,
+        education_level: str | None = None,
+        location: str | None = None,
+        keyword: str | None = None,
+        owner_hr_id: int | None = None,
     ) -> dict:
         query = OnlineResume.query.filter(OnlineResume.org_id == org_id)
         if role == "recruiter":
             query = query.filter(OnlineResume.owner_hr_id == actor_id)
         elif role not in {"manager", "admin"}:
             query = query.filter(OnlineResume.id < 0)
+        if owner_hr_id is not None and role in {"recruiter", "manager", "admin"}:
+            query = query.filter(OnlineResume.owner_hr_id == owner_hr_id)
         if demand_id is not None:
             query = query.filter(OnlineResume.demand_id == demand_id)
+        if source_platform:
+            query = query.filter(OnlineResume.source_platform == source_platform)
+        if created_from:
+            query = query.filter(OnlineResume.created_at >= created_from)
+        if created_to:
+            query = query.filter(OnlineResume.created_at <= created_to)
 
-        pagination = query.order_by(
+        ordered_query = query.order_by(
             OnlineResume.updated_at.desc(),
             OnlineResume.id.desc(),
-        ).paginate(page=page, per_page=per_page, error_out=False)
+        )
+        needs_json_filter = any(
+            (
+                gender,
+                age_from is not None,
+                age_to is not None,
+                education_level,
+                location,
+                keyword and keyword.strip(),
+            )
+        )
+        if not needs_json_filter:
+            total = ordered_query.count()
+            pages = max(1, -(-total // per_page))
+            page = min(page, pages)
+            page_items = ordered_query.offset((page - 1) * per_page).limit(per_page).all()
+            return {
+                "items": self._serialize_page(page_items),
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "pages": pages,
+            }
+
+        # JSON 字段（年龄/性别/学历/城市）在 Python 层过滤，保持兼容 MySQL/SQLite。
+        all_items = ordered_query.all()
+
+        keyword_lower = keyword.strip().lower() if keyword else ""
+        filtered = []
+        for item in all_items:
+            info = self._extracted_info(item)
+            age = self._parse_age(info.get("age"))
+            item_gender = (info.get("gender") or "").strip().lower()
+            if gender:
+                wanted = gender.strip().lower()
+                if wanted in {"男", "male", "m"}:
+                    if not (item_gender in {"男", "male", "m"} or item_gender == "男性"):
+                        continue
+                elif wanted in {"女", "female", "f"}:
+                    if not (item_gender in {"女", "female", "f"} or item_gender == "女性"):
+                        continue
+            if age_from is not None and (age is None or age < age_from):
+                continue
+            if age_to is not None and (age is None or age > age_to):
+                continue
+            if education_level:
+                if (info.get("education_level") or "") != education_level:
+                    continue
+            if location:
+                if (info.get("location") or "") != location:
+                    continue
+            if keyword_lower:
+                haystack = " ".join([
+                    item.display_name or "",
+                    info.get("name") or "",
+                    info.get("target_position") or "",
+                    info.get("summary") or "",
+                ]).lower()
+                raw = item.resume_json.get("raw_text") if isinstance(item.resume_json, dict) else None
+                if isinstance(raw, str):
+                    haystack += " " + raw.lower()
+                if keyword_lower not in haystack:
+                    continue
+            filtered.append(item)
+
+        total = len(filtered)
+        pages = max(1, -(-total // per_page))
+        page = min(page, pages)
+        start = (page - 1) * per_page
+        page_items = filtered[start:start + per_page]
         return {
-            "items": [self.serialize(item) for item in pagination.items],
-            "total": pagination.total,
-            "page": pagination.page,
-            "per_page": pagination.per_page,
-            "pages": pagination.pages,
+            "items": self._serialize_page(page_items),
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "pages": pages,
         }
+
+    @staticmethod
+    def _extracted_info(resume: OnlineResume) -> dict:
+        payload = resume.resume_json if isinstance(resume.resume_json, dict) else {}
+        info = payload.get("extracted_info")
+        return info if isinstance(info, dict) else {}
+
+    @staticmethod
+    def _parse_age(value) -> int | None:
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, str):
+            match = re.search(r"(\d+)", value)
+            if match:
+                return int(match.group(1))
+        return None
 
     def get_for_actor(
         self,
@@ -208,6 +312,40 @@ class OnlineResumeService:
 
     def serialize(self, resume: OnlineResume) -> dict:
         demand = db.session.get(RecruitmentDemand, resume.demand_id)
+        owner = db.session.get(User, resume.owner_hr_id)
+        return self._serialize(resume, demand=demand, owner=owner)
+
+    def _serialize_page(self, resumes: list[OnlineResume]) -> list[dict]:
+        if not resumes:
+            return []
+        demand_ids = {resume.demand_id for resume in resumes}
+        owner_ids = {resume.owner_hr_id for resume in resumes}
+        demands = {
+            demand.id: demand
+            for demand in RecruitmentDemand.query.filter(
+                RecruitmentDemand.id.in_(demand_ids)
+            ).all()
+        }
+        owners = {
+            owner.id: owner
+            for owner in User.query.filter(User.id.in_(owner_ids)).all()
+        }
+        return [
+            self._serialize(
+                resume,
+                demand=demands.get(resume.demand_id),
+                owner=owners.get(resume.owner_hr_id),
+            )
+            for resume in resumes
+        ]
+
+    def _serialize(
+        self,
+        resume: OnlineResume,
+        *,
+        demand: RecruitmentDemand | None,
+        owner: User | None,
+    ) -> dict:
         demand_summary = None
         if demand is not None:
             title = demand.job_title_snapshot or (demand.job.title if demand.job else "")
@@ -217,16 +355,29 @@ class OnlineResumeService:
                 "title": title,
             }
         chat = resume.chat_json if isinstance(resume.chat_json, list) else []
+        info = self._extracted_info(resume)
         return {
             "id": resume.id,
             "org_id": resume.org_id,
             "owner_hr_id": resume.owner_hr_id,
+            "owner_name": owner.name if owner is not None else "",
             "demand": demand_summary,
             "boss_account": resume.boss_account,
             "source_platform": resume.source_platform,
             "external_record_id": resume.external_record_id,
             "display_name": resume.display_name,
             "resume_json": resume.resume_json,
+            "extracted": {
+                "age": info.get("age") or "",
+                "gender": info.get("gender") or "",
+                "education_level": info.get("education_level") or "",
+                "years_of_experience": info.get("years_of_experience") or "",
+                "salary_expectation": info.get("salary_expectation") or "",
+                "location": info.get("location") or "",
+                "target_position": info.get("target_position") or "",
+                "availability": info.get("availability") or "",
+                "summary": info.get("summary") or "",
+            },
             "chat_json": chat,
             "latest_chat": chat[-1] if chat else None,
             "source_url": resume.source_url,

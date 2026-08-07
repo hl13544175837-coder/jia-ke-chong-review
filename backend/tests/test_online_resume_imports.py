@@ -161,6 +161,144 @@ def test_manager_and_admin_can_read_online_resumes_in_their_org(
     ).status_code == 200
 
 
+def test_recruiter_owner_filter_cannot_escape_self_scope(
+    app,
+    client,
+    make_user,
+):
+    owner_id, owner_token = make_user("online-filter-owner@x.com")
+    other_id, other_token = make_user("online-filter-other@x.com")
+    owner_demand_id = _make_demand(app, owner_id, "REQ-ONLINE-FILTER-OWNER")
+    other_demand_id = _make_demand(app, other_id, "REQ-ONLINE-FILTER-OTHER")
+    assert _import_one(
+        client,
+        owner_token,
+        _item(owner_demand_id, "owner-visible"),
+    ).status_code == 200
+    assert _import_one(
+        client,
+        other_token,
+        _item(other_demand_id, "other-hidden"),
+    ).status_code == 200
+
+    escaped = client.get(
+        f"/api/online-resumes?owner_hr_id={other_id}",
+        headers=_headers(owner_token),
+    )
+
+    assert escaped.status_code == 200
+    assert escaped.get_json()["items"] == []
+    assert escaped.get_json()["total"] == 0
+
+
+def test_manager_can_filter_online_resumes_by_owner(app, client, make_user):
+    owner_id, owner_token = make_user("online-manager-filter-owner@x.com")
+    other_id, other_token = make_user("online-manager-filter-other@x.com")
+    _, manager_token = make_user("online-manager-filter@x.com", role="manager")
+    owner_demand_id = _make_demand(app, owner_id, "REQ-ONLINE-MANAGER-OWNER")
+    other_demand_id = _make_demand(app, other_id, "REQ-ONLINE-MANAGER-OTHER")
+    assert _import_one(
+        client,
+        owner_token,
+        _item(owner_demand_id, "manager-owner-result"),
+    ).status_code == 200
+    assert _import_one(
+        client,
+        other_token,
+        _item(other_demand_id, "manager-other-result"),
+    ).status_code == 200
+
+    response = client.get(
+        f"/api/online-resumes?owner_hr_id={other_id}",
+        headers=_headers(manager_token),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["total"] == 1
+    assert response.get_json()["items"][0]["owner_hr_id"] == other_id
+
+
+def test_age_filter_excludes_resumes_without_a_parseable_age(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-age-filter@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-AGE")
+    with_age = _item(demand_id, "age-known")
+    with_age["resume_json"]["extracted_info"]["age"] = "30岁"
+    without_age = _item(demand_id, "age-missing")
+    assert _import_one(client, token, with_age).status_code == 200
+    assert _import_one(client, token, without_age).status_code == 200
+
+    response = client.get(
+        "/api/online-resumes?age_to=35",
+        headers=_headers(token),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["total"] == 1
+    assert response.get_json()["items"][0]["external_record_id"] == "age-known"
+
+
+def test_created_time_filter_uses_iso_time_boundaries(app, client, make_user):
+    owner_id, token = make_user("online-created-filter@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-CREATED")
+    assert _import_one(
+        client,
+        token,
+        _item(demand_id, "created-old"),
+    ).status_code == 200
+    assert _import_one(
+        client,
+        token,
+        _item(demand_id, "created-new"),
+    ).status_code == 200
+
+    with app.app_context():
+        from app import db
+        from app.models import OnlineResume
+
+        OnlineResume.query.filter_by(external_record_id="created-old").one().created_at = (
+            datetime(2026, 8, 5, 12, 0, 0)
+        )
+        OnlineResume.query.filter_by(external_record_id="created-new").one().created_at = (
+            datetime(2026, 8, 7, 12, 0, 0)
+        )
+        db.session.commit()
+
+    response = client.get(
+        "/api/online-resumes?created_from=2026-08-07T00:00:00Z"
+        "&created_to=2026-08-07T23:59:59Z",
+        headers=_headers(token),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["total"] == 1
+    assert response.get_json()["items"][0]["external_record_id"] == "created-new"
+
+
+def test_invalid_online_resume_filter_ranges_return_public_400(
+    client,
+    make_user,
+):
+    _, token = make_user("online-invalid-filter@x.com")
+
+    invalid_date = client.get(
+        "/api/online-resumes?created_from=not-a-date",
+        headers=_headers(token),
+    )
+    invalid_age_range = client.get(
+        "/api/online-resumes?age_from=50&age_to=20",
+        headers=_headers(token),
+    )
+
+    assert invalid_date.status_code == 400
+    assert invalid_date.get_json() == {"error": "导入时间格式无效"}
+    assert invalid_age_range.status_code == 400
+    assert invalid_age_range.get_json() == {"error": "最小年龄不能大于最大年龄"}
+
+
 def test_reimport_replaces_snapshots_without_duplicate_row_or_import_event(
     app,
     client,

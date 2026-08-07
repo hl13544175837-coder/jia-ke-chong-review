@@ -19,7 +19,7 @@ test('在线简历页提供真实的连接 Agent 入口和限权凭证接口', (
   const api = read('src/features/onlineResumes/api.ts');
   const dialog = read(dialogModule);
   assert.match(page, /AgentConnectionDialog/);
-  assert.match(dialog, /连接 Agent/);
+  assert.match(dialog, /AI 招聘助手/);
   assert.match(api, /issueAgentImportToken/);
   assert.match(api, /['"]\/agent-imports\/token['"]/);
   assert.match(api, /method:\s*['"]POST['"]/);
@@ -67,9 +67,9 @@ test('连接弹窗只在内存展示凭证并提供关闭清理和复制失败�
   assert.match(dialog, /demandsApi\.listDemands/);
   assert.match(dialog, /status\s*===\s*['"]active['"]/);
   assert.match(dialog, /BOSS账号/);
-  assert.match(dialog, /生成连接提示词/);
+  assert.match(dialog, /生成授权指令/);
   assert.match(dialog, /navigator\.clipboard\.writeText/);
   assert.match(dialog, /复制失败/);
-  assert.match(dialog, /凭证关闭后不再显示/);
+  assert.match(dialog, /有效至/);
   assert.doesNotMatch(dialog, /localStorage|sessionStorage|console\.(?:log|info|debug)/);
 });

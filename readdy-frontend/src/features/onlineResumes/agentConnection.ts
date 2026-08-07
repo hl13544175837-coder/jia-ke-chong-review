@@ -32,15 +32,31 @@ export function buildAgentConnectionPrompt({
 - Agent导入凭证：${token}
 - 我的BOSS账号：${bossAccount}
 
-请固定执行：
+  请固定执行：
 1. 查看BOSS直聘中向我打招呼的候选人，按本次JD判断是否基本符合。
 2. 只把值得继续联系的候选人导入智聘，不要求全部导入。
-3. 在线简历使用 POST ${api}/agent-imports/online-resumes，提交稳定的 external_record_id、demand_id=${demand.id}、boss_account、source_url、在线简历全部可见内容和从最早到最新的完整聊天记录。
+3. 在线简历使用 POST ${api}/agent-imports/online-resumes，提交稳定的 external_record_id、demand_id=${demand.id}、boss_account、source_url、resume_json（结构化字段 + raw_text 原文）和从最早到最新的完整聊天记录。
 4. 聊天记录每条包含 sender、text、sent_at；sent_at必须带时区。
 5. 收到候选人完整PDF、DOCX或图片简历后，下载原始文件并提取完整结构化内容，使用 POST ${api}/agent-imports/full-resumes 上传原文件、target_demand_id=${demand.id}、boss_account、source_link和metadata_json。
 6. 完整简历的 external_import_id 必须保持稳定，重复执行时不能换编号。
 7. 完整简历成功导入后不要删除在线简历，两套简历库保持独立。
 8. 不要在输出、聊天或日志中展示导入凭证。
-9. 每次结束只汇报查看人数、在线简历导入数、完整简历导入数和失败原因。`;
+9. 每次结束只汇报查看人数、在线简历导入数、完整简历导入数和失败原因。
+
+resume_json 字段模板（在线简历和完整简历都按此填写，缺失留空，不要编造）：
+{
+  "name": 姓名,
+  "age": 年龄,
+  "education_level": 学历,
+  "years_of_experience": 工作年限,
+  "salary_expectation": 期望薪资,
+  "location": 城市,
+  "target_position": 目标岗位,
+  "summary": 个人介绍,
+  "raw_text": 在线简历完整原文
+}
+resume_json 必须同时保存 raw_text 原文，不允许只传结构化字段而丢弃原文。
+
+external_record_id 统一使用 boss:{BOSS候选人唯一ID} 格式，BOSS账号为 ${bossAccount}，重复执行时编号不得变化。`;
 }
 

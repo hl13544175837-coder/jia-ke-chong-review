@@ -321,7 +321,7 @@ P0 在现有主阶段之外增加流转终态 `transferred`，它仅表示该候
 | `POST` | `/agent-imports/token` | recruiter 普通登录 JWT | 生成默认 30 天有效的 `agent_import` 限权凭证；凭证绑定服务端查得的用户、组织和 `token_version`，不写入业务审计 payload |
 | `POST` | `/agent-imports/online-resumes` | `agent_import` 限权凭证 | 外部 Agent 单向批量导入结构化在线简历和完整聊天快照；绑定凭证所属招聘专员及其可管理的具体 Demand，同一外部记录重复导入时更新而不重复计数 |
 | `POST` | `/agent-imports/full-resumes` | `agent_import` 限权凭证 | 外部 Agent 单向导入完整简历文件、对应结构化信息和具体 Demand；复用现有上传、原件、查重及候选人库，不调用模型再次解析 |
-| `GET/PATCH/DELETE` | `/online-resumes[/<id>]` | recruiter 本人 scope；manager/admin 组织内读取/管理 API | 列表、详情、基础结构化信息编辑和硬删除；完整聊天只由 Agent 整体更新，人工 PATCH 不修改聊天 |
+| `GET/PATCH/DELETE` | `/online-resumes[/<id>]` | recruiter 本人 scope；manager/admin 仅组织内读取 API | 列表支持 `demand_id`、`gender`、`age_from`、`age_to`、`created_from`、`created_to`、`source_platform`、`education_level`、`location`、`keyword`、`owner_hr_id` 筛选；招聘专员的 owner scope 始终叠加，不能用筛选参数越权。时间使用 ISO 格式并先归一为 UTC；详情、基础结构化信息编辑和硬删除仅由所属招聘专员执行，完整聊天只由 Agent 整体更新，人工 PATCH 不修改聊天 |
 | `POST` | `/resume/batches/<batch_id>/rollback` | 批次上传人/manager/admin | 撤回误导入批次，候选人软删除、匿名化、删除原文件并写审计 |
 | `GET` | `/resume/<candidate_id>` | 登录 + 候选人可见权限 | 候选人简历详情与技能标签，返回 `owner_hr_id` 供负责人展示与转派 |
 | `GET` | `/candidates` | 登录 | 候选人列表，recruiter 只看当前组织内自己负责的；`search` 会覆盖姓名、邮箱、电话、技能标签和简历解析 JSON 中的公司、岗位、学校等文本；分页查询支持意向城市、学历、技能关键词、最低技能分、解析状态、活动流程状态、个人收藏、任一 Demand 当前阶段，以及 `created_from` / `created_to` 入库日期范围；日期使用 `YYYY-MM-DD` 且结束日期包含当天。`pipeline_status` 兼容 `in_pipeline` / `not_in_pipeline`，并支持 `never_entered` / `rejected` / `onboarded` / `transferred` 精确状态。列表项返回后端派生的 `pipeline_state` 与 `has_rejected_history`，活动流程优先于其他 Demand 的历史淘汰记录；同时返回 `desired_position`、`current_stage`、`current_demand_id`、`latest_demand_id`、`is_favorite`，软删除候选人不返回 |
@@ -504,9 +504,9 @@ sequenceDiagram
 
 外部 Agent 另有两个单向导入口，但智聘不启动、选择或控制 Agent：
 
-- 招聘专员可在“在线简历 → 连接 Agent”选择本人可见的 active Demand、填写 BOSS 账号并生成需求专属提示词。前端只在当前弹窗内存中保存限权凭证，关闭后清空，不写入 URL、localStorage 或业务日志。
+- 招聘专员可在“在线简历 → AI 招聘助手”选择本人可见的 active Demand、填写 BOSS 账号并生成需求专属授权指令。授权指令要求在线简历保留结构化字段、原始简历文本、稳定外部记录编号及从最早到最新的完整聊天记录，禁止编造缺失信息或泄露凭证。前端只在当前弹窗内存中保存限权凭证，关闭后清空，不写入 URL、localStorage 或业务日志。
 - 招聘专员先用普通登录 JWT 调用 `/api/agent-imports/token`，为外部 Agent 生成只能导入简历的 `agent_import` 限时凭证。普通登录 JWT 不能直接调用导入口，限权凭证也不能访问智聘其他业务接口。
-- `/api/agent-imports/online-resumes` 把 Agent 挑选的在线简历与完整聊天快照写入独立 `online_resumes` 表，招聘专员页面只查询本人 owner scope。
+- `/api/agent-imports/online-resumes` 把 Agent 挑选的在线简历、原始简历文本与完整聊天快照写入独立 `online_resumes` 表。列表可组合筛选，招聘专员查询始终叠加本人 owner scope；无 JSON 条件时由数据库直接分页，有年龄、性别、学历、城市或关键词条件时在统一服务层做兼容 MySQL/SQLite 的结构化过滤。
 - `/api/agent-imports/full-resumes` 把 Agent 已取得的完整简历及结构化结果直接写入现有候选人库，复用原件保存、查重和具体 Demand 绑定。
 - 两条入口彼此可选；在线简历库与完整简历库不自动关联、搬移、覆盖或删除。获得完整简历后也不要求清理在线简历。
 
