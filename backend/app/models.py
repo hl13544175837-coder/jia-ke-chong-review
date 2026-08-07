@@ -120,6 +120,61 @@ class CandidateResumeVersion(db.Model):
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
 
+class OnlineResume(db.Model):
+    __tablename__ = "online_resumes"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "org_id",
+            "owner_hr_id",
+            "source_platform",
+            "external_record_id",
+            name="uq_online_resume_owner_external",
+        ),
+        db.Index(
+            "ix_online_resumes_owner_created",
+            "org_id",
+            "owner_hr_id",
+            "created_at",
+        ),
+        db.Index("ix_online_resumes_demand", "org_id", "demand_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, nullable=False, default=1)
+    owner_hr_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    demand_id = db.Column(
+        db.Integer,
+        db.ForeignKey("recruitment_demands.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    boss_account = db.Column(db.String(160), nullable=False)
+    source_platform = db.Column(
+        db.String(60),
+        nullable=False,
+        default="BOSS直聘",
+    )
+    external_record_id = db.Column(db.String(200), nullable=False)
+    display_name = db.Column(
+        db.String(100),
+        nullable=False,
+        default="未命名候选人",
+    )
+    resume_json = db.Column(db.JSON, nullable=False, default=dict)
+    chat_json = db.Column(db.JSON, nullable=False, default=list)
+    source_url = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+
 class UploadBatch(db.Model):
     __table_args__ = (
         db.Index("ix_upload_batches_org_demand", "org_id", "demand_id"),
