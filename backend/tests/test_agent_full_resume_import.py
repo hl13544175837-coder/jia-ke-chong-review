@@ -115,7 +115,15 @@ def test_agent_full_resume_uses_structured_data_when_ai_is_disabled(
         from app.models import Candidate, OnlineResume, PipelineStage, UploadBatch
 
         candidate = Candidate.query.filter_by(owner_hr_id=owner_id).one()
-        assert candidate.resume_json == resume_json
+        assert candidate.resume_json["extracted_info"] == resume_json["extracted_info"]
+        assert candidate.resume_json["skills"] == resume_json["skills"]
+        assert candidate.resume_json["experience"] == resume_json["experience"]
+        assert candidate.resume_json["_agent_source"] == {
+            "external_import_id": "full-import-001",
+            "source_platform": "BOSS直聘",
+            "boss_account": "何龙-BOSS账号",
+            "source_link": "https://www.zhipin.com/web/chat/index",
+        }
         assert candidate.raw_file_data == b"%PDF-1.4 complete resume"
         assert candidate.parse_status == "ok"
         assert candidate.current_demand_id == demand_id
@@ -234,6 +242,139 @@ def test_agent_full_resume_reuses_existing_file_duplicate_response(
         from app.models import Candidate
 
         assert Candidate.query.filter_by(owner_hr_id=owner_id).count() == 1
+
+
+def test_agent_full_resume_external_import_id_is_idempotent_across_changed_file(
+    client, make_user, app, tmp_path
+):
+    owner_id, token = make_user("agent-external-id@example.com", role="recruiter")
+    demand_id = _make_full_resume_demand(app, owner_id)
+    app.config.update(RESUME_AI_ENABLED=False, UPLOAD_FOLDER=str(tmp_path))
+
+    first = _post_full_resumes(
+        client,
+        token,
+        demand_id,
+        files=[(b"%PDF-1.4 first file body", "first.pdf")],
+        metadata_items=[
+            _item("first.pdf", "stable-external-id", _resume_json("第一版候选人"))
+        ],
+    )
+    second = _post_full_resumes(
+        client,
+        token,
+        demand_id,
+        files=[(b"%PDF-1.4 changed file body", "renamed.pdf")],
+        metadata_items=[
+            _item(
+                "renamed.pdf",
+                "stable-external-id",
+                _resume_json("第二版候选人", "13800138999"),
+            )
+        ],
+    )
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    first_candidate_id = first.get_json()["results"][0]["candidate_id"]
+    duplicate = second.get_json()["results"][0]
+    assert duplicate["status"] == "duplicate"
+    assert duplicate["reason"] == "该外部导入编号已经处理过"
+    assert duplicate["match_basis"] == "外部导入编号一致"
+    assert duplicate["existing_candidate_id"] == first_candidate_id
+    with app.app_context():
+        from app.models import Candidate
+
+        candidates = Candidate.query.filter_by(owner_hr_id=owner_id).all()
+        assert len(candidates) == 1
+        assert candidates[0].name_masked == "第一版候选人"
+
+
+def test_agent_full_resume_pipeline_failure_removes_candidate_file_and_empty_batch(
+    client, make_user, app, monkeypatch, tmp_path
+):
+    from app.services.pipeline_service import PipelineServiceError
+
+    owner_id, token = make_user("agent-pipeline-fail@example.com", role="recruiter")
+    demand_id = _make_full_resume_demand(app, owner_id)
+    app.config.update(RESUME_AI_ENABLED=False, UPLOAD_FOLDER=str(tmp_path))
+
+    def reject_pipeline(*args, **kwargs):
+        raise PipelineServiceError("模拟加入需求失败", 409, "simulated_failure")
+
+    monkeypatch.setattr(
+        "app.services.resumes.parse_service._add_to_target_pipeline",
+        reject_pipeline,
+    )
+
+    response = _post_full_resumes(
+        client,
+        token,
+        demand_id,
+        files=[(b"%PDF-1.4 pipeline failure", "pipeline-fail.pdf")],
+        metadata_items=[
+            _item("pipeline-fail.pdf", "pipeline-fail-id", _resume_json())
+        ],
+    )
+
+    assert response.status_code == 202
+    assert response.get_json()["batch_id"] is None
+    result = response.get_json()["results"][0]
+    assert result["status"] == "error"
+    assert result["pipeline_error_code"] == "simulated_failure"
+    with app.app_context():
+        from app.models import Candidate, UploadBatch
+
+        assert Candidate.query.filter_by(owner_hr_id=owner_id).count() == 0
+        assert UploadBatch.query.filter_by(owner_hr_id=owner_id).count() == 0
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_agent_full_resume_keeps_prior_success_when_later_pipeline_join_fails(
+    client, make_user, app, monkeypatch, tmp_path
+):
+    from app.services.pipeline_service import PipelineServiceError
+    from app.services.resumes import parse_service
+
+    owner_id, token = make_user("agent-pipeline-partial@example.com", role="recruiter")
+    demand_id = _make_full_resume_demand(app, owner_id)
+    app.config.update(RESUME_AI_ENABLED=False, UPLOAD_FOLDER=str(tmp_path))
+    real_add_to_pipeline = parse_service._add_to_target_pipeline
+    attempts = 0
+
+    def fail_second_pipeline_join(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 2:
+            raise PipelineServiceError("模拟第二份失败", 409, "simulated_second_failure")
+        return real_add_to_pipeline(*args, **kwargs)
+
+    monkeypatch.setattr(parse_service, "_add_to_target_pipeline", fail_second_pipeline_join)
+
+    response = _post_full_resumes(
+        client,
+        token,
+        demand_id,
+        files=[
+            (b"%PDF-1.4 successful item", "success.pdf"),
+            (b"%PDF-1.4 failing item", "failure.pdf"),
+        ],
+        metadata_items=[
+            _item("success.pdf", "pipeline-success-id", _resume_json("成功候选人", "13800138011")),
+            _item("failure.pdf", "pipeline-failure-id", _resume_json("失败候选人", "13800138012")),
+        ],
+    )
+
+    assert response.status_code == 202
+    results = {item["file"]: item for item in response.get_json()["results"]}
+    assert results["success.pdf"]["status"] == "ok"
+    assert results["failure.pdf"]["status"] == "error"
+    with app.app_context():
+        from app.models import Candidate, UploadBatch
+
+        candidate = Candidate.query.filter_by(owner_hr_id=owner_id).one()
+        assert candidate.name_masked == "成功候选人"
+        assert UploadBatch.query.filter_by(owner_hr_id=owner_id).count() == 1
 
 
 def test_agent_full_resume_imports_two_valid_files_in_one_request(

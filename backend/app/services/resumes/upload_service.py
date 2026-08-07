@@ -38,8 +38,6 @@ ZIP_MAX_FILE_SIZE = 20 * 1024 * 1024
 ZIP_MAX_TOTAL_SIZE = 200 * 1024 * 1024
 UPLOAD_DEDUP_WINDOW = timedelta(minutes=10)
 
-
-
 def _file_fingerprints(files):
     fingerprints = []
     for file_storage in files:
@@ -338,7 +336,9 @@ def handle_resume_upload(
     structured_metadata = None
     if require_structured_metadata:
         try:
-            structured_metadata = _structured_metadata_for_files(files, svc)
+            structured_metadata = _structured_metadata_for_files(
+                files, svc, source_platform=source_channel_override or "BOSS直聘"
+            )
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
 
@@ -398,13 +398,14 @@ def handle_resume_upload(
     )
     db.session.add(batch)
     db.session.commit()
-    record_event(
-        "resume.upload_batch.created",
-        entity_id=batch.id,
-        entity_type="upload_batch",
-        demand_id=target_demand_id,
-        payload={"demand_id": target_demand_id, "job_id": target_job_id},
-    )
+    if not require_structured_metadata:
+        record_event(
+            "resume.upload_batch.created",
+            entity_id=batch.id,
+            entity_type="upload_batch",
+            demand_id=target_demand_id,
+            payload={"demand_id": target_demand_id, "job_id": target_job_id},
+        )
 
     results = []
     for f in files:
@@ -422,7 +423,6 @@ def handle_resume_upload(
             results.append({"file": f.filename, "status": "skipped", "reason": invalid_reason})
             continue
 
-        # 落盘（普通简历直接落盘并保留路径供 raw_file_path 使用）
         fname = _stored_resume_filename(f.filename)
         fpath = str(Path(folder) / fname)
         f.save(fpath)
@@ -459,20 +459,41 @@ def handle_resume_upload(
                     if structured_metadata is not None
                     else None
                 ),
+                agent_import=(
+                    structured_metadata[f.filename]["agent_source"]
+                    if structured_metadata is not None
+                    else None
+                ),
             )
 
-    # total 改为实际产生的简历结果条数（zip 会展开成多条）
-    record_event(
-        "resume.upload.completed",
-        entity_id=batch.id,
-        entity_type="upload_batch",
-        demand_id=target_demand_id,
-        payload={
-            "upload_fingerprint": upload_key,
-            "batch_id": batch.id,
-            "demand_id": target_demand_id,
-            "total": len(results),
-            "results": results,
-        },
-    )
-    return jsonify({"batch_id": batch.id, "total": len(results), "results": results}), 202
+    retained_batch_id = batch.id
+    if require_structured_metadata and not any(
+        item.get("status") == "ok" for item in results
+    ):
+        db.session.delete(batch)
+        db.session.commit()
+        retained_batch_id = None
+    elif require_structured_metadata:
+        record_event(
+            "resume.upload_batch.created",
+            entity_id=batch.id,
+            entity_type="upload_batch",
+            demand_id=target_demand_id,
+            payload={"demand_id": target_demand_id, "job_id": target_job_id},
+        )
+
+    if retained_batch_id is not None:
+        record_event(
+            "resume.upload.completed",
+            entity_id=retained_batch_id,
+            entity_type="upload_batch",
+            demand_id=target_demand_id,
+            payload={
+                "upload_fingerprint": upload_key,
+                "batch_id": retained_batch_id,
+                "demand_id": target_demand_id,
+                "total": len(results),
+                "results": results,
+            },
+        )
+    return jsonify({"batch_id": retained_batch_id, "total": len(results), "results": results}), 202

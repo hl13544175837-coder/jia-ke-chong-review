@@ -2,11 +2,12 @@ import logging
 from pathlib import Path
 
 from flask import current_app, g
+from sqlalchemy import select
 
 from ... import db
 from ..access_policy import can_access_candidate
 from ...middleware.events import record_event
-from ...models import Candidate
+from ...models import Candidate, User
 from ..candidate_library_service import find_existing_candidate_by_identity
 from ..pipeline_service import PipelineServiceError, move_candidate
 from ..public_errors import PUBLIC_RESUME_PARSE_ERROR
@@ -61,7 +62,7 @@ def _record_duplicate_upload(
     )
 
 
-def _add_to_target_pipeline(candidate, target_demand_id):
+def _add_to_target_pipeline(candidate, target_demand_id, *, commit=True):
     if not target_demand_id:
         return False
 
@@ -72,8 +73,40 @@ def _add_to_target_pipeline(candidate, target_demand_id):
         actor_id=g.user_id,
         stage="pending",
         note="上传简历后进入待筛选",
+        commit=commit,
     )
     return not result.get("deduplicated", False)
+
+
+def _existing_agent_import(external_import_id):
+    db.session.execute(
+        select(User)
+        .where(User.id == g.user_id, User.org_id == g.org_id)
+        .with_for_update()
+    ).scalar_one()
+    candidates = Candidate.query.filter_by(
+        org_id=g.org_id,
+        owner_hr_id=g.user_id,
+    ).order_by(Candidate.id.asc()).all()
+    for candidate in candidates:
+        resume = candidate.resume_json if isinstance(candidate.resume_json, dict) else {}
+        source = resume.get("_agent_source")
+        if (
+            isinstance(source, dict)
+            and source.get("external_import_id") == external_import_id
+        ):
+            return candidate
+    return None
+
+
+def _agent_import_duplicate_result(display_name, existing):
+    result = _duplicate_upload_result(
+        display_name,
+        existing,
+        "外部导入编号一致",
+    )
+    result["reason"] = "该外部导入编号已经处理过"
+    return result
 
 
 def _related_jobs_for_candidate(candidate):
@@ -138,9 +171,26 @@ def _process_resume(
     target_demand_id=None,
     target_job_id=None,
     structured_resume=None,
+    agent_import=None,
 ):
     """解析单份简历并入库，把结果（成功/失败）追加到 results。
     display_name 用于结果展示（zip 内文件会带 "xxx.zip → 文件名" 前缀）。"""
+    if agent_import is not None:
+        existing_import = _existing_agent_import(agent_import["external_import_id"])
+        if existing_import is not None:
+            _record_duplicate_upload(
+                existing_import,
+                display_name,
+                "外部导入编号一致",
+                target_demand_id,
+            )
+            db.session.commit()
+            _remove_uploaded_file(fpath)
+            results.append(
+                _agent_import_duplicate_result(display_name, existing_import)
+            )
+            return
+
     file_data = Path(fpath).read_bytes()
     raw_file_name = Path(fpath).name
     content_sha256 = _file_sha256(fpath)
@@ -163,20 +213,25 @@ def _process_resume(
         return
 
     if structured_resume is not None:
+        structured_payload = dict(structured_resume)
+        if agent_import is not None:
+            structured_payload["_agent_source"] = dict(agent_import)
         try:
             candidate = svc.create_from_structured_resume(
                 file_path=fpath,
                 owner_hr_id=g.user_id,
-                parse_result=structured_resume,
+                parse_result=structured_payload,
                 upload_batch_id=upload_batch_id,
                 org_id=g.org_id,
                 resume_sha256=content_sha256,
                 raw_file_name=raw_file_name,
                 raw_file_data=file_data,
+                commit=False,
             )
         except Exception:
             logger.exception("Agent结构化简历 %s 入库失败", display_name)
             db.session.rollback()
+            _remove_uploaded_file(fpath)
             results.append({
                 "file": display_name,
                 "status": "error",
@@ -190,6 +245,7 @@ def _process_resume(
             target_demand_id,
             target_job_id,
             fpath,
+            atomic_pipeline=True,
         )
         return
 
@@ -302,6 +358,7 @@ def _finalize_successful_resume(
     target_demand_id,
     target_job_id,
     fpath,
+    atomic_pipeline=False,
 ):
     """复用普通上传已有的身份查重、审计和进入需求流程。"""
     # Parsing succeeded. Audit/storage/pipeline failures are infrastructure
@@ -330,16 +387,33 @@ def _finalize_successful_resume(
 
     from ...models import CandidateTag
     CandidateTag.query.filter_by(candidate_id=candidate.id).update({"org_id": g.org_id})
-    db.session.commit()
+    if not atomic_pipeline:
+        db.session.commit()
     record_event(
         "resume.uploaded",
         entity_id=candidate.id,
         entity_type="candidate",
         demand_id=target_demand_id,
+        commit=not atomic_pipeline,
     )
     try:
-        auto_joined = _add_to_target_pipeline(candidate, target_demand_id)
+        auto_joined = _add_to_target_pipeline(
+            candidate,
+            target_demand_id,
+            commit=not atomic_pipeline,
+        )
     except PipelineServiceError as error:
+        if atomic_pipeline:
+            db.session.rollback()
+            _remove_uploaded_file(fpath)
+            results.append({
+                "file": display_name,
+                "status": "error",
+                "reason": "简历未能加入指定招聘需求",
+                "pipeline_error": error.message,
+                "pipeline_error_code": error.code,
+            })
+            return
         results.append({
             "file": display_name,
             "status": "ok",
@@ -351,6 +425,8 @@ def _finalize_successful_resume(
             "pipeline_error_code": error.code,
         })
         return
+    if atomic_pipeline:
+        db.session.commit()
     result = {"file": display_name, "status": "ok", "candidate_id": candidate.id}
     if auto_joined:
         result.update({

@@ -83,6 +83,7 @@ class ResumeBatchService:
         resume_sha256: str,
         raw_file_name: str,
         raw_file_data: bytes,
+        commit: bool = True,
     ) -> Candidate:
         """直接使用 Agent 提供的结构化简历建档，不调用模型。"""
         normalized = self.normalize_structured_resume(parse_result)
@@ -100,7 +101,10 @@ class ResumeBatchService:
         db.session.add(candidate)
         db.session.flush()
         self._apply_parse_result(candidate, normalized)
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return candidate
 
     def normalize_structured_resume(self, parse_result: dict) -> dict:
