@@ -112,7 +112,7 @@ def test_agent_full_resume_uses_structured_data_when_ai_is_disabled(
     assert result["status"] == "ok"
 
     with app.app_context():
-        from app.models import Candidate, OnlineResume, PipelineStage, UploadBatch
+        from app.models import Candidate, Event, OnlineResume, PipelineStage, UploadBatch
 
         candidate = Candidate.query.filter_by(owner_hr_id=owner_id).one()
         assert candidate.resume_json["extracted_info"] == resume_json["extracted_info"]
@@ -138,6 +138,18 @@ def test_agent_full_resume_uses_structured_data_when_ai_is_disabled(
             demand_id=demand_id,
             stage="pending",
         ).count() == 1
+        receipt = Event.query.filter_by(
+            org_id=1,
+            actor_id=owner_id,
+            action="agent.full_resume.imported",
+            entity_id=candidate.id,
+        ).one()
+        assert receipt.payload == {
+            "external_import_id": "full-import-001",
+            "source_platform": "BOSS直聘",
+            "boss_account": "何龙-BOSS账号",
+            "source_link": "https://www.zhipin.com/web/chat/index",
+        }
 
 
 def test_agent_full_resume_requires_target_demand_before_creating_batch(
@@ -260,6 +272,16 @@ def test_agent_full_resume_external_import_id_is_idempotent_across_changed_file(
             _item("first.pdf", "stable-external-id", _resume_json("第一版候选人"))
         ],
     )
+    with app.app_context():
+        from app import db
+        from app.models import Event
+
+        Event.query.filter_by(
+            org_id=1,
+            actor_id=owner_id,
+            action="agent.full_resume.imported",
+        ).delete()
+        db.session.commit()
     second = _post_full_resumes(
         client,
         token,
@@ -288,6 +310,67 @@ def test_agent_full_resume_external_import_id_is_idempotent_across_changed_file(
         candidates = Candidate.query.filter_by(owner_hr_id=owner_id).all()
         assert len(candidates) == 1
         assert candidates[0].name_masked == "第一版候选人"
+
+
+def test_agent_full_resume_receipt_survives_full_resume_replacement(
+    client, make_user, app, tmp_path
+):
+    owner_id, token = make_user("agent-receipt-replace@example.com", role="recruiter")
+    demand_id = _make_full_resume_demand(app, owner_id)
+    app.config.update(RESUME_AI_ENABLED=False, UPLOAD_FOLDER=str(tmp_path))
+
+    first = _post_full_resumes(
+        client,
+        token,
+        demand_id,
+        files=[(b"%PDF-1.4 original agent resume", "original.pdf")],
+        metadata_items=[
+            _item("original.pdf", "replace-stable-id", _resume_json("原始候选人"))
+        ],
+    )
+    candidate_id = first.get_json()["results"][0]["candidate_id"]
+
+    with app.app_context():
+        from app import db
+        from app.models import Candidate
+        from app.services.resume_service import ResumeBatchService
+
+        candidate = db.session.get(Candidate, candidate_id)
+        ResumeBatchService().replace_candidate_resume(
+            candidate,
+            file_path=str(tmp_path / "manual-replacement.pdf"),
+            content_sha256="a" * 64,
+            parse_result=_resume_json("人工替换后", "13800138888"),
+            raw_file_name="manual-replacement.pdf",
+            raw_file_data=b"%PDF-1.4 manual replacement",
+        )
+        assert "_agent_source" not in candidate.resume_json
+
+    repeated = _post_full_resumes(
+        client,
+        token,
+        demand_id,
+        files=[(b"%PDF-1.4 entirely different retry", "retry.pdf")],
+        metadata_items=[
+            _item("retry.pdf", "replace-stable-id", _resume_json("重复候选人", "13800138777"))
+        ],
+    )
+
+    assert repeated.status_code == 202
+    duplicate = repeated.get_json()["results"][0]
+    assert duplicate["status"] == "duplicate"
+    assert duplicate["match_basis"] == "外部导入编号一致"
+    assert duplicate["existing_candidate_id"] == candidate_id
+    with app.app_context():
+        from app.models import Candidate, Event
+
+        assert Candidate.query.filter_by(owner_hr_id=owner_id).count() == 1
+        assert Event.query.filter_by(
+            org_id=1,
+            actor_id=owner_id,
+            action="agent.full_resume.imported",
+            entity_id=candidate_id,
+        ).count() == 1
 
 
 def test_agent_full_resume_pipeline_failure_removes_candidate_file_and_empty_batch(
@@ -323,10 +406,15 @@ def test_agent_full_resume_pipeline_failure_removes_candidate_file_and_empty_bat
     assert result["status"] == "error"
     assert result["pipeline_error_code"] == "simulated_failure"
     with app.app_context():
-        from app.models import Candidate, UploadBatch
+        from app.models import Candidate, Event, UploadBatch
 
         assert Candidate.query.filter_by(owner_hr_id=owner_id).count() == 0
         assert UploadBatch.query.filter_by(owner_hr_id=owner_id).count() == 0
+        assert Event.query.filter_by(
+            org_id=1,
+            actor_id=owner_id,
+            action="agent.full_resume.imported",
+        ).count() == 0
     assert list(tmp_path.iterdir()) == []
 
 

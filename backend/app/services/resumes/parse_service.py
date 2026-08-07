@@ -7,7 +7,7 @@ from sqlalchemy import select
 from ... import db
 from ..access_policy import can_access_candidate
 from ...middleware.events import record_event
-from ...models import Candidate, User
+from ...models import Candidate, Event, User
 from ..candidate_library_service import find_existing_candidate_by_identity
 from ..pipeline_service import PipelineServiceError, move_candidate
 from ..public_errors import PUBLIC_RESUME_PARSE_ERROR
@@ -17,6 +17,7 @@ from .file_service import _file_sha256, _remove_uploaded_file
 RESUME_AI_DISABLED_MESSAGE = (
     "当前测试环境未启用模型解析，原始简历已保留，请手动补录基础信息。"
 )
+AGENT_FULL_RESUME_IMPORTED = "agent.full_resume.imported"
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,19 @@ def _existing_agent_import(external_import_id):
         .where(User.id == g.user_id, User.org_id == g.org_id)
         .with_for_update()
     ).scalar_one()
+    receipts = Event.query.filter_by(
+        org_id=g.org_id,
+        actor_id=g.user_id,
+        action=AGENT_FULL_RESUME_IMPORTED,
+    ).order_by(Event.id.asc()).all()
+    for receipt in receipts:
+        payload = receipt.payload if isinstance(receipt.payload, dict) else {}
+        if payload.get("external_import_id") != external_import_id:
+            continue
+        candidate = db.session.get(Candidate, receipt.entity_id)
+        if candidate is not None and candidate.org_id == g.org_id:
+            return candidate
+
     candidates = Candidate.query.filter_by(
         org_id=g.org_id,
         owner_hr_id=g.user_id,
@@ -246,6 +260,7 @@ def _process_resume(
             target_job_id,
             fpath,
             atomic_pipeline=True,
+            agent_import=agent_import,
         )
         return
 
@@ -359,6 +374,7 @@ def _finalize_successful_resume(
     target_job_id,
     fpath,
     atomic_pipeline=False,
+    agent_import=None,
 ):
     """复用普通上传已有的身份查重、审计和进入需求流程。"""
     # Parsing succeeded. Audit/storage/pipeline failures are infrastructure
@@ -426,6 +442,15 @@ def _finalize_successful_resume(
         })
         return
     if atomic_pipeline:
+        if agent_import is not None:
+            record_event(
+                AGENT_FULL_RESUME_IMPORTED,
+                entity_id=candidate.id,
+                entity_type="candidate",
+                demand_id=target_demand_id,
+                payload=agent_import,
+                commit=False,
+            )
         db.session.commit()
     result = {"file": display_name, "status": "ok", "candidate_id": candidate.id}
     if auto_joined:
