@@ -504,6 +504,7 @@ sequenceDiagram
 
 外部 Agent 另有两个单向导入口，但智聘不启动、选择或控制 Agent：
 
+- 招聘专员可在“在线简历 → 连接 Agent”选择本人可见的 active Demand、填写 BOSS 账号并生成需求专属提示词。前端只在当前弹窗内存中保存限权凭证，关闭后清空，不写入 URL、localStorage 或业务日志。
 - 招聘专员先用普通登录 JWT 调用 `/api/agent-imports/token`，为外部 Agent 生成只能导入简历的 `agent_import` 限时凭证。普通登录 JWT 不能直接调用导入口，限权凭证也不能访问智聘其他业务接口。
 - `/api/agent-imports/online-resumes` 把 Agent 挑选的在线简历与完整聊天快照写入独立 `online_resumes` 表，招聘专员页面只查询本人 owner scope。
 - `/api/agent-imports/full-resumes` 把 Agent 已取得的完整简历及结构化结果直接写入现有候选人库，复用原件保存、查重和具体 Demand 绑定。
