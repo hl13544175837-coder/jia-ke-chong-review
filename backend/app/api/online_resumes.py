@@ -54,6 +54,8 @@ def update_online_resume(resume_id):
     )
     if resume is None:
         return jsonify({"error": "在线简历不存在"}), 404
+    if g.role != "recruiter" or resume.owner_hr_id != g.user_id:
+        return jsonify({"error": "只有所属招聘专员可以修改在线简历"}), 403
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return jsonify({"error": "请提供正确的修改内容"}), 400
@@ -81,5 +83,7 @@ def delete_online_resume(resume_id):
     )
     if resume is None:
         return jsonify({"error": "在线简历不存在"}), 404
+    if g.role != "recruiter" or resume.owner_hr_id != g.user_id:
+        return jsonify({"error": "只有所属招聘专员可以删除在线简历"}), 403
     service.delete(resume)
     return jsonify({"ok": True})

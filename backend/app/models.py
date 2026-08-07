@@ -164,6 +164,7 @@ class OnlineResume(db.Model):
         default="未命名候选人",
     )
     resume_json = db.Column(db.JSON, nullable=False, default=dict)
+    is_manually_edited = db.Column(db.Boolean, nullable=False, default=False)
     chat_json = db.Column(db.JSON, nullable=False, default=list)
     source_url = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=utc_now)

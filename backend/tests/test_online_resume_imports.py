@@ -139,6 +139,27 @@ def test_manager_and_admin_can_read_online_resumes_in_their_org(
         headers=_headers(admin_token),
     ).status_code == 200
 
+    for privileged_token in (manager_token, admin_token):
+        assert client.patch(
+            f"/api/online-resumes/{resume_id}",
+            headers=_headers(privileged_token),
+            json={"display_name": "管理者不应修改"},
+        ).status_code == 403
+        assert client.delete(
+            f"/api/online-resumes/{resume_id}",
+            headers=_headers(privileged_token),
+        ).status_code == 403
+
+    assert client.patch(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(owner_token),
+        json={"display_name": "负责人可修改"},
+    ).status_code == 200
+    assert client.delete(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(owner_token),
+    ).status_code == 200
+
 
 def test_reimport_replaces_snapshots_without_duplicate_row_or_import_event(
     app,
@@ -182,7 +203,23 @@ def test_reimport_replaces_snapshots_without_duplicate_row_or_import_event(
         assert row.owner_hr_id == owner_id
         assert row.display_name == "在线候选人甲-已更新"
         assert row.resume_json == updated_item["resume_json"]
-        assert row.chat_json == updated_item["chat_json"]
+        assert row.chat_json == [
+            {
+                "sender": "recruiter",
+                "text": "你好，方便了解机会吗？",
+                "sent_at": "2026-08-07T01:00:00Z",
+            },
+            {
+                "sender": "candidate",
+                "text": "可以的",
+                "sent_at": "2026-08-07T01:02:00Z",
+            },
+            {
+                "sender": "candidate",
+                "text": "已发送新的聊天内容",
+                "sent_at": "2026-08-07T01:05:00Z",
+            },
+        ]
         assert row.updated_at > datetime(2020, 1, 1)
         assert Event.query.filter_by(action="online_resume.imported").count() == 1
 
@@ -225,6 +262,129 @@ def test_patch_changes_only_editable_profile_fields(app, client, make_user):
         assert row.boss_account == "何龙-BOSS账号"
         assert row.demand_id == demand_id
         assert row.chat_json == original_chat
+        assert row.is_manually_edited is True
+
+
+def test_agent_reimport_preserves_manual_profile_and_merges_chat_history(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-manual-priority@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-MANUAL-PRIORITY")
+    first = _item(demand_id, "boss-chat-manual-priority")
+    first["chat_json"] = [
+        {
+            "sender": "candidate",
+            "text": "第二条",
+            "sent_at": "2026-08-07T09:02:00+08:00",
+        },
+        {
+            "sender": "recruiter",
+            "text": "第一条",
+            "sent_at": "2026-08-07T01:00:00Z",
+        },
+    ]
+    assert _import_one(client, token, first).get_json()["created"] == 1
+
+    with app.app_context():
+        from app.models import OnlineResume
+
+        resume_id = OnlineResume.query.one().id
+
+    manual_resume = {"extracted_info": {"name": "HR人工版", "years": 8}}
+    assert client.patch(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(token),
+        json={"display_name": "HR人工版", "resume_json": manual_resume},
+    ).status_code == 200
+
+    refreshed = _item(demand_id, "boss-chat-manual-priority")
+    refreshed["display_name"] = "Agent再次同步"
+    refreshed["resume_json"] = {"extracted_info": {"name": "Agent再次同步"}}
+    refreshed["chat_json"] = [
+        {
+            "sender": "candidate",
+            "text": "第三条",
+            "sent_at": "2026-08-07T09:05:00+08:00",
+        },
+        {
+            "sender": "recruiter",
+            "text": "第一条",
+            "sent_at": "2026-08-07T09:00:00+08:00",
+        },
+    ]
+    assert _import_one(client, token, refreshed).get_json()["updated"] == 1
+
+    empty_snapshot = _item(demand_id, "boss-chat-manual-priority")
+    empty_snapshot["chat_json"] = []
+    assert _import_one(client, token, empty_snapshot).get_json()["updated"] == 1
+
+    with app.app_context():
+        from app.models import OnlineResume
+
+        row = OnlineResume.query.one()
+        assert row.is_manually_edited is True
+        assert row.display_name == "HR人工版"
+        assert row.resume_json == manual_resume
+        assert row.chat_json == [
+            {
+                "sender": "recruiter",
+                "text": "第一条",
+                "sent_at": "2026-08-07T01:00:00Z",
+            },
+            {
+                "sender": "candidate",
+                "text": "第二条",
+                "sent_at": "2026-08-07T01:02:00Z",
+            },
+            {
+                "sender": "candidate",
+                "text": "第三条",
+                "sent_at": "2026-08-07T01:05:00Z",
+            },
+        ]
+
+
+def test_chat_times_must_be_timezone_aware_iso_and_are_sorted(app, client, make_user):
+    owner_id, token = make_user("online-chat-time@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-CHAT-TIME")
+    valid = _item(demand_id, "boss-chat-time-valid")
+    valid["chat_json"] = [
+        {
+            "sender": "candidate",
+            "text": "晚",
+            "sent_at": "2026-08-07T10:00:00+08:00",
+        },
+        {
+            "sender": "recruiter",
+            "text": "早",
+            "sent_at": "2026-08-07T01:00:00Z",
+        },
+    ]
+    invalid = _item(demand_id, "boss-chat-time-invalid")
+    invalid["chat_json"] = [
+        {"sender": "candidate", "text": "错误时间", "sent_at": "2026-08-07 09:00:00"}
+    ]
+
+    response = client.post(
+        "/api/agent-imports/online-resumes",
+        headers=_headers(token),
+        json={"items": [valid, invalid]},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["created"] == 1
+    assert payload["failed"] == 1
+    assert payload["results"][1]["error"] == "聊天时间必须是带时区的 ISO 时间"
+    with app.app_context():
+        from app.models import OnlineResume
+
+        assert [message["text"] for message in OnlineResume.query.one().chat_json] == [
+            "早",
+            "晚",
+        ]
 
 
 def test_delete_hard_deletes_content_but_keeps_import_event(app, client, make_user):
@@ -248,6 +408,31 @@ def test_delete_hard_deletes_content_but_keeps_import_event(app, client, make_us
         from app.models import Event, OnlineResume
 
         assert OnlineResume.query.count() == 0
+        event = Event.query.filter_by(action="online_resume.imported").one()
+        assert event.payload == {
+            "source_platform": "BOSS直聘",
+            "external_record_id": "boss-chat-001",
+        }
+
+    reimport = _import_one(client, token, _item(demand_id))
+    assert reimport.status_code == 200
+    assert reimport.get_json() == {
+        "created": 0,
+        "updated": 0,
+        "skipped_deleted": 1,
+        "failed": 0,
+        "results": [
+            {
+                "external_record_id": "boss-chat-001",
+                "status": "skipped_deleted",
+            }
+        ],
+    }
+
+    with app.app_context():
+        from app.models import Event, OnlineResume
+
+        assert OnlineResume.query.count() == 0
         assert Event.query.filter_by(action="online_resume.imported").count() == 1
 
 
@@ -257,7 +442,13 @@ def test_interviewer_is_forbidden_from_all_online_resume_endpoints(
     make_user,
 ):
     owner_id, owner_token = make_user("online-role-owner@x.com")
-    _, interviewer_token = make_user("online-interviewer@x.com", role="interviewer")
+    make_user("online-interviewer@x.com", role="interviewer")
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "online-interviewer@x.com", "password": "pw123456"},
+    )
+    assert login.status_code == 200
+    interviewer_token = login.get_json()["token"]
     demand_id = _make_demand(app, owner_id, "REQ-ONLINE-ROLE")
     assert _import_one(client, owner_token, _item(demand_id)).status_code == 200
 

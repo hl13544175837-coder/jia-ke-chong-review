@@ -34,17 +34,24 @@ export default function OnlineResumeList() {
   const [openResume, setOpenResume] = useState<OpenResume | null>(null);
 
   const load = useCallback(async () => {
+    let keepLoadingForPageCorrection = false;
     setLoading(true);
     setError('');
     try {
       const result = await onlineResumesApi.list(page, PAGE_SIZE);
+      const validLastPage = Math.max(1, result.pages);
+      if (page > validLastPage) {
+        keepLoadingForPageCorrection = true;
+        setPage(validLastPage);
+        return;
+      }
       setItems(result.items);
       setTotal(result.total);
-      setPages(Math.max(1, result.pages));
+      setPages(validLastPage);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '在线简历加载失败');
     } finally {
-      setLoading(false);
+      if (!keepLoadingForPageCorrection) setLoading(false);
     }
   }, [page]);
 
@@ -69,7 +76,7 @@ export default function OnlineResumeList() {
     );
   }
 
-  if (items.length === 0) {
+  if (items.length === 0 && total === 0) {
     return (
       <section className="rounded-xl border border-dashed border-background-300 bg-white px-5 py-16 text-center shadow-sm">
         <p className="text-base font-medium text-foreground-700">暂无Agent导入的在线简历</p>

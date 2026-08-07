@@ -186,7 +186,7 @@ export default function OnlineResumeDetailDrawer({
           {resume && (
             <>
               <p className="mt-1 text-xs text-foreground-500">
-                {resume.demand.request_no} · {resume.demand.title} · {resume.boss_account}
+                {resume.demand.request_no} · {resume.demand.title} · {resume.source_platform} · {resume.boss_account}
               </p>
               {resume.source_url && (
                 <a
@@ -195,7 +195,7 @@ export default function OnlineResumeDetailDrawer({
                   rel="noopener noreferrer"
                   className="mt-2 inline-flex text-xs font-medium text-primary-700 hover:text-primary-800 hover:underline"
                 >
-                  打开BOSS聊天
+                  打开来源聊天
                 </a>
               )}
             </>

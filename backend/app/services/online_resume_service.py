@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from flask import current_app
 
@@ -52,6 +53,7 @@ class OnlineResumeService:
         result = {
             "created": 0,
             "updated": 0,
+            "skipped_deleted": 0,
             "failed": 0,
             "results": [],
         }
@@ -59,6 +61,20 @@ class OnlineResumeService:
             external_record_id = self._result_external_id(raw_item)
             try:
                 item = self._validate_import_item(raw_item)
+                if self._has_deleted_import_receipt(
+                    org_id=org_id,
+                    owner_hr_id=owner_hr_id,
+                    source_platform=item["source_platform"],
+                    external_record_id=item["external_record_id"],
+                ):
+                    result["skipped_deleted"] += 1
+                    result["results"].append(
+                        {
+                            "external_record_id": item["external_record_id"],
+                            "status": "skipped_deleted",
+                        }
+                    )
+                    continue
                 demand = self._resolve_manageable_demand(
                     org_id=org_id,
                     owner_hr_id=owner_hr_id,
@@ -181,6 +197,7 @@ class OnlineResumeService:
             error_message="结构化简历内容不能超过 1MB",
         )
         resume.resume_json = resume_json
+        resume.is_manually_edited = True
         resume.updated_at = utc_now()
         db.session.commit()
         return resume
@@ -237,9 +254,13 @@ class OnlineResumeService:
                 raise OnlineResumeValidationError("已导入在线简历不能更换 BOSS 账号")
             if resume.demand_id != demand.id:
                 raise OnlineResumeValidationError("已导入在线简历不能更换招聘需求")
-            resume.display_name = item["display_name"]
-            resume.resume_json = item["resume_json"]
-            resume.chat_json = item["chat_json"]
+            if not resume.is_manually_edited:
+                resume.display_name = item["display_name"]
+                resume.resume_json = item["resume_json"]
+            resume.chat_json = self._merge_chat_histories(
+                resume.chat_json,
+                item["chat_json"],
+            )
             resume.source_url = item["source_url"]
             resume.updated_at = utc_now()
             return resume, "updated"
@@ -267,7 +288,10 @@ class OnlineResumeService:
                 entity_id=resume.id,
                 entity_type="online_resume",
                 demand_id=demand.id,
-                payload={"source_platform": item["source_platform"]},
+                payload={
+                    "source_platform": item["source_platform"],
+                    "external_record_id": item["external_record_id"],
+                },
                 result="success",
                 source="agent",
             )
@@ -312,35 +336,7 @@ class OnlineResumeService:
         chat_json = item.get("chat_json")
         if not isinstance(chat_json, list):
             raise OnlineResumeValidationError("完整聊天记录必须是列表")
-        if len(chat_json) > self.MAX_CHAT_MESSAGES:
-            raise OnlineResumeValidationError("完整聊天记录最多 10000 条")
-        for message in chat_json:
-            if not isinstance(message, dict):
-                raise OnlineResumeValidationError("每条聊天记录必须是对象")
-            if any(
-                not isinstance(message.get(field), str) or not message[field].strip()
-                for field in ("sender", "text", "sent_at")
-            ):
-                raise OnlineResumeValidationError(
-                    "聊天记录缺少 sender、text 或 sent_at"
-                )
-            if len(message["sender"]) > self.MAX_CHAT_SENDER_LENGTH:
-                raise OnlineResumeValidationError(
-                    "聊天发送方长度不能超过 40 个字符"
-                )
-            if len(message["text"]) > self.MAX_CHAT_TEXT_LENGTH:
-                raise OnlineResumeValidationError(
-                    "单条聊天内容长度不能超过 20000 个字符"
-                )
-            if len(message["sent_at"]) > self.MAX_CHAT_SENT_AT_LENGTH:
-                raise OnlineResumeValidationError(
-                    "聊天时间长度不能超过 80 个字符"
-                )
-        self._validate_serialized_size(
-            chat_json,
-            max_bytes=self.MAX_CHAT_JSON_BYTES,
-            error_message="完整聊天记录不能超过 4MB",
-        )
+        chat_json = self._normalize_chat_messages(chat_json)
 
         source_url = item.get("source_url")
         if source_url is not None and not isinstance(source_url, str):
@@ -381,6 +377,125 @@ class OnlineResumeService:
             "chat_json": chat_json,
             "source_url": normalized_source_url or None,
         }
+
+    def _normalize_chat_messages(self, chat_json: list) -> list[dict]:
+        if len(chat_json) > self.MAX_CHAT_MESSAGES:
+            raise OnlineResumeValidationError("完整聊天记录最多 10000 条")
+        self._validate_serialized_size(
+            chat_json,
+            max_bytes=self.MAX_CHAT_JSON_BYTES,
+            error_message="完整聊天记录不能超过 4MB",
+        )
+        normalized_by_key = {}
+        for message in chat_json:
+            if not isinstance(message, dict):
+                raise OnlineResumeValidationError("每条聊天记录必须是对象")
+            if any(
+                not isinstance(message.get(field), str) or not message[field].strip()
+                for field in ("sender", "text", "sent_at")
+            ):
+                raise OnlineResumeValidationError(
+                    "聊天记录缺少 sender、text 或 sent_at"
+                )
+            if len(message["sender"]) > self.MAX_CHAT_SENDER_LENGTH:
+                raise OnlineResumeValidationError(
+                    "聊天发送方长度不能超过 40 个字符"
+                )
+            if len(message["text"]) > self.MAX_CHAT_TEXT_LENGTH:
+                raise OnlineResumeValidationError(
+                    "单条聊天内容长度不能超过 20000 个字符"
+                )
+            if len(message["sent_at"]) > self.MAX_CHAT_SENT_AT_LENGTH:
+                raise OnlineResumeValidationError(
+                    "聊天时间长度不能超过 80 个字符"
+                )
+            sent_at = self._normalize_chat_time(message["sent_at"])
+            normalized = {
+                "sender": message["sender"],
+                "text": message["text"],
+                "sent_at": sent_at,
+            }
+            key = (normalized["sender"], normalized["text"], sent_at)
+            normalized_by_key[key] = normalized
+        normalized_chat = sorted(
+            normalized_by_key.values(),
+            key=lambda message: self._parse_chat_time(message["sent_at"]),
+        )
+        self._validate_serialized_size(
+            normalized_chat,
+            max_bytes=self.MAX_CHAT_JSON_BYTES,
+            error_message="完整聊天记录不能超过 4MB",
+        )
+        return normalized_chat
+
+    def _merge_chat_histories(self, existing, incoming: list) -> list[dict]:
+        current = self._normalize_chat_messages(
+            existing if isinstance(existing, list) else []
+        )
+        merged_by_key = {
+            (message["sender"], message["text"], message["sent_at"]): message
+            for message in [*current, *incoming]
+        }
+        if len(merged_by_key) > self.MAX_CHAT_MESSAGES:
+            raise OnlineResumeValidationError("完整聊天记录最多 10000 条")
+        merged = sorted(
+            merged_by_key.values(),
+            key=lambda message: self._parse_chat_time(message["sent_at"]),
+        )
+        self._validate_serialized_size(
+            merged,
+            max_bytes=self.MAX_CHAT_JSON_BYTES,
+            error_message="完整聊天记录不能超过 4MB",
+        )
+        return merged
+
+    @classmethod
+    def _normalize_chat_time(cls, value: str) -> str:
+        parsed = cls._parse_chat_time(value)
+        return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    @staticmethod
+    def _parse_chat_time(value: str) -> datetime:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise OnlineResumeValidationError(
+                "聊天时间必须是带时区的 ISO 时间"
+            ) from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise OnlineResumeValidationError("聊天时间必须是带时区的 ISO 时间")
+        return parsed
+
+    @staticmethod
+    def _has_deleted_import_receipt(
+        *,
+        org_id: int,
+        owner_hr_id: int,
+        source_platform: str,
+        external_record_id: str,
+    ) -> bool:
+        active = OnlineResume.query.filter_by(
+            org_id=org_id,
+            owner_hr_id=owner_hr_id,
+            source_platform=source_platform,
+            external_record_id=external_record_id,
+        ).first()
+        if active is not None:
+            return False
+        receipts = Event.query.filter_by(
+            org_id=org_id,
+            actor_id=owner_hr_id,
+            action="online_resume.imported",
+            entity_type="online_resume",
+            source="agent",
+            result="success",
+        ).all()
+        return any(
+            isinstance(event.payload, dict)
+            and event.payload.get("source_platform") == source_platform
+            and event.payload.get("external_record_id") == external_record_id
+            for event in receipts
+        )
 
     @staticmethod
     def _validate_serialized_size(value, *, max_bytes: int, error_message: str) -> None:

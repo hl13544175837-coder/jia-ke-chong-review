@@ -22,6 +22,12 @@ def upgrade():
         sa.Column("external_record_id", sa.String(length=200), nullable=False),
         sa.Column("display_name", sa.String(length=100), nullable=False),
         sa.Column("resume_json", sa.JSON(), nullable=False),
+        sa.Column(
+            "is_manually_edited",
+            sa.Boolean(),
+            server_default=sa.false(),
+            nullable=False,
+        ),
         sa.Column("chat_json", sa.JSON(), nullable=False),
         sa.Column("source_url", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),

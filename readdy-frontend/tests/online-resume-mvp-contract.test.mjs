@@ -55,7 +55,9 @@ test('列表覆盖加载、失败重试、空态和真实数据展示', () => {
   assert.match(list, /上一页/);
   assert.match(list, /下一页/);
   assert.match(list, /第 \{page\} \/ \{pages\} 页/);
-  assert.match(list, /items\.length === 1 && page > 1/);
+  assert.match(list, /page > validLastPage/);
+  assert.match(list, /setPage\(validLastPage\)/);
+  assert.match(list, /keepLoadingForPageCorrection/);
   assert.doesNotMatch(list, /@\/mocks/);
 });
 
@@ -73,7 +75,9 @@ test('聊天发送方兼容未知值且来源链接安全打开', () => {
   assert.match(detail, /href=\{resume\.source_url\}/);
   assert.match(detail, /target="_blank"/);
   assert.match(detail, /rel="noopener noreferrer"/);
-  assert.match(detail, /打开BOSS聊天/);
+  assert.match(detail, /resume\.source_platform/);
+  assert.match(detail, /打开来源聊天/);
+  assert.doesNotMatch(detail, /打开BOSS聊天/);
 });
 
 test('详情只读展示完整聊天并允许编辑资料和硬删除', () => {
