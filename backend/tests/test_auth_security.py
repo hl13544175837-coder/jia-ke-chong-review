@@ -97,3 +97,17 @@ def test_token_with_invalid_version_is_rejected(client, make_user):
     response = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 401
+
+
+def test_auth_disabled_does_not_bypass_auth_in_production(app):
+    from app.middleware.auth import _auth_disabled
+
+    app.config.update(
+        AUTH_DISABLED=True,
+        TESTING=False,
+        FLASK_DEBUG=False,
+        ALLOW_INSECURE_SIT_STARTUP=False,
+    )
+
+    with app.test_request_context("/api/auth/me"):
+        assert _auth_disabled() is False

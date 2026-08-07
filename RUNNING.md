@@ -291,6 +291,23 @@ DASHSCOPE_VISION_MODEL=qwen3.7-plus
 
 ---
 
+## 外部 Agent 简历导入凭证
+
+外部 Agent 不再使用招聘专员的完整登录凭证。招聘专员先用自己的正常登录 JWT 调用：
+
+```http
+POST /api/agent-imports/token
+Authorization: Bearer <招聘专员登录JWT>
+```
+
+接口返回 `scope=agent_import` 的限时凭证，默认 30 天到期，可用
+`AGENT_IMPORT_TOKEN_EXPIRY_DAYS` 调整。该凭证只能调用下面两个接口：
+
+- `POST /api/agent-imports/online-resumes`
+- `POST /api/agent-imports/full-resumes`
+
+它不能访问 `/api/auth/me`、在线简历页或其他普通业务接口。招聘专员账号停用、修改密码或凭证过期后，该导入凭证立即失效。不要将返回的凭证写入业务日志或审计内容。
+
 ## 前端二次开发
 
 ```bash

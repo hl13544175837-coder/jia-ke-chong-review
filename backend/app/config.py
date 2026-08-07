@@ -56,6 +56,9 @@ class Config:
     # JWT
     JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-in-prod")
     JWT_EXPIRY_HOURS = int(os.environ.get("JWT_EXPIRY_HOURS", "8"))
+    AGENT_IMPORT_TOKEN_EXPIRY_DAYS = int(
+        os.environ.get("AGENT_IMPORT_TOKEN_EXPIRY_DAYS", "30")
+    )
 
     # 运行模式：生产模式下会强制校验密钥强度（见 app/__init__.py 的 _enforce_production_security）
     FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "false").lower() == "true"

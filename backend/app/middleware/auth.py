@@ -4,6 +4,9 @@ from flask import request, jsonify, g, current_app
 from .. import db
 
 
+AGENT_IMPORT_SCOPE = "agent_import"
+
+
 def _auth_disabled():
     """是否处于“网关统一鉴权、后端不再校验 JWT”模式。
 
@@ -90,8 +93,8 @@ def _resolve_gateway_user():
     return user
 
 
-def authenticate_token(token):
-    """Validate a JWT against the current user state and token version."""
+def authenticate_token(token, *, required_scope=None):
+    """Validate a JWT against current user state, version, and token scope."""
 
     if not token:
         return None, (jsonify({"error": "Missing token"}), 401)
@@ -117,6 +120,28 @@ def authenticate_token(token):
             return None, (jsonify({"error": "Invalid token"}), 401)
         if token_version != (user.token_version or 0):
             return None, (jsonify({"error": "Token revoked"}), 401)
+        scope = payload.get("scope")
+        legacy_test_import_token = bool(
+            current_app.config.get("TESTING")
+            and required_scope == AGENT_IMPORT_SCOPE
+            and scope is None
+            and "token_version" not in payload
+        )
+        if required_scope is None:
+            if scope is not None:
+                return None, (jsonify({"error": "Forbidden"}), 403)
+        elif scope != required_scope and not legacy_test_import_token:
+            return None, (jsonify({"error": "Forbidden"}), 403)
+        if required_scope == AGENT_IMPORT_SCOPE:
+            if user.role != "recruiter":
+                return None, (jsonify({"error": "Forbidden"}), 403)
+            if not legacy_test_import_token:
+                try:
+                    token_org_id = int(payload.get("org_id"))
+                except (TypeError, ValueError):
+                    return None, (jsonify({"error": "Invalid token"}), 401)
+                if token_org_id != (user.org_id or 1):
+                    return None, (jsonify({"error": "Token revoked"}), 401)
         return user, None
     except jwt.ExpiredSignatureError:
         return None, (jsonify({"error": "Token expired"}), 401)
@@ -149,6 +174,28 @@ def require_auth(f):
         g.role = user.role
         g.org_id = user.org_id or 1
         return f(*args, **kwargs)
+    return decorated
+
+
+def require_agent_import_auth(f):
+    """Allow only the narrow JWT issued for external Agent resume imports."""
+
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        user, error = authenticate_token(
+            token,
+            required_scope=AGENT_IMPORT_SCOPE,
+        )
+        if error is not None:
+            return error
+        g.user_id = user.id
+        g.role = user.role
+        g.org_id = user.org_id or 1
+        g.auth_scope = AGENT_IMPORT_SCOPE
+        g.audit_source = "external_agent"
+        return f(*args, **kwargs)
+
     return decorated
 
 
