@@ -27,6 +27,12 @@ export const OFFER_WORKBENCH_TABS: Array<{ key: OfferWorkbenchTab; label: string
   { key: 'completed', label: '已完成' },
 ];
 
+export function clearOfferCandidateSelection(params: URLSearchParams) {
+  const next = new URLSearchParams(params);
+  next.delete('candidate');
+  return next;
+}
+
 const historyStatuses = new Set<OfferStatus>(['declined', 'withdrawn', 'expired', 'onboarded']);
 
 const statusLabels: Record<OfferStatus, string> = {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
@@ -14,6 +14,7 @@ import OfferTable from './components/OfferTable';
 import OaRegistrationModal from './components/OaRegistrationModal';
 import {
   buildOfferTabCounts,
+  clearOfferCandidateSelection,
   filterAndSortOffers,
   OFFER_WORKBENCH_TABS,
   type OfferOrder,
@@ -64,6 +65,7 @@ export default function OffersPage() {
   const [registeringOffer, setRegisteringOffer] = useState<OfferWorkbenchRecord | null>(null);
   const [registering, setRegistering] = useState(false);
   const [registerError, setRegisterError] = useState('');
+  const handledOfferQuery = useRef('');
 
   const loadOffers = useCallback(async () => {
     setLoading(true);
@@ -92,12 +94,20 @@ export default function OffersPage() {
   }, [activeTab, demandFilter, ownerFilter, rangeDays, search, searchParams, setSearchParams, updatedDateFilter]);
 
   useEffect(() => {
-    if (!requestedDemandId || !requestedCandidateId || loading || registeringOffer) return;
+    const deepLinkKey = `${requestedDemandId || ''}:${requestedCandidateId || ''}`;
+    if (!requestedDemandId || !requestedCandidateId || loading || registeringOffer || handledOfferQuery.current === deepLinkKey) return;
     const matched = offers.find((item) => (
       item.demand_id === requestedDemandId && item.candidate_id === requestedCandidateId
     ));
-    if (matched) setRegisteringOffer(matched);
+    if (matched) {
+      handledOfferQuery.current = deepLinkKey;
+      setRegisteringOffer(matched);
+    }
   }, [loading, offers, registeringOffer, requestedCandidateId, requestedDemandId]);
+
+  useEffect(() => {
+    if (!requestedCandidateId) handledOfferQuery.current = '';
+  }, [requestedCandidateId]);
 
   const scopedOffers = useMemo(() => requestedDemandId
     ? offers.filter((item) => item.demand_id === requestedDemandId)
@@ -145,6 +155,12 @@ export default function OffersPage() {
 
   const selectTab = (tab: OfferWorkbenchTab) => setActiveTab(tab);
 
+  const closeOaRegistration = useCallback(() => {
+    setRegisteringOffer(null);
+    const next = clearOfferCandidateSelection(searchParams);
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const registerOaResult = async (payload: OfferOaRegistrationInput) => {
     if (!registeringOffer || registering) return;
     setRegistering(true);
@@ -156,7 +172,7 @@ export default function OffersPage() {
         payload,
       );
       setOffers((current) => replaceWorkbenchRow(current, saved));
-      setRegisteringOffer(null);
+      closeOaRegistration();
       showToast('OA 结果已登记');
     } catch (error) {
       setRegisterError(userFacingError(error, 'OA 结果登记失败'));
@@ -231,7 +247,7 @@ export default function OffersPage() {
           offer={registeringOffer}
           saving={registering}
           error={registerError}
-          onClose={() => { if (!registering) setRegisteringOffer(null); }}
+          onClose={() => { if (!registering) closeOaRegistration(); }}
           onSave={(payload) => void registerOaResult(payload)}
         />
       )}
