@@ -1,4 +1,5 @@
 from datetime import datetime
+from unittest.mock import Mock
 
 
 def _headers(token, key=None):
@@ -346,3 +347,148 @@ def test_batch_commits_valid_items_and_returns_public_error_for_invalid_item(
 
         assert OnlineResume.query.count() == 1
         assert Event.query.filter_by(action="online_resume.imported").count() == 1
+
+
+def test_import_rejects_oversized_resume_and_chat_snapshots(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-size@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-SIZE")
+    oversized_resume = _item(demand_id, "boss-chat-resume-too-large")
+    oversized_resume["resume_json"] = {"content": "x" * (1024 * 1024)}
+    oversized_chat = _item(demand_id, "boss-chat-chat-too-large")
+    oversized_chat["chat_json"] = [
+        {
+            "sender": "candidate",
+            "text": "x" * 20000,
+            "sent_at": "2026-08-07T09:02:00+08:00",
+        }
+        for _ in range(210)
+    ]
+
+    response = client.post(
+        "/api/agent-imports/online-resumes",
+        headers=_headers(token),
+        json={"items": [oversized_resume, oversized_chat]},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["created"] == 0
+    assert payload["failed"] == 2
+    assert [item["error"] for item in payload["results"]] == [
+        "结构化简历内容不能超过 1MB",
+        "完整聊天记录不能超过 4MB",
+    ]
+
+
+def test_import_rejects_chat_count_and_field_length_limits(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-chat-limits@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-CHAT-LIMITS")
+    too_many = _item(demand_id, "boss-chat-too-many")
+    too_many["chat_json"] = [
+        {"sender": "candidate", "text": "ok", "sent_at": "2026-08-07"}
+        for _ in range(10001)
+    ]
+    sender_too_long = _item(demand_id, "boss-chat-sender-too-long")
+    sender_too_long["chat_json"][0]["sender"] = "s" * 41
+    text_too_long = _item(demand_id, "boss-chat-text-too-long")
+    text_too_long["chat_json"][0]["text"] = "x" * 20001
+    sent_at_too_long = _item(demand_id, "boss-chat-sent-at-too-long")
+    sent_at_too_long["chat_json"][0]["sent_at"] = "2" * 81
+
+    response = client.post(
+        "/api/agent-imports/online-resumes",
+        headers=_headers(token),
+        json={
+            "items": [
+                too_many,
+                sender_too_long,
+                text_too_long,
+                sent_at_too_long,
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["error"] for item in response.get_json()["results"]] == [
+        "完整聊天记录最多 10000 条",
+        "聊天发送方长度不能超过 40 个字符",
+        "单条聊天内容长度不能超过 20000 个字符",
+        "聊天时间长度不能超过 80 个字符",
+    ]
+
+
+def test_import_rejects_invalid_or_oversized_source_url(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-url@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-URL")
+    invalid_scheme = _item(demand_id, "boss-chat-bad-url")
+    invalid_scheme["source_url"] = "javascript:alert(1)"
+    oversized_url = _item(demand_id, "boss-chat-long-url")
+    oversized_url["source_url"] = "https://example.com/" + ("x" * 1981)
+
+    response = client.post(
+        "/api/agent-imports/online-resumes",
+        headers=_headers(token),
+        json={"items": [invalid_scheme, oversized_url]},
+    )
+
+    assert response.status_code == 200
+    assert [item["error"] for item in response.get_json()["results"]] == [
+        "来源链接必须以 http:// 或 https:// 开头",
+        "来源链接长度不能超过 2000 个字符",
+    ]
+
+
+def test_patch_rejects_oversized_resume_json(app, client, make_user):
+    owner_id, token = make_user("online-patch-size@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-PATCH-SIZE")
+    assert _import_one(client, token, _item(demand_id)).status_code == 200
+
+    with app.app_context():
+        from app.models import OnlineResume
+
+        resume_id = OnlineResume.query.one().id
+
+    response = client.patch(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(token),
+        json={"resume_json": {"content": "x" * (1024 * 1024)}},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "结构化简历内容不能超过 1MB"}
+
+
+def test_unexpected_import_error_is_logged_and_hidden(
+    app,
+    client,
+    make_user,
+    monkeypatch,
+):
+    from app.services.online_resume_service import OnlineResumeService
+
+    owner_id, token = make_user("online-log-error@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-LOG-ERROR")
+    logged_exception = Mock()
+    monkeypatch.setattr(app.logger, "exception", logged_exception)
+
+    def fail_upsert(*args, **kwargs):
+        raise RuntimeError("internal database detail")
+
+    monkeypatch.setattr(OnlineResumeService, "_upsert_item", fail_upsert)
+    response = _import_one(client, token, _item(demand_id))
+
+    assert response.status_code == 200
+    assert response.get_json()["results"][0]["error"] == "导入失败，请稍后重试"
+    logged_exception.assert_called_once_with("在线简历单项导入发生未处理异常")

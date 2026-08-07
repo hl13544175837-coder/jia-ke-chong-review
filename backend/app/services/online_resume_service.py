@@ -1,6 +1,9 @@
 """Recruiter-owned online resume imports and library operations."""
 
+import json
 from dataclasses import dataclass
+
+from flask import current_app
 
 from .. import db
 from ..models import Event, OnlineResume, RecruitmentDemand
@@ -19,6 +22,13 @@ class OnlineResumeValidationError(Exception):
 
 class OnlineResumeService:
     MAX_BATCH = 100
+    MAX_RESUME_JSON_BYTES = 1024 * 1024
+    MAX_CHAT_JSON_BYTES = 4 * 1024 * 1024
+    MAX_CHAT_MESSAGES = 10000
+    MAX_CHAT_SENDER_LENGTH = 40
+    MAX_CHAT_TEXT_LENGTH = 20000
+    MAX_CHAT_SENT_AT_LENGTH = 80
+    MAX_SOURCE_URL_LENGTH = 2000
 
     def import_batch(
         self,
@@ -93,6 +103,7 @@ class OnlineResumeService:
                 )
             except Exception:
                 db.session.rollback()
+                current_app.logger.exception("在线简历单项导入发生未处理异常")
                 result["failed"] += 1
                 result["results"].append(
                     {
@@ -164,6 +175,11 @@ class OnlineResumeService:
         )
         if not isinstance(resume_json, dict):
             raise OnlineResumeValidationError("结构化简历必须是对象")
+        self._validate_serialized_size(
+            resume_json,
+            max_bytes=self.MAX_RESUME_JSON_BYTES,
+            error_message="结构化简历内容不能超过 1MB",
+        )
         resume.resume_json = resume_json
         resume.updated_at = utc_now()
         db.session.commit()
@@ -288,9 +304,16 @@ class OnlineResumeService:
         resume_json = item.get("resume_json")
         if not isinstance(resume_json, dict):
             raise OnlineResumeValidationError("结构化简历必须是对象")
+        self._validate_serialized_size(
+            resume_json,
+            max_bytes=self.MAX_RESUME_JSON_BYTES,
+            error_message="结构化简历内容不能超过 1MB",
+        )
         chat_json = item.get("chat_json")
         if not isinstance(chat_json, list):
             raise OnlineResumeValidationError("完整聊天记录必须是列表")
+        if len(chat_json) > self.MAX_CHAT_MESSAGES:
+            raise OnlineResumeValidationError("完整聊天记录最多 10000 条")
         for message in chat_json:
             if not isinstance(message, dict):
                 raise OnlineResumeValidationError("每条聊天记录必须是对象")
@@ -301,10 +324,37 @@ class OnlineResumeService:
                 raise OnlineResumeValidationError(
                     "聊天记录缺少 sender、text 或 sent_at"
                 )
+            if len(message["sender"]) > self.MAX_CHAT_SENDER_LENGTH:
+                raise OnlineResumeValidationError(
+                    "聊天发送方长度不能超过 40 个字符"
+                )
+            if len(message["text"]) > self.MAX_CHAT_TEXT_LENGTH:
+                raise OnlineResumeValidationError(
+                    "单条聊天内容长度不能超过 20000 个字符"
+                )
+            if len(message["sent_at"]) > self.MAX_CHAT_SENT_AT_LENGTH:
+                raise OnlineResumeValidationError(
+                    "聊天时间长度不能超过 80 个字符"
+                )
+        self._validate_serialized_size(
+            chat_json,
+            max_bytes=self.MAX_CHAT_JSON_BYTES,
+            error_message="完整聊天记录不能超过 4MB",
+        )
 
         source_url = item.get("source_url")
         if source_url is not None and not isinstance(source_url, str):
             raise OnlineResumeValidationError("来源链接格式无效")
+        normalized_source_url = source_url.strip() if isinstance(source_url, str) else None
+        if normalized_source_url:
+            if len(normalized_source_url) > self.MAX_SOURCE_URL_LENGTH:
+                raise OnlineResumeValidationError(
+                    "来源链接长度不能超过 2000 个字符"
+                )
+            if not normalized_source_url.lower().startswith(("http://", "https://")):
+                raise OnlineResumeValidationError(
+                    "来源链接必须以 http:// 或 https:// 开头"
+                )
         return {
             "demand_id": demand_id,
             "external_record_id": self._required_text(
@@ -329,8 +379,21 @@ class OnlineResumeService:
             ),
             "resume_json": resume_json,
             "chat_json": chat_json,
-            "source_url": source_url.strip() if isinstance(source_url, str) else None,
+            "source_url": normalized_source_url or None,
         }
+
+    @staticmethod
+    def _validate_serialized_size(value, *, max_bytes: int, error_message: str) -> None:
+        try:
+            encoded = json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise OnlineResumeValidationError("内容包含无法保存的数据") from exc
+        if len(encoded) > max_bytes:
+            raise OnlineResumeValidationError(error_message)
 
     @staticmethod
     def _required_text(value, *, field_name: str, max_length: int) -> str:
