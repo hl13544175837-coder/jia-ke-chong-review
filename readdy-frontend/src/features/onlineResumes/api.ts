@@ -5,8 +5,13 @@ import type {
   OnlineResumeListResponse,
   OnlineResumeUpdatePayload,
 } from './types';
+import type { AgentImportTokenResponse } from './agentConnection';
 
 export const onlineResumesApi = {
+  issueAgentImportToken(): Promise<AgentImportTokenResponse> {
+    return apiRequest<AgentImportTokenResponse>('/agent-imports/token', { method: 'POST' });
+  },
+
   list(page = 1, perPage = 20): Promise<OnlineResumeListResponse> {
     return apiRequest<OnlineResumeListResponse>(`/online-resumes?page=${page}&per_page=${perPage}`);
   },

@@ -36,4 +36,13 @@ test('@smoke recruiter 可以打开在线简历库', async ({ page }) => {
   await expect(page).toHaveURL(/\/online-resumes(?:\?|$)/);
   await expect(page.getByRole('heading', { name: '在线简历' }).first()).toBeAttached();
   await expect(page.getByText('页面加载失败', { exact: true })).toHaveCount(0);
+
+  await page.getByRole('button', { name: '连接 Agent' }).click();
+  const dialog = page.getByRole('dialog', { name: '连接外部 Agent' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('招聘需求')).toBeVisible();
+  await expect(dialog.getByLabel('BOSS账号')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '生成连接提示词' })).toBeDisabled();
+  await dialog.getByRole('button', { name: '关闭' }).click();
+  await expect(dialog).toHaveCount(0);
 });

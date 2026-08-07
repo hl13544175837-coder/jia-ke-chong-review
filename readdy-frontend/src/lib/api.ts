@@ -4,6 +4,13 @@ const API_BASE = ((import.meta.env.VITE_API_BASE_URL ?? '/api') as string)
   .trim()
   .replace(/\/+$/, '') || '/api';
 
+export function externalApiBaseUrl(origin = window.location.origin) {
+  const resolved = /^https?:\/\//i.test(API_BASE)
+    ? API_BASE
+    : new URL(API_BASE.startsWith('/') ? API_BASE : `/${API_BASE}`, origin).toString();
+  return resolved.replace(/\/+$/, '');
+}
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
