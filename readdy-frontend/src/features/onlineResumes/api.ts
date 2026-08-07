@@ -7,8 +7,8 @@ import type {
 } from './types';
 
 export const onlineResumesApi = {
-  list(): Promise<OnlineResumeListResponse> {
-    return apiRequest<OnlineResumeListResponse>('/online-resumes');
+  list(page = 1, perPage = 20): Promise<OnlineResumeListResponse> {
+    return apiRequest<OnlineResumeListResponse>(`/online-resumes?page=${page}&per_page=${perPage}`);
   },
 
   async detail(id: number): Promise<OnlineResumeItem> {

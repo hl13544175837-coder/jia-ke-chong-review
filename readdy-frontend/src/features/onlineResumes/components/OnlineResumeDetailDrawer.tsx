@@ -86,7 +86,7 @@ function formatDate(value: string) {
       }).format(date);
 }
 
-const senderLabels = {
+const senderLabels: Record<string, string> = {
   recruiter: '招聘专员',
   candidate: '候选人',
   system: '系统',
@@ -184,9 +184,21 @@ export default function OnlineResumeDetailDrawer({
             {resume?.display_name || '在线简历详情'}
           </h2>
           {resume && (
-            <p className="mt-1 text-xs text-foreground-500">
-              {resume.demand.request_no} · {resume.demand.title} · {resume.boss_account}
-            </p>
+            <>
+              <p className="mt-1 text-xs text-foreground-500">
+                {resume.demand.request_no} · {resume.demand.title} · {resume.boss_account}
+              </p>
+              {resume.source_url && (
+                <a
+                  href={resume.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex text-xs font-medium text-primary-700 hover:text-primary-800 hover:underline"
+                >
+                  打开BOSS聊天
+                </a>
+              )}
+            </>
           )}
         </div>
         <button
@@ -286,7 +298,9 @@ export default function OnlineResumeDetailDrawer({
                   {timeline.map((message, index) => (
                     <li key={`${message.sent_at}-${index}`} className="rounded-xl border border-background-200 bg-white p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-foreground-800">{senderLabels[message.sender]}</span>
+                        <span className="text-sm font-medium text-foreground-800">
+                          {senderLabels[message.sender] ?? (message.sender.trim() || '未知发送方')}
+                        </span>
                         <time className="text-xs text-foreground-400" dateTime={message.sent_at}>{formatDate(message.sent_at)}</time>
                       </div>
                       <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-foreground-700">{message.text}</p>

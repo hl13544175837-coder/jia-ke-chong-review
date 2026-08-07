@@ -15,6 +15,7 @@ const files = {
   api: 'src/features/onlineResumes/api.ts',
   list: 'src/features/onlineResumes/components/OnlineResumeList.tsx',
   detail: 'src/features/onlineResumes/components/OnlineResumeDetailDrawer.tsx',
+  types: 'src/features/onlineResumes/types.ts',
 };
 
 test('在线简历页面只组合 onlineResumes feature', () => {
@@ -32,7 +33,9 @@ test('在线简历页面只组合 onlineResumes feature', () => {
 test('在线简历 API 使用真实的查询、详情、修改和删除接口', () => {
   const api = readOptional(files.api);
   assert.notEqual(api, '', '缺少在线简历 API');
-  assert.match(api, /apiRequest<[^>]+>\(['"]\/online-resumes(?:\?[^'"]*)?['"]/);
+  assert.match(api, /list\(page[^)]*perPage/);
+  assert.match(api, /page=\$\{page\}/);
+  assert.match(api, /per_page=\$\{perPage\}/);
   assert.match(api, /apiRequest<[^>]+>\(`\/online-resumes\/\$\{id\}`\)/);
   assert.match(api, /method:\s*['"]PATCH['"]/);
   assert.match(api, /method:\s*['"]DELETE['"]/);
@@ -49,7 +52,28 @@ test('列表覆盖加载、失败重试、空态和真实数据展示', () => {
     assert.match(list, new RegExp(content), `列表缺少“${content}”`);
   }
   assert.match(list, /onlineResumesApi\.list/);
+  assert.match(list, /上一页/);
+  assert.match(list, /下一页/);
+  assert.match(list, /第 \{page\} \/ \{pages\} 页/);
+  assert.match(list, /items\.length === 1 && page > 1/);
   assert.doesNotMatch(list, /@\/mocks/);
+});
+
+test('聊天发送方兼容未知值且来源链接安全打开', () => {
+  const types = readOptional(files.types);
+  const detail = readOptional(files.detail);
+
+  assert.match(types, /sender:\s*string/);
+  assert.match(types, /source_url:\s*string\s*\|\s*null/);
+  assert.match(detail, /recruiter:\s*'招聘专员'/);
+  assert.match(detail, /candidate:\s*'候选人'/);
+  assert.match(detail, /system:\s*'系统'/);
+  assert.match(detail, /message\.sender\.trim\(\)/);
+  assert.match(detail, /未知发送方/);
+  assert.match(detail, /href=\{resume\.source_url\}/);
+  assert.match(detail, /target="_blank"/);
+  assert.match(detail, /rel="noopener noreferrer"/);
+  assert.match(detail, /打开BOSS聊天/);
 });
 
 test('详情只读展示完整聊天并允许编辑资料和硬删除', () => {

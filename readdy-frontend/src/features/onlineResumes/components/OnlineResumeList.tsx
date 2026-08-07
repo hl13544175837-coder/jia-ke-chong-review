@@ -9,6 +9,8 @@ interface OpenResume {
   edit: boolean;
 }
 
+const PAGE_SIZE = 20;
+
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
@@ -25,6 +27,8 @@ function formatDate(value: string) {
 export default function OnlineResumeList() {
   const [items, setItems] = useState<OnlineResumeItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [openResume, setOpenResume] = useState<OpenResume | null>(null);
@@ -33,15 +37,16 @@ export default function OnlineResumeList() {
     setLoading(true);
     setError('');
     try {
-      const result = await onlineResumesApi.list();
+      const result = await onlineResumesApi.list(page, PAGE_SIZE);
       setItems(result.items);
       setTotal(result.total);
+      setPages(Math.max(1, result.pages));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '在线简历加载失败');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     void load();
@@ -134,6 +139,17 @@ export default function OnlineResumeList() {
             </tbody>
           </table>
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-background-100 px-4 py-3">
+          <p className="text-xs text-foreground-500">第 {page} / {pages} 页</p>
+          <div className="flex gap-2">
+            <ActionButton size="sm" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>
+              上一页
+            </ActionButton>
+            <ActionButton size="sm" disabled={page >= pages} onClick={() => setPage((current) => current + 1)}>
+              下一页
+            </ActionButton>
+          </div>
+        </div>
       </section>
 
       {openResume && (
@@ -149,6 +165,11 @@ export default function OnlineResumeList() {
             setItems((current) => current.filter((item) => item.id !== deletedId));
             setTotal((current) => Math.max(0, current - 1));
             setOpenResume(null);
+            if (items.length === 1 && page > 1) {
+              setPage((current) => current - 1);
+            } else {
+              void load();
+            }
           }}
         />
       )}

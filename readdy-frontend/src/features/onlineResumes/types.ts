@@ -1,5 +1,5 @@
 export interface OnlineResumeChatMessage {
-  sender: 'recruiter' | 'candidate' | 'system';
+  sender: string;
   text: string;
   sent_at: string;
 }
@@ -10,7 +10,7 @@ export interface OnlineResumeItem {
   demand: { id: number; request_no: string; title: string };
   boss_account: string;
   source_platform: string;
-  source_url: string;
+  source_url: string | null;
   resume_json: Record<string, unknown>;
   chat_json: OnlineResumeChatMessage[];
   latest_chat: OnlineResumeChatMessage | null;
