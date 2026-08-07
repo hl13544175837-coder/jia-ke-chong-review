@@ -137,6 +137,7 @@ def _process_resume(
     upload_batch_id=None,
     target_demand_id=None,
     target_job_id=None,
+    structured_resume=None,
 ):
     """解析单份简历并入库，把结果（成功/失败）追加到 results。
     display_name 用于结果展示（zip 内文件会带 "xxx.zip → 文件名" 前缀）。"""
@@ -158,6 +159,37 @@ def _process_resume(
             _duplicate_upload_result(
                 display_name, existing_by_file, "文件内容一致"
             )
+        )
+        return
+
+    if structured_resume is not None:
+        try:
+            candidate = svc.create_from_structured_resume(
+                file_path=fpath,
+                owner_hr_id=g.user_id,
+                parse_result=structured_resume,
+                upload_batch_id=upload_batch_id,
+                org_id=g.org_id,
+                resume_sha256=content_sha256,
+                raw_file_name=raw_file_name,
+                raw_file_data=file_data,
+            )
+        except Exception:
+            logger.exception("Agent结构化简历 %s 入库失败", display_name)
+            db.session.rollback()
+            results.append({
+                "file": display_name,
+                "status": "error",
+                "reason": "简历导入失败，请检查文件后重试",
+            })
+            return
+        _finalize_successful_resume(
+            candidate,
+            display_name,
+            results,
+            target_demand_id,
+            target_job_id,
+            fpath,
         )
         return
 
@@ -253,12 +285,31 @@ def _process_resume(
         })
         return
 
+    _finalize_successful_resume(
+        candidate,
+        display_name,
+        results,
+        target_demand_id,
+        target_job_id,
+        fpath,
+    )
+
+
+def _finalize_successful_resume(
+    candidate,
+    display_name,
+    results,
+    target_demand_id,
+    target_job_id,
+    fpath,
+):
+    """复用普通上传已有的身份查重、审计和进入需求流程。"""
     # Parsing succeeded. Audit/storage/pipeline failures are infrastructure
     # errors and must not create a second, falsely "parse failed" candidate.
     candidate.org_id = g.org_id
-    candidate.raw_file_name = raw_file_name
-    candidate.raw_file_data = file_data
-    candidate.resume_sha256 = content_sha256
+    candidate.raw_file_name = Path(fpath).name
+    candidate.raw_file_data = Path(fpath).read_bytes()
+    candidate.resume_sha256 = _file_sha256(fpath)
     existing_by_identity, match_basis = find_existing_candidate_by_identity(candidate)
     if existing_by_identity is not None:
         attempted_candidate_id = candidate.id

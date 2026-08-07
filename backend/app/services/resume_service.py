@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import socket
@@ -70,6 +71,81 @@ class ResumeBatchService:
         self._apply_parse_result(candidate, result)
         db.session.commit()
         return candidate
+
+    def create_from_structured_resume(
+        self,
+        *,
+        file_path: str,
+        owner_hr_id: int,
+        parse_result: dict,
+        upload_batch_id: int,
+        org_id: int,
+        resume_sha256: str,
+        raw_file_name: str,
+        raw_file_data: bytes,
+    ) -> Candidate:
+        """直接使用 Agent 提供的结构化简历建档，不调用模型。"""
+        normalized = self.normalize_structured_resume(parse_result)
+        candidate = Candidate(
+            org_id=org_id,
+            owner_hr_id=owner_hr_id,
+            upload_batch_id=upload_batch_id,
+            resume_json={},
+            raw_file_path=file_path,
+            raw_file_name=raw_file_name,
+            raw_file_data=raw_file_data,
+            resume_sha256=resume_sha256,
+            parse_status="ok",
+        )
+        db.session.add(candidate)
+        db.session.flush()
+        self._apply_parse_result(candidate, normalized)
+        db.session.commit()
+        return candidate
+
+    def normalize_structured_resume(self, parse_result: dict) -> dict:
+        """限制 Agent 结构化数据大小，并清理会进入主档的基础字段。"""
+        if not isinstance(parse_result, dict):
+            raise ValueError("结构化简历必须是对象")
+        encoded = json.dumps(parse_result, ensure_ascii=False).encode("utf-8")
+        if len(encoded) > 1024 * 1024:
+            raise ValueError("结构化简历内容超过1MB")
+
+        normalized = dict(parse_result)
+        normalized["extracted_info"] = self._sanitize_profile(
+            parse_result.get("extracted_info") or {}
+        )
+        normalized["skills"] = self._sanitize_structured_skills(
+            parse_result.get("skills") or []
+        )
+        return normalized
+
+    def _sanitize_structured_skills(self, skills: list) -> list:
+        """Normalize skill values while preserving the Agent's valid JSON shape."""
+        if not isinstance(skills, list):
+            return []
+        cleaned = []
+        seen = set()
+        for raw in skills[:50]:
+            if not isinstance(raw, dict):
+                continue
+            uses_tag = "skill_name" not in raw and "tag" in raw
+            name = str(raw.get("skill_name") or raw.get("tag") or "").strip()[:100]
+            if not name or name in seen:
+                continue
+            try:
+                score = int(raw.get("score", 3))
+            except (TypeError, ValueError):
+                score = 3
+            item = {
+                "tag" if uses_tag else "skill_name": name,
+                "score": min(5, max(1, score)),
+            }
+            if "category" in raw:
+                item["category"] = str(raw.get("category") or "").strip()[:40]
+            cleaned.append(item)
+            seen.add(name)
+        return cleaned
 
     def create_pending_candidate(
         self,

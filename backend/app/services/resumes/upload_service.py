@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import uuid
 import zipfile
@@ -63,8 +64,15 @@ def _file_fingerprints(files):
     return sorted(fingerprints, key=lambda item: (item["filename"], item["sha256"]))
 
 
-def _upload_dedup_key(files, target_demand_id, target_job_id):
-    source_channel = normalize_resume_source_channel(request.form.get("source_channel"))
+def _upload_dedup_key(
+    files,
+    target_demand_id,
+    target_job_id,
+    source_channel_override=None,
+):
+    source_channel = normalize_resume_source_channel(
+        source_channel_override or request.form.get("source_channel")
+    )
     source_link = (request.form.get("source_link") or "").strip()
     referrer = (request.form.get("referrer") or "").strip()[:120]
     note = (request.form.get("source_note") or request.form.get("note") or "").strip()
@@ -286,10 +294,57 @@ def _process_zip(
         })
 
 
-def handle_resume_upload():
+def _structured_metadata_for_files(files, svc):
+    raw_metadata = request.form.get("metadata_json")
+    try:
+        payload = json.loads(raw_metadata) if raw_metadata else None
+    except (TypeError, ValueError):
+        raise ValueError("请提供正确的简历结构化信息") from None
+    if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+        raise ValueError("请提供正确的简历结构化信息")
+
+    metadata_by_filename = {}
+    for raw_item in payload["items"]:
+        if not isinstance(raw_item, dict):
+            raise ValueError("简历结构化信息格式不正确")
+        filename = str(raw_item.get("filename") or "").strip()
+        external_import_id = str(raw_item.get("external_import_id") or "").strip()
+        if not filename or len(filename) > 255:
+            raise ValueError("简历文件名不正确")
+        if filename in metadata_by_filename:
+            raise ValueError(f"简历 {filename} 的结构化信息重复")
+        if not external_import_id or len(external_import_id) > 200:
+            raise ValueError(f"简历 {filename} 缺少正确的外部导入编号")
+        if not isinstance(raw_item.get("resume_json"), dict):
+            raise ValueError(f"简历 {filename} 缺少结构化信息")
+        normalized_resume = svc.normalize_structured_resume(raw_item["resume_json"])
+        metadata_by_filename[filename] = {
+            "external_import_id": external_import_id,
+            "resume_json": normalized_resume,
+        }
+
+    uploaded_names = [file.filename for file in files if file.filename]
+    for filename in uploaded_names:
+        if filename not in metadata_by_filename:
+            raise ValueError(f"简历 {filename} 缺少结构化信息")
+    if set(metadata_by_filename) != set(uploaded_names):
+        raise ValueError("结构化信息与上传的简历文件不一致")
+    return metadata_by_filename
+
+
+def handle_resume_upload(
+    *,
+    require_target_demand=False,
+    require_structured_metadata=False,
+    source_channel_override=None,
+    reject_zip=False,
+):
     files = request.files.getlist("files")
     if not files or all(f.filename == "" for f in files):
-        return jsonify({"error": "No files provided"}), 400
+        return jsonify({"error": "请上传简历文件" if require_structured_metadata else "No files provided"}), 400
+
+    if reject_zip and any(_ext(f.filename) == "zip" for f in files if f.filename):
+        return jsonify({"error": "Agent导入不支持ZIP压缩包，请上传原始简历文件"}), 400
 
     from flask import current_app
     folder = current_app.config.get("UPLOAD_FOLDER") or str(DEFAULT_UPLOAD_FOLDER)
@@ -299,6 +354,8 @@ def handle_resume_upload():
 
     target_demand_id = request.form.get("target_demand_id", type=int)
     target_job_id = request.form.get("target_job_id", type=int)
+    if require_target_demand and not target_demand_id:
+        return jsonify({"error": "请选择具体招聘需求"}), 400
     target_demand = None
     if target_demand_id or target_job_id:
         try:
@@ -315,7 +372,20 @@ def handle_resume_upload():
         target_demand_id = target_demand.id
         target_job_id = target_demand.job_id
 
-    upload_key = _upload_dedup_key(files, target_demand_id, target_job_id)
+    svc = ResumeBatchService()
+    structured_metadata = None
+    if require_structured_metadata:
+        try:
+            structured_metadata = _structured_metadata_for_files(files, svc)
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+
+    upload_key = _upload_dedup_key(
+        files,
+        target_demand_id,
+        target_job_id,
+        source_channel_override=source_channel_override,
+    )
     previous_upload = _recent_completed_upload(upload_key)
     if previous_upload is not None:
         repeated_results = []
@@ -355,7 +425,9 @@ def handle_resume_upload():
     batch = UploadBatch(
         org_id=g.org_id,
         owner_hr_id=g.user_id,
-        source_channel=normalize_resume_source_channel(request.form.get("source_channel")),
+        source_channel=normalize_resume_source_channel(
+            source_channel_override or request.form.get("source_channel")
+        ),
         source_link=(request.form.get("source_link") or "").strip(),
         referrer=(request.form.get("referrer") or "").strip()[:120],
         target_job_id=target_job_id,
@@ -372,7 +444,6 @@ def handle_resume_upload():
         payload={"demand_id": target_demand_id, "job_id": target_job_id},
     )
 
-    svc = ResumeBatchService()
     results = []
     for f in files:
         if not f.filename:
@@ -421,6 +492,11 @@ def handle_resume_upload():
                 upload_batch_id=batch.id,
                 target_demand_id=target_demand_id,
                 target_job_id=target_job_id,
+                structured_resume=(
+                    structured_metadata[f.filename]["resume_json"]
+                    if structured_metadata is not None
+                    else None
+                ),
             )
 
     # total 改为实际产生的简历结果条数（zip 会展开成多条）
