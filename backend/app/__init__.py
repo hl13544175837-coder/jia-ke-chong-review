@@ -43,8 +43,8 @@ def create_app(config=None):
         CORS(app)
     db.init_app(app)
 
-    from .api import analytics, resume, jobs, demands, talent_maps, candidates, match, interview, pipeline, bi, auth, agent, admin, notifications, boss, kpi_standards, business_reviews
-    for bp in [auth.bp, resume.bp, jobs.bp, demands.bp, talent_maps.bp, candidates.bp, match.bp, interview.bp, pipeline.bp, bi.bp, analytics.bp, agent.bp, admin.bp, notifications.bp, boss.bp, kpi_standards.bp, business_reviews.bp]:
+    from .api import analytics, resume, jobs, demands, talent_maps, candidates, match, interview, pipeline, bi, auth, agent, admin, notifications, boss, kpi_standards, business_reviews, agent_imports, online_resumes
+    for bp in [auth.bp, resume.bp, jobs.bp, demands.bp, talent_maps.bp, candidates.bp, match.bp, interview.bp, pipeline.bp, bi.bp, analytics.bp, agent.bp, admin.bp, notifications.bp, boss.bp, kpi_standards.bp, business_reviews.bp, agent_imports.bp, online_resumes.bp]:
         app.register_blueprint(bp, url_prefix="/api")
 
     _register_request_audit(app)
