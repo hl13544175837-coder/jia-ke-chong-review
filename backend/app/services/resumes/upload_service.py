@@ -1,5 +1,4 @@
 import hashlib
-import json
 import os
 import uuid
 import zipfile
@@ -17,6 +16,7 @@ from ...source_channels import normalize_resume_source_channel
 from ...time_utils import utc_now
 from ..demand_context_service import DemandContextError, can_manage_demand, resolve_demand_context
 from ..resume_service import ResumeBatchService
+from .agent_import_metadata import _structured_metadata_for_files
 from .file_service import (
     BLOCKED_RESUME_EXTS,
     IMAGE_FORMAT_BY_EXT,
@@ -292,44 +292,6 @@ def _process_zip(
             "status": "error",
             "reason": "压缩包处理失败，请检查文件后重试",
         })
-
-
-def _structured_metadata_for_files(files, svc):
-    raw_metadata = request.form.get("metadata_json")
-    try:
-        payload = json.loads(raw_metadata) if raw_metadata else None
-    except (TypeError, ValueError):
-        raise ValueError("请提供正确的简历结构化信息") from None
-    if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
-        raise ValueError("请提供正确的简历结构化信息")
-
-    metadata_by_filename = {}
-    for raw_item in payload["items"]:
-        if not isinstance(raw_item, dict):
-            raise ValueError("简历结构化信息格式不正确")
-        filename = str(raw_item.get("filename") or "").strip()
-        external_import_id = str(raw_item.get("external_import_id") or "").strip()
-        if not filename or len(filename) > 255:
-            raise ValueError("简历文件名不正确")
-        if filename in metadata_by_filename:
-            raise ValueError(f"简历 {filename} 的结构化信息重复")
-        if not external_import_id or len(external_import_id) > 200:
-            raise ValueError(f"简历 {filename} 缺少正确的外部导入编号")
-        if not isinstance(raw_item.get("resume_json"), dict):
-            raise ValueError(f"简历 {filename} 缺少结构化信息")
-        normalized_resume = svc.normalize_structured_resume(raw_item["resume_json"])
-        metadata_by_filename[filename] = {
-            "external_import_id": external_import_id,
-            "resume_json": normalized_resume,
-        }
-
-    uploaded_names = [file.filename for file in files if file.filename]
-    for filename in uploaded_names:
-        if filename not in metadata_by_filename:
-            raise ValueError(f"简历 {filename} 缺少结构化信息")
-    if set(metadata_by_filename) != set(uploaded_names):
-        raise ValueError("结构化信息与上传的简历文件不一致")
-    return metadata_by_filename
 
 
 def handle_resume_upload(
