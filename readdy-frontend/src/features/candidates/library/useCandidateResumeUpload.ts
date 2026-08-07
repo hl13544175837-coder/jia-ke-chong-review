@@ -20,7 +20,9 @@ import {
 } from '@/features/candidates/library';
 import {
   reconcileResumeUploadProgress,
+  reconcileResumeUploadProgressFromDetail,
   refreshCandidatesAfterUpload,
+  timeoutResumeUploadProgress,
 } from '@/features/candidates/library/resumeUploadProgress';
 
 type ResumeUploadResult = ResumeUploadResponse['results'][number];
@@ -59,6 +61,9 @@ export function useCandidateResumeUpload({
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [uploadDragOver, setUploadDragOver] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const uploadStartedAtRef = useRef(0);
+  const uploadResponseRef = useRef<ResumeUploadResponse | null>(null);
+  uploadResponseRef.current = uploadResponse;
 
   useEffect(() => {
     setUploadResponse((current) => (
@@ -118,6 +123,7 @@ export function useCandidateResumeUpload({
     setUploadError(null);
     setUploadResponse(null);
     setUploadRowActions({});
+    uploadStartedAtRef.current = Date.now();
     setLastSubmittedFiles((current) => {
       const files = new Map(
         current.map((file) => [`${file.name}-${file.size}-${file.lastModified}`, file]),
@@ -180,6 +186,46 @@ export function useCandidateResumeUpload({
       setUploadSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (!uploadResponse) return undefined;
+    const hasProcessing = uploadResponse.results.some(
+      (result) => result.status === 'processing' && result.candidate_id,
+    );
+    if (!hasProcessing) return undefined;
+
+    const timer = window.setInterval(async () => {
+      const current = uploadResponseRef.current;
+      if (!current) return;
+      const rows = current.results.filter(
+        (result) => result.status === 'processing' && result.candidate_id,
+      );
+      const details: Record<number, {
+        parse_status: string;
+        parse_error?: string | null;
+        name_masked?: string;
+      }> = {};
+      await Promise.all(rows.map(async (row) => {
+        try {
+          const detail = await candidatesApi.getResume(row.candidate_id as number);
+          details[row.candidate_id as number] = {
+            parse_status: detail.parse_status,
+            parse_error: detail.parse_error,
+            name_masked: detail.name_masked,
+          };
+        } catch {
+          // 单次查询失败保持处理中，下一轮再试
+        }
+      }));
+      let next = reconcileResumeUploadProgressFromDetail(current, details);
+      next = timeoutResumeUploadProgress(
+        next,
+        uploadStartedAtRef.current || Date.now(),
+      );
+      setUploadResponse(next);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [uploadResponse]);
 
   const openExistingCandidateFromUpload = useCallback((result: ResumeUploadResult) => {
     if (!result.existing_candidate_id) return;

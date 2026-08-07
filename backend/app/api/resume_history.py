@@ -1,4 +1,5 @@
 import io
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import current_app, g, jsonify, request, send_file
@@ -41,6 +42,10 @@ def register_resume_history_routes(bp):
         _resume_detail_payload,
         _resume_version_payload,
     )
+    from ..services.resume_preview_ticket import (
+        build_preview_ticket,
+        validate_preview_ticket,
+    )
 
     @bp.get("/resume/<int:candidate_id>")
     @require_auth
@@ -63,6 +68,72 @@ def register_resume_history_routes(bp):
     @require_auth
     def preview_original_resume(candidate_id):
         return _serve_original_resume(candidate_id, as_attachment=False)
+
+
+    @bp.get("/resume/<int:candidate_id>/original/preview-ticket")
+    @require_auth
+    def issue_preview_ticket(candidate_id):
+        candidate, error_response = _original_resume_candidate(candidate_id)
+        if error_response is not None:
+            return error_response
+        exp = int(datetime.now(timezone.utc).timestamp()) + 60
+        ticket = build_preview_ticket(
+            current_app.config["JWT_SECRET"],
+            g.org_id,
+            candidate.id,
+            exp,
+        )
+        return jsonify({
+            "ticket": ticket,
+            "exp": exp,
+            "url": (
+                f"/resume/{candidate.id}/original/preview-file"
+                f"?ticket={ticket}&exp={exp}"
+            ),
+        })
+
+
+    @bp.get("/resume/<int:candidate_id>/original/preview-file")
+    def preview_original_resume_file(candidate_id):
+        candidate = db.session.get(Candidate, candidate_id)
+        if candidate is None or candidate.deleted_at is not None:
+            return jsonify({"error": "预览凭证无效或已过期"}), 403
+        if not validate_preview_ticket(
+            current_app.config["JWT_SECRET"],
+            candidate.org_id,
+            candidate.id,
+            request.args.get("exp", ""),
+            request.args.get("ticket", ""),
+        ):
+            return jsonify({"error": "预览凭证无效或已过期"}), 403
+
+        resolved, reason = _resolve_original_resume(candidate)
+        if resolved is None:
+            record_event(
+                "resume.original.access_denied",
+                entity_id=candidate.id,
+                entity_type="candidate",
+                payload={"reason": reason},
+                result="denied",
+                failure_reason=reason,
+                severity="warning",
+            )
+            return jsonify({
+                "code": "original_resume_missing",
+                "error": "原始简历文件不可用",
+            }), 404
+
+        source = resolved.get("path") or io.BytesIO(resolved["data"])
+        response = send_file(
+            source,
+            mimetype=resolved["mime_type"],
+            as_attachment=False,
+            download_name=resolved["filename"],
+            conditional=True,
+            max_age=0,
+        )
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
 
 
     @bp.get("/resume/<int:candidate_id>/original/download")

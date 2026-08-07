@@ -265,7 +265,7 @@ export default function JobsPage() {
       setSelectedDemand(created);
       setDetailMode('view');
       openDemandInUrl(created.id);
-      showToast('招聘需求已创建并保存到本地数据库');
+      showToast('招聘需求已创建');
       await loadDemands();
     } catch (error) {
       if (error instanceof ApiError) setCreateErrors(error.fields ?? { form: error.message });
@@ -593,7 +593,7 @@ export default function JobsPage() {
           <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
             <section className="pointer-events-auto flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="创建招聘需求">
               <header className="flex items-center justify-between border-b border-background-100 px-6 py-4">
-                <div><h2 className="text-lg font-bold text-foreground-900">创建招聘需求</h2><p className="mt-1 text-xs text-foreground-400">保存后会立即进入本地招聘需求列表</p></div>
+                <div><h2 className="text-lg font-bold text-foreground-900">创建招聘需求</h2><p className="mt-1 text-xs text-foreground-400">保存后会立即进入招聘需求列表</p></div>
                 <button disabled={submitting} onClick={() => setFormOpen(false)} aria-label="关闭创建需求弹窗" className="h-9 w-9 rounded-lg hover:bg-background-100 disabled:opacity-50"><i className="ri-close-line text-xl"></i></button>
               </header>
               <div className="flex-1 overflow-y-auto px-6 py-5">

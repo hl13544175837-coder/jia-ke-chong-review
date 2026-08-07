@@ -4,7 +4,9 @@ import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { onlineResumesApi } from '../api';
 import type { OnlineResumeItem, OnlineResumeOwnerOption } from '../types';
+import { suspiciousResumeFields } from '../quality';
 import OnlineResumeDetailDrawer from './OnlineResumeDetailDrawer';
+import { AgentConnectionDialog } from './AgentConnectionDialog';
 
 interface OpenResume {
   id: number;
@@ -92,6 +94,7 @@ export default function OnlineResumeList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [openResume, setOpenResume] = useState<OpenResume | null>(null);
+  const [showConnect, setShowConnect] = useState(false);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<OnlineResumeOwnerOption[]>([]);
@@ -396,8 +399,13 @@ export default function OnlineResumeList() {
               {hasActiveFilters ? '没有符合筛选条件的在线简历' : '暂无Agent导入的在线简历'}
             </p>
             <p className="mt-2 text-sm text-foreground-500">
-              {hasActiveFilters ? '尝试调整或清空筛选条件' : '外部Agent导入后会显示在这里'}
+              {hasActiveFilters ? '尝试调整或清空筛选条件' : '配置AI招聘助手后，它会自动按招聘需求筛选候选人并导入在线简历'}
             </p>
+            {!hasActiveFilters && (
+              <ActionButton tone="primary" className="mt-5" onClick={() => setShowConnect(true)}>
+                配置 AI 招聘助手
+              </ActionButton>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -460,6 +468,14 @@ export default function OnlineResumeList() {
                       )}
                       {item.extracted.target_position && (
                         <p className="mt-1 text-xs text-foreground-500">{item.extracted.target_position}</p>
+                      )}
+                      {suspiciousResumeFields(item.extracted).length > 0 && (
+                        <span
+                          className="mt-1 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                          title="导入字段疑似乱码或格式异常，请人工核对或编辑"
+                        >
+                          疑似异常数据
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-4 text-foreground-700">{item.owner_name || '-'}</td>
@@ -528,6 +544,8 @@ export default function OnlineResumeList() {
           }}
         />
       )}
+
+      {showConnect && <AgentConnectionDialog onClose={() => setShowConnect(false)} />}
     </>
   );
 }

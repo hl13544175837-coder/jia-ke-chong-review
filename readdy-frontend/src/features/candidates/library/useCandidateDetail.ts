@@ -5,6 +5,7 @@ import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import { candidatesApi } from '@/features/candidates/api';
 import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
 import { candidateFromReviewTask, errorMessage } from '@/features/candidates/library';
+import { externalApiBaseUrl } from '@/lib/api';
 import type {
   CandidateJourney,
   CandidateListItem,
@@ -158,8 +159,8 @@ export function useCandidateDetail({
     setOriginalResumeLoading('preview');
     setOriginalResumeError(null);
     try {
-      const blob = await businessReviewsApi.loadResume(resumeDetail.id);
-      setResumePreviewUrl(URL.createObjectURL(blob));
+      const issued = await businessReviewsApi.createPreviewTicket(resumeDetail.id);
+      window.open(`${externalApiBaseUrl()}${issued.url}`, '_blank', 'noopener');
     } catch (error) {
       setOriginalResumeError(errorMessage(error, '原版简历预览失败'));
     } finally {

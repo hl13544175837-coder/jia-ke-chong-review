@@ -18,6 +18,7 @@ from resume_parser import ResumeParser
 from .. import db
 from ..models import Candidate, CandidateTag, User
 from .public_errors import stored_resume_parse_error
+from .resume_quality import check_extracted_quality
 
 
 logger = logging.getLogger(__name__)
@@ -318,6 +319,17 @@ class ResumeBatchService:
 
     def _apply_parse_result(self, candidate: Candidate, result: dict) -> None:
         info = result.get("extracted_info", {}) if isinstance(result, dict) else {}
+        # 质量校验: 抽取字段疑似异常时标记失败,不写入 ok 状态(防止脏数据进简历库)
+        issues = check_extracted_quality(info)
+        if issues:
+            candidate.resume_json = {}
+            candidate.parse_status = "failed"
+            candidate.parse_error = (
+                "简历解析结果字段疑似异常（"
+                + "、".join(issues)
+                + "），请重试或人工补录"
+            )
+            return
         candidate.name_masked = info.get("name", "")[:100] if info.get("name") else ""
         candidate.email_masked = info.get("email", "")[:100] if info.get("email") else ""
         candidate.phone_masked = info.get("phone", "")[:30] if info.get("phone") else ""

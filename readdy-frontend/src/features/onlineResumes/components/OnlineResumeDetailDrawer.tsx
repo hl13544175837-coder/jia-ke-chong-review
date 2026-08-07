@@ -5,6 +5,7 @@ import DetailActionBar from '@/components/ui/DetailActionBar';
 import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 import { onlineResumesApi } from '../api';
 import type { OnlineResumeItem } from '../types';
+import { suspiciousResumeFields } from '../quality';
 
 interface OnlineResumeDetailDrawerProps {
   resumeId: number;
@@ -188,6 +189,14 @@ export default function OnlineResumeDetailDrawer({
               <p className="mt-1 text-xs text-foreground-500">
                 {resume.demand.request_no} · {resume.demand.title} · {resume.source_platform} · {resume.boss_account}
               </p>
+              {suspiciousResumeFields(profileSource(resume)).length > 0 && (
+                <span
+                  className="mt-1 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                  title="导入字段疑似乱码或格式异常，请人工核对或编辑"
+                >
+                  疑似异常数据
+                </span>
+              )}
               {resume.source_url && (
                 <a
                   href={resume.source_url}

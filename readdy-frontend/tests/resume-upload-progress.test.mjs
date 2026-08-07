@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   reconcileResumeUploadProgress,
   refreshCandidatesAfterUpload,
+  timeoutResumeUploadProgress,
 } from '../src/features/candidates/library/resumeUploadProgress.ts';
 
 const response = (candidateId) => ({
@@ -73,4 +74,22 @@ test('上传已成功后列表刷新超时不会再误报成上传失败', async
   }));
 
   assert.equal(calls, 1);
+});
+
+test('解析超过时限后弹窗停止转圈并提示超时', () => {
+  const result = timeoutResumeUploadProgress(
+    response(104),
+    Date.now() - 121_000,
+  );
+
+  assert.equal(result.results[0].status, 'needs_confirmation');
+  assert.match(result.results[0].reason, /超时/);
+});
+
+test('未到解析时限时保持解析中且不制造新对象', () => {
+  const initial = response(105);
+  const result = timeoutResumeUploadProgress(initial, Date.now() - 10_000);
+
+  assert.equal(result, initial);
+  assert.equal(initial.results[0].status, 'processing');
 });

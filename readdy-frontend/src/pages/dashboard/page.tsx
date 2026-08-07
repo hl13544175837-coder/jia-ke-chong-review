@@ -193,9 +193,17 @@ export default function DashboardPage() {
 
   useEffect(() => {
     void loadFacts();
-    const refresh = () => void loadFacts();
+    let focusTimer: number | undefined;
+    const refresh = () => {
+      // 防抖:窗口短时间内多次获得焦点时,只触发一次刷新,避免频繁并行重拉接口
+      window.clearTimeout(focusTimer);
+      focusTimer = window.setTimeout(() => void loadFacts(), 800);
+    };
     window.addEventListener('focus', refresh);
-    return () => window.removeEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.clearTimeout(focusTimer);
+    };
   }, [loadFacts]);
 
   const summary = useMemo(() => buildDashboardSummary(facts, role), [facts, role]);

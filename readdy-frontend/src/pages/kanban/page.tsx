@@ -28,7 +28,9 @@ const stages: Array<{ key: PipelineStage; label: string; tone: string }> = [
   { key: 'business_review', label: '业务筛选', tone: 'border-amber-200 bg-amber-50 text-amber-700' },
   { key: 'interview', label: '面试中', tone: 'border-violet-200 bg-violet-50 text-violet-700' },
   { key: 'offer', label: 'Offer', tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  { key: 'onboarded', label: '已入职', tone: 'border-teal-200 bg-teal-50 text-teal-700' },
   { key: 'rejected', label: '已淘汰', tone: 'border-red-200 bg-red-50 text-red-700' },
+  { key: 'transferred', label: '已转出', tone: 'border-slate-200 bg-slate-50 text-slate-600' },
 ];
 
 const stageLabels = Object.fromEntries(stages.map((item) => [item.key, item.label])) as Record<string, string>;

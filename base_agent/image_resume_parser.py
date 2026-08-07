@@ -110,11 +110,20 @@ class ImageResumeVisionParser:
         self.http_client = http_client
 
     def parse(self, file_path: str) -> ImageResumeParseResult:
-        """解析单张图片简历。"""
+        """解析单张图片简历。
+
+        部分视觉模型对“数组型 JSON schema”prompt 会输出超长内容并撞上输出
+        token 上限，导致 JSON 截断/非法。首次失败时自动降级为平铺字段
+        prompt 重试一次，避免整份简历直接失败。
+        """
         config = self.config or DashScopeVisionConfig.from_environment()
         image_data_uri = _prepare_image_data_uri(Path(file_path))
-        response = self._post_completion(config, [image_data_uri], _resume_extraction_prompt())
-        payload = _parse_json_object(_extract_message_content(response))
+        payload = self._completion_json(
+            config,
+            [image_data_uri],
+            _resume_extraction_prompt(),
+            fallback_text=_resume_fallback_prompt(),
+        )
         return _normalize_resume_payload(payload)
 
     def parse_document(self, data_uris: list[str]) -> ImageResumeParseResult:
@@ -125,8 +134,12 @@ class ImageResumeVisionParser:
 
         def parse_page(page_num: int, uri: str) -> Mapping[str, object]:
             page_prompt = _resume_document_page_prompt(page_num, len(data_uris))
-            response = self._post_completion(config, [uri], page_prompt)
-            return _parse_json_object(_extract_message_content(response))
+            return self._completion_json(
+                config,
+                [uri],
+                page_prompt,
+                fallback_text=_resume_fallback_prompt(),
+            )
 
         page_payloads: list[Mapping[str, object] | None] = [None] * len(data_uris)
         worker_count = min(DOCUMENT_VISION_MAX_PARALLEL_REQUESTS, len(data_uris))
@@ -150,6 +163,24 @@ class ImageResumeVisionParser:
         merged = _merge_page_results(all_results) if all_results else {}
         return ImageResumeParseResult(extracted_info=merged, skills=[])
 
+    def _completion_json(
+        self,
+        config: DashScopeVisionConfig,
+        data_uris: list[str],
+        user_text: str,
+        *,
+        fallback_text: str | None = None,
+    ) -> Mapping[str, object]:
+        """发起视觉识别并解析 JSON；首次 JSON 非法时降级重试一次。"""
+        response = self._post_completion(config, data_uris, user_text)
+        try:
+            return _parse_json_object(_extract_message_content(response))
+        except RuntimeError as first_error:
+            if not fallback_text:
+                raise
+            response = self._post_completion(config, data_uris, fallback_text)
+            return _parse_json_object(_extract_message_content(response))
+
     def _post_completion(
         self,
         config: DashScopeVisionConfig,
@@ -168,6 +199,8 @@ class ImageResumeVisionParser:
                     "content": (
                         "你是一名严谨的简历结构化解析助手。只提取图片中明确可见的信息，"
                         "不得猜测、补全或虚构；模糊信息留空。只返回合法 JSON。"
+                        "严格只输出用户给定结构中的字段，不要新增、改名或扩展任何字段，"
+                        "不要输出 OCR 原文、解释或额外内容。"
                     ),
                 },
                 {
@@ -178,6 +211,11 @@ class ImageResumeVisionParser:
             "response_format": {"type": "json_object"},
             "enable_thinking": False,
             "stream": False,
+            # 显式限制输出上限：防止模型超长输出被截断成非法 JSON。
+            # 实测部分模型在 schema prompt 下会超长输出，撞到默认上限后
+            # JSON 未闭合导致解析失败；上限过大又会让“失控输出”白白消耗
+            # token，故取折中值，失败路径由 _completion_json 降级重试兜底。
+            "max_tokens": 4096,
         }
         post = self.http_client.post if self.http_client is not None else requests.post
         try:
@@ -387,11 +425,74 @@ def _parse_json_object(content: str) -> Mapping[str, object]:
             raise RuntimeError("图片简历识别结果不是有效 JSON")
         try:
             payload, _ = json.JSONDecoder().raw_decode(cleaned[start:])
-        except json.JSONDecodeError as error:
-            raise RuntimeError("图片简历识别结果不是有效 JSON") from error
+        except json.JSONDecodeError:
+            repaired = _repair_truncated_json(cleaned[start:])
+            if repaired is None:
+                raise RuntimeError("图片简历识别结果不是有效 JSON")
+            try:
+                payload = json.loads(repaired)
+            except json.JSONDecodeError as error:
+                raise RuntimeError("图片简历识别结果不是有效 JSON") from error
     if not isinstance(payload, Mapping):
         raise RuntimeError("图片简历识别结果必须是 JSON 对象")
     return payload
+
+
+def _repair_truncated_json(content: str) -> str | None:
+    """尝试修复因输出截断而未闭合的 JSON：去掉末尾不完整的字符串，
+    补全缺失的 } 和 ]。
+
+    只会在内容结尾补闭合符，不会改动已有内容，因此是安全的兜底。
+    若连“完整键值对”都不存在，返回 None 表示无法修复。
+    """
+    stack: list[str] = []
+    in_string = False
+    escaped = False
+    last_value_end = -1  # 最后一个完整值结束的位置（不含）
+    i = 0
+    length = len(content)
+    while i < length:
+        ch = content[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+                last_value_end = i + 1
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+            last_value_end = -1
+        elif ch in "{[":
+            stack.append(ch)
+            last_value_end = -1
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+            last_value_end = i + 1
+        elif ch in "0123456789tfn-":
+            # 简单数字/true/false/null 结尾判定交给后续关闭符逻辑
+            last_value_end = i + 1
+        elif ch == ":" or ch == ",":
+            last_value_end = -1
+        i += 1
+
+    if in_string:
+        # 结尾是未闭合的字符串：截掉不完整的字符串内容
+        content = content[:last_value_end] if last_value_end >= 0 else content
+        while content and content[-1] not in '"}]':
+            content = content[:-1]
+        if not content:
+            return None
+    if not stack or last_value_end < 0:
+        return None
+    tail = []
+    for opener in reversed(stack):
+        tail.append("}" if opener == "{" else "]")
+    return content.rstrip() + "".join(tail)
 
 
 def _normalize_resume_payload(payload: Mapping[str, object]) -> ImageResumeParseResult:
@@ -504,6 +605,19 @@ def _resume_extraction_prompt() -> str:
         '"skills":[{"skill_name":"","score":3,"category":"专业技能"}]}。'
         "技能只填写简历中有明确证据的内容，score 使用 1 到 5；"
         "没有的信息使用空字符串或空数组。不要输出 OCR 原文、Markdown 或解释。"
+    )
+
+
+def _resume_fallback_prompt() -> str:
+    """降级 prompt：不包含数组型 schema，规避部分视觉模型对复杂 schema
+    的超长输出/截断问题；字段与主提取结构兼容（education_level 等多余
+    字段会被 _normalize_resume_payload 忽略）。"""
+    return (
+        "识别图片简历中的基本信息，用简体中文输出 JSON，只包含这些字段"
+        "（图片中缺失的留空，不要编造，不要输出其他任何字段）："
+        '{"name":"","email":"","phone":"","summary":"","intent_city":"",'
+        '"target_position":"","education_level":"","years_of_experience":"",'
+        '"salary_expectation":""}'
     )
 
 

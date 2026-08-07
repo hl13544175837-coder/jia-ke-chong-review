@@ -15,11 +15,42 @@ from ..services.demand_context_service import (
     resolve_demand_context,
 )
 from ..time_utils import utc_now
+from .resume_quality import check_extracted_quality
 
 
 @dataclass
 class OnlineResumeValidationError(Exception):
     message: str
+
+
+
+
+def _validate_extracted_quality(info: dict) -> None:
+    """校验抽取字段质量，异常时抛错（导入与编辑共用，防止脏数据入库）。"""
+    issues = check_extracted_quality(info)
+    if not issues:
+        return
+    field_label = {
+        "target_position": "目标岗位",
+        "salary_expectation": "期望薪资",
+        "location": "所在地",
+        "structure": "结构化内容",
+    }
+    label = field_label.get(issues[0], "字段")
+    raw_value = ""
+    if isinstance(info, dict):
+        raw_value = info.get(
+            "target_position"
+            if issues[0] == "target_position"
+            else "salary_expectation"
+            if issues[0] == "salary_expectation"
+            else "location"
+        )
+    display = str(raw_value)[:40] if raw_value else ""
+    raise OnlineResumeValidationError(
+        f"在线简历的{label}疑似异常或格式错误（{display}），"
+        "请修正后再保存"
+    )
 
 
 class OnlineResumeService:
@@ -300,6 +331,9 @@ class OnlineResumeService:
             max_bytes=self.MAX_RESUME_JSON_BYTES,
             error_message="结构化简历内容不能超过 1MB",
         )
+        extracted_info = resume_json.get("extracted_info")
+        info = extracted_info if isinstance(extracted_info, dict) else resume_json
+        _validate_extracted_quality(info)
         resume.resume_json = resume_json
         resume.is_manually_edited = True
         resume.updated_at = utc_now()
@@ -335,6 +369,7 @@ class OnlineResumeService:
                 resume,
                 demand=demands.get(resume.demand_id),
                 owner=owners.get(resume.owner_hr_id),
+                include_full=False,
             )
             for resume in resumes
         ]
@@ -345,6 +380,7 @@ class OnlineResumeService:
         *,
         demand: RecruitmentDemand | None,
         owner: User | None,
+        include_full: bool = True,
     ) -> dict:
         demand_summary = None
         if demand is not None:
@@ -356,7 +392,7 @@ class OnlineResumeService:
             }
         chat = resume.chat_json if isinstance(resume.chat_json, list) else []
         info = self._extracted_info(resume)
-        return {
+        payload = {
             "id": resume.id,
             "org_id": resume.org_id,
             "owner_hr_id": resume.owner_hr_id,
@@ -366,7 +402,6 @@ class OnlineResumeService:
             "source_platform": resume.source_platform,
             "external_record_id": resume.external_record_id,
             "display_name": resume.display_name,
-            "resume_json": resume.resume_json,
             "extracted": {
                 "age": info.get("age") or "",
                 "gender": info.get("gender") or "",
@@ -378,12 +413,17 @@ class OnlineResumeService:
                 "availability": info.get("availability") or "",
                 "summary": info.get("summary") or "",
             },
-            "chat_json": chat,
             "latest_chat": chat[-1] if chat else None,
             "source_url": resume.source_url,
             "created_at": resume.created_at.isoformat() if resume.created_at else None,
             "updated_at": resume.updated_at.isoformat() if resume.updated_at else None,
         }
+        # 列表接口不携带完整 resume_json 与聊天记录，避免 BOSS 长聊天把
+        # 单页响应撑到上百 KB；详情接口（serialize）才返回全量。
+        if include_full:
+            payload["resume_json"] = resume.resume_json
+            payload["chat_json"] = chat
+        return payload
 
     def _upsert_item(
         self,
@@ -484,6 +524,9 @@ class OnlineResumeService:
             max_bytes=self.MAX_RESUME_JSON_BYTES,
             error_message="结构化简历内容不能超过 1MB",
         )
+        extracted_info = resume_json.get("extracted_info")
+        info = extracted_info if isinstance(extracted_info, dict) else resume_json
+        _validate_extracted_quality(info)
         chat_json = item.get("chat_json")
         if not isinstance(chat_json, list):
             raise OnlineResumeValidationError("完整聊天记录必须是列表")

@@ -821,3 +821,63 @@ def test_unexpected_import_error_is_logged_and_hidden(
     assert response.status_code == 200
     assert response.get_json()["results"][0]["error"] == "导入失败，请稍后重试"
     logged_exception.assert_called_once_with("在线简历单项导入发生未处理异常")
+
+
+def test_import_rejects_garbled_target_position(app, client, make_user):
+    owner_id, token = make_user("online-quality-target@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-QUALITY-TARGET")
+    item = _item(demand_id, "garbled-target")
+    item["resume_json"]["extracted_info"]["target_position"] = (
+        "上海上海JavaJava行业不行限业不限21-2251K-2"
+    )
+
+    response = _import_one(client, token, item)
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["failed"] == 1
+    assert "目标岗位" in payload["results"][0]["error"]
+
+
+def test_import_rejects_invalid_salary_format(app, client, make_user):
+    owner_id, token = make_user("online-quality-salary@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-QUALITY-SALARY")
+    item = _item(demand_id, "bad-salary")
+    item["resume_json"]["extracted_info"]["salary_expectation"] = "30-4350K"
+
+    response = _import_one(client, token, item)
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["failed"] == 1
+    assert "期望薪资" in payload["results"][0]["error"]
+
+
+def test_import_rejects_garbled_location(app, client, make_user):
+    owner_id, token = make_user("online-quality-location@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-QUALITY-LOCATION")
+    item = _item(demand_id, "garbled-location")
+    item["resume_json"]["extracted_info"]["location"] = "上海上海"
+
+    response = _import_one(client, token, item)
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["failed"] == 1
+    assert "所在地" in payload["results"][0]["error"]
+
+
+def test_import_accepts_normal_structured_fields(app, client, make_user):
+    owner_id, token = make_user("online-quality-clean@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-QUALITY-CLEAN")
+    item = _item(demand_id, "clean-fields")
+    item["resume_json"]["extracted_info"].update({
+        "target_position": "Java 开发工程师",
+        "salary_expectation": "20-30K",
+        "location": "上海",
+    })
+
+    response = _import_one(client, token, item)
+
+    assert response.status_code == 200
+    assert response.get_json()["created"] == 1

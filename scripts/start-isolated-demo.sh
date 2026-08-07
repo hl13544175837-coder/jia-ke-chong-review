@@ -3,6 +3,10 @@
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/isolated-demo-common.sh"
 
+# 本机常见的失效代理（如 127.0.0.1:7897）会阻断后端外呼 AI 识别服务，
+# 独立演示环境只访问 localhost 与本项目配置的 AI 接口，统一不走代理。
+unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+
 require_command curl
 require_command lsof
 require_command node

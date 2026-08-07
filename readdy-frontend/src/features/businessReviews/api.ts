@@ -79,6 +79,13 @@ export const businessReviewsApi = {
   loadResume(candidateId: number): Promise<Blob> {
     return apiBlob(`/resume/${candidateId}/original/preview`);
   },
+  createPreviewTicket(candidateId: number): Promise<{
+    ticket: string;
+    exp: number;
+    url: string;
+  }> {
+    return apiRequest(`/resume/${candidateId}/original/preview-ticket`);
+  },
   downloadResume(candidateId: number): Promise<Blob> {
     return apiBlob(`/resume/${candidateId}/original/download`);
   },
