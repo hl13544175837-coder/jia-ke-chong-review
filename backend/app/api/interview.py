@@ -687,6 +687,36 @@ def interview_guide():
     ))
 
 
+def _managed_feedback_assignment(user_id, role, assignment_id):
+    """专员/经理代填面试反馈:按任务 ID 解析,校验其需求可管理后才允许。
+
+    返回可代填的 assignment,否则 None(由调用方决定 404 提示)。
+    """
+    if role not in {"recruiter", "manager", "admin"} or not assignment_id:
+        return None
+    assignment = db.session.execute(
+        select(InterviewAssignment)
+        .where(
+            InterviewAssignment.id == assignment_id,
+            InterviewAssignment.org_id == g.org_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if assignment is None or assignment.demand_id is None:
+        return None
+    try:
+        demand = resolve_demand_context(
+            org_id=g.org_id,
+            demand_id=assignment.demand_id,
+            job_id=assignment.job_id,
+        )
+    except DemandContextError:
+        return None
+    if not can_manage_demand(user_id, role, g.org_id, demand):
+        return None
+    return assignment
+
+
 @bp.post("/interview/feedback")
 @require_auth
 def submit_feedback():
@@ -769,6 +799,25 @@ def submit_feedback():
             lock=True,
         )
     if assignment is None:
+        # 面试官本人没有对应任务时,允许需求负责人(专员/经理/管理员)代填。
+        assignment = _managed_feedback_assignment(
+            g.user_id,
+            g.role,
+            data.get("assignment_id"),
+        )
+        if assignment is not None:
+            candidate_id = assignment.candidate_id
+            round_name = assignment.round
+            try:
+                context = resolve_interview_context(
+                    org_id=g.org_id,
+                    candidate_id=candidate_id,
+                    demand_id=assignment.demand_id,
+                    job_id=assignment.job_id,
+                )
+            except DemandContextError as exc:
+                return _context_error_response(exc)
+    if assignment is None:
         return jsonify({
             "error": "面试任务不存在或不属于当前面试官",
             "code": "assignment_not_found",
@@ -822,18 +871,23 @@ def submit_feedback():
         demand_id=context.demand_id,
         assignment_id=assignment.id,
         org_id=g.org_id,
-        round=round_name, interviewer_id=g.user_id,
+        round=round_name, interviewer_id=assignment.interviewer_id,
         score=score, passed=data.get("passed"),
         strengths=strengths, concerns=concerns,
         reason_tags=_sanitize_reason_tags(data.get("reason_tags")),
         evaluation_json=evaluation,
         note=note)
+    # 代填场景(专员/经理替面试官提交):保留真实面试官归属,用
+    # updated_by 记录代填人,前端据此展示"由谁代填/最后修改"。
+    if assignment.interviewer_id != g.user_id:
+        fb.updated_by = g.user_id
+        fb.updated_at = utc_now()
     db.session.add(fb)
     round_completed = bool(assignment.is_primary)
     assignment.status = "completed" if round_completed else "feedback_submitted"
     if round_completed:
         owner_id = context.demand.owner_hr_id
-        if owner_id:
+        if owner_id and owner_id != g.user_id:
             db.session.add(Notification(
                 org_id=g.org_id,
                 user_id=owner_id,

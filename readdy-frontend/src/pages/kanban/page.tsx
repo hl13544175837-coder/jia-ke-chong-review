@@ -99,6 +99,11 @@ function MoveDialog({ candidate, initialTarget, busy, error, onClose, onSubmit }
           </button>
         </div>
         <div className="space-y-4 px-6 py-5">
+          {candidate.pending_feedback && (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              该候选人面试官尚未提交反馈，推进前请确认。
+            </p>
+          )}
           <label className="block text-sm font-medium text-foreground-700">
             目标阶段
             <select

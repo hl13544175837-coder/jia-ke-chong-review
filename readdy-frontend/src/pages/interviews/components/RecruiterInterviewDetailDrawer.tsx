@@ -40,6 +40,7 @@ interface RecruiterInterviewDetailDrawerProps {
   onRejectReasonChange: (value: string) => void;
   onConfirmReject: () => void;
   onViewOffer: () => void;
+  onFillFeedback: () => void;
 }
 
 export default function RecruiterInterviewDetailDrawer({
@@ -64,6 +65,7 @@ export default function RecruiterInterviewDetailDrawer({
   onRejectReasonChange,
   onConfirmReject,
   onViewOffer,
+  onFillFeedback,
 }: RecruiterInterviewDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<CandidateDetailTab>('interview');
   const [resume, setResume] = useState<CandidateResumeDetail | null>(null);
@@ -72,6 +74,7 @@ export default function RecruiterInterviewDetailDrawer({
   const [journey, setJourney] = useState<CandidateJourney | null>(null);
   const [journeyLoading, setJourneyLoading] = useState(true);
   const [journeyError, setJourneyError] = useState('');
+  const [confirmOffer, setConfirmOffer] = useState(false);
   const status = rowStatus(row);
   const presentation = statusPresentation(interviewStatusPresentation, status, statusLabelForRow(row));
 
@@ -102,10 +105,11 @@ export default function RecruiterInterviewDetailDrawer({
     >
       <ActionButton tone="secondary" onClick={onClose}>关闭</ActionButton>
       {row.reschedule_request?.status === 'waiting_reassignment' && <ActionButton tone="primary" onClick={onOpenSchedule}>重新安排面试</ActionButton>}
-      {row.feedback_submitted && row.pipeline_stage === 'interview' && (
+      {row.pipeline_stage === 'interview' && (
         <>
+          {!row.feedback_submitted && <ActionButton tone="secondary" disabled={decisionBusy} onClick={onFillFeedback}>代填反馈</ActionButton>}
           <ActionButton tone="secondary" disabled={decisionBusy} onClick={onAddInterviewer}>增加面试官</ActionButton>
-          <ActionButton tone="secondary" disabled={decisionBusy} onClick={onMoveOffer}>进入 Offer</ActionButton>
+          <ActionButton tone="secondary" disabled={decisionBusy} onClick={() => row.feedback_submitted ? onMoveOffer() : setConfirmOffer(true)}>进入 Offer</ActionButton>
           <ActionButton tone="danger" disabled={decisionBusy} onClick={onShowReject}>淘汰候选人</ActionButton>
           <ActionButton tone="primary" disabled={decisionBusy} onClick={onNextRound}>安排下一轮</ActionButton>
         </>
@@ -144,6 +148,24 @@ export default function RecruiterInterviewDetailDrawer({
               </dl>
 
               {row.note && <section className="rounded-lg bg-background-50 px-4 py-3"><p className="text-xs text-foreground-400">安排备注</p><p className="mt-1 text-sm text-foreground-700">{row.note}</p></section>}
+              {!row.feedback_submitted && row.pipeline_stage === 'interview' && (
+                <section className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-medium text-amber-900">面试官尚未提交反馈</p>
+                  <p className="mt-1 text-xs leading-5 text-amber-800">
+                    可以先点「催反馈」或「代填反馈」；若直接进入 Offer / 淘汰 / 安排下一轮，将视为招聘专员自主决策。
+                  </p>
+                </section>
+              )}
+              {confirmOffer && row.pipeline_stage === 'interview' && (
+                <section className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-medium text-amber-900">面试官尚未反馈，确定直接进入 Offer 吗？</p>
+                  <p className="mt-1 text-xs leading-5 text-amber-800">确认后系统将跳过该轮面试反馈，面试任务状态会同步收口。</p>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <ActionButton size="sm" tone="secondary" onClick={() => setConfirmOffer(false)}>取消</ActionButton>
+                    <ActionButton size="sm" tone="primary" onClick={() => { setConfirmOffer(false); onMoveOffer(); }} disabled={decisionBusy}>确认进入 Offer</ActionButton>
+                  </div>
+                </section>
+              )}
               {row.reschedule_request?.status === 'pending' && (
                 <RescheduleRequestPanel request={row.reschedule_request} busy={rescheduleBusy} error={rescheduleError} onApprove={onApproveReschedule} onReject={onRejectReschedule} onCancelAndWait={onCancelAndWait} />
               )}

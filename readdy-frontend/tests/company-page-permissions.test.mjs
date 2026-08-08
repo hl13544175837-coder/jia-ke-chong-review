@@ -63,7 +63,8 @@ test('招聘专员和面试官只显示各自职责内的面试操作', () => {
   const interviewer = source('pages/interviewer/interviews/page.tsx');
   assert.match(recruiter, /createAssignment/);
   assert.match(recruiter, /moveAfterInterview/);
-  assert.doesNotMatch(recruiter, /saveFeedback/);
+  assert.match(recruiter, /saveFeedback/); // 专员可代填面试反馈
+  assert.doesNotMatch(recruiter, /listMyAssignments/);
   assert.match(interviewer, /saveFeedback/);
   assert.match(interviewer, /requestReschedule/);
   assert.doesNotMatch(interviewer, /createAssignment/);

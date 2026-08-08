@@ -8,6 +8,7 @@ import { interviewsApi } from '@/features/interviews/api';
 import type {
   InterviewAssignmentInput,
   InterviewAssignmentUpdateInput,
+  InterviewFeedbackInput,
   InterviewManagementRow,
   InterviewRescheduleRequest,
 } from '@/features/interviews/types';
@@ -16,6 +17,7 @@ import InterviewManagementCalendar from './components/InterviewManagementCalenda
 import InterviewManagementTable from './components/InterviewManagementTable';
 import InterviewWorkbenchToolbar from './components/InterviewWorkbenchToolbar';
 import RecruiterInterviewDetailDrawer from './components/RecruiterInterviewDetailDrawer';
+import FillFeedbackModal from './components/FillFeedbackModal';
 import RecruiterInterviewOverlays from '@/features/interviews/components/RecruiterInterviewOverlays';
 import {
   followUpScheduleRow,
@@ -56,6 +58,7 @@ export default function RecruiterInterviewsPage() {
   const [scheduleRow, setScheduleRow] = useState<InterviewManagementRow | null>(null);
   const [scheduleIsPrimary, setScheduleIsPrimary] = useState(true);
   const [confirmConductedRow, setConfirmConductedRow] = useState<InterviewManagementRow | null>(null);
+  const [fillFeedbackRow, setFillFeedbackRow] = useState<InterviewManagementRow | null>(null);
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -370,6 +373,28 @@ export default function RecruiterInterviewsPage() {
     }
   };
 
+  const submitFillFeedback = async (payload: InterviewFeedbackInput) => {
+    if (!fillFeedbackRow || decisionBusy) return;
+    const targetRow = fillFeedbackRow;
+    setDecisionBusy(true);
+    setActionError('');
+    try {
+      const result = await interviewsApi.saveFeedback(payload);
+      setFillFeedbackRow(null);
+      closeInterviewDetail();
+      await loadWorkbench();
+      setSuccessMessage(
+        result.updated_by && result.updated_by !== targetRow.interviewer_id
+          ? '反馈已由你代填，系统已记录代填人'
+          : '反馈已提交',
+      );
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '提交反馈失败，请稍后重试');
+    } finally {
+      setDecisionBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-5 p-6" data-ui="real-recruiter-interview-workbench">
       <PageHeader
@@ -479,6 +504,7 @@ export default function RecruiterInterviewsPage() {
           onRejectReasonChange={setRejectReason}
           onConfirmReject={() => void moveAfterInterview(selectedRow, 'rejected', rejectReason)}
           onViewOffer={() => navigate(`/offers?demand=${selectedRow.demand_id}&candidate=${selectedRow.candidate_id}`)}
+          onFillFeedback={() => setFillFeedbackRow(selectedRow)}
         />
       )}
 
@@ -497,6 +523,16 @@ export default function RecruiterInterviewsPage() {
         onSaveSchedule={(payload) => void saveSchedule(payload)}
         onCancelSchedule={(reason) => void cancelSchedule(reason)}
       />
+
+      {fillFeedbackRow && (
+        <FillFeedbackModal
+          row={fillFeedbackRow}
+          busy={decisionBusy}
+          error={actionError}
+          onClose={() => { if (!decisionBusy) { setFillFeedbackRow(null); setActionError(''); } }}
+          onSubmit={(payload) => void submitFillFeedback(payload)}
+        />
+      )}
     </div>
   );
 }

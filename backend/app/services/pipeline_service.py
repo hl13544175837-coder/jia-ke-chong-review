@@ -16,6 +16,7 @@ from ..models import (
     Candidate,
     CandidateDemandFlow,
     CandidateDisposition,
+    InterviewAssignment,
     Job,
     OfferEvent,
     OfferRecord,
@@ -388,6 +389,14 @@ def _move_candidate_in_demand(
         },
         commit=False,
     )
+    # 候选人离开面试阶段(进入 Offer/淘汰/入职等)时,把该候选人在本需求的
+    # 未完成面试任务收口,避免"已推进却仍显示待反馈/逾期"的状态脱节。
+    if from_stage == "interview" and to_stage != "interview":
+        _close_unfinished_interview_assignments(
+            org_id=org_id,
+            candidate_id=candidate.id,
+            demand_id=demand.id,
+        )
     if to_stage == "onboarded":
         record_event(
             "candidate.onboarded",
@@ -421,6 +430,44 @@ def _move_candidate_in_demand(
         "deduplicated": False,
         **_completion_state(demand),
     }
+
+
+def _close_unfinished_interview_assignments(
+    *,
+    org_id: int,
+    candidate_id: int,
+    demand_id: int,
+) -> None:
+    """候选人离开面试阶段时,收口本需求下未完成的面试任务。
+
+    只处理未取消(scheduled/awaiting_feedback/feedback_submitted)的任务,
+    已取消(如改约历史)不动;状态置为 completed,与"有反馈收口"后的
+    工作台展示一致,消除假"待反馈/逾期"。调用方负责事务提交。
+    """
+    assignments = InterviewAssignment.query.filter(
+        InterviewAssignment.org_id == org_id,
+        InterviewAssignment.candidate_id == candidate_id,
+        InterviewAssignment.demand_id == demand_id,
+        InterviewAssignment.status.in_(
+            ("scheduled", "awaiting_feedback", "feedback_submitted")
+        ),
+    ).all()
+    for assignment in assignments:
+        assignment.status = "completed"
+        record_event(
+            "interview.assignment_closed_by_pipeline",
+            entity_id=candidate_id,
+            entity_type="candidate",
+            demand_id=demand_id,
+            payload={
+                "assignment_id": assignment.id,
+                "job_id": assignment.job_id,
+                "round": assignment.round,
+                "round_sequence": assignment.round_sequence,
+                "reason": "candidate_left_interview_stage",
+            },
+            commit=False,
+        )
 
 
 def move_candidate(
@@ -646,6 +693,24 @@ def pipeline_board(demand, *, candidate_ids=None):
     if candidate_ids is not None:
         rows = rows.filter(Candidate.id.in_(candidate_ids))
     rows = rows.all()
+
+    # 本需求下有哪些候选人仍处于"待反馈"(面试官未填)状态,供看板推进时提示。
+    pending_feedback_candidate_ids: set[int] = set()
+    if demand.id is not None:
+        pending_feedback_candidate_ids = {
+            candidate_id
+            for (candidate_id,) in (
+                db.session.query(InterviewAssignment.candidate_id)
+                .filter(
+                    InterviewAssignment.org_id == demand.org_id,
+                    InterviewAssignment.demand_id == demand.id,
+                    InterviewAssignment.status == "awaiting_feedback",
+                )
+                .distinct()
+                .all()
+            )
+        }
+
     candidates = [
         {
             "candidate_id": stage.candidate_id,
@@ -654,6 +719,7 @@ def pipeline_board(demand, *, candidate_ids=None):
             "note": stage.note,
             "updated_at": stage.ts.isoformat() if stage.ts else None,
             "updated_by_name": user.name if user else None,
+            "pending_feedback": stage.candidate_id in pending_feedback_candidate_ids,
         }
         for stage, candidate, user in rows
     ]

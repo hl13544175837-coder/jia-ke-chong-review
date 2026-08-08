@@ -15,6 +15,7 @@ export interface PipelineBoardCandidate {
   updated_at: string | null;
   updated_by_name: string | null;
   note?: string | null;
+  pending_feedback?: boolean;
 }
 
 export interface PipelineBoard {
