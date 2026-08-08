@@ -8,7 +8,8 @@ import re
 
 _SALARY_VALID_PATTERNS = (
     re.compile(r"^面议$"),
-    re.compile(r"^\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s*[kKwW万]"),
+    # 兼容 BOSS 直聘常见写法：25K-35K / 20-25K / 25k-35k / 100-200万 / 15-25k·13薪
+    re.compile(r"^\d+(?:\.\d+)?\s*[kKwW万]?\s*-\s*\d+(?:\.\d+)?\s*[kKwW万]"),
     re.compile(r"^\d+(?:\.\d+)?\s*[kKwW万]\s*[×x*]\s*\d+\s*薪$"),
 )
 
