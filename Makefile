@@ -7,7 +7,7 @@ VITE_DEFAULT_ROLE ?= recruiter
 VITE_GATEWAY_ROLE_MAP ?=
 AUTH_GATEWAY_USER_ROLE ?= recruiter
 AUTH_GATEWAY_ROLE_MAP ?=
-SIT_GATEWAY_ROLE_MAP := 100000:admin,100001:manager,100002:recruiter,100003:interviewer
+SIT_GATEWAY_ROLE_MAP := 100000:interviewer,100001:manager,100002:recruiter,100003:interviewer
 BUILD_VERSION ?= $(shell git rev-parse --short=12 HEAD)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 

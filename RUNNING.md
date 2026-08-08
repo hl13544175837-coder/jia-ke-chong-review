@@ -365,10 +365,10 @@ PGS 的“工作台”菜单下使用唯一角色标记：
 
 ```env
 # 测试环境角色映射（Makefile SIT_GATEWAY_ROLE_MAP）
-# 100000 测试管理员 → admin；100001 张三 → manager（招聘主管）
-# 100002 李四 → recruiter（招聘专员）；100003 王五 → interviewer（面试官）
-VITE_GATEWAY_ROLE_MAP=100000:admin,100001:manager,100002:recruiter,100003:interviewer
-AUTH_GATEWAY_ROLE_MAP=100000:admin,100001:manager,100002:recruiter,100003:interviewer
+# 100000 测试管理员 → interviewer（面试官02，用于二面演示）；100001 张三 → manager（招聘主管）
+# 100002 李四 → recruiter（招聘专员）；100003 王五 → interviewer（面试官01）
+VITE_GATEWAY_ROLE_MAP=100000:interviewer,100001:manager,100002:recruiter,100003:interviewer
+AUTH_GATEWAY_ROLE_MAP=100000:interviewer,100001:manager,100002:recruiter,100003:interviewer
 ```
 
 `VITE_GATEWAY_ROLE_MAP` 是前端构建回退参数，`AUTH_GATEWAY_ROLE_MAP` 是后端运行参数。登录时前端会读取 PGS 工作台菜单，再调用 `/api/auth/me` 取得后端真实角色：PGS 已配置工作台标记时，两边不一致会停止进入业务页面；PGS 尚未配置工作台标记时，以后端真实角色进入对应页面，避免前端默认 `recruiter` 错挡管理员等真实账号。目标状态仍应补齐 PGS 唯一工作台标记。现场至少验证：登录落在 `/interviewer/dashboard`、`/api/auth/me` 返回 `interviewer`、第二名面试官看不到李四的任务、李四直接访问招聘专员页面或接口被拒绝。
