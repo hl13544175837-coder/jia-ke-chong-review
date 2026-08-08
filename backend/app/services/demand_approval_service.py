@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 
 from .. import db
-from ..models import Event, RecruitmentDemand, User
+from ..models import Event, Notification, RecruitmentDemand, User
 from ..time_utils import utc_now
 from .demand_service import DemandValidationError, apply_editable_fields
 
@@ -120,6 +120,26 @@ def approve_demand(demand_id, actor_id, org_id):
             actor=actor,
             payload={"job_id": demand.job_id, "approval_status": "approved"},
         )
+        # 需求审核通过后,提醒需求负责人可以让 AI 助手去市场找人。
+        owner_id = demand.owner_hr_id
+        if owner_id and owner_id != actor.id:
+            job_title = demand.job_title_snapshot or (
+                demand.job.title if demand.job else ""
+            )
+            db.session.add(
+                Notification(
+                    org_id=org_id,
+                    user_id=owner_id,
+                    demand_id=demand.id,
+                    type="demand_approved_ai_recruit",
+                    title="需求已通过，可以让 AI 帮忙找人",
+                    body=(
+                        f"{job_title or '该岗位'}已审核通过。可在招聘需求列表点「AI 找人」，"
+                        "让 AI 助手去 58/BOSS/猎聘 帮你找候选人。"
+                    ),
+                    link=f"/jobs?demand={demand.id}",
+                )
+            )
         db.session.commit()
         return demand
     except Exception:

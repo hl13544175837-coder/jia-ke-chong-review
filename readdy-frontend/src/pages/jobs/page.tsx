@@ -27,6 +27,7 @@ import RequisitionForm from './components/RequisitionForm';
 import RequisitionTable from './components/RequisitionTable';
 import DemandDetailPanel from './components/DemandDetailPanel';
 import DemandCandidateDrawer from './components/DemandCandidateDrawer';
+import RecruitWithAIModal from './components/RecruitWithAIModal';
 import DemandBusinessReviewDrawer from './components/DemandBusinessReviewDrawer';
 import PushToReviewerModal, {
   type BusinessReviewerOption,
@@ -111,6 +112,7 @@ export default function JobsPage() {
   const [selectedDemand, setSelectedDemand] = useState<RecruitmentDemand | null>(null);
   const [detailMode, setDetailMode] = useState<'view' | 'edit'>('view');
   const [candidateDemand, setCandidateDemand] = useState<RecruitmentDemand | null>(null);
+  const [recruitDemand, setRecruitDemand] = useState<RecruitmentDemand | null>(null);
   const [businessReviewDemand, setBusinessReviewDemand] = useState<RecruitmentDemand | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -582,6 +584,7 @@ export default function JobsPage() {
           onReassignOwner={handleReassignOwner}
           onSelectCandidates={(req) => setCandidateDemand(req.source)}
           onViewCandidates={(req) => openCandidates(req, 'all')}
+          onRecruitAI={(req) => setRecruitDemand(req.source)}
           onStageCountClick={openStageProgress}
           sortField={sortField}
         />
@@ -618,6 +621,13 @@ export default function JobsPage() {
           onClose={() => setCandidateDemand(null)}
           onChanged={() => void loadDemands()}
           onReadyToPush={prepareBusinessPush}
+        />
+      )}
+
+      {recruitDemand && (
+        <RecruitWithAIModal
+          demand={recruitDemand}
+          onClose={() => setRecruitDemand(null)}
         />
       )}
 

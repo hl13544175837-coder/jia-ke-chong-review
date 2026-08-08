@@ -29,6 +29,7 @@ interface RequisitionTableProps {
   onReassignOwner: (id: number, ownerId: number, reason: string) => Promise<void>;
   onSelectCandidates: (req: RequisitionTableProps['data'][0]) => void;
   onViewCandidates: (req: RequisitionTableProps['data'][0]) => void;
+  onRecruitAI: (req: RequisitionTableProps['data'][0]) => void;
   onStageCountClick: (req: RequisitionTableProps['data'][0], stage: DemandStageDrilldown) => void;
   sortField: DemandSortField;
 }
@@ -51,6 +52,7 @@ export default function RequisitionTable({
   onReassignOwner,
   onSelectCandidates,
   onViewCandidates,
+  onRecruitAI,
   onStageCountClick,
   sortField,
 }: RequisitionTableProps) {
@@ -286,6 +288,12 @@ export default function RequisitionTable({
                             <ActionButton size="sm" tone="secondary" onClick={(event) => { event.stopPropagation(); onViewCandidates(req); }}>
                               <i className="ri-team-line text-sm" />
                               查看候选人
+                            </ActionButton>
+                          )}
+                          {req.statusCode === 'active' && (
+                            <ActionButton size="sm" tone="secondary" onClick={(event) => { event.stopPropagation(); onRecruitAI(req); }} title="让 AI 助手按此岗位去 58/BOSS/猎聘 找人">
+                              <i className="ri-robot-line text-sm" />
+                              AI 找人
                             </ActionButton>
                           )}
                           <RowActionMenu ariaLabel={`打开${req.name}的更多操作`} items={menuItems} />
