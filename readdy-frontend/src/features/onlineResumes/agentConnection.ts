@@ -35,7 +35,21 @@ export function buildAgentConnectionPrompt({
   请固定执行：
 1. 查看BOSS直聘中向我打招呼的候选人，按本次JD判断是否基本符合。
 2. 只把值得继续联系的候选人导入智聘，不要求全部导入。
-3. 在线简历使用 POST ${api}/agent-imports/online-resumes，提交稳定的 external_record_id、demand_id=${demand.id}、boss_account、source_url、resume_json（结构化字段 + raw_text 原文）和从最早到最新的完整聊天记录。
+3. 在线简历使用 POST ${api}/agent-imports/online-resumes。推荐极简格式，最稳、不易报错（只填核心字段，其余系统自动补全）：
+   [
+     {
+       "name": "候选人姓名(必填)",
+       "phone": "手机号(用于去重，尽量填)",
+       "position": "目标岗位",
+       "source_platform": "BOSS直聘",
+       "resume_text": "从BOSS页面复制的候选人完整资料原文",
+       "source_url": "候选人主页链接(可选)",
+       "chat_json": [{"sender":"我或候选人","text":"消息内容","sent_at":"2026-08-08T12:00:00+08:00"}]
+     }
+   ]
+   - demand_id 可填 ${demand.id}，也可省略（省略时系统自动归入当前需求，填错也不会报错，会自动纠正）。
+   - external_record_id 可省略（系统自动按 手机号/姓名 生成，重复导入自动去重）。
+   - 如候选人资料不完整，也可补充 age/gender/education_level/years_of_experience/salary_expectation/location 等字段。
 4. 聊天记录每条包含 sender、text、sent_at；sent_at必须带时区。
 5. 收到候选人完整PDF、DOCX或图片简历后，下载原始文件并提取完整结构化内容，使用 POST ${api}/agent-imports/full-resumes 上传原文件、target_demand_id=${demand.id}、boss_account、source_link和metadata_json。
 6. 完整简历的 external_import_id 必须保持稳定，重复执行时不能换编号。

@@ -71,7 +71,13 @@ class OnlineResumeService:
         role: str,
         items: list[dict],
     ) -> dict:
-        """Create or update by (org, owner, platform, external_record_id)."""
+        """Create or update by (org, owner, platform, external_record_id).
+
+        支持极简导入：外部 Agent 只需提供 name + 基本信息（phone/position/
+        resume_text 等），demand_id / external_record_id / resume_json 均可省略，
+        系统自动补全；需求 ID 填错或未填时自动归入当前账号首个可管理需求，
+        不因需求归属报错。
+        """
 
         if not isinstance(items, list):
             raise OnlineResumeValidationError("请提供在线简历列表")
@@ -87,6 +93,7 @@ class OnlineResumeService:
             "updated": 0,
             "skipped_deleted": 0,
             "failed": 0,
+            "warnings": 0,
             "results": [],
         }
         for raw_item in items:
@@ -107,12 +114,22 @@ class OnlineResumeService:
                         }
                     )
                     continue
-                demand = self._resolve_manageable_demand(
+                demand, demand_warning = self._resolve_manageable_demand(
                     org_id=org_id,
                     owner_hr_id=owner_hr_id,
                     role=role,
                     demand_id=item["demand_id"],
                 )
+                if demand is None:
+                    result["failed"] += 1
+                    result["results"].append(
+                        {
+                            "external_record_id": item["external_record_id"],
+                            "status": "error",
+                            "error": demand_warning or "没有可导入的招聘需求",
+                        }
+                    )
+                    continue
                 row, status = self._upsert_item(
                     org_id=org_id,
                     owner_hr_id=owner_hr_id,
@@ -122,13 +139,16 @@ class OnlineResumeService:
                 )
                 db.session.commit()
                 result[status] += 1
-                result["results"].append(
-                    {
-                        "external_record_id": row.external_record_id,
-                        "id": row.id,
-                        "status": status,
-                    }
-                )
+                entry = {
+                    "external_record_id": row.external_record_id,
+                    "id": row.id,
+                    "status": status,
+                }
+                warnings = [w for w in (demand_warning, item.get("_warning")) if w]
+                if warnings:
+                    result["warnings"] += 1
+                    entry["warnings"] = warnings
+                result["results"].append(entry)
             except OnlineResumeValidationError as exc:
                 db.session.rollback()
                 result["failed"] += 1
@@ -495,41 +515,118 @@ class OnlineResumeService:
         org_id: int,
         owner_hr_id: int,
         role: str,
-        demand_id: int,
-    ) -> RecruitmentDemand:
-        demand = resolve_demand_context(
+        demand_id: int | None,
+    ) -> tuple[RecruitmentDemand | None, str | None]:
+        """宽容解析需求：指定 ID 不可用/无权时自动回退到首个可管理需求。
+
+        返回 (demand, warning)；demand 为 None 表示账号下没有任何可导入需求，
+        warning 描述原因（可直接展示给调用方/外部 Agent）。
+        """
+        if demand_id is not None and demand_id > 0:
+            try:
+                demand = resolve_demand_context(
+                    org_id=org_id,
+                    demand_id=demand_id,
+                    open_only=True,
+                )
+            except DemandContextError:
+                demand = None
+            if demand is not None and can_manage_demand(
+                owner_hr_id, role, org_id, demand
+            ):
+                return demand, None
+            auto = self._first_manageable_demand(
+                org_id=org_id,
+                owner_hr_id=owner_hr_id,
+                role=role,
+            )
+            if auto is not None:
+                return auto, (
+                    f"需求({demand_id})不可用或无权导入，"
+                    f"已自动归入 {auto.request_no}"
+                )
+            return None, (
+                f"需求({demand_id})不可用，且当前账号名下没有其他可导入的招聘需求"
+            )
+        auto = self._first_manageable_demand(
             org_id=org_id,
-            demand_id=demand_id,
-            open_only=True,
+            owner_hr_id=owner_hr_id,
+            role=role,
         )
-        if not can_manage_demand(owner_hr_id, role, org_id, demand):
-            raise OnlineResumeValidationError("无权导入到该招聘需求")
-        return demand
+        if auto is not None:
+            return auto, None
+        return None, "当前账号名下没有可导入的招聘需求，请先创建需求或联系管理员"
+
+    def _first_manageable_demand(
+        self,
+        *,
+        org_id: int,
+        owner_hr_id: int,
+        role: str,
+    ) -> RecruitmentDemand | None:
+        demands = (
+            RecruitmentDemand.query.filter_by(org_id=org_id, status="active")
+            .order_by(RecruitmentDemand.id.asc())
+            .all()
+        )
+        for demand in demands:
+            try:
+                if can_manage_demand(owner_hr_id, role, org_id, demand):
+                    return demand
+            except Exception:
+                continue
+        return None
 
     def _validate_import_item(self, item: dict) -> dict:
         if not isinstance(item, dict):
             raise OnlineResumeValidationError("每份在线简历必须是对象")
-        try:
-            demand_id = int(item.get("demand_id"))
-        except (TypeError, ValueError):
-            raise OnlineResumeValidationError("招聘需求编号无效") from None
-        if demand_id <= 0:
-            raise OnlineResumeValidationError("招聘需求编号无效")
 
+        # 极简模式：仅姓名必填；其余字段均可由系统补全。
+        display_name = self._optional_text(
+            item.get("display_name") or item.get("name"),
+            max_length=100,
+        )
+        if not display_name:
+            raise OnlineResumeValidationError("候选人姓名不能为空")
+
+        # demand_id 可选：空/0/非法都不直接报错，交给 _resolve_manageable_demand 宽容处理
+        demand_id: int | None = None
+        raw_demand_id = item.get("demand_id")
+        if raw_demand_id not in (None, "", 0):
+            try:
+                parsed = int(raw_demand_id)
+                demand_id = parsed if parsed > 0 else None
+            except (TypeError, ValueError):
+                demand_id = None
+
+        # resume_json 可选：缺失时从 resume_text / 顶层字段自动构造
+        resume_text = item.get("resume_text") or item.get("raw_text")
+        if isinstance(resume_text, str):
+            resume_text = resume_text.strip()
         resume_json = item.get("resume_json")
         if not isinstance(resume_json, dict):
-            raise OnlineResumeValidationError("结构化简历必须是对象")
+            resume_json = {}
+        extracted_info = resume_json.get("extracted_info")
+        info = extracted_info if isinstance(extracted_info, dict) else {}
+        if not info:
+            info = self._build_minimal_info(item, resume_text)
+            resume_json = {
+                "extracted_info": info,
+                "raw_text": resume_text or "",
+            }
+        else:
+            # 外部显式提供完整结构化数据时保留严格质量校验（防脏数据）；
+            # 极简自动构造的字段走宽松路径，允许人工后续补全。
+            _validate_extracted_quality(info)
         self._validate_serialized_size(
             resume_json,
             max_bytes=self.MAX_RESUME_JSON_BYTES,
             error_message="结构化简历内容不能超过 1MB",
         )
-        extracted_info = resume_json.get("extracted_info")
-        info = extracted_info if isinstance(extracted_info, dict) else resume_json
-        _validate_extracted_quality(info)
+
         chat_json = item.get("chat_json")
         if not isinstance(chat_json, list):
-            raise OnlineResumeValidationError("完整聊天记录必须是列表")
+            chat_json = []
         chat_json = self._normalize_chat_messages(chat_json)
 
         source_url = item.get("source_url")
@@ -545,32 +642,155 @@ class OnlineResumeService:
                 raise OnlineResumeValidationError(
                     "来源链接必须以 http:// 或 https:// 开头"
                 )
+
+        # external_record_id 可选：缺省自动生成，保证幂等去重
+        external_record_id = self._optional_text(
+            item.get("external_record_id"),
+            max_length=200,
+        )
+        if not external_record_id:
+            external_record_id = self._auto_external_id(item, info)
+        source_platform = self._optional_text(
+            item.get("source_platform") or "BOSS直聘",
+            max_length=60,
+        ) or "BOSS直聘"
+        boss_account = self._optional_text(
+            item.get("boss_account"),
+            max_length=160,
+        )
+        if not boss_account:
+            boss_account = "unknown"
+
         return {
             "demand_id": demand_id,
-            "external_record_id": self._required_text(
-                item.get("external_record_id"),
-                field_name="外部记录编号",
-                max_length=200,
-            ),
-            "boss_account": self._required_text(
-                item.get("boss_account"),
-                field_name="BOSS 账号",
-                max_length=160,
-            ),
-            "source_platform": self._required_text(
-                item.get("source_platform") or "BOSS直聘",
-                field_name="来源平台",
-                max_length=60,
-            ),
-            "display_name": self._required_text(
-                item.get("display_name") or "未命名候选人",
-                field_name="候选人名称",
-                max_length=100,
-            ),
+            "external_record_id": external_record_id,
+            "boss_account": boss_account,
+            "source_platform": source_platform,
+            "display_name": display_name,
             "resume_json": resume_json,
             "chat_json": chat_json,
             "source_url": normalized_source_url or None,
+            "_warning": None,
         }
+
+    @staticmethod
+    def _build_minimal_info(item: dict, resume_text: str | None) -> dict:
+        """从极简字段 + 简历原文构造 extracted_info（只放行可靠字段）。"""
+        def text_value(*keys):
+            for key in keys:
+                value = item.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return None
+
+        info: dict[str, str] = {}
+        name = text_value("name", "display_name")
+        if name:
+            info["name"] = name
+
+        target_position = text_value("target_position", "position")
+        if target_position:
+            info["target_position"] = target_position
+        else:
+            info["target_position"] = name or ""
+
+        for key, label in (
+            ("age", "age"), ("gender", "gender"),
+            ("education_level", "education_level"),
+            ("years_of_experience", "years_of_experience"),
+            ("salary_expectation", "salary_expectation"),
+            ("location", "location"),
+            ("availability", "availability"),
+            ("summary", "summary"),
+        ):
+            value = text_value(key)
+            if value:
+                info[label] = value
+
+        if isinstance(resume_text, str) and resume_text:
+            info.setdefault("age", OnlineResumeService._extract_age(resume_text))
+            info.setdefault(
+                "years_of_experience",
+                OnlineResumeService._extract_experience(resume_text),
+            )
+            education = OnlineResumeService._extract_education(resume_text)
+            if education:
+                info.setdefault("education_level", education)
+            city = OnlineResumeService._extract_city(resume_text)
+            if city:
+                info.setdefault("location", city)
+            salary = OnlineResumeService._extract_salary(resume_text)
+            if salary:
+                info.setdefault("salary_expectation", salary)
+        if not info.get("summary"):
+            info["summary"] = name or ""
+        return info
+
+    @staticmethod
+    def _auto_external_id(item: dict, info: dict) -> str:
+        platform = str(
+            item.get("source_platform") or "BOSS直聘"
+        ).strip()[:20] or "BOSS直聘"
+        phone = str(info.get("phone") or item.get("phone") or "").strip()
+        name = str(info.get("name") or item.get("name") or "").strip()
+        base = phone or name or "candidate"
+        digest = json.dumps(
+            [base, str(item.get("source_url") or "")],
+            ensure_ascii=False,
+        ).encode("utf-8")
+        import hashlib
+
+        suffix = hashlib.sha1(digest).hexdigest()[:10]
+        return f"{platform}:auto:{base[:40]}:{suffix}"
+
+    @staticmethod
+    def _extract_age(text: str) -> str:
+        match = re.search(r"(\d{1,2})\s*岁", text)
+        return f"{match.group(1)}岁" if match else ""
+
+    @staticmethod
+    def _extract_experience(text: str) -> str:
+        match = re.search(r"(\d+)\s*年(?:以上)?(?:工作)?经验", text)
+        return f"{match.group(1)}年" if match else ""
+
+    @staticmethod
+    def _extract_education(text: str) -> str:
+        for level in ("博士", "硕士", "本科", "大专", "中专", "高中"):
+            if level in text:
+                return level
+        return ""
+
+    _CITIES = (
+        "北京", "上海", "广州", "深圳", "杭州", "成都", "武汉", "南京",
+        "苏州", "西安", "重庆", "天津", "长沙", "郑州", "青岛", "大连",
+        "厦门", "福州", "济南", "合肥", "宁波", "无锡", "佛山", "东莞",
+        "珠海", "昆明", "南昌", "贵阳", "南宁", "海口", "兰州", "太原",
+    )
+
+    @classmethod
+    def _extract_city(cls, text: str) -> str:
+        for city in cls._CITIES:
+            if city in text:
+                return city
+        return ""
+
+    @staticmethod
+    def _extract_salary(text: str) -> str:
+        pattern = re.compile(
+            r"\d+(?:\.\d+)?\s*[kKwW万]?\s*[-~至]\s*\d+(?:\.\d+)?\s*[kKwW万]"
+            r"|\d+(?:\.\d+)?\s*[kKwW万]\s*[×x*]\s*\d+\s*薪"
+        )
+        match = pattern.search(text)
+        return match.group(0) if match else ""
+
+    @staticmethod
+    def _optional_text(value, *, max_length: int) -> str:
+        if not isinstance(value, str) or not value.strip():
+            return ""
+        normalized = value.strip()
+        if len(normalized) > max_length:
+            return normalized[:max_length]
+        return normalized
 
     def _normalize_chat_messages(self, chat_json: list) -> list[dict]:
         if len(chat_json) > self.MAX_CHAT_MESSAGES:
