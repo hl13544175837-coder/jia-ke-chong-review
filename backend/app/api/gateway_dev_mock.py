@@ -69,7 +69,14 @@ def oauth_login():
     """模拟公司网关登录：按账号(email/姓名)匹配用户，签发真实 JWT。仅开发用，不校验密码。"""
     data = request.get_json(silent=True) or {}
     account = str(data.get("account") or "").strip()
-    user = User.query.filter(db.or_(User.email == account, User.name == account)).first()
+    # 支持 email 全量、工号(email 前缀)、姓名三种匹配方式
+    user = User.query.filter(
+        db.or_(
+            User.email == account,
+            User.email.like(f"{account}@%"),
+            User.name == account,
+        )
+    ).first()
     if user is None or not user.is_active:
         return jsonify({"succ": False, "code": 0, "msg": "账号不存在或已停用（本地开发网关）"}), 200
     return jsonify({"succ": True, "code": 1, "data": {"token": _issue_token(user)}})

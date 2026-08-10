@@ -28,7 +28,7 @@ export default defineConfig({
   webServer: externalBaseUrl
     ? undefined
     : {
-        command: 'COMPANY_GATEWAY_PROXY_TARGET=http://127.0.0.1:5110 COMPANY_API_PROXY_TARGET=http://127.0.0.1:5010 VITE_API_BASE_URL=/api VITE_OAUTH_BASE_URL=/pgs/oauth npm run dev -- --host 127.0.0.1 --port 5290 --strictPort',
+        command: 'COMPANY_GATEWAY_PROXY_TARGET=http://127.0.0.1:5010 COMPANY_API_PROXY_TARGET=http://127.0.0.1:5010 VITE_API_BASE_URL=/api VITE_OAUTH_BASE_URL=/pgs/oauth npm run dev -- --host 127.0.0.1 --port 5290 --strictPort',
         url: `${localBaseUrl}/login`,
         reuseExistingServer: true,
         timeout: 120_000,

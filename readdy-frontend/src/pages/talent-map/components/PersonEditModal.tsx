@@ -162,8 +162,9 @@ export default function PersonEditModal({
           <div className="p-6 space-y-4 overflow-y-auto">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className={labelClass}>姓名 <span className="text-accent-500">*</span></label>
+                <label htmlFor="person-name" className={labelClass}>姓名 <span className="text-accent-500">*</span></label>
                 <input
+                  id="person-name"
                   type="text"
                   value={form.name}
                   onChange={(e) => set('name', e.target.value)}
@@ -172,8 +173,9 @@ export default function PersonEditModal({
                 />
               </div>
               <div>
-                <label className={labelClass}>目标公司 <span className="text-accent-500">*</span></label>
+                <label htmlFor="person-company" className={labelClass}>目标公司 <span className="text-accent-500">*</span></label>
                 <select
+                  id="person-company"
                   value={form.company_id}
                   onChange={(e) => set('company_id', e.target.value)}
                   className={inputClass}
@@ -185,8 +187,9 @@ export default function PersonEditModal({
                 </select>
               </div>
               <div>
-                <label className={labelClass}>部门</label>
+                <label htmlFor="person-department" className={labelClass}>部门</label>
                 <input
+                  id="person-department"
                   type="text"
                   list="person-dept-options"
                   value={form.department}
@@ -199,8 +202,9 @@ export default function PersonEditModal({
                 </datalist>
               </div>
               <div>
-                <label className={labelClass}>岗位</label>
+                <label htmlFor="person-title" className={labelClass}>岗位</label>
                 <input
+                  id="person-title"
                   type="text"
                   list="person-title-options"
                   value={form.title}
@@ -213,7 +217,7 @@ export default function PersonEditModal({
                 </datalist>
               </div>
               <div>
-                <label className={labelClass}>
+                <label htmlFor="person-level" className={labelClass}>
                   职级
                   {!form.level && (
                     <span className="ml-1.5 text-[10px] text-secondary-600 bg-secondary-50 px-1.5 py-0.5 rounded">
@@ -223,6 +227,7 @@ export default function PersonEditModal({
                 </label>
                 <input
                   type="text"
+                  id="person-level"
                   value={form.level}
                   onChange={(e) => set('level', e.target.value)}
                   placeholder="如：专家级 / 高级 / 总监级"
@@ -230,8 +235,9 @@ export default function PersonEditModal({
                 />
               </div>
               <div>
-                <label className={labelClass}>负责模块</label>
+                <label htmlFor="person-module" className={labelClass}>负责模块</label>
                 <input
+                  id="person-module"
                   type="text"
                   value={form.module}
                   onChange={(e) => set('module', e.target.value)}
@@ -240,8 +246,9 @@ export default function PersonEditModal({
                 />
               </div>
               <div>
-                <label className={labelClass}>联系电话</label>
+                <label htmlFor="person-phone" className={labelClass}>联系电话</label>
                 <input
+                  id="person-phone"
                   type="text"
                   value={form.phone}
                   onChange={(e) => set('phone', e.target.value)}
@@ -250,8 +257,9 @@ export default function PersonEditModal({
                 />
               </div>
               <div>
-                <label className={labelClass}>联系状态</label>
+                <label htmlFor="person-status" className={labelClass}>联系状态</label>
                 <select
+                  id="person-status"
                   value={form.contact_status}
                   onChange={(e) => set('contact_status', e.target.value)}
                   className={inputClass}
@@ -263,8 +271,9 @@ export default function PersonEditModal({
               </div>
             </div>
             <div>
-              <label className={labelClass}>备注 / 联系情况</label>
+              <label htmlFor="person-note" className={labelClass}>备注 / 联系情况</label>
               <textarea
+                id="person-note"
                 value={form.note}
                 onChange={(e) => set('note', e.target.value)}
                 placeholder="记录沟通进展、意向度、薪资预期等，可随时补充"

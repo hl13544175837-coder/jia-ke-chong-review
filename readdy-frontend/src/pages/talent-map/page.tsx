@@ -548,6 +548,14 @@ export default function TalentMapPage() {
               <p className="mt-1 text-xs text-foreground-500">
                 用右上角「AI 从简历库导入」批量灌入，或手动录入第一位人才。
               </p>
+              <div className="mt-5 flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setPersonModal({ open: true, person: null, dept: '', title: '' })}
+                  className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                >
+                  手动录入第一位人才
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
@@ -680,10 +688,11 @@ export default function TalentMapPage() {
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-foreground-600 mb-1.5">
+                  <label htmlFor="talent-company-name" className="block text-xs font-medium text-foreground-600 mb-1.5">
                     公司名称 <span className="text-accent-500">*</span>
                   </label>
                   <input
+                    id="talent-company-name"
                     type="text"
                     value={companyForm.name}
                     onChange={(e) => setCompanyForm((prev) => ({ ...prev, name: e.target.value }))}
@@ -692,8 +701,9 @@ export default function TalentMapPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground-600 mb-1.5">所属行业</label>
+                  <label htmlFor="talent-company-industry" className="block text-xs font-medium text-foreground-600 mb-1.5">所属行业</label>
                   <input
+                    id="talent-company-industry"
                     type="text"
                     value={companyForm.industry}
                     onChange={(e) => setCompanyForm((prev) => ({ ...prev, industry: e.target.value }))}
@@ -702,8 +712,9 @@ export default function TalentMapPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground-600 mb-1.5">备注</label>
+                  <label htmlFor="talent-company-note" className="block text-xs font-medium text-foreground-600 mb-1.5">备注</label>
                   <textarea
+                    id="talent-company-note"
                     value={companyForm.note}
                     onChange={(e) => setCompanyForm((prev) => ({ ...prev, note: e.target.value }))}
                     placeholder="公司规模、业务特色等"
