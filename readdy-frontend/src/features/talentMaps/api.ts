@@ -29,6 +29,9 @@ export const talentMapsApi = {
   createCompany(mapId: number, payload: TalentMapCompanyInput): Promise<TalentMapCompany> {
     return apiRequest(`/talent-maps/${mapId}/companies`, { method: 'POST', body: payload });
   },
+  bulkCreateCompanies(mapId: number, items: Array<{ company_name: string; industry?: string; city?: string; note?: string }>): Promise<{ created: TalentMapCompany[]; count: number; skipped: number }> {
+    return apiRequest(`/talent-maps/${mapId}/companies/bulk`, { method: 'POST', body: { items } });
+  },
   updateCompany(companyId: number, payload: Partial<TalentMapCompanyInput>): Promise<TalentMapCompany> {
     return apiRequest(`/talent-map-companies/${companyId}`, { method: 'PATCH', body: payload });
   },

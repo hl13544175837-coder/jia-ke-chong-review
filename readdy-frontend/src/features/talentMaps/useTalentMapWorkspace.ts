@@ -184,6 +184,23 @@ export function useTalentMapWorkspace() {
     }
   }, [detail, refresh]);
 
+  const bulkCreateCompanies = useCallback(async (items: Array<{ company_name: string; industry?: string; city?: string; note?: string }>) => {
+    if (!detail) throw new Error('请先选择人才地图');
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await talentMapsApi.bulkCreateCompanies(detail.id, items);
+      await refresh(detail.id);
+      return result;
+    } catch (saveError) {
+      const saveMessage = messageFrom(saveError, '批量创建公司失败');
+      setError(saveMessage);
+      throw new Error(saveMessage, { cause: saveError });
+    } finally {
+      setSaving(false);
+    }
+  }, [detail, refresh]);
+
   const updatePerson = useCallback(async (personId: number, payload: Partial<ImportConfirmItem>) => {
     setSaving(true);
     setError(null);
@@ -247,6 +264,7 @@ export function useTalentMapWorkspace() {
     addCompany,
     createPerson,
     updatePerson,
+    bulkCreateCompanies,
     loadResumeCandidates,
     previewImport,
     confirmImport,

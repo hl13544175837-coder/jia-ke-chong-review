@@ -337,6 +337,55 @@ def create_talent_map_company(map_id):
     return jsonify(_company_payload(company)), 201
 
 
+@bp.post("/talent-maps/<int:map_id>/companies/bulk")
+@require_auth
+@require_role("recruiter", "manager", "admin", "hr_director")
+def bulk_create_talent_map_companies(map_id):
+    """批量创建目标公司：每项 {company_name, industry?, note?}，同名自动跳过。"""
+    talent_map = db.get_or_404(TalentMap, map_id)
+    if not same_org(talent_map, g.org_id):
+        return jsonify({"error": "人才地图不存在"}), 404
+    if not _can_manage_map(talent_map):
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    if not isinstance(items, list) or not items:
+        return jsonify({"error": "items required"}), 400
+
+    existing = {company.company_name for company in talent_map.companies}
+    created, skipped = [], 0
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        company_name = _clean(raw.get("company_name") or raw.get("name"), 200)
+        if not company_name:
+            continue
+        if company_name in existing:
+            skipped += 1
+            continue
+        company = TalentMapCompany(
+            org_id=g.org_id,
+            map_id=talent_map.id,
+            company_name=company_name,
+        )
+        _apply_company_fields(company, {
+            "industry": raw.get("industry"),
+            "city": raw.get("city"),
+            "note": raw.get("note"),
+        })
+        db.session.add(company)
+        db.session.flush()
+        existing.add(company_name)
+        created.append(_company_payload(company))
+
+    _commit_with_event(
+        "talent_map_company.bulk_created",
+        entity_id=talent_map.id,
+        entity_type="talent_map",
+    )
+    return jsonify({"created": created, "count": len(created), "skipped": skipped}), 201
+
+
 @bp.patch("/talent-map-companies/<int:company_id>")
 @require_auth
 @require_role("recruiter", "manager", "admin", "hr_director")

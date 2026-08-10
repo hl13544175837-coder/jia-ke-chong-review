@@ -80,6 +80,7 @@ export default function TalentMapPage() {
     error,
     refresh,
     addCompany,
+    bulkCreateCompanies,
     createPerson,
     updatePerson,
   } = workspace;
@@ -98,6 +99,8 @@ export default function TalentMapPage() {
   const [addCompanyOpen, setAddCompanyOpen] = useState(false);
   const [companyForm, setCompanyForm] = useState({ name: '', industry: '', note: '' });
   const [companyError, setCompanyError] = useState<string | null>(null);
+  const [addCompanyMode, setAddCompanyMode] = useState<'single' | 'bulk'>('single');
+  const [bulkText, setBulkText] = useState('');
 
   // 新增公司弹窗支持 Esc 关闭
   useEffect(() => {
@@ -195,6 +198,31 @@ export default function TalentMapPage() {
       showToast('目标公司已创建');
     } catch (saveError) {
       setCompanyError(saveError instanceof Error ? saveError.message : '公司保存失败');
+    }
+  };
+
+  const handleBulkAddCompanies = async () => {
+    const lines = bulkText.split('\n').map((line) => line.trim()).filter(Boolean);
+    if (lines.length === 0) {
+      showToast('请先粘贴公司名单');
+      return;
+    }
+    const items = lines.map((line) => {
+      const parts = line.split(/[,，\t]/).map((part) => part.trim());
+      return { company_name: parts[0], industry: parts[1] || '' };
+    });
+    setCompanyError(null);
+    try {
+      const result = await bulkCreateCompanies(items);
+      setAddCompanyOpen(false);
+      setBulkText('');
+      showToast(
+        result.skipped > 0
+          ? `批量创建完成：${result.count} 家入库，跳过重复 ${result.skipped} 家`
+          : `批量创建完成：${result.count} 家公司已入库`,
+      );
+    } catch (saveError) {
+      setCompanyError(saveError instanceof Error ? saveError.message : '批量创建失败');
     }
   };
 
@@ -687,6 +715,24 @@ export default function TalentMapPage() {
                 </button>
               </div>
               <div className="p-6 space-y-4">
+                <div className="flex rounded-lg bg-background-100 p-0.5 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setAddCompanyMode('single')}
+                    className={`px-3 py-1.5 rounded-md text-sm transition-colors cursor-pointer ${addCompanyMode === 'single' ? 'bg-white shadow-sm text-foreground-900 font-medium' : 'text-foreground-500 hover:text-foreground-700'}`}
+                  >
+                    单个添加
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddCompanyMode('bulk')}
+                    className={`px-3 py-1.5 rounded-md text-sm transition-colors cursor-pointer ${addCompanyMode === 'bulk' ? 'bg-white shadow-sm text-foreground-900 font-medium' : 'text-foreground-500 hover:text-foreground-700'}`}
+                  >
+                    批量导入
+                  </button>
+                </div>
+                {addCompanyMode === 'single' ? (
+                  <>
                 <div>
                   <label htmlFor="talent-company-name" className="block text-xs font-medium text-foreground-600 mb-1.5">
                     公司名称 <span className="text-accent-500">*</span>
@@ -722,6 +768,21 @@ export default function TalentMapPage() {
                     className={`${inputClass} resize-none`}
                   ></textarea>
                 </div>
+                  </>
+                ) : (
+                  <div>
+                    <label htmlFor="talent-bulk-companies" className="block text-xs font-medium text-foreground-600 mb-1.5">公司名单（每行一家）</label>
+                    <textarea
+                      id="talent-bulk-companies"
+                      value={bulkText}
+                      onChange={(e) => setBulkText(e.target.value)}
+                      placeholder={"每行一家公司，可用逗号带上行业\n如：\n字节跳动,互联网\n腾讯,互联网\n阿里巴巴,互联网"}
+                      rows={7}
+                      className={`${inputClass} resize-none font-mono`}
+                    ></textarea>
+                    <p className="text-[10px] text-foreground-400 mt-1">重复公司自动跳过；创建后即可用 AI 导入匹配人才</p>
+                  </div>
+                )}
                 {companyError && (
                   <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{companyError}</p>
                 )}
@@ -734,13 +795,23 @@ export default function TalentMapPage() {
                 >
                   取消
                 </button>
-                <button
-                  onClick={() => void handleAddCompany()}
-                  disabled={saving || !companyForm.name.trim()}
-                  className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
-                >
-                  {saving ? '保存中…' : '创建公司'}
-                </button>
+                {addCompanyMode === 'single' ? (
+                  <button
+                    onClick={() => void handleAddCompany()}
+                    disabled={saving || !companyForm.name.trim()}
+                    className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                  >
+                    {saving ? '保存中…' : '创建公司'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => void handleBulkAddCompanies()}
+                    disabled={saving || !bulkText.trim()}
+                    className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                  >
+                    {saving ? '创建中…' : '批量创建'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
