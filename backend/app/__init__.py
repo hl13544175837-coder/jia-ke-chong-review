@@ -47,6 +47,11 @@ def create_app(config=None):
     for bp in [auth.bp, resume.bp, jobs.bp, demands.bp, talent_maps.bp, candidates.bp, match.bp, interview.bp, pipeline.bp, bi.bp, analytics.bp, agent.bp, admin.bp, notifications.bp, boss.bp, kpi_standards.bp, business_reviews.bp, agent_imports.bp, online_resumes.bp]:
         app.register_blueprint(bp, url_prefix="/api")
 
+    # 本地开发专用网关模拟（仅 debug 模式注册，生产环境不加载；用于绕过公司网关本地登录演示）
+    if app.config.get("FLASK_DEBUG", False):
+        from .api import gateway_dev_mock
+        app.register_blueprint(gateway_dev_mock.bp, url_prefix="/pgs")
+
     _register_request_audit(app)
     _register_idempotency(app)
     _register_security_headers(app)

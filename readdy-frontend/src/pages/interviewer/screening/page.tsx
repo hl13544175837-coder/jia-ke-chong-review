@@ -369,7 +369,7 @@ export default function InterviewerScreeningPage() {
           closeLabel="关闭业务筛选详情"
           onClose={closeTaskDetail}
           backdropClassName="workspace-detail-backdrop fixed inset-0 z-40 cursor-default bg-black/35 lg:left-[var(--workspace-sidebar-width)] lg:top-14"
-          panelClassName="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-3xl flex-col bg-white shadow-xl lg:top-14"
+          panelClassName="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-5xl flex-col bg-white shadow-xl lg:top-14"
         >
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-background-200 bg-white px-5 py-4">
               <div>

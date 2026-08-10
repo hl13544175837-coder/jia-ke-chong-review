@@ -2,7 +2,6 @@ import { useEffect, useState, type ComponentType } from 'react';
 import {
   AlertCircle,
   Check,
-  CircleHelp,
   LoaderCircle,
   X,
 } from 'lucide-react';
@@ -55,25 +54,18 @@ interface DecisionConfig {
 
 const actionConfig: Record<BusinessDecision, DecisionConfig> = {
   approved: {
-    label: '通过，进入一面',
-    description: '保存通过结论，等待 HR 安排一面',
+    label: '同意面试',
+    description: '同意候选人进入面试，等待 HR 安排一面',
     icon: Check,
     activeClass: 'border-emerald-300 bg-emerald-50 text-emerald-800',
     buttonClass: 'bg-emerald-600 hover:bg-emerald-700',
   },
   rejected: {
-    label: '不合适',
-    description: '返回 HR 确认，不会在这里直接淘汰',
+    label: '不同意面试',
+    description: '说明原因，返回 HR 确认',
     icon: X,
     activeClass: 'border-red-300 bg-red-50 text-red-800',
     buttonClass: 'bg-red-600 hover:bg-red-700',
-  },
-  needs_info: {
-    label: '需要 HR 补充信息',
-    description: '说明缺少的资料，等待 HR 补充后再处理',
-    icon: CircleHelp,
-    activeClass: 'border-amber-300 bg-amber-50 text-amber-800',
-    buttonClass: 'bg-amber-600 hover:bg-amber-700',
   },
 };
 

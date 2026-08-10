@@ -1,5 +1,9 @@
 import { apiRequest } from '@/lib/api';
 import type {
+  ImportConfirmItem,
+  ImportConfirmResult,
+  ImportPreviewResult,
+  ResumeCandidateItem,
   TalentMapCompany,
   TalentMapCompanyInput,
   TalentMapCreateInput,
@@ -33,5 +37,23 @@ export const talentMapsApi = {
   },
   updatePerson(personId: number, payload: Partial<TalentMapPersonInput>): Promise<TalentMapPerson> {
     return apiRequest(`/talent-map-people/${personId}`, { method: 'PATCH', body: payload });
+  },
+
+  /* ---------- AI 从简历库导入 ---------- */
+  resumeCandidates(mapId: number, keyword = ''): Promise<{ items: ResumeCandidateItem[]; total: number }> {
+    const query = keyword ? `?keyword=${encodeURIComponent(keyword)}` : '';
+    return apiRequest(`/talent-maps/${mapId}/resume-candidates${query}`);
+  },
+  previewImport(mapId: number, candidateIds: number[]): Promise<ImportPreviewResult> {
+    return apiRequest(`/talent-maps/${mapId}/import/preview`, {
+      method: 'POST',
+      body: { candidate_ids: candidateIds },
+    });
+  },
+  confirmImport(mapId: number, items: ImportConfirmItem[]): Promise<ImportConfirmResult> {
+    return apiRequest(`/talent-maps/${mapId}/import/confirm`, {
+      method: 'POST',
+      body: { items },
+    });
   },
 };

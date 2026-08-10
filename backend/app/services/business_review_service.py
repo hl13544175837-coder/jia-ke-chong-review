@@ -28,8 +28,9 @@ from .pipeline_service import can_enter_business_review, normalize_pipeline_stag
 
 
 BUSINESS_REVIEW_STATUSES = {"pending", "approved", "rejected", "needs_info"}
-BUSINESS_REVIEW_DECISIONS = {"approved", "rejected", "needs_info"}
-REASON_REQUIRED_DECISIONS = {"rejected", "needs_info"}
+# 决策只保留"同意面试 / 不同意面试"两类；needs_info 仅作历史状态兼容展示，不再允许提交
+BUSINESS_REVIEW_DECISIONS = {"approved", "rejected"}
+REASON_REQUIRED_DECISIONS = {"rejected"}
 BUSINESS_REVIEWER_ROLES = {"interviewer", "manager"}
 BUSINESS_REVIEW_MANAGER_ROLES = {"manager", "admin"}
 REMINDER_COOLDOWN = timedelta(minutes=15)
@@ -559,13 +560,13 @@ def decide_business_review(org_id, task_id, actor_id, decision, note):
     note = _clean_note(note)
     if decision not in BUSINESS_REVIEW_DECISIONS:
         raise BusinessReviewError(
-            "decision 必须是 approved、rejected 或 needs_info",
+            "decision 必须是 approved（同意面试）或 rejected（不同意面试）",
             code="invalid_business_review_decision",
             status_code=400,
         )
     if decision in REASON_REQUIRED_DECISIONS and not note:
         raise BusinessReviewError(
-            "拒绝或需要补充信息时必须填写原因",
+            "不同意面试时必须填写原因",
             code="business_review_note_required",
             status_code=400,
         )

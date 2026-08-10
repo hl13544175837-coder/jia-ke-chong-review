@@ -284,9 +284,8 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
       <DetailActionBar status={<span className="text-xs text-foreground-500">筛选状态：{task.status === 'pending' ? '待处理' : '已完成'}</span>}>
         {task.status === 'pending' && onReview ? (
           <>
-            <ActionButton tone="secondary" onClick={() => onReview('needs_info')}>请 HR 补充</ActionButton>
-            <ActionButton tone="danger" onClick={() => onReview('rejected')}>不合适</ActionButton>
-            <ActionButton tone="primary" onClick={() => onReview('approved')}>通过并提交</ActionButton>
+            <ActionButton tone="danger" onClick={() => onReview('rejected')}>不同意面试</ActionButton>
+            <ActionButton tone="primary" onClick={() => onReview('approved')}>同意面试</ActionButton>
           </>
         ) : <ActionButton tone="secondary" disabled>筛选已完成</ActionButton>}
       </DetailActionBar>

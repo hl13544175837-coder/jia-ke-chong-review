@@ -26,20 +26,14 @@ const choices: Array<{
   activeClass: string;
 }> = [
   {
-    value: 'satisfied',
-    label: '满意',
+    value: 'pass',
+    label: '通过',
     icon: CheckCircle2,
     activeClass: 'border-emerald-400 bg-emerald-50 text-emerald-700',
   },
   {
-    value: 'pending',
-    label: '待定',
-    icon: CircleHelp,
-    activeClass: 'border-amber-400 bg-amber-50 text-amber-700',
-  },
-  {
-    value: 'unsatisfied',
-    label: '不满意',
+    value: 'fail',
+    label: '不通过',
     icon: XCircle,
     activeClass: 'border-red-400 bg-red-50 text-red-700',
   },
@@ -57,7 +51,6 @@ const recommendationOptions: Array<{
 }> = [
   { value: 'next_round', label: '进入下一轮' },
   { value: 'offer', label: '建议进入 Offer' },
-  { value: 'hold', label: '暂缓，待补充确认' },
   { value: 'reject', label: '不建议继续' },
 ];
 
@@ -125,9 +118,9 @@ export default function SimpleFeedbackModal({
     satisfaction
     && jobMatch
     && recommendation
-    && (satisfaction !== 'satisfied' || strengths.trim())
-    && (satisfaction !== 'unsatisfied' || concerns.trim())
-    && (satisfaction !== 'pending' || note.trim()),
+    && (satisfaction !== 'pass' || strengths.trim())
+    && (satisfaction !== 'fail' || concerns.trim())
+    && true,
   );
 
   return (
@@ -217,7 +210,7 @@ export default function SimpleFeedbackModal({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="text-sm font-semibold text-foreground-800">优势{satisfaction === 'satisfied' && <span className="text-red-500"> *</span>}</span>
+              <span className="text-sm font-semibold text-foreground-800">优势{satisfaction === 'pass' && <span className="text-red-500"> *</span>}</span>
               <textarea
                 value={strengths}
                 onChange={(event) => setStrengths(event.target.value.slice(0, 1000))}
@@ -228,7 +221,7 @@ export default function SimpleFeedbackModal({
               />
             </label>
             <label className="block">
-              <span className="text-sm font-semibold text-foreground-800">顾虑{satisfaction === 'unsatisfied' && <span className="text-red-500"> *</span>}</span>
+              <span className="text-sm font-semibold text-foreground-800">顾虑{satisfaction === 'fail' && <span className="text-red-500"> *</span>}</span>
               <textarea
                 value={concerns}
                 onChange={(event) => setConcerns(event.target.value.slice(0, 1000))}
@@ -241,7 +234,7 @@ export default function SimpleFeedbackModal({
           </div>
 
           <label className="block">
-            <span className="text-sm font-semibold text-foreground-800">补充备注{satisfaction === 'pending' && <span className="text-red-500"> *</span>}</span>
+            <span className="text-sm font-semibold text-foreground-800">补充备注</span>
             <textarea
               value={note}
               onChange={(event) => setNote(event.target.value.slice(0, 1000))}

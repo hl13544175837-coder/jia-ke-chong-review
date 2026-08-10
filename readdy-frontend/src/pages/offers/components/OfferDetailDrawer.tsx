@@ -201,7 +201,7 @@ export default function OfferDetailDrawer({
       <aside
         ref={drawerRef}
         tabIndex={-1}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col bg-white shadow-2xl"
+        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-4xl flex-col bg-white shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="offer-detail-title"

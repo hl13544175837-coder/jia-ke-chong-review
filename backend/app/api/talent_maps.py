@@ -5,7 +5,14 @@ from flask import Blueprint, g, jsonify, request
 from .. import db
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
-from ..models import Job, TalentMap, TalentMapCompany, TalentMapPerson
+from ..models import (
+    Candidate,
+    Job,
+    OnlineResume,
+    TalentMap,
+    TalentMapCompany,
+    TalentMapPerson,
+)
 from .access import can_manage_job, same_org
 
 bp = Blueprint("talent_maps", __name__)
@@ -37,7 +44,7 @@ def _clean_tags(value):
 def _can_manage_map(talent_map):
     if not same_org(talent_map, g.org_id):
         return False
-    if g.role in ("manager", "admin"):
+    if g.role in ("manager", "admin", "hr_director"):
         return True
     return talent_map.owner_hr_id == g.user_id
 
@@ -118,13 +125,19 @@ def _person_payload(person):
         "company_id": person.company_id,
         "company_name": person.company.company_name if person.company else "",
         "name": person.name,
+        "department": person.department or "",
         "title": person.title or "",
+        "level": person.level or "",
+        "module": person.module or "",
+        "phone": person.phone or "",
         "city": person.city or "",
         "tags": person.tags or [],
         "salary_range": person.salary_range or "",
         "contact_status": person.contact_status or "未接触",
         "evaluation": person.evaluation or "",
         "source": person.source or "",
+        "owner_hr_id": person.owner_hr_id,
+        "owner_name": person.owner.name if person.owner else "",
         "next_follow_at": person.next_follow_at.isoformat() if person.next_follow_at else None,
         "note": person.note or "",
         "created_at": person.created_at.isoformat() if person.created_at else None,
@@ -184,8 +197,16 @@ def _apply_person_fields(person, data):
             person.company_id = company.id
     if "name" in data:
         person.name = _clean(data.get("name"), 120) or person.name
+    if "department" in data:
+        person.department = _clean(data.get("department"), 120)
     if "title" in data:
         person.title = _clean(data.get("title"), 160)
+    if "level" in data:
+        person.level = _clean(data.get("level"), 80)
+    if "module" in data:
+        person.module = _clean(data.get("module"), 120)
+    if "phone" in data:
+        person.phone = _clean(data.get("phone"), 60)
     if "city" in data:
         person.city = _clean(data.get("city"), 80)
     if "tags" in data:
@@ -230,7 +251,7 @@ def _filtered_people_query(talent_map):
 
 @bp.get("/talent-maps")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "hr_director")
 def list_talent_maps():
     maps = _map_query_for_current_user().order_by(TalentMap.updated_at.desc(), TalentMap.id.desc()).all()
     return jsonify([_map_summary_payload(item) for item in maps])
@@ -238,7 +259,7 @@ def list_talent_maps():
 
 @bp.post("/talent-maps")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "hr_director")
 def create_talent_map():
     data = request.get_json() or {}
     name = _clean(data.get("name"), 200)
@@ -260,7 +281,7 @@ def create_talent_map():
 
 @bp.get("/talent-maps/<int:map_id>")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "hr_director")
 def get_talent_map(map_id):
     talent_map = db.get_or_404(TalentMap, map_id)
     if not same_org(talent_map, g.org_id):
@@ -273,7 +294,7 @@ def get_talent_map(map_id):
 
 @bp.patch("/talent-maps/<int:map_id>")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "hr_director")
 def update_talent_map(map_id):
     talent_map = db.get_or_404(TalentMap, map_id)
     if not same_org(talent_map, g.org_id):
@@ -293,7 +314,7 @@ def update_talent_map(map_id):
 
 @bp.post("/talent-maps/<int:map_id>/companies")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "hr_director")
 def create_talent_map_company(map_id):
     talent_map = db.get_or_404(TalentMap, map_id)
     if not same_org(talent_map, g.org_id):
@@ -318,7 +339,7 @@ def create_talent_map_company(map_id):
 
 @bp.patch("/talent-map-companies/<int:company_id>")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "hr_director")
 def update_talent_map_company(company_id):
     company = db.get_or_404(TalentMapCompany, company_id)
     if not same_org(company, g.org_id):
@@ -336,7 +357,7 @@ def update_talent_map_company(company_id):
 
 @bp.post("/talent-maps/<int:map_id>/people")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "hr_director")
 def create_talent_map_person(map_id):
     talent_map = db.get_or_404(TalentMap, map_id)
     if not same_org(talent_map, g.org_id):
@@ -347,7 +368,33 @@ def create_talent_map_person(map_id):
     name = _clean(data.get("name"), 120)
     if not name:
         return jsonify({"error": "name required"}), 400
-    person = TalentMapPerson(org_id=g.org_id, map_id=talent_map.id, name=name, tags=[])
+    company_id = data.get("company_id")
+    company = None
+    if company_id not in (None, ""):
+        company = TalentMapCompany.query.filter_by(
+            id=company_id,
+            map_id=talent_map.id,
+            org_id=g.org_id,
+        ).first()
+    # 防重复：同一地图内 同名 + 同目标公司 的人才不允许重复录入
+    duplicate = TalentMapPerson.query.filter_by(
+        map_id=talent_map.id,
+        org_id=g.org_id,
+        name=name,
+        company_id=company.id if company else None,
+    ).first()
+    if duplicate:
+        return jsonify({"error": "该公司下已存在同名人才，请确认是否重复录入"}), 400
+    person = TalentMapPerson(
+        org_id=g.org_id,
+        map_id=talent_map.id,
+        name=name,
+        company_id=company.id if company else None,
+        tags=[],
+        owner_hr_id=g.user_id,
+    )
+    if not _clean(data.get("source"), 160):
+        person.source = "人工录入"
     error = _apply_person_fields(person, data)
     if error:
         return jsonify({"error": error}), 404
@@ -363,7 +410,7 @@ def create_talent_map_person(map_id):
 
 @bp.patch("/talent-map-people/<int:person_id>")
 @require_auth
-@require_role("recruiter", "manager", "admin")
+@require_role("recruiter", "manager", "admin", "hr_director")
 def update_talent_map_person(person_id):
     person = db.get_or_404(TalentMapPerson, person_id)
     if not same_org(person, g.org_id):
@@ -379,3 +426,215 @@ def update_talent_map_person(person_id):
         entity_type="talent_map_person",
     )
     return jsonify(_person_payload(person))
+
+
+# ---------------------------------------------------------------------------
+# AI 从简历库导入（冷启动：第一批数据从简历库批量灌入）
+# ---------------------------------------------------------------------------
+
+def _resume_lib_items(keyword=""):
+    """遍历简历库（Candidate + OnlineResume），提取最近一份工作任职信息。"""
+    from ..services.candidate_library_service import latest_experience, resume_info
+
+    items = []
+    seen = set()
+    keyword = _clean(keyword, 120)
+
+    def _push(source_type, source_id, info):
+        if source_id in seen:
+            return
+        exp = latest_experience(info)
+        if not exp or not exp.get("company"):
+            return
+        name = _clean(info.get("name") or info.get("display_name") or info.get("candidate_name"), 120)
+        if not name:
+            return
+        phone = _clean(
+            info.get("phone") or info.get("mobile") or info.get("contact_phone"),
+            60,
+        )
+        text = " ".join([name, exp["company"], exp["position"], str(info.get("target_position") or "")])
+        if keyword and keyword not in text:
+            return
+        seen.add(source_id)
+        items.append({
+            "candidate_id": source_id,
+            "source_type": source_type,
+            "name": name,
+            "company": exp["company"],
+            "position": exp["position"] or "",
+            "duration": exp["duration"] or "",
+            "phone": phone,
+        })
+
+    candidates = (
+        Candidate.query.filter(
+            Candidate.org_id == g.org_id,
+            Candidate.deleted_at.is_(None),
+        )
+        .order_by(Candidate.id.desc())
+        .limit(500)
+        .all()
+    )
+    for cand in candidates:
+        try:
+            _push("resume", cand.id, resume_info(cand))
+        except Exception:
+            continue
+
+    online = (
+        OnlineResume.query.filter(OnlineResume.org_id == g.org_id)
+        .order_by(OnlineResume.id.desc())
+        .limit(300)
+        .all()
+    )
+    for item in online:
+        try:
+            _push("online", item.id, item.resume_json or {})
+        except Exception:
+            continue
+
+    return items
+
+
+def _match_company(company_name):
+    """按公司名匹配目标公司（精确优先，再包含）。"""
+    name = _clean(company_name, 200)
+    if not name:
+        return None
+    exact = TalentMapCompany.query.filter_by(org_id=g.org_id, company_name=name).first()
+    if exact:
+        return exact
+    for company in TalentMapCompany.query.filter_by(org_id=g.org_id).all():
+        if name in company.company_name or company.company_name in name:
+            return company
+    return None
+
+
+@bp.get("/talent-maps/<int:map_id>/resume-candidates")
+@require_auth
+@require_role("recruiter", "manager", "admin", "hr_director")
+def talent_map_resume_candidates(map_id):
+    """简历库候选人列表（带最近一份工作任职信息），供 AI 导入向导勾选。"""
+    talent_map = db.get_or_404(TalentMap, map_id)
+    if not same_org(talent_map, g.org_id):
+        return jsonify({"error": "人才地图不存在"}), 404
+    if not _can_manage_map(talent_map):
+        return jsonify({"error": "Forbidden"}), 403
+    keyword = _clean(request.args.get("keyword"), 120)
+    items = _resume_lib_items(keyword)
+    return jsonify({"items": items, "total": len(items)})
+
+
+@bp.post("/talent-maps/<int:map_id>/import/preview")
+@require_auth
+@require_role("recruiter", "manager", "admin", "hr_director")
+def talent_map_import_preview(map_id):
+    """AI 匹配预览：简历库候选 → 目标公司/岗位，返回建议导入 + 待确认。"""
+    talent_map = db.get_or_404(TalentMap, map_id)
+    if not same_org(talent_map, g.org_id):
+        return jsonify({"error": "人才地图不存在"}), 404
+    if not _can_manage_map(talent_map):
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json() or {}
+    ids = data.get("candidate_ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "candidate_ids required"}), 400
+
+    lib = {str(item["candidate_id"]): item for item in _resume_lib_items()}
+    match, unmatch = [], []
+    for cid in ids:
+        item = lib.get(str(cid))
+        if not item:
+            continue
+        company = _match_company(item["company"])
+        if company:
+            match.append({
+                **item,
+                "matched_company_id": company.id,
+                "matched_company_name": company.company_name,
+                "industry": company.industry or "",
+            })
+        else:
+            unmatch.append(item)
+    return jsonify({"match": match, "unmatch": unmatch, "map_companies": [
+        {"id": c.id, "company_name": c.company_name, "industry": c.industry or ""}
+        for c in talent_map.companies
+    ]})
+
+
+@bp.post("/talent-maps/<int:map_id>/import/confirm")
+@require_auth
+@require_role("recruiter", "manager", "admin", "hr_director")
+def talent_map_import_confirm(map_id):
+    """确认入库：把确认的人才批量写入人才地图（归属当前用户，来源=AI导入）。"""
+    talent_map = db.get_or_404(TalentMap, map_id)
+    if not same_org(talent_map, g.org_id):
+        return jsonify({"error": "人才地图不存在"}), 404
+    if not _can_manage_map(talent_map):
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json() or {}
+    items = data.get("items") or []
+    if not isinstance(items, list) or not items:
+        return jsonify({"error": "items required"}), 400
+
+    created = []
+    skipped = 0
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        name = _clean(raw.get("name"), 120)
+        if not name:
+            continue
+        company_id = raw.get("company_id")
+        company = None
+        if company_id not in (None, ""):
+            company = TalentMapCompany.query.filter_by(
+                id=company_id,
+                map_id=talent_map.id,
+                org_id=g.org_id,
+            ).first()
+        # 防重复：同一地图内 同名 + 同目标公司 的人才跳过，避免重复导入
+        duplicate = TalentMapPerson.query.filter_by(
+            map_id=talent_map.id,
+            org_id=g.org_id,
+            name=name,
+            company_id=company.id if company else None,
+        ).first()
+        if duplicate:
+            skipped += 1
+            continue
+        person = TalentMapPerson(
+            org_id=g.org_id,
+            map_id=talent_map.id,
+            company_id=company.id if company else None,
+            owner_hr_id=g.user_id,
+            name=name,
+            tags=[],
+        )
+        payload = {
+            "department": raw.get("department"),
+            "title": raw.get("title") or raw.get("position"),
+            "level": raw.get("level"),
+            "module": raw.get("module"),
+            "phone": raw.get("phone"),
+            "city": raw.get("city"),
+            "contact_status": raw.get("contact_status"),
+            "note": raw.get("note"),
+            "source": raw.get("source"),
+        }
+        if not _clean(payload["source"], 160):
+            payload["source"] = "AI导入"
+        error = _apply_person_fields(person, payload)
+        if error:
+            continue
+        db.session.add(person)
+        db.session.flush()
+        created.append(_person_payload(person))
+
+    _commit_with_event(
+        "talent_map_import.confirmed",
+        entity_id=talent_map.id,
+        entity_type="talent_map",
+    )
+    return jsonify({"created": created, "count": len(created), "skipped": skipped}), 201

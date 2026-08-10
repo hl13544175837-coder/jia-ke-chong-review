@@ -10,9 +10,8 @@ interface FillFeedbackModalProps {
 }
 
 const SATISFACTION_OPTIONS: Array<[InterviewFeedbackInput['satisfaction'], string]> = [
-  ['satisfied', '满意'],
-  ['pending', '待定'],
-  ['unsatisfied', '不满意'],
+  ['pass', '通过'],
+  ['fail', '不通过'],
 ];
 
 const JOB_MATCH_OPTIONS: Array<[InterviewFeedbackInput['job_match'], string]> = [
@@ -24,7 +23,6 @@ const JOB_MATCH_OPTIONS: Array<[InterviewFeedbackInput['job_match'], string]> = 
 const RECOMMENDATION_OPTIONS: Array<[InterviewFeedbackInput['recommendation'], string]> = [
   ['next_round', '推进下一轮'],
   ['offer', '发 Offer'],
-  ['hold', '暂缓'],
   ['reject', '淘汰'],
 ];
 

@@ -36,7 +36,7 @@ export default function ResumePanel({ candidate, onClose }: ResumePanelProps) {
   return (
     <>
       <div className="fixed inset-0 bg-foreground-900/30 z-[60]" onClick={onClose}></div>
-      <div className="fixed inset-y-0 right-0 w-full max-w-xl bg-white shadow-2xl z-[70] flex flex-col animate-slide-in">
+      <div className="fixed inset-y-0 right-0 w-full max-w-[min(1280px,96vw)] bg-white shadow-2xl z-[70] flex flex-col animate-slide-in">
         <div className="flex items-center justify-between px-6 py-4 border-b border-background-200 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center">

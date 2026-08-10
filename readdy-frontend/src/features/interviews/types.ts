@@ -1,6 +1,6 @@
 import type { OriginalResumeInfo } from '@/features/businessReviews/types';
 
-export type Satisfaction = 'satisfied' | 'pending' | 'unsatisfied';
+export type Satisfaction = 'pass' | 'fail' | 'satisfied' | 'unsatisfied' | 'pending';
 export type JobMatch = 'high' | 'medium' | 'low';
 export type InterviewRecommendation = 'next_round' | 'offer' | 'hold' | 'reject';
 export type InterviewRescheduleStatus = 'pending' | 'approved' | 'rejected' | 'waiting_reassignment' | 'resolved';

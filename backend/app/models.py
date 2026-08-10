@@ -523,8 +523,13 @@ class TalentMapPerson(db.Model):
     org_id = db.Column(db.Integer, default=1, nullable=False)
     map_id = db.Column(db.Integer, db.ForeignKey("talent_maps.id", ondelete="CASCADE"), nullable=False)
     company_id = db.Column(db.Integer, db.ForeignKey("talent_map_companies.id"))
+    owner_hr_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     name = db.Column(db.String(120), nullable=False)
+    department = db.Column(db.String(120), default="")
     title = db.Column(db.String(160), default="")
+    level = db.Column(db.String(80), default="")
+    module = db.Column(db.String(120), default="")
+    phone = db.Column(db.String(60), default="")
     city = db.Column(db.String(80), default="")
     tags = db.Column(db.JSON)
     salary_range = db.Column(db.String(120), default="")
@@ -535,6 +540,11 @@ class TalentMapPerson(db.Model):
     note = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utc_now)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+    owner = db.relationship(
+        "User",
+        foreign_keys=[owner_hr_id],
+        backref=db.backref("talent_map_people", lazy="dynamic"),
+    )
 
 
 class Match(db.Model):

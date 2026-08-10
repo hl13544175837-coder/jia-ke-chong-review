@@ -78,7 +78,7 @@ export default function DemandDetailPanel({
   return (
     <>
       <div className="fixed inset-0 z-[100] bg-foreground-900/35" onClick={saving ? undefined : onClose}></div>
-      <aside className="fixed inset-y-0 right-0 z-[110] flex w-full max-w-xl flex-col border-l border-background-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="招聘需求详情">
+      <aside className="fixed inset-y-0 right-0 z-[110] flex w-full max-w-4xl flex-col border-l border-background-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="招聘需求详情">
         <header className="flex items-start justify-between border-b border-background-100 px-6 py-5">
           <div className="min-w-0">
             <p className="text-xs font-medium text-primary-600">{demand.request_no || `需求 #${demand.id}`}</p>

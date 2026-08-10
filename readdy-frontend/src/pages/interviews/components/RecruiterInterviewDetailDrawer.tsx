@@ -122,7 +122,7 @@ export default function RecruiterInterviewDetailDrawer({
       title={row.name_masked}
       description={`${row.job_title} · 第 ${row.round_sequence || '-'} 轮`}
       onClose={onClose}
-      widthClassName="max-w-[720px]"
+      widthClassName="max-w-5xl"
       footer={footer}
     >
       <div className="-mx-6 -mt-5">

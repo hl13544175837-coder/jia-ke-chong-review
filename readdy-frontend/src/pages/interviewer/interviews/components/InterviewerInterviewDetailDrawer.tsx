@@ -61,9 +61,11 @@ interface InterviewerInterviewDetailDrawerProps {
 }
 
 const satisfactionLabels: Record<Satisfaction, string> = {
-  satisfied: '满意',
+  pass: '通过',
+  fail: '不通过',
+  satisfied: '通过',
+  unsatisfied: '不通过',
   pending: '待定',
-  unsatisfied: '不满意',
 };
 
 const jobMatchLabels: Record<string, string> = {
@@ -138,7 +140,7 @@ export default function InterviewerInterviewDetailDrawer({
       canClose={!escapeDisabled}
       onClose={onClose}
       backdropClassName="workspace-detail-backdrop fixed inset-0 z-40 cursor-default bg-foreground-900/40 lg:left-[var(--workspace-sidebar-width)] lg:top-14"
-      panelClassName="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-[680px] flex-col bg-white shadow-2xl lg:top-14"
+      panelClassName="workspace-detail-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-5xl flex-col bg-white shadow-2xl lg:top-14"
     >
         <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div className="min-w-0">

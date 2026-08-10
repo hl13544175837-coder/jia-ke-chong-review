@@ -29,13 +29,19 @@ export interface TalentMapPerson {
   company_id: number | null;
   company_name: string;
   name: string;
+  department: string;
   title: string;
+  level: string;
+  module: string;
+  phone: string;
   city: string;
   tags: string[];
   salary_range: string;
   contact_status: string;
   evaluation: string;
   source: string;
+  owner_hr_id: number | null;
+  owner_name: string;
   next_follow_at: string | null;
   note: string;
   created_at: string | null;
@@ -119,7 +125,11 @@ export interface TalentMapCompanyInput {
 export interface TalentMapPersonInput {
   company_id?: number | null;
   name: string;
+  department?: string;
   title?: string;
+  level?: string;
+  module?: string;
+  phone?: string;
   city?: string;
   tags?: string[];
   salary_range?: string;
@@ -128,4 +138,54 @@ export interface TalentMapPersonInput {
   source?: string;
   next_follow_at?: string | null;
   note?: string;
+}
+
+/* ---------- AI 从简历库导入 ---------- */
+export interface ResumeCandidateItem {
+  candidate_id: number;
+  source_type: 'resume' | 'online';
+  name: string;
+  company: string;
+  position: string;
+  duration: string;
+  phone: string;
+}
+
+export interface ImportMatchItem extends ResumeCandidateItem {
+  matched_company_id: number;
+  matched_company_name: string;
+  industry: string;
+}
+
+export interface ImportMapCompanyOption {
+  id: number;
+  company_name: string;
+  industry: string;
+}
+
+export interface ImportPreviewResult {
+  match: ImportMatchItem[];
+  unmatch: ResumeCandidateItem[];
+  map_companies: ImportMapCompanyOption[];
+}
+
+export interface ImportConfirmResult {
+  created: TalentMapPerson[];
+  count: number;
+  skipped: number;
+}
+
+export interface ImportConfirmItem {
+  candidate_id?: number;
+  name: string;
+  company_id?: number | null;
+  department?: string;
+  title?: string;
+  level?: string;
+  module?: string;
+  phone?: string;
+  city?: string;
+  contact_status?: string;
+  note?: string;
+  source?: string;
 }

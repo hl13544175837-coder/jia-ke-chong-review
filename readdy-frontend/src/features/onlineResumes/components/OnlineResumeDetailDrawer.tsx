@@ -177,7 +177,7 @@ export default function OnlineResumeDetailDrawer({
       canClose={!saving && !deleting}
       modal
       backdropClassName="fixed inset-0 z-40 cursor-default bg-black/30"
-      panelClassName="fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-[760px] flex-col bg-white shadow-xl"
+      panelClassName="fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-[min(1280px,96vw)] flex-col bg-white shadow-xl"
     >
       <header className="flex items-start justify-between border-b border-background-200 px-5 py-4">
         <div className="min-w-0">

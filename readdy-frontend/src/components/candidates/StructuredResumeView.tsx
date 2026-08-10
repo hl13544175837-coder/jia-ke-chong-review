@@ -45,6 +45,18 @@ function ResumeValue({ value }: { value: unknown }) {
   return <PrimitiveValue value={value} />;
 }
 
+/** 阅读主体放左栏的信息块（宽屏时占 2/3） */
+const MAIN_SECTION_KEYS = new Set(['work', 'projects', 'other']);
+
+function Section({ section }: { section: { key: string; title: string; value: unknown } }) {
+  return (
+    <section key={section.key} className="border-t border-background-200 pt-4 first:border-t-0 first:pt-0">
+      <h4 className="mb-3 text-sm font-semibold text-foreground-900">{section.title}</h4>
+      <div className="text-sm leading-6 text-foreground-700"><ResumeValue value={section.value} /></div>
+    </section>
+  );
+}
+
 export default function StructuredResumeView({
   resume,
   emptyText = '暂无可展示的结构化简历信息',
@@ -54,17 +66,28 @@ export default function StructuredResumeView({
   if (sections.length === 0) {
     return <div className="rounded-lg border border-background-200 bg-background-50 px-4 py-6 text-center text-sm text-foreground-500">{emptyText}</div>;
   }
+
+  const mainSections = sections.filter((section) => MAIN_SECTION_KEYS.has(section.key));
+  const sideSections = sections.filter((section) => !MAIN_SECTION_KEYS.has(section.key));
+  const canSplit = !compact && mainSections.length > 0 && sideSections.length > 0;
+
   return (
     <div className={compact ? 'space-y-4' : 'space-y-5'} data-ui="structured-resume-view">
       <p className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-800">
         以下为系统结构化整理，方便快速阅读；关键信息请结合原版简历核对。
       </p>
-      {sections.map((section) => (
-        <section key={section.key} className="border-t border-background-200 pt-4 first:border-t-0 first:pt-0">
-          <h4 className="mb-3 text-sm font-semibold text-foreground-900">{section.title}</h4>
-          <div className="text-sm leading-6 text-foreground-700"><ResumeValue value={section.value} /></div>
-        </section>
-      ))}
+      {canSplit ? (
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="order-2 space-y-5 lg:order-1 lg:col-span-2">
+            {mainSections.map((section) => <Section key={section.key} section={section} />)}
+          </div>
+          <aside className="order-1 space-y-5 lg:order-2">
+            {sideSections.map((section) => <Section key={section.key} section={section} />)}
+          </aside>
+        </div>
+      ) : (
+        sections.map((section) => <Section key={section.key} section={section} />)
+      )}
     </div>
   );
 }

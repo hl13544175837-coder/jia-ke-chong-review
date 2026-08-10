@@ -61,7 +61,7 @@ export default function DemandCandidateResumeDetail({
       onClose={onClose}
       modal
       backdropClassName="absolute inset-0 z-20 cursor-default bg-foreground-900/30"
-      panelClassName="absolute inset-y-0 right-0 z-30 flex h-full w-full max-w-xl flex-col bg-white shadow-2xl"
+      panelClassName="absolute inset-y-0 right-0 z-30 flex h-full w-full max-w-[min(1280px,96vw)] flex-col bg-white shadow-2xl"
     >
       <div className="flex items-start justify-between gap-4 border-b border-background-200 px-6 py-4">
         <div>

@@ -65,8 +65,10 @@ export interface CreateBusinessReviewInput {
   due_at?: string | null;
 }
 
+export type BusinessReviewDecision = 'approved' | 'rejected';
+
 export interface BusinessReviewDecisionInput {
-  decision: Exclude<BusinessReviewStatus, 'pending'>;
+  decision: BusinessReviewDecision;
   note: string;
 }
 

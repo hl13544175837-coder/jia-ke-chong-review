@@ -98,7 +98,7 @@ export default function DemandBusinessReviewDrawer({ demand, onClose, onOpenCand
       onClose={onClose}
       modal
       backdropClassName="fixed inset-0 z-[100] bg-foreground-900/35"
-      panelClassName="fixed inset-y-0 right-0 z-[110] flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl"
+      panelClassName="fixed inset-y-0 right-0 z-[110] flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl"
     >
         <header className="flex items-start justify-between gap-4 border-b border-background-200 px-6 py-5">
           <div>

@@ -86,7 +86,7 @@ function MoveDialog({ candidate, initialTarget, busy, error, onClose, onSubmit }
       aria-label="推进候选人"
       onClick={busy ? undefined : onClose}
     >
-      <div className="w-full max-w-[480px] rounded-lg bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+      <div className="w-full max-w-3xl rounded-lg bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div>
             <h2 className="text-lg font-bold text-foreground-900">更新候选人阶段</h2>

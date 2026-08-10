@@ -30,7 +30,7 @@ from .pipeline_service import can_enter_interview
 
 CANCELLED_ASSIGNMENT_STATUSES = {"cancelled", "canceled"}
 INTERVIEW_SLOT_DURATION = timedelta(hours=1)
-SATISFACTION_VALUES = {"satisfied", "pending", "unsatisfied"}
+SATISFACTION_VALUES = {"satisfied", "unsatisfied", "pass", "fail"}  # pass/fail 为新提交值，旧值仅兼容历史数据
 JOB_MATCH_VALUES = {"high", "medium", "low"}
 RECOMMENDATION_VALUES = {"next_round", "offer", "hold", "reject"}
 STRUCTURED_FEEDBACK_FIELDS = {
@@ -83,19 +83,17 @@ def normalize_simple_feedback(data):
     note = str(data.get("note") or "").strip()
     fields = {}
     if satisfaction not in SATISFACTION_VALUES:
-        fields["satisfaction"] = "请选择满意、待定或不满意"
+        fields["satisfaction"] = "请选择通过或不通过"
     structured = any(key in data for key in STRUCTURED_FEEDBACK_FIELDS)
     if structured:
         if job_match not in JOB_MATCH_VALUES:
             fields["job_match"] = "请选择岗位匹配程度"
         if recommendation not in RECOMMENDATION_VALUES:
             fields["recommendation"] = "请选择建议结论"
-        if satisfaction == "satisfied" and not strengths:
-            fields["strengths"] = "满意时请填写候选人优势"
-        if satisfaction == "unsatisfied" and not concerns:
-            fields["concerns"] = "不满意时请填写主要顾虑"
-        if satisfaction == "pending" and not note:
-            fields["note"] = "待定时请填写需要继续确认的内容"
+        if satisfaction in ("satisfied", "pass") and not strengths:
+            fields["strengths"] = "通过时请填写候选人优势"
+        if satisfaction in ("unsatisfied", "fail") and not concerns:
+            fields["concerns"] = "不通过时请填写主要顾虑"
     for key, value, label in (
         ("strengths", strengths, "优势"),
         ("concerns", concerns, "顾虑"),

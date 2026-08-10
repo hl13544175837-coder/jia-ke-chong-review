@@ -81,7 +81,7 @@ export default function StatsDetailDrawer({ open, onClose, statId, statLabel, ro
       ></div>
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-[480px] max-w-[90vw] bg-white shadow-xl z-50 overflow-hidden flex flex-col animate-slide-in-right">
+      <div className="fixed right-0 top-0 h-full w-[640px] max-w-[90vw] bg-white shadow-xl z-50 overflow-hidden flex flex-col animate-slide-in-right">
         {/* Header */}
         <div className="px-6 py-5 border-b border-background-200 flex items-center justify-between flex-shrink-0">
           <div>
