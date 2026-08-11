@@ -76,7 +76,9 @@ export default defineConfig(({ mode }) => {
     ],
     base,
     build: {
-      sourcemap: true,
+      // 生产构建默认不生成 sourcemap（显著加快构建、减小产物）；
+      // 需要调试线上代码时通过 VITE_SOURCEMAP=true 临时开启
+      sourcemap: env.VITE_SOURCEMAP === 'true',
       outDir: 'out',
     },
     resolve: {
