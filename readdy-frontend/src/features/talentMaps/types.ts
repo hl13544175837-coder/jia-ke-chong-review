@@ -23,6 +23,15 @@ export interface TalentMapCompany {
   updated_at: string | null;
 }
 
+export interface TalentMapContactLog {
+  id: number;
+  person_id: number;
+  content: string;
+  contact_at: string | null;
+  created_by_name: string;
+  created_at: string | null;
+}
+
 export interface TalentMapPerson {
   id: number;
   map_id: number;
@@ -44,6 +53,7 @@ export interface TalentMapPerson {
   owner_name: string;
   next_follow_at: string | null;
   note: string;
+  contact_logs?: TalentMapContactLog[];
   created_at: string | null;
   updated_at: string | null;
 }

@@ -201,6 +201,23 @@ export function useTalentMapWorkspace() {
     }
   }, [detail, refresh]);
 
+  const addContactLog = useCallback(async (personId: number, payload: { content: string }) => {
+    if (!detail) throw new Error('请先选择人才地图');
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await talentMapsApi.addContactLog(personId, payload);
+      await refresh(detail.id);
+      return updated;
+    } catch (saveError) {
+      const saveMessage = messageFrom(saveError, '保存联系记录失败');
+      setError(saveMessage);
+      throw new Error(saveMessage, { cause: saveError });
+    } finally {
+      setSaving(false);
+    }
+  }, [detail, refresh]);
+
   const updatePerson = useCallback(async (personId: number, payload: Partial<ImportConfirmItem>) => {
     setSaving(true);
     setError(null);
@@ -264,6 +281,7 @@ export function useTalentMapWorkspace() {
     addCompany,
     createPerson,
     updatePerson,
+    addContactLog,
     bulkCreateCompanies,
     loadResumeCandidates,
     previewImport,

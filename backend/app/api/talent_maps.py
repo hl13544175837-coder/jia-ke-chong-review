@@ -11,6 +11,7 @@ from ..models import (
     OnlineResume,
     TalentMap,
     TalentMapCompany,
+    TalentMapContactLog,
     TalentMapPerson,
 )
 from .access import can_manage_job, same_org
@@ -29,6 +30,17 @@ def _parse_date(value):
         return value
     try:
         return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _parse_datetime(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value))
     except ValueError:
         return None
 
@@ -118,6 +130,17 @@ def _company_payload(company):
     }
 
 
+def _contact_log_payload(log):
+    return {
+        "id": log.id,
+        "person_id": log.person_id,
+        "content": log.content or "",
+        "contact_at": log.contact_at.isoformat() if log.contact_at else None,
+        "created_by_name": log.creator.name if log.creator else "",
+        "created_at": log.created_at.isoformat() if log.created_at else None,
+    }
+
+
 def _person_payload(person):
     return {
         "id": person.id,
@@ -142,6 +165,13 @@ def _person_payload(person):
         "note": person.note or "",
         "created_at": person.created_at.isoformat() if person.created_at else None,
         "updated_at": person.updated_at.isoformat() if person.updated_at else None,
+        "contact_logs": [
+            _contact_log_payload(log)
+            for log in TalentMapContactLog.query.filter_by(person_id=person.id)
+            .order_by(TalentMapContactLog.contact_at.desc())
+            .limit(10)
+            .all()
+        ],
     }
 
 
@@ -475,6 +505,57 @@ def update_talent_map_person(person_id):
         entity_type="talent_map_person",
     )
     return jsonify(_person_payload(person))
+
+
+@bp.get("/talent-map-people/<int:person_id>/contact-logs")
+@require_auth
+@require_role("recruiter", "manager", "admin", "hr_director")
+def list_talent_map_contact_logs(person_id):
+    """人才联系记录时间线（按联系时间倒序）。"""
+    person = db.get_or_404(TalentMapPerson, person_id)
+    if not same_org(person, g.org_id):
+        return jsonify({"error": "目标人才不存在"}), 404
+    logs = (
+        TalentMapContactLog.query.filter_by(person_id=person.id)
+        .order_by(TalentMapContactLog.contact_at.desc())
+        .all()
+    )
+    return jsonify([_contact_log_payload(log) for log in logs])
+
+
+@bp.post("/talent-map-people/<int:person_id>/contact-logs")
+@require_auth
+@require_role("recruiter", "manager", "admin", "hr_director")
+def create_talent_map_contact_log(person_id):
+    """新增一条联系记录；可同时更新下次跟进时间 next_follow_at。"""
+    person = db.get_or_404(TalentMapPerson, person_id)
+    if not same_org(person, g.org_id):
+        return jsonify({"error": "目标人才不存在"}), 404
+    if not _can_manage_map(person.talent_map):
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    content = _clean(data.get("content"), 2000)
+    if not content:
+        return jsonify({"error": "content required"}), 400
+    log = TalentMapContactLog(
+        org_id=g.org_id,
+        person_id=person.id,
+        content=content,
+        created_by=g.user_id,
+    )
+    contact_at = _parse_datetime(data.get("contact_at"))
+    if contact_at is not None:
+        log.contact_at = contact_at
+    db.session.add(log)
+    next_follow = _parse_date(data.get("next_follow_at"))
+    if next_follow is not None:
+        person.next_follow_at = next_follow
+    _commit_with_event(
+        "talent_map_person.contact_logged",
+        entity_id=person.id,
+        entity_type="talent_map_person",
+    )
+    return jsonify(_person_payload(person)), 201
 
 
 # ---------------------------------------------------------------------------

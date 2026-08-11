@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { TalentMapCompany, TalentMapPerson, TalentMapPersonInput } from '@/features/talentMaps/types';
+import type { TalentMapCompany, TalentMapContactLog, TalentMapPerson, TalentMapPersonInput } from '@/features/talentMaps/types';
 
 const CONTACT_STATUS_OPTIONS = ['未接触', '待联系', '沟通中', '已确认', '不合适'] as const;
 
@@ -13,6 +13,7 @@ interface PersonEditModalProps {
   saving: boolean;
   onClose: () => void;
   onSave: (payload: TalentMapPersonInput) => void | Promise<void>;
+  onAddContactLog?: (personId: number, payload: { content: string }) => Promise<TalentMapPerson>;
 }
 
 interface FormState {
@@ -74,8 +75,12 @@ export default function PersonEditModal({
   saving,
   onClose,
   onSave,
+  onAddContactLog,
 }: PersonEditModalProps) {
   const [form, setForm] = useState<FormState>(() => emptyForm({}));
+  const [contactLogs, setContactLogs] = useState<TalentMapContactLog[]>(person?.contact_logs ?? []);
+  const [logText, setLogText] = useState('');
+  const [addingLog, setAddingLog] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -84,6 +89,8 @@ export default function PersonEditModal({
         ? formFromPerson(person)
         : emptyForm({ companyId: defaultCompanyId, department: defaultDepartment, title: defaultTitle }),
     );
+    setContactLogs(person?.contact_logs ?? []);
+    setLogText('');
   }, [open, person, defaultCompanyId, defaultDepartment, defaultTitle]);
 
   // 支持 Esc 关闭弹窗
@@ -117,6 +124,22 @@ export default function PersonEditModal({
   const canSubmit = form.name.trim() !== '' && form.company_id !== '';
 
   const set = (key: keyof FormState, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const handleAddLog = async () => {
+    if (!person || !logText.trim() || addingLog) return;
+    setAddingLog(true);
+    try {
+      if (onAddContactLog) {
+        const updated = await onAddContactLog(person.id, { content: logText.trim() });
+        setContactLogs(updated.contact_logs ?? []);
+      }
+      setLogText('');
+    } catch {
+      // 保存失败保持输入内容，用户可重试
+    } finally {
+      setAddingLog(false);
+    }
+  };
 
   const handleSubmit = () => {
     if (!canSubmit || saving) return;
@@ -282,6 +305,52 @@ export default function PersonEditModal({
                 className={`${inputClass} resize-none`}
               ></textarea>
             </div>
+
+            {isEdit && (
+              <div className="border-t border-background-100 pt-4 mt-2">
+                <h4 className="text-sm font-semibold text-foreground-900 mb-3">联系记录</h4>
+                {contactLogs.length === 0 ? (
+                  <p className="text-xs text-foreground-400 py-1">暂无联系记录，添加第一条吧</p>
+                ) : (
+                  <ul className="space-y-3 max-h-44 overflow-y-auto pr-1">
+                    {contactLogs.map((log, index) => (
+                      <li key={log.id} className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <span className="w-2 h-2 rounded-full bg-primary-400 mt-1.5 flex-shrink-0"></span>
+                          {index < contactLogs.length - 1 && <span className="w-px flex-1 bg-background-200"></span>}
+                        </div>
+                        <div className="flex-1 min-w-0 pb-3">
+                          <p className="text-[11px] text-foreground-400">
+                            {log.contact_at
+                              ? new Date(log.contact_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+                              : ''}
+                            {log.created_by_name ? ` · ${log.created_by_name}` : ''}
+                          </p>
+                          <p className="mt-0.5 text-sm text-foreground-700 whitespace-pre-wrap break-words">{log.content}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex gap-2 mt-2">
+                  <input
+                    type="text"
+                    value={logText}
+                    onChange={(e) => setLogText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void handleAddLog(); }}
+                    placeholder="记录这次沟通，如：电话沟通，意向度高…"
+                    className={inputClass}
+                  />
+                  <button
+                    onClick={() => void handleAddLog()}
+                    disabled={!logText.trim() || addingLog}
+                    className="flex-shrink-0 px-4 py-2.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                  >
+                    {addingLog ? '保存…' : '添加'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Footer */}

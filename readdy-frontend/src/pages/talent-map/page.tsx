@@ -83,6 +83,7 @@ export default function TalentMapPage() {
     bulkCreateCompanies,
     createPerson,
     updatePerson,
+    addContactLog,
   } = workspace;
 
   const [viewMode, setViewMode] = useState<'overview' | 'company'>('company');
@@ -829,6 +830,7 @@ export default function TalentMapPage() {
         saving={saving}
         onClose={() => setPersonModal({ open: false, person: null })}
         onSave={handleSavePerson}
+        onAddContactLog={addContactLog}
       />
 
       {/* AI Import Wizard */}

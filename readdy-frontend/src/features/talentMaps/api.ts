@@ -1,6 +1,7 @@
 import { apiRequest } from '@/lib/api';
 import type {
   ImportConfirmItem,
+  TalentMapContactLog,
   ImportConfirmResult,
   ImportPreviewResult,
   ResumeCandidateItem,
@@ -31,6 +32,12 @@ export const talentMapsApi = {
   },
   bulkCreateCompanies(mapId: number, items: Array<{ company_name: string; industry?: string; city?: string; note?: string }>): Promise<{ created: TalentMapCompany[]; count: number; skipped: number }> {
     return apiRequest(`/talent-maps/${mapId}/companies/bulk`, { method: 'POST', body: { items } });
+  },
+  listContactLogs(personId: number): Promise<TalentMapContactLog[]> {
+    return apiRequest(`/talent-map-people/${personId}/contact-logs`);
+  },
+  addContactLog(personId: number, payload: { content: string; contact_at?: string; next_follow_at?: string }): Promise<TalentMapPerson> {
+    return apiRequest(`/talent-map-people/${personId}/contact-logs`, { method: 'POST', body: payload });
   },
   updateCompany(companyId: number, payload: Partial<TalentMapCompanyInput>): Promise<TalentMapCompany> {
     return apiRequest(`/talent-map-companies/${companyId}`, { method: 'PATCH', body: payload });

@@ -547,6 +547,27 @@ class TalentMapPerson(db.Model):
     )
 
 
+class TalentMapContactLog(db.Model):
+    """人才联系记录：每次沟通/跟进的时间线（纪要要求"联系记录"）。"""
+    __tablename__ = "talent_map_contact_logs"
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, default=1, nullable=False)
+    person_id = db.Column(
+        db.Integer,
+        db.ForeignKey("talent_map_people.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    content = db.Column(db.Text, nullable=False)
+    contact_at = db.Column(db.DateTime, default=utc_now)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=utc_now)
+    creator = db.relationship(
+        "User",
+        foreign_keys=[created_by],
+    )
+
+
 class Match(db.Model):
     __tablename__ = "matches"
     id = db.Column(db.Integer, primary_key=True)
