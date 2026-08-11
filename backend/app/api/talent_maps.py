@@ -434,6 +434,116 @@ def update_talent_map_company(company_id):
     return jsonify(_company_payload(company))
 
 
+@bp.patch("/talent-maps/<int:map_id>/organization")
+@require_auth
+@require_role("recruiter", "manager", "admin", "hr_director")
+def update_talent_map_organization(map_id):
+    """一次保存某公司下的部门/岗位组织结构。
+
+    空部门/空岗位（还没有人才）也会保存；部门/岗位改名会同步到该公司已有人员字段。
+    前端按“部门 source_name/岗位 source_title”识别改名，未列入配置的既有岗位保持原名。
+    """
+    talent_map = db.get_or_404(TalentMap, map_id)
+    if not same_org(talent_map, g.org_id):
+        return jsonify({"error": "人才地图不存在"}), 404
+    if not _can_manage_map(talent_map):
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+
+    company_id = data.get("company_id")
+    try:
+        company_id = int(company_id) if company_id not in (None, "") else None
+    except (TypeError, ValueError):
+        company_id = None
+    if company_id is None:
+        return jsonify({"error": "company_id required"}), 400
+    company = TalentMapCompany.query.filter_by(
+        id=company_id,
+        map_id=talent_map.id,
+        org_id=g.org_id,
+    ).first()
+    if company is None:
+        return jsonify({"error": "目标公司不存在"}), 404
+
+    raw_departments = data.get("departments")
+    if not isinstance(raw_departments, list):
+        return jsonify({"error": "departments required"}), 400
+
+    # 1) 规范化配置：名称去重、去空，岗位保持顺序
+    departments = []
+    seen_departments = set()
+    for raw in raw_departments:
+        if not isinstance(raw, dict):
+            continue
+        name = _clean(raw.get("name"), 120)
+        if not name or name in seen_departments:
+            continue
+        roles = []
+        for role in raw.get("roles") or []:
+            if isinstance(role, dict):
+                title = _clean(role.get("title"), 160)
+            elif isinstance(role, str):
+                title = _clean(role, 160)
+            else:
+                title = ""
+            if title and title not in roles:
+                roles.append(title)
+        seen_departments.add(name)
+        departments.append({"name": name, "roles": roles})
+
+    board_json = dict(talent_map.board_json) if isinstance(talent_map.board_json, dict) else {}
+    organization = board_json.get("organization") if isinstance(board_json.get("organization"), dict) else {}
+    organization = dict(organization)
+    organization[str(company.id)] = {"departments": departments}
+    board_json["organization"] = organization
+    talent_map.board_json = board_json
+
+    # 2) 改名同步：部门 source_name -> name，岗位 source_title -> title
+    department_renames = {}
+    role_renames_by_department = {}
+    for raw in raw_departments:
+        if not isinstance(raw, dict):
+            continue
+        new_name = _clean(raw.get("name"), 120)
+        if not new_name:
+            continue
+        source_name = _clean(raw.get("source_name"), 120) or new_name
+        department_renames[source_name] = new_name
+        role_renames = {}
+        for role in raw.get("roles") or []:
+            if not isinstance(role, dict):
+                continue
+            new_title = _clean(role.get("title"), 160)
+            if not new_title:
+                continue
+            source_title = _clean(role.get("source_title"), 160) or new_title
+            role_renames[source_title] = new_title
+        role_renames_by_department[source_name] = role_renames
+
+    people = TalentMapPerson.query.filter_by(
+        map_id=talent_map.id,
+        org_id=g.org_id,
+        company_id=company.id,
+    ).all()
+    for person in people:
+        old_department = person.department or ""
+        old_title = person.title or ""
+        new_department = department_renames.get(old_department)
+        if new_department:
+            person.department = new_department
+        role_renames = role_renames_by_department.get(old_department, {})
+        new_title = role_renames.get(old_title)
+        if new_title:
+            person.title = new_title
+
+    _commit_with_event(
+        "talent_map_organization.updated",
+        entity_id=talent_map.id,
+        entity_type="talent_map",
+    )
+    return jsonify(_map_payload(talent_map))
+
+
 @bp.post("/talent-maps/<int:map_id>/people")
 @require_auth
 @require_role("recruiter", "manager", "admin", "hr_director")

@@ -289,3 +289,54 @@ def test_recruiter_cannot_read_contact_logs_from_another_recruiters_map(
         headers=_auth(other_token),
     )
     assert forbidden.status_code == 403
+
+
+def test_talent_map_organization_can_keep_empty_roles_and_rename_existing_people(
+    client, make_user, app
+):
+    hr_id, token = make_user("talent-organization@example.com", role="recruiter")
+
+    with app.app_context():
+        talent_map = TalentMap(org_id=1, name="组织可编辑地图", owner_hr_id=hr_id, board_json={})
+        db.session.add(talent_map)
+        db.session.flush()
+        company = TalentMapCompany(org_id=1, map_id=talent_map.id, company_name="示例公司")
+        db.session.add(company)
+        db.session.flush()
+        db.session.add(TalentMapPerson(
+            org_id=1,
+            map_id=talent_map.id,
+            company_id=company.id,
+            owner_hr_id=hr_id,
+            name="张征",
+            department="产品",
+            title="产品经理",
+            tags=[],
+        ))
+        db.session.commit()
+        map_id, company_id = talent_map.id, company.id
+
+    updated = client.patch(
+        f"/api/talent-maps/{map_id}/organization",
+        headers=_auth(token),
+        json={
+            "company_id": company_id,
+            "departments": [{
+                "source_name": "产品",
+                "name": "产品研发",
+                "roles": [
+                    {"source_title": "产品经理", "title": "高级产品经理"},
+                    {"title": "产品运营"},
+                ],
+            }],
+        },
+    )
+
+    assert updated.status_code == 200
+    body = updated.get_json()
+    assert body["people"][0]["department"] == "产品研发"
+    assert body["people"][0]["title"] == "高级产品经理"
+    assert body["board_json"]["organization"][str(company_id)]["departments"] == [{
+        "name": "产品研发",
+        "roles": ["高级产品经理", "产品运营"],
+    }]

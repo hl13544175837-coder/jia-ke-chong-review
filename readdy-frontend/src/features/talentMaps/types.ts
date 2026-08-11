@@ -101,12 +101,35 @@ export interface TalentPersonMeta {
   status: TalentNode['status'];
 }
 
+/** 人才地图中可独立维护的公司组织结构；空部门/岗位也会保存。 */
+export interface TalentMapOrganizationDepartment {
+  name: string;
+  roles: string[];
+}
+
+export interface TalentMapOrganization {
+  departments: TalentMapOrganizationDepartment[];
+}
+
+/** 保存组织结构时的部门草稿：source_name 用于把改名同步到已有人员。 */
+export interface TalentMapOrganizationRoleDraft {
+  source_title: string;
+  title: string;
+}
+
+export interface TalentMapOrganizationDepartmentDraft {
+  source_name: string;
+  name: string;
+  roles: TalentMapOrganizationRoleDraft[];
+}
+
 export interface TalentBoard {
   departments: TalentDepartment[];
   nodes: TalentNode[];
   personMeta: Record<string, TalentPersonMeta>;
   hiddenPersonIds: number[];
   companyShortNames: Record<string, string>;
+  organization: Record<string, TalentMapOrganization>;
 }
 
 export interface TalentMapDetail extends TalentMapSummary {

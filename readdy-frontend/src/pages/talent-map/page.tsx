@@ -3,46 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
 import { useToast } from '@/hooks/useToast';
 import PersonEditModal from '@/pages/talent-map/components/PersonEditModal';
+import OrganizationEditorModal from '@/pages/talent-map/components/OrganizationEditorModal';
 import AiImportWizard from '@/pages/talent-map/components/AiImportWizard';
+import { buildOrganization, organizationFromBoard } from '@/pages/talent-map/organization';
+import type { OrganizationDepartment, OrganizationRole } from '@/pages/talent-map/organization';
 import { useTalentMapWorkspace } from '@/features/talentMaps/useTalentMapWorkspace';
-import type { TalentMapPerson, TalentMapPersonInput } from '@/features/talentMaps/types';
-
-interface RoleGroup {
-  title: string;
-  people: TalentMapPerson[];
-}
-
-interface DepartmentGroup {
-  department: string;
-  roles: RoleGroup[];
-}
-
-function groupByDepartment(people: TalentMapPerson[]): DepartmentGroup[] {
-  const map = new Map<string, TalentMapPerson[]>();
-  for (const person of people) {
-    const key = person.department || '未分部门';
-    const list = map.get(key) ?? [];
-    list.push(person);
-    map.set(key, list);
-  }
-  return [...map.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0], 'zh'))
-    .map(([department, list]) => {
-      const roleMap = new Map<string, TalentMapPerson[]>();
-      for (const person of list) {
-        const key = person.title || '待补充岗位';
-        const items = roleMap.get(key) ?? [];
-        items.push(person);
-        roleMap.set(key, items);
-      }
-      return {
-        department,
-        roles: [...roleMap.entries()]
-          .sort((a, b) => a[0].localeCompare(b[0], 'zh'))
-          .map(([title, people]) => ({ title, people })),
-      };
-    });
-}
+import type {
+  TalentMapOrganizationDepartmentDraft,
+  TalentMapPerson,
+  TalentMapPersonInput,
+} from '@/features/talentMaps/types';
 
 type RoleStatus = 'confirmed' | 'contacting' | 'pending' | 'vacant';
 
@@ -83,6 +53,7 @@ export default function TalentMapPage() {
     bulkCreateCompanies,
     createPerson,
     updatePerson,
+    updateOrganization,
     addContactLog,
   } = workspace;
 
@@ -97,6 +68,7 @@ export default function TalentMapPage() {
     title?: string;
   }>({ open: false, person: null });
   const [aiWizardOpen, setAiWizardOpen] = useState(false);
+  const [organizationEditorOpen, setOrganizationEditorOpen] = useState(false);
   const [addCompanyOpen, setAddCompanyOpen] = useState(false);
   const [companyForm, setCompanyForm] = useState({ name: '', industry: '', note: '' });
   const [companyError, setCompanyError] = useState<string | null>(null);
@@ -141,19 +113,34 @@ export default function TalentMapPage() {
     );
   }, [companies, companyKeyword]);
 
-  const departments = useMemo(() => groupByDepartment(filteredPeople), [filteredPeople]);
+  const savedOrganization = useMemo(
+    () => organizationFromBoard(detail?.board_json, activeCompanyId),
+    [detail?.board_json, activeCompanyId],
+  );
+
+  /** 页面部门树 = 手工保存的空部门/岗位 + 已录入人才（搜索仍只过滤人才）。 */
+  const departments = useMemo(
+    () => buildOrganization(filteredPeople, savedOrganization),
+    [filteredPeople, savedOrganization],
+  );
+
+  /** 编辑弹窗使用未过滤人才 + 保存配置，避免搜索时误删草稿。 */
+  const organizationTree = useMemo(
+    () => buildOrganization(companyPeople, savedOrganization),
+    [companyPeople, savedOrganization],
+  );
 
   const vacantCount = useMemo(() => {
-    const all = groupByDepartment(companyPeople);
+    const all = organizationTree;
     return all.reduce(
       (sum, dept) => sum + dept.roles.filter((role) => role.people.length === 0).length,
       0,
     );
-  }, [companyPeople]);
+  }, [organizationTree]);
 
   const activeRolePeople = useMemo(() => {
     if (!activeRole) return [];
-    const dept = departments.find((item) => item.department === activeRole.department);
+    const dept = departments.find((item) => item.name === activeRole.department);
     return dept?.roles.find((role) => role.title === activeRole.title)?.people ?? [];
   }, [departments, activeRole]);
 
@@ -243,14 +230,25 @@ export default function TalentMapPage() {
     }
   };
 
-  const renderRoleCard = (role: RoleGroup) => {
+  const handleSaveOrganization = async (nextDepartments: TalentMapOrganizationDepartmentDraft[]) => {
+    if (activeCompanyId == null) return;
+    try {
+      await updateOrganization(activeCompanyId, nextDepartments);
+      showToast('组织结构已保存');
+      setOrganizationEditorOpen(false);
+    } catch (saveError) {
+      showToast(saveError instanceof Error ? saveError.message : '组织结构保存失败');
+    }
+  };
+
+  const renderRoleCard = (role: OrganizationRole) => {
     const status = roleStatus(role.people);
     const badge = STATUS_BADGE[status];
     const avatarCount = Math.min(role.people.length, 3);
     return (
       <button
         key={`${role.title}-${role.people.length}`}
-        onClick={() => setActiveRole({ department: departments.find((d) => d.roles.includes(role))?.department ?? '', title: role.title })}
+        onClick={() => setActiveRole({ department: departments.find((d) => d.roles.includes(role))?.name ?? '', title: role.title })}
         className="w-full text-left bg-white rounded-xl border border-background-200 p-3.5 transition-all cursor-pointer hover:border-primary-300 hover:shadow-sm group"
       >
         <div className="flex items-start justify-between gap-2">
@@ -525,6 +523,15 @@ export default function TalentMapPage() {
                       <span><i className="ri-team-line mr-0.5"></i>{companyPeople.length} 位人才</span>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setOrganizationEditorOpen(true)}
+                    disabled={saving}
+                    className="flex-shrink-0 px-3 py-2 rounded-lg bg-background-100 hover:bg-primary-50 hover:text-primary-700 text-foreground-600 text-sm font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <i className="ri-settings-3-line"></i>
+                    编辑组织架构
+                  </button>
                 </div>
               </div>
             )}
@@ -584,15 +591,22 @@ export default function TalentMapPage() {
                 >
                   手动录入第一位人才
                 </button>
+                <button
+                  onClick={() => setOrganizationEditorOpen(true)}
+                  className="px-4 py-2 bg-background-100 hover:bg-background-200 text-foreground-700 text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <i className="ri-settings-3-line"></i>
+                  编辑组织架构
+                </button>
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
               {departments.map((dept) => (
-                <div key={dept.department} className="bg-white rounded-xl border border-background-200 p-5">
+                <div key={dept.name} className="bg-white rounded-xl border border-background-200 p-5">
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <h3 className="text-sm font-bold text-foreground-900">{dept.department}</h3>
+                      <h3 className="text-sm font-bold text-foreground-900">{dept.name}</h3>
                       <p className="text-xs text-foreground-400 mt-0.5">{dept.roles.length} 个岗位</p>
                     </div>
                   </div>
@@ -838,6 +852,16 @@ export default function TalentMapPage() {
         open={aiWizardOpen}
         workspace={workspace}
         onClose={() => setAiWizardOpen(false)}
+      />
+
+      {/* 组织架构编辑 */}
+      <OrganizationEditorModal
+        open={organizationEditorOpen}
+        company={activeCompany}
+        departments={organizationTree}
+        saving={saving}
+        onClose={() => setOrganizationEditorOpen(false)}
+        onSave={handleSaveOrganization}
       />
     </div>
   );

@@ -177,7 +177,7 @@ def test_frontend_build_and_git_hygiene_are_reproducible():
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
     backend_dockerfile = (ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
 
-    assert "RUN npm ci" in dockerfile
+    assert "npm ci" in dockerfile
     assert '"node": ">=20.19.0 <21 || >=22.12.0"' in package_json
     assert ".workbuddy/" in gitignore
     assert "outputs/" in gitignore

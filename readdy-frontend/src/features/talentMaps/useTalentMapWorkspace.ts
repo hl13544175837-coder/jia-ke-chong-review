@@ -6,6 +6,7 @@ import type {
   ResumeCandidateItem,
   TalentMapCompany,
   TalentMapDetail,
+  TalentMapOrganizationDepartmentDraft,
   TalentMapPerson,
   TalentMapSummary,
 } from '@/features/talentMaps/types';
@@ -236,6 +237,27 @@ export function useTalentMapWorkspace() {
     }
   }, [detail?.id, refresh]);
 
+  /** 保存某公司的部门/岗位组织结构；部门/岗位改名会同步已有人员。 */
+  const updateOrganization = useCallback(async (
+    companyId: number,
+    departments: TalentMapOrganizationDepartmentDraft[],
+  ) => {
+    if (!detail) throw new Error('请先选择人才地图');
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await talentMapsApi.updateOrganization(detail.id, { company_id: companyId, departments });
+      setDetail(next);
+      return next;
+    } catch (saveError) {
+      const saveMessage = messageFrom(saveError, '组织结构保存失败');
+      setError(saveMessage);
+      throw new Error(saveMessage, { cause: saveError });
+    } finally {
+      setSaving(false);
+    }
+  }, [detail]);
+
   /* ---------- AI 从简历库导入 ---------- */
   const loadResumeCandidates = useCallback((keyword = ''): Promise<{ items: ResumeCandidateItem[]; total: number }> => {
     if (!detail) return Promise.resolve({ items: [], total: 0 });
@@ -283,6 +305,7 @@ export function useTalentMapWorkspace() {
     addCompany,
     createPerson,
     updatePerson,
+    updateOrganization,
     addContactLog,
     bulkCreateCompanies,
     loadResumeCandidates,

@@ -9,6 +9,7 @@ import type {
   TalentMapCompanyInput,
   TalentMapCreateInput,
   TalentMapDetail,
+  TalentMapOrganizationDepartmentDraft,
   TalentMapPerson,
   TalentMapPersonInput,
   TalentMapSummary,
@@ -26,6 +27,12 @@ export const talentMapsApi = {
   },
   update(mapId: number, payload: Partial<TalentMapCreateInput>): Promise<TalentMapDetail> {
     return apiRequest(`/talent-maps/${mapId}`, { method: 'PATCH', body: payload });
+  },
+  updateOrganization(mapId: number, payload: {
+    company_id: number;
+    departments: TalentMapOrganizationDepartmentDraft[];
+  }): Promise<TalentMapDetail> {
+    return apiRequest(`/talent-maps/${mapId}/organization`, { method: 'PATCH', body: payload });
   },
   createCompany(mapId: number, payload: TalentMapCompanyInput): Promise<TalentMapCompany> {
     return apiRequest(`/talent-maps/${mapId}/companies`, { method: 'POST', body: payload });
