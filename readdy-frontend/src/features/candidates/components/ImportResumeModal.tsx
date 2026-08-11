@@ -222,39 +222,45 @@ export default function ImportResumeModal({ isOpen, onClose, onImport }: ImportR
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="text-xs font-medium text-foreground-600 mb-1 block">部门</label>
-                    <select
+                    <input
+                      type="text"
+                      list="import-dept-options"
                       value={form.department}
                       onChange={(e) => update('department', e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300 cursor-pointer"
-                    >
-                      {departmentOptions.map((d) => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
+                      placeholder="选择或输入部门"
+                      className="w-full px-3 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300"
+                    />
+                    <datalist id="import-dept-options">
+                      {departmentOptions.map((d) => <option key={d} value={d} />)}
+                    </datalist>
                   </div>
                   <div>
                     <label className="text-xs font-medium text-foreground-600 mb-1 block">城市</label>
-                    <select
+                    <input
+                      type="text"
+                      list="import-city-options"
                       value={form.city}
                       onChange={(e) => update('city', e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300 cursor-pointer"
-                    >
-                      {cityOptions.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
+                      placeholder="选择或输入城市"
+                      className="w-full px-3 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300"
+                    />
+                    <datalist id="import-city-options">
+                      {cityOptions.map((c) => <option key={c} value={c} />)}
+                    </datalist>
                   </div>
                   <div>
                     <label className="text-xs font-medium text-foreground-600 mb-1 block">来源</label>
-                    <select
+                    <input
+                      type="text"
+                      list="import-source-options"
                       value={form.source}
                       onChange={(e) => update('source', e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300 cursor-pointer"
-                    >
-                      {sourceOptions.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
+                      placeholder="选择或输入来源"
+                      className="w-full px-3 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300"
+                    />
+                    <datalist id="import-source-options">
+                      {sourceOptions.map((s) => <option key={s} value={s} />)}
+                    </datalist>
                   </div>
                 </div>
 

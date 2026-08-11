@@ -157,6 +157,8 @@ export interface TalentMapCompanyInput {
 
 export interface TalentMapPersonInput {
   company_id?: number | null;
+  /** 直接输入的新公司名：前端先建公司，再转成 company_id 提交。 */
+  company_name?: string;
   name: string;
   department?: string;
   title?: string;

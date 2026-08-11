@@ -18,6 +18,7 @@ interface PersonEditModalProps {
 
 interface FormState {
   company_id: string;
+  company_name: string;
   name: string;
   department: string;
   title: string;
@@ -30,11 +31,13 @@ interface FormState {
 
 function emptyForm(defaults: {
   companyId?: number | null;
+  companyName?: string;
   department?: string;
   title?: string;
 }): FormState {
   return {
     company_id: defaults.companyId != null ? String(defaults.companyId) : '',
+    company_name: defaults.companyName ?? '',
     name: '',
     department: defaults.department ?? '',
     title: defaults.title ?? '',
@@ -49,6 +52,7 @@ function emptyForm(defaults: {
 function formFromPerson(person: TalentMapPerson): FormState {
   return {
     company_id: person.company_id != null ? String(person.company_id) : '',
+    company_name: person.company_name || '',
     name: person.name,
     department: person.department || '',
     title: person.title || '',
@@ -84,14 +88,22 @@ export default function PersonEditModal({
 
   useEffect(() => {
     if (!open) return;
+    const defaultCompany = defaultCompanyId != null
+      ? companies.find((company) => company.id === defaultCompanyId)
+      : undefined;
     setForm(
       person
         ? formFromPerson(person)
-        : emptyForm({ companyId: defaultCompanyId, department: defaultDepartment, title: defaultTitle }),
+        : emptyForm({
+            companyId: defaultCompanyId,
+            companyName: defaultCompany?.company_name,
+            department: defaultDepartment,
+            title: defaultTitle,
+          }),
     );
     setContactLogs(person?.contact_logs ?? []);
     setLogText('');
-  }, [open, person, defaultCompanyId, defaultDepartment, defaultTitle]);
+  }, [open, person, companies, defaultCompanyId, defaultDepartment, defaultTitle]);
 
   // 支持 Esc 关闭弹窗
   useEffect(() => {
@@ -120,10 +132,15 @@ export default function PersonEditModal({
     return [...set].sort((a, b) => a.localeCompare(b, 'zh'));
   }, [person?.title, defaultTitle]);
 
+  const companySuggestions = useMemo(
+    () => [...new Set(companies.map((company) => company.company_name))].sort((a, b) => a.localeCompare(b, 'zh')),
+    [companies],
+  );
+
   if (!open) return null;
 
   const isEdit = Boolean(person);
-  const canSubmit = form.name.trim() !== '' && form.company_id !== '';
+  const canSubmit = form.name.trim() !== '' && form.company_name.trim() !== '';
 
   const set = (key: keyof FormState, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -145,8 +162,11 @@ export default function PersonEditModal({
 
   const handleSubmit = () => {
     if (!canSubmit || saving) return;
+    const companyName = form.company_name.trim();
+    const matchedCompany = companies.find((company) => company.company_name === companyName);
     void onSave({
-      company_id: form.company_id ? Number(form.company_id) : null,
+      company_id: matchedCompany ? matchedCompany.id : null,
+      company_name: companyName || undefined,
       name: form.name.trim(),
       department: form.department.trim(),
       title: form.title.trim(),
@@ -199,17 +219,19 @@ export default function PersonEditModal({
               </div>
               <div>
                 <label htmlFor="person-company" className={labelClass}>目标公司 <span className="text-accent-500">*</span></label>
-                <select
+                <input
                   id="person-company"
-                  value={form.company_id}
-                  onChange={(e) => set('company_id', e.target.value)}
+                  type="text"
+                  list="person-company-options"
+                  value={form.company_name}
+                  onChange={(e) => set('company_name', e.target.value)}
+                  placeholder="选择已有公司，或直接输入新公司名"
                   className={inputClass}
-                >
-                  <option value="">请选择公司</option>
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.id}>{company.company_name}</option>
-                  ))}
-                </select>
+                />
+                <datalist id="person-company-options">
+                  {companySuggestions.map((item) => <option key={item} value={item} />)}
+                </datalist>
+                <p className="text-[10px] text-foreground-400 mt-1">可直接输入新公司名，系统会自动创建</p>
               </div>
               <div>
                 <label htmlFor="person-department" className={labelClass}>部门</label>
@@ -225,6 +247,7 @@ export default function PersonEditModal({
                 <datalist id="person-dept-options">
                   {departmentSuggestions.map((item) => <option key={item} value={item} />)}
                 </datalist>
+                <p className="text-[10px] text-foreground-400 mt-1">可直接输入新名称，也可从下方建议中选择</p>
               </div>
               <div>
                 <label htmlFor="person-title" className={labelClass}>岗位</label>
@@ -240,6 +263,7 @@ export default function PersonEditModal({
                 <datalist id="person-title-options">
                   {titleSuggestions.map((item) => <option key={item} value={item} />)}
                 </datalist>
+                <p className="text-[10px] text-foreground-400 mt-1">可直接输入新名称，也可从下方建议中选择</p>
               </div>
               <div>
                 <label htmlFor="person-level" className={labelClass}>

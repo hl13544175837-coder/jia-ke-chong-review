@@ -4,6 +4,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useToast } from '@/hooks/useToast';
 import PersonEditModal from '@/pages/talent-map/components/PersonEditModal';
 import OrganizationEditorModal from '@/pages/talent-map/components/OrganizationEditorModal';
+import CompanyEditModal from '@/pages/talent-map/components/CompanyEditModal';
 import AiImportWizard from '@/pages/talent-map/components/AiImportWizard';
 import { buildOrganization, organizationFromBoard } from '@/pages/talent-map/organization';
 import type { OrganizationDepartment, OrganizationRole } from '@/pages/talent-map/organization';
@@ -50,6 +51,7 @@ export default function TalentMapPage() {
     error,
     refresh,
     addCompany,
+    updateCompany,
     bulkCreateCompanies,
     createPerson,
     updatePerson,
@@ -69,6 +71,7 @@ export default function TalentMapPage() {
   }>({ open: false, person: null });
   const [aiWizardOpen, setAiWizardOpen] = useState(false);
   const [organizationEditorOpen, setOrganizationEditorOpen] = useState(false);
+  const [companyEditOpen, setCompanyEditOpen] = useState(false);
   const [addCompanyOpen, setAddCompanyOpen] = useState(false);
   const [companyForm, setCompanyForm] = useState({ name: '', industry: '', note: '' });
   const [companyError, setCompanyError] = useState<string | null>(null);
@@ -216,17 +219,34 @@ export default function TalentMapPage() {
 
   const handleSavePerson = async (payload: TalentMapPersonInput) => {
     try {
+      // 目标公司直接输入了新名字：先创建公司，再关联该人才
+      let resolvedPayload = payload;
+      if (payload.company_id == null && payload.company_name) {
+        const company = await addCompany(payload.company_name);
+        resolvedPayload = { ...payload, company_id: company.id };
+      }
       if (personModal.person) {
-        await updatePerson(personModal.person.id, payload);
+        await updatePerson(personModal.person.id, resolvedPayload);
         showToast('人才信息已更新');
       } else {
-        await createPerson({ ...payload, company_id: payload.company_id ?? activeCompanyId });
+        await createPerson({ ...resolvedPayload, company_id: resolvedPayload.company_id ?? activeCompanyId });
         showToast('人才已录入，组织架构已更新');
       }
       setPersonModal({ open: false, person: null });
       setActiveRole(null);
     } catch (saveError) {
       showToast(saveError instanceof Error ? saveError.message : '保存失败');
+    }
+  };
+
+  const handleSaveCompany = async (payload: { company_name: string; industry: string; city: string; note: string }) => {
+    if (!activeCompany) return;
+    try {
+      await updateCompany(activeCompany.id, payload);
+      showToast('公司信息已更新');
+      setCompanyEditOpen(false);
+    } catch (saveError) {
+      showToast(saveError instanceof Error ? saveError.message : '公司资料保存失败');
     }
   };
 
@@ -531,6 +551,15 @@ export default function TalentMapPage() {
                   >
                     <i className="ri-settings-3-line"></i>
                     编辑组织架构
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCompanyEditOpen(true)}
+                    disabled={saving}
+                    className="flex-shrink-0 px-3 py-2 rounded-lg bg-background-100 hover:bg-primary-50 hover:text-primary-700 text-foreground-600 text-sm font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <i className="ri-edit-2-line"></i>
+                    编辑公司
                   </button>
                 </div>
               </div>
@@ -862,6 +891,15 @@ export default function TalentMapPage() {
         saving={saving}
         onClose={() => setOrganizationEditorOpen(false)}
         onSave={handleSaveOrganization}
+      />
+
+      {/* 公司资料编辑 */}
+      <CompanyEditModal
+        open={companyEditOpen}
+        company={activeCompany}
+        saving={saving}
+        onClose={() => setCompanyEditOpen(false)}
+        onSave={handleSaveCompany}
       />
     </div>
   );

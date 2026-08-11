@@ -5,6 +5,7 @@ import type {
   ImportPreviewResult,
   ResumeCandidateItem,
   TalentMapCompany,
+  TalentMapCompanyInput,
   TalentMapDetail,
   TalentMapOrganizationDepartmentDraft,
   TalentMapPerson,
@@ -168,6 +169,27 @@ export function useTalentMapWorkspace() {
     }
   }, [detail, refresh]);
 
+  /** 更新公司资料（名称/行业/城市/备注），改名不会影响已录入人才。 */
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- 未启用 React Compiler，该规则为误报
+  const updateCompany = useCallback(async (
+    companyId: number,
+    payload: Partial<TalentMapCompanyInput>,
+  ) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const company = await talentMapsApi.updateCompany(companyId, payload);
+      await refresh(detail?.id);
+      return company;
+    } catch (saveError) {
+      const saveMessage = messageFrom(saveError, '公司资料保存失败');
+      setError(saveMessage);
+      throw new Error(saveMessage, { cause: saveError });
+    } finally {
+      setSaving(false);
+    }
+  }, [detail?.id, refresh]);
+
   // eslint-disable-next-line react-hooks/preserve-manual-memoization -- 未启用 React Compiler，该规则为误报
   const createPerson = useCallback(async (payload: Parameters<typeof talentMapsApi.createPerson>[1]) => {
     if (!detail) throw new Error('请先选择人才地图');
@@ -303,6 +325,7 @@ export function useTalentMapWorkspace() {
     stats,
     refresh,
     addCompany,
+    updateCompany,
     createPerson,
     updatePerson,
     updateOrganization,

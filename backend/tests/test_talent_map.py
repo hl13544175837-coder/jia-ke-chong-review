@@ -340,3 +340,40 @@ def test_talent_map_organization_can_keep_empty_roles_and_rename_existing_people
         "name": "产品研发",
         "roles": ["高级产品经理", "产品运营"],
     }]
+
+
+def test_talent_map_company_rename_keeps_people_linked(client, make_user, app):
+    hr_id, token = make_user("talent-company-rename@example.com", role="recruiter")
+
+    with app.app_context():
+        talent_map = TalentMap(org_id=1, name="公司改名地图", owner_hr_id=hr_id, board_json={})
+        db.session.add(talent_map)
+        db.session.flush()
+        company = TalentMapCompany(org_id=1, map_id=talent_map.id, company_name="旧公司名")
+        db.session.add(company)
+        db.session.flush()
+        db.session.add(TalentMapPerson(
+            org_id=1,
+            map_id=talent_map.id,
+            company_id=company.id,
+            owner_hr_id=hr_id,
+            name="张三",
+            tags=[],
+        ))
+        db.session.commit()
+        map_id, company_id = talent_map.id, company.id
+
+    renamed = client.patch(
+        f"/api/talent-map-companies/{company_id}",
+        headers=_auth(token),
+        json={"company_name": "新公司名"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.get_json()["company_name"] == "新公司名"
+
+    detail = client.get(f"/api/talent-maps/{map_id}", headers=_auth(token))
+    assert detail.status_code == 200
+    body = detail.get_json()
+    assert body["companies"][0]["company_name"] == "新公司名"
+    assert body["people"][0]["company_id"] == company_id
+    assert body["people"][0]["company_name"] == "新公司名"
