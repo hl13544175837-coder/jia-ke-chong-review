@@ -24,8 +24,8 @@ import {
 
 function initialOfferTab(value: string | null): OfferWorkbenchTab {
   if (OFFER_WORKBENCH_TABS.some((tab) => tab.key === value)) return value as OfferWorkbenchTab;
-  if (['pending', 'approved', 'sent', 'accepted'].includes(value || '')) return 'follow_up';
-  if (['history', 'closed'].includes(value || '')) return 'completed';
+  if (['pending', 'approved', 'sent', 'accepted', 'today'].includes(value || '')) return 'follow_up';
+  if (['history', 'closed', 'onboard', 'onboarded'].includes(value || '')) return 'completed';
   return 'pending_registration';
 }
 
