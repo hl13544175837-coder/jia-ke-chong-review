@@ -3,7 +3,7 @@ FROM registry.ymdd.tech/library/node:20-alpine AS build-stage
 WORKDIR /app
 
 ARG VITE_API_BASE_URL=/api
-ARG VITE_OAUTH_BASE_URL=https://pgsgw.yimidida.com/pgs/oauth
+ARG VITE_OAUTH_BASE_URL=https://test-pgsgw.yimidida.com/pgs/oauth
 ARG VITE_DEFAULT_ROLE=recruiter
 ARG VITE_GATEWAY_ROLE_MAP=
 ARG VITE_PERMISSION_CLIENT_ID=zhipin
