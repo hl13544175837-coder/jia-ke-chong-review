@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { getStatsCards, type StatCard } from '@/mocks/dashboard';
+import { useEffect, useState } from 'react';
+import { apiRequest } from '@/lib/api';
+import type { StatCard } from '@/mocks/dashboard';
 import StatsDetailDrawer from './StatsDetailDrawer';
 
 function getColorClasses(color: string) {
@@ -28,11 +29,86 @@ interface StatsGridProps {
   role?: string;
 }
 
+interface DashboardStats {
+  summary?: Record<string, number | boolean | null>;
+  funnel?: Record<string, number>;
+}
+
 export default function StatsGrid({ role = 'recruiter' }: StatsGridProps) {
-  const cards = getStatsCards(role);
+  const [cards, setCards] = useState<StatCard[]>([]);
+  const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedCard, setSelectedCard] = useState<StatCard | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    apiRequest<DashboardStats>('/dashboard/stats')
+      .then((data) => {
+        if (!alive) return;
+        const summary = data?.summary ?? {};
+        const funnel = data?.funnel ?? {};
+        const num = (value: unknown) => Number(value ?? 0);
+        const mapped: StatCard[] = [
+          {
+            id: 1,
+            label: '在招岗位',
+            scopeLabel: '团队',
+            value: num(summary.open_demands),
+            icon: 'ri-briefcase-line',
+            color: 'primary',
+            change: '实时',
+            changeType: 'neutral',
+            link: '/jobs',
+          },
+          {
+            id: 2,
+            label: '候选人简历',
+            scopeLabel: '团队',
+            value: num(summary.candidate_total),
+            icon: 'ri-file-user-line',
+            color: 'primary',
+            change: '实时',
+            changeType: 'neutral',
+            link: '/candidates',
+          },
+          {
+            id: 3,
+            label: 'Offer 数',
+            scopeLabel: '团队',
+            value: num(funnel.offered),
+            icon: 'ri-mail-check-line',
+            color: 'accent',
+            change: '实时',
+            changeType: 'neutral',
+            link: '/offers',
+          },
+          {
+            id: 4,
+            label: '本月已入职',
+            scopeLabel: '团队',
+            value: num(summary.hires_month),
+            icon: 'ri-user-heart-line',
+            color: 'secondary',
+            change: '实时',
+            changeType: 'neutral',
+            link: '/jobs',
+          },
+        ];
+        setCards(mapped);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (alive) {
+          setCards([]);
+          setLoading(false);
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [role]);
 
   const handleClick = (stat: StatCard) => {
     setSelectedCard(stat);
@@ -51,6 +127,7 @@ export default function StatsGrid({ role = 'recruiter' }: StatsGridProps) {
             <h3 className="font-semibold text-foreground-900 text-sm whitespace-nowrap">数据概览</h3>
             {collapsed && (
               <div className="flex items-center gap-3 flex-wrap min-w-0">
+                {loading && <span className="text-xs text-foreground-400">加载中…</span>}
                 {cards.map((stat) => (
                   <span key={stat.id} className="flex items-center gap-1.5 text-xs text-foreground-500 whitespace-nowrap">
                     <i className={`${stat.icon} text-foreground-400`}></i>

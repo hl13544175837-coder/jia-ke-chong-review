@@ -17,6 +17,17 @@ def overview():
     return jsonify(build_analytics_overview(g.org_id))
 
 
+@bp.get("/dashboard/stats")
+@require_auth
+def dashboard_stats():
+    """工作台数据概览（所有角色可用）：返回团队级汇总，供首页统计卡展示。"""
+    payload = build_analytics_overview(g.org_id)
+    return jsonify({
+        "summary": payload.get("summary", {}),
+        "funnel": payload.get("funnel", {}),
+    })
+
+
 @bp.get("/analytics/export")
 @require_auth
 @require_role("manager", "admin", "hr_director")
