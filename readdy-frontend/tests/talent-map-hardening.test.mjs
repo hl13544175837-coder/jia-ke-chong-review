@@ -21,6 +21,16 @@ test('AI 导入弹窗不会因父级重渲染而重复加载简历库', () => {
   assert.match(source, /\}, \[loadResumeCandidates, showToast\]\);/);
 });
 
+test('AI 导入仅有待确认新建公司项时也可以确认导入', () => {
+  const source = read('src/pages/talent-map/components/AiImportWizard.tsx');
+
+  assert.match(
+    source,
+    /const importableCount = preview \? preview\.match\.length \+ Object\.values\(fixMap\)\.filter\(Boolean\)\.length : 0;/,
+  );
+  assert.match(source, /disabled=\{importing \|\| importableCount === 0\}/);
+});
+
 test('网络错误不会误称为本地业务服务故障', () => {
   const source = read('src/lib/api.ts');
 

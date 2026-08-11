@@ -174,6 +174,8 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
 
   if (!open) return null;
 
+  const importableCount = preview ? preview.match.length + Object.values(fixMap).filter(Boolean).length : 0;
+
   const stepBar = (
     <div className="flex items-center gap-2 px-6 pt-4">
       {[
@@ -423,7 +425,7 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
           <div className="flex items-center justify-between px-6 py-4 border-t border-background-100">
             <span className="text-xs text-foreground-400">
               {step === 3 && preview
-                ? `将导入 ${preview.match.length + Object.values(fixMap).filter(Boolean).length} 位（待确认已默认按简历公司新建目标公司，可改跳过）`
+                ? `将导入 ${importableCount} 位（待确认已默认按简历公司新建目标公司，可改跳过）`
                 : ' '}
             </span>
             <div className="flex items-center gap-3">
@@ -447,7 +449,7 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
                   </button>
                   <button
                     onClick={() => void confirm()}
-                    disabled={importing || preview.match.length === 0}
+                    disabled={importing || importableCount === 0}
                     className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
                   >
                     {importing ? '导入中…' : '确认导入'}
