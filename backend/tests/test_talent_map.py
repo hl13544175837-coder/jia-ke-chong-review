@@ -1,7 +1,7 @@
 import pytest
 
 from app import db
-from app.models import Job, TalentMap
+from app.models import Candidate, Job, TalentMap, TalentMapCompany, TalentMapContactLog, TalentMapPerson
 
 
 def _auth(token):
@@ -203,3 +203,89 @@ def test_talent_map_write_rolls_back_when_audit_event_fails(
 
     with app.app_context():
         assert TalentMap.query.count() == 0
+
+
+def test_ai_import_preview_only_matches_companies_in_the_current_talent_map(
+    client, make_user, app
+):
+    hr_id, token = make_user("talent-import-scope@example.com", role="recruiter")
+
+    with app.app_context():
+        other_map = TalentMap(org_id=1, name="其他岗位地图", owner_hr_id=hr_id)
+        current_map = TalentMap(org_id=1, name="当前岗位地图", owner_hr_id=hr_id)
+        db.session.add_all([other_map, current_map])
+        db.session.flush()
+        db.session.add(TalentMapCompany(
+            org_id=1,
+            map_id=other_map.id,
+            company_name="跨图竞品科技",
+        ))
+        candidate = Candidate(
+            org_id=1,
+            owner_hr_id=hr_id,
+            name_masked="跨图候选人",
+            resume_json={
+                "name": "跨图候选人",
+                "experience": [{"company": "跨图竞品科技", "position": "产品总监"}],
+            },
+        )
+        db.session.add(candidate)
+        db.session.commit()
+        current_map_id = current_map.id
+        candidate_id = candidate.id
+
+    preview = client.post(
+        f"/api/talent-maps/{current_map_id}/import/preview",
+        headers=_auth(token),
+        json={"candidate_ids": [candidate_id]},
+    )
+
+    assert preview.status_code == 200
+    body = preview.get_json()
+    assert body["match"] == []
+    assert [item["candidate_id"] for item in body["unmatch"]] == [candidate_id]
+
+
+def test_recruiter_cannot_read_contact_logs_from_another_recruiters_map(
+    client, make_user, app
+):
+    owner_id, owner_token = make_user("talent-contact-owner@example.com", role="recruiter")
+    _, other_token = make_user("talent-contact-other@example.com", role="recruiter")
+
+    with app.app_context():
+        talent_map = TalentMap(org_id=1, name="联系人地图", owner_hr_id=owner_id)
+        db.session.add(talent_map)
+        db.session.flush()
+        company = TalentMapCompany(org_id=1, map_id=talent_map.id, company_name="隐私公司")
+        db.session.add(company)
+        db.session.flush()
+        person = TalentMapPerson(
+            org_id=1,
+            map_id=talent_map.id,
+            company_id=company.id,
+            owner_hr_id=owner_id,
+            name="隐私候选人",
+            tags=[],
+        )
+        db.session.add(person)
+        db.session.flush()
+        db.session.add(TalentMapContactLog(
+            org_id=1,
+            person_id=person.id,
+            content="仅地图负责人可见的联系内容",
+            created_by=owner_id,
+        ))
+        db.session.commit()
+        person_id = person.id
+
+    owner_response = client.get(
+        f"/api/talent-map-people/{person_id}/contact-logs",
+        headers=_auth(owner_token),
+    )
+    assert owner_response.status_code == 200
+
+    forbidden = client.get(
+        f"/api/talent-map-people/{person_id}/contact-logs",
+        headers=_auth(other_token),
+    )
+    assert forbidden.status_code == 403

@@ -515,6 +515,8 @@ def list_talent_map_contact_logs(person_id):
     person = db.get_or_404(TalentMapPerson, person_id)
     if not same_org(person, g.org_id):
         return jsonify({"error": "目标人才不存在"}), 404
+    if not _can_manage_map(person.talent_map):
+        return jsonify({"error": "Forbidden"}), 403
     logs = (
         TalentMapContactLog.query.filter_by(person_id=person.id)
         .order_by(TalentMapContactLog.contact_at.desc())
@@ -680,15 +682,19 @@ def _normalize_company_name(value):
     return cleaned
 
 
-def _match_company(company_name):
-    """按公司名匹配目标公司（精确优先，再包含；支持常见别名归一化）。"""
+def _match_company(talent_map, company_name):
+    """在当前人才地图内按公司名匹配目标公司（精确优先，再包含）。"""
     name = _normalize_company_name(company_name)
     if not name:
         return None
-    exact = TalentMapCompany.query.filter_by(org_id=g.org_id, company_name=name).first()
+    companies = TalentMapCompany.query.filter_by(
+        org_id=g.org_id,
+        map_id=talent_map.id,
+    )
+    exact = companies.filter_by(company_name=name).first()
     if exact:
         return exact
-    for company in TalentMapCompany.query.filter_by(org_id=g.org_id).all():
+    for company in companies.all():
         target = _normalize_company_name(company.company_name)
         if not target:
             continue
@@ -733,7 +739,7 @@ def talent_map_import_preview(map_id):
         item = lib.get(str(cid))
         if not item:
             continue
-        company = _match_company(item["company"])
+        company = _match_company(talent_map, item["company"])
         if company:
             match.append({
                 **item,

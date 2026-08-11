@@ -75,7 +75,7 @@ async function fetchApi(path: string, init: Parameters<typeof fetch>[1]): Promis
   try {
     return await fetch(`${API_BASE}${path}`, init);
   } catch (error) {
-    throw new ApiError(0, `无法连接本地业务服务：${(error as Error).message}`);
+    throw new ApiError(0, `无法连接业务服务：${(error as Error).message}`);
   }
 }
 
