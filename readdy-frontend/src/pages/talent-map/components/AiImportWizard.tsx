@@ -113,8 +113,9 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
   const confirm = async () => {
     if (!preview) return;
     setImporting(true);
+    let itemsToImport: ImportConfirmItem[] = [];
     try {
-      const itemsToImport: ImportConfirmItem[] = preview.match.map((item: ImportMatchItem) => ({
+      itemsToImport = preview.match.map((item: ImportMatchItem) => ({
         name: item.name,
         company_id: item.matched_company_id,
         title: item.position || '',
