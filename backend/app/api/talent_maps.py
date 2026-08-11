@@ -627,16 +627,72 @@ def _resume_lib_items(keyword=""):
     return items
 
 
+# 常见公司别名（英文/简称/别称 → 规范中文名），用于简历公司名与目标公司匹配
+COMPANY_ALIASES = {
+    "shein": "广州希音",
+    "shein广州": "广州希音",
+    "bytedance": "字节跳动",
+    "byte": "字节跳动",
+    "douyin": "字节跳动",
+    "tencent": "腾讯",
+    "wechat": "腾讯",
+    "alibaba": "阿里巴巴",
+    "taobao": "阿里巴巴",
+    "alipay": "蚂蚁集团",
+    "meituan": "美团",
+    "kuaishou": "快手",
+    "pdd": "拼多多",
+    "huawei": "华为",
+    "byd": "比亚迪",
+    "catl": "宁德时代",
+    "cmb": "招商银行",
+    "pingan": "平安科技",
+    "iflytek": "科大讯飞",
+    "sensetime": "商汤科技",
+    "xiaohongshu": "小红书",
+    "rednote": "小红书",
+    "xiaomi": "小米",
+    "jd": "京东",
+    "netease": "网易",
+    "baidu": "百度",
+    "bilibili": "哔哩哔哩",
+    "oppo": "OPPO",
+}
+
+
+def _normalize_company_name(value):
+    """公司名归一化：去空格/统一小写，命中别名表时换成规范名，便于匹配。"""
+    cleaned = _clean(value, 200)
+    if not cleaned:
+        return ""
+    key = cleaned.replace(" ", "").replace("\u3000", "").lower()
+    if key in COMPANY_ALIASES:
+        return COMPANY_ALIASES[key]
+    # 去掉常见后缀后再比对一次（如 "SHEIN 广州有限公司"）
+    stripped = (
+        key.replace("有限公司", "")
+        .replace("股份有限公司", "")
+        .replace("集团", "")
+        .replace("控股", "")
+    )
+    if stripped in COMPANY_ALIASES:
+        return COMPANY_ALIASES[stripped]
+    return cleaned
+
+
 def _match_company(company_name):
-    """按公司名匹配目标公司（精确优先，再包含）。"""
-    name = _clean(company_name, 200)
+    """按公司名匹配目标公司（精确优先，再包含；支持常见别名归一化）。"""
+    name = _normalize_company_name(company_name)
     if not name:
         return None
     exact = TalentMapCompany.query.filter_by(org_id=g.org_id, company_name=name).first()
     if exact:
         return exact
     for company in TalentMapCompany.query.filter_by(org_id=g.org_id).all():
-        if name in company.company_name or company.company_name in name:
+        target = _normalize_company_name(company.company_name)
+        if not target:
+            continue
+        if name in target or target in name:
             return company
     return None
 

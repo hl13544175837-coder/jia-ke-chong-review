@@ -329,11 +329,37 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
                 {/* 待确认 */}
                 {preview.unmatch.length > 0 && (
                   <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-sm font-semibold text-foreground-900">待确认</span>
-                      <span className="text-xs text-secondary-700 bg-secondary-50 px-2 py-0.5 rounded">
-                        {preview.unmatch.length} 位 · 公司不在目标名单，请指定归属或跳过
-                      </span>
+                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-foreground-900">待确认</span>
+                        <span className="text-xs text-secondary-700 bg-secondary-50 px-2 py-0.5 rounded">
+                          {preview.unmatch.length} 位 · 公司不在目标名单，默认按简历公司新建目标公司
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const all: Record<number, string> = {};
+                            preview.unmatch.forEach((item) => { if (item.company) all[item.candidate_id] = `create:${item.company}`; });
+                            setFixMap(all);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 text-xs font-medium transition-colors cursor-pointer"
+                        >
+                          全部新建公司
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const all: Record<number, string> = {};
+                            preview.unmatch.forEach((item) => { all[item.candidate_id] = ''; });
+                            setFixMap(all);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-background-100 text-foreground-600 hover:bg-background-200 text-xs font-medium transition-colors cursor-pointer"
+                        >
+                          全部跳过
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       {preview.unmatch.map((item) => (
@@ -370,8 +396,9 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
                   <p className="text-xs text-foreground-500 leading-relaxed flex items-start gap-2">
                     <i className="ri-information-line mt-0.5"></i>
                     <span>
-                      导入后每位人才归属当前操作人，出现在目标公司组织架构对应岗位下。职级、负责模块等简历未识别的信息，
-                      可在「编辑人才」中人工补充。
+                      {preview.map_companies.length === 0
+                        ? '当前地图还没有目标公司，导入时将按简历中的公司名自动新建目标公司并归位。'
+                        : '导入后每位人才归属当前操作人，出现在目标公司组织架构对应岗位下。职级、负责模块等简历未识别的信息，可在「编辑人才」中人工补充。'}
                     </span>
                   </p>
                 </div>
