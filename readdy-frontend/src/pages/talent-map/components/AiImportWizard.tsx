@@ -8,6 +8,45 @@ import type {
 } from '@/features/talentMaps/types';
 import type { TalentMapWorkspaceController } from '@/features/talentMaps/useTalentMapWorkspace';
 
+/**
+ * 把 items 里的 create_company_name 提前落库为真实公司 → 拿到 company_id 替换。
+ * 这样无论后端是否已升级支持 create_company_name,SIT 旧版后端也能无缝工作。
+ */
+async function materializeCompanies(
+  workspace: TalentMapWorkspaceController,
+  items: ImportConfirmItem[],
+  knownMap: ReadonlyMap<string, number>,
+): Promise<ImportConfirmItem[]> {
+  const toCreate = new Map<string, ImportConfirmItem[]>();
+  for (const it of items) {
+    const name = it.create_company_name?.trim();
+    if (!name) continue;
+    if (knownMap.has(name)) {
+      it.company_id = knownMap.get(name) ?? null;
+      delete it.create_company_name;
+      continue;
+    }
+    if (!toCreate.has(name)) toCreate.set(name, []);
+    toCreate.get(name)!.push(it);
+  }
+  // 同名公司只创建一次;失败则保留 create_company_name 让新后端兜底
+  for (const [name, owners] of toCreate) {
+    try {
+      const company = await workspace.addCompany(name);
+      const id = (company as { id?: number })?.id;
+      if (!id) throw new Error('createCompany 返回无 id');
+      for (const o of owners) {
+        o.company_id = id;
+        delete o.create_company_name;
+      }
+    } catch (createErr) {
+      // 旧后端(无权限/路由不存在):保留 create_company_name 走新后端兜底
+      console.warn('[AI 导入] 兼容创建公司失败,保留 create_company_name', { name, error: createErr });
+    }
+  }
+  return items;
+}
+
 interface AiImportWizardProps {
   open: boolean;
   workspace: TalentMapWorkspaceController;
@@ -146,6 +185,11 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
           note: `AI 从简历库导入（人工指定公司）：${item.company} · ${item.position || '任职信息待补充'}`,
         });
       });
+      // 旧后端兼容:把"新建公司"先在前端落库 → 转为 company_id,后端即便不识别 create_company_name 也能成功
+      const knownCompanies = new Map<string, number>(
+        preview.map_companies.map((c) => [c.company_name, c.id]),
+      );
+      itemsToImport = await materializeCompanies(workspace, itemsToImport, knownCompanies);
       const result = await workspace.confirmImport(itemsToImport);
       showToast(
         result.skipped > 0
