@@ -2,13 +2,27 @@ stages:
   - verify
   - build
 
+# 依赖/浏览器下载缓存：lockfile 变化才失效，大幅减少 npm ci 与 playwright 下载耗时
+variables:
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm-cache"
+  PLAYWRIGHT_BROWSERS_PATH: "$CI_PROJECT_DIR/.pw-browsers"
+
+cache:
+  key:
+    files:
+      - readdy-frontend/package-lock.json
+  paths:
+    - .npm-cache/
+    - .pw-browsers/
+  policy: pull-push
+
 frontendQuality:
   stage: verify
   script:
     - cd readdy-frontend
     - node --version
     - npm --version
-    - npm ci
+    - npm ci --prefer-offline
     - npm run test:contract
     - npm run type-check
     - npm run lint
@@ -24,7 +38,7 @@ frontendBrowserSmoke:
   stage: verify
   script:
     - cd readdy-frontend
-    - npm ci
+    - npm ci --prefer-offline
     - npx playwright install chromium
     - npm run test:e2e:smoke
   artifacts:
