@@ -12,7 +12,15 @@ ARG BUILD_CHANNEL=local
 ARG BUILD_TIME=unknown
 
 COPY readdy-frontend/package*.json ./
-RUN npm ci
+RUN npm config set audit false \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set maxsockets 5 \
+    && (npm ci --prefer-offline --fetch-timeout=600000 \
+        || (npm config set registry https://registry.npmmirror.com \
+            && npm config set replace-registry-host always \
+            && npm ci --prefer-offline --fetch-timeout=600000))
 
 COPY readdy-frontend/ ./
 RUN VITE_API_BASE_URL="$VITE_API_BASE_URL" \

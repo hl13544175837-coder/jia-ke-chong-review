@@ -20,10 +20,10 @@ frontendQuality:
   stage: verify
   timeout: 40m
   script:
-    - cd readdy-frontend
     - node --version
     - npm --version
-    - npm ci --prefer-offline
+    - bash scripts/ci-npm-install.sh readdy-frontend
+    - cd readdy-frontend
     - npm run test:contract
     - npm run type-check
     - npm run lint
@@ -40,8 +40,8 @@ frontendBrowserSmoke:
   # 首次跑需下载浏览器，网络慢时可能卡住；30 分钟超时兜底，快速失败而不是挂 1 小时
   timeout: 30m
   script:
+    - bash scripts/ci-npm-install.sh readdy-frontend
     - cd readdy-frontend
-    - npm ci --prefer-offline
     - npx playwright install chromium
     - npm run test:e2e:smoke
   artifacts:
