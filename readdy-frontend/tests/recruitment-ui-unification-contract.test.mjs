@@ -122,17 +122,16 @@ test('面试官详情继续使用角色过滤后的招聘过程', () => {
   assert.match(interview, /<CandidateJourneySummary journey=\{journey\} interviewOnly/);
 });
 
-test('面试官候选人详情在右下角直接区分三类筛选动作', () => {
+test('面试官候选人详情在右下角直接区分两类筛选动作', () => {
   const detail = read('src/pages/interviewer/screening/components/BusinessReviewDetail.tsx');
   const page = read('src/pages/interviewer/screening/page.tsx');
   const modal = read('src/features/businessReviews/components/ReviewActionModal.tsx');
 
-  assert.match(detail, />请 HR 补充</);
-  assert.match(detail, />不合适</);
-  assert.match(detail, />通过并提交</);
-  assert.match(detail, /onReview\('needs_info'\)/);
+  assert.match(detail, />不同意面试</);
+  assert.match(detail, />同意面试</);
   assert.match(detail, /onReview\('rejected'\)/);
   assert.match(detail, /onReview\('approved'\)/);
+  assert.doesNotMatch(detail, /请 HR 补充|needs_info/);
   assert.match(page, /initialDecision=\{reviewDecision\}/);
   assert.match(modal, /initialDecision\?: BusinessDecision/);
 });

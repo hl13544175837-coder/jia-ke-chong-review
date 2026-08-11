@@ -54,7 +54,7 @@ test('生成的提示词绑定具体需求并覆盖两条导入路线', async ()
     '/agent-imports/full-resumes',
     'external_record_id',
     'external_import_id',
-    '完整聊天记录',
+    '聊天记录每条包含 sender',
     '不要在输出、聊天或日志中展示导入凭证',
   ]) {
     assert.match(prompt, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

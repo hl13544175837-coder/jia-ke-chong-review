@@ -28,9 +28,9 @@ test('面试评价包含岗位匹配、建议结论、优势、顾虑和补充�
   for (const field of ['job_match', 'recommendation', 'strengths', 'concerns']) {
     assert.match(typeSource, new RegExp(`${field}:`));
   }
-  assert.match(modalSource, /satisfaction === 'satisfied'.*strengths/s);
-  assert.match(modalSource, /satisfaction === 'unsatisfied'.*concerns/s);
-  assert.match(modalSource, /satisfaction === 'pending'.*note/s);
+  assert.match(modalSource, /satisfaction === 'pass'.*strengths/s);
+  assert.match(modalSource, /satisfaction === 'fail'.*concerns/s);
+  assert.doesNotMatch(modalSource, /satisfaction === 'pending'/);
   assert.match(pageSource, /completedAssignment/);
   assert.match(pageSource, /feedback_submitted: true/);
   assert.match(drawerSource, /高匹配/);
