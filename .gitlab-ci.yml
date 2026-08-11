@@ -18,6 +18,7 @@ cache:
 
 frontendQuality:
   stage: verify
+  timeout: 40m
   script:
     - cd readdy-frontend
     - node --version
@@ -36,6 +37,8 @@ frontendQuality:
 
 frontendBrowserSmoke:
   stage: verify
+  # 首次跑需下载浏览器，网络慢时可能卡住；30 分钟超时兜底，快速失败而不是挂 1 小时
+  timeout: 30m
   script:
     - cd readdy-frontend
     - npm ci --prefer-offline

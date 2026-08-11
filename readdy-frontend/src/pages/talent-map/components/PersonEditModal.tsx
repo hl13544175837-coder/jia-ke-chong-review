@@ -103,6 +103,7 @@ export default function PersonEditModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, saving, onClose]);
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- 未启用 React Compiler，该规则为误报
   const departmentSuggestions = useMemo(() => {
     const set = new Set<string>();
     companies.forEach(() => undefined);
@@ -111,6 +112,7 @@ export default function PersonEditModal({
     return [...set].sort((a, b) => a.localeCompare(b, 'zh'));
   }, [companies, person?.department, defaultDepartment]);
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- 未启用 React Compiler，该规则为误报
   const titleSuggestions = useMemo(() => {
     const set = new Set<string>();
     if (person?.title) set.add(person.title);

@@ -167,6 +167,7 @@ export function useTalentMapWorkspace() {
     }
   }, [detail, refresh]);
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- 未启用 React Compiler，该规则为误报
   const createPerson = useCallback(async (payload: Parameters<typeof talentMapsApi.createPerson>[1]) => {
     if (!detail) throw new Error('请先选择人才地图');
     setSaving(true);
@@ -218,6 +219,7 @@ export function useTalentMapWorkspace() {
     }
   }, [detail, refresh]);
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- 未启用 React Compiler，该规则为误报
   const updatePerson = useCallback(async (personId: number, payload: Partial<ImportConfirmItem>) => {
     setSaving(true);
     setError(null);
