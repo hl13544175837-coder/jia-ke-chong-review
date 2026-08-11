@@ -724,6 +724,23 @@ def talent_map_import_confirm(map_id):
                 map_id=talent_map.id,
                 org_id=g.org_id,
             ).first()
+        # 待确认闭环：未指定现有公司但给了 create_company_name → 按简历公司名新建目标公司（同名复用）
+        create_company_name = _clean(raw.get("create_company_name"), 200)
+        if company is None and create_company_name:
+            company = TalentMapCompany.query.filter_by(
+                map_id=talent_map.id,
+                org_id=g.org_id,
+                company_name=create_company_name,
+            ).first()
+            if company is None:
+                company = TalentMapCompany(
+                    org_id=g.org_id,
+                    map_id=talent_map.id,
+                    company_name=create_company_name,
+                )
+                _apply_company_fields(company, {"industry": raw.get("industry")})
+                db.session.add(company)
+                db.session.flush()
         # 防重复：同一地图内 同名 + 同目标公司 的人才跳过，避免重复导入
         duplicate = TalentMapPerson.query.filter_by(
             map_id=talent_map.id,

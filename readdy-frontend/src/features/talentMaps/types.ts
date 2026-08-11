@@ -189,6 +189,8 @@ export interface ImportConfirmItem {
   candidate_id?: number;
   name: string;
   company_id?: number | null;
+  create_company_name?: string;
+  industry?: string;
   department?: string;
   title?: string;
   level?: string;

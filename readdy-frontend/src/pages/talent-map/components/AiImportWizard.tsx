@@ -97,6 +97,12 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
     try {
       const result = await workspace.previewImport([...selected]);
       setPreview(result);
+      // 待确认项默认「按简历公司新建目标公司并导入」，一键确认即可闭环；单个可改跳过/归到现有公司
+      const defaults: Record<number, string> = {};
+      result.unmatch.forEach((item: ResumeCandidateItem) => {
+        if (item.company) defaults[item.candidate_id] = `create:${item.company}`;
+      });
+      setFixMap(defaults);
       setStep(3);
     } catch (previewError) {
       showToast(previewError instanceof Error ? previewError.message : 'AI 匹配失败，请重试');
@@ -119,6 +125,17 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
       preview.unmatch.forEach((item: ResumeCandidateItem) => {
         const targetId = fixMap[item.candidate_id];
         if (!targetId) return;
+        if (String(targetId).startsWith('create:')) {
+          itemsToImport.push({
+            name: item.name,
+            create_company_name: String(targetId).slice(7),
+            title: item.position || '',
+            phone: item.phone || '',
+            source: 'AI导入',
+            note: `AI 从简历库导入（新建目标公司）：${item.company} · ${item.position || '任职信息待补充'}`,
+          });
+          return;
+        }
         itemsToImport.push({
           name: item.name,
           company_id: Number(targetId),
@@ -334,6 +351,9 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
                             className="px-3 py-2 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 focus:outline-none focus:border-primary-300 flex-shrink-0"
                           >
                             <option value="">跳过（不导入）</option>
+                            {item.company && (
+                              <option value={`create:${item.company}`}>新建公司并导入：{item.company}</option>
+                            )}
                             {preview.map_companies.map((company) => (
                               <option key={company.id} value={company.id}>
                                 导入到 {company.company_name}
@@ -362,7 +382,9 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
           {/* Footer */}
           <div className="flex items-center justify-between px-6 py-4 border-t border-background-100">
             <span className="text-xs text-foreground-400">
-              {step === 3 && preview ? `将导入 ${preview.match.length} 位（不含跳过的待确认）` : ' '}
+              {step === 3 && preview
+                ? `将导入 ${preview.match.length + Object.values(fixMap).filter(Boolean).length} 位（待确认已默认按简历公司新建目标公司，可改跳过）`
+                : ' '}
             </span>
             <div className="flex items-center gap-3">
               {step === 1 && (
