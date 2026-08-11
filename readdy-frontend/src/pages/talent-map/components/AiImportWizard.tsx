@@ -153,7 +153,12 @@ export default function AiImportWizard({ open, workspace, onClose }: AiImportWiz
       );
       onClose();
     } catch (importError) {
-      showToast(importError instanceof Error ? importError.message : '导入失败，请重试');
+      // 完整打印错误以便诊断(F12 控制台),并向用户展示后端原 error
+      console.error('[AI 导入失败]', { itemsToImport, error: importError });
+      const apiError = importError as { message?: string; status?: number; statusText?: string; data?: unknown; details?: unknown };
+      const detail = apiError?.data ?? apiError?.details ?? apiError?.statusText;
+      const message = apiError?.message ?? '导入失败，请重试';
+      showToast(detail ? `${message}（${typeof detail === 'string' ? detail : JSON.stringify(detail)}）` : message);
     } finally {
       setImporting(false);
     }
