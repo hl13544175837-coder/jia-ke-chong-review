@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/useToast';
 import PersonEditModal from '@/pages/talent-map/components/PersonEditModal';
 import OrganizationEditorModal from '@/pages/talent-map/components/OrganizationEditorModal';
 import CompanyEditModal from '@/pages/talent-map/components/CompanyEditModal';
+import CompanyTreeMap from '@/pages/talent-map/components/CompanyTreeMap';
 import AiImportWizard from '@/pages/talent-map/components/AiImportWizard';
 import { buildOrganization, organizationFromBoard } from '@/pages/talent-map/organization';
 import type { OrganizationDepartment, OrganizationRole } from '@/pages/talent-map/organization';
@@ -71,6 +72,7 @@ export default function TalentMapPage() {
   }>({ open: false, person: null });
   const [aiWizardOpen, setAiWizardOpen] = useState(false);
   const [organizationEditorOpen, setOrganizationEditorOpen] = useState(false);
+  const [treeMapOpen, setTreeMapOpen] = useState(false);
   const [companyEditOpen, setCompanyEditOpen] = useState(false);
   const [addCompanyOpen, setAddCompanyOpen] = useState(false);
   const [companyForm, setCompanyForm] = useState({ name: '', industry: '', note: '' });
@@ -247,6 +249,17 @@ export default function TalentMapPage() {
       setCompanyEditOpen(false);
     } catch (saveError) {
       showToast(saveError instanceof Error ? saveError.message : '公司资料保存失败');
+    }
+  };
+
+  const handleSaveTreeMap = async (nextDepartments: TalentMapOrganizationDepartmentDraft[]) => {
+    if (activeCompanyId == null) return;
+    try {
+      await updateOrganization(activeCompanyId, nextDepartments);
+      showToast('组织结构已保存，地图已更新');
+      setTreeMapOpen(false);
+    } catch (saveError) {
+      showToast(saveError instanceof Error ? saveError.message : '组织结构保存失败');
     }
   };
 
@@ -560,6 +573,15 @@ export default function TalentMapPage() {
                   >
                     <i className="ri-edit-2-line"></i>
                     编辑公司
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTreeMapOpen(true)}
+                    disabled={saving}
+                    className="flex-shrink-0 px-3 py-2 rounded-lg bg-primary-50 hover:bg-primary-100 text-primary-700 text-sm font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <i className="ri-git-branch-line"></i>
+                    地图视图
                   </button>
                 </div>
               </div>
@@ -900,6 +922,22 @@ export default function TalentMapPage() {
         saving={saving}
         onClose={() => setCompanyEditOpen(false)}
         onSave={handleSaveCompany}
+      />
+
+      {/* 地图视图（公司 → 部门 → 岗位 → 候选人） */}
+      <CompanyTreeMap
+        open={treeMapOpen}
+        company={activeCompany}
+        departments={organizationTree}
+        saving={saving}
+        onClose={() => setTreeMapOpen(false)}
+        onSave={handleSaveTreeMap}
+        onAddPerson={(department, title) => {
+          setPersonModal({ open: true, person: null, dept: department, title });
+        }}
+        onEditPerson={(person) => {
+          setPersonModal({ open: true, person });
+        }}
       />
     </div>
   );
