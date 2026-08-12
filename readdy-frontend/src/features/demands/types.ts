@@ -16,6 +16,11 @@ export interface RecruitmentDemandMetrics {
   current_stage_counts: Record<string, number>;
 }
 
+export interface DemandHealth {
+  score: number;
+  level: 'green' | 'yellow' | 'red';
+}
+
 export interface RecruitmentDemand {
   id: number;
   job_id: number;
@@ -46,6 +51,7 @@ export interface RecruitmentDemand {
   note: string;
   metrics: RecruitmentDemandMetrics;
   risk_flags: string[];
+  health?: DemandHealth;
   completion_suggested: boolean;
   jd_text?: string;
   created_at: string | null;

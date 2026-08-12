@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
+import { useProductRole } from '@/auth/productRole';
 import { demandsApi } from '@/features/demands/api';
 import type { RecruitmentDemand } from '@/features/demands/types';
 import { pipelineApi } from '@/features/pipeline/api';
@@ -21,6 +22,9 @@ import type {
   PipelineHistory,
   PipelineStage,
 } from '@/features/pipeline/types';
+import { kpiStandardsApi } from '@/features/kpiStandards/api';
+import type { KpiStandardConfig } from '@/features/kpiStandards/types';
+import BlockagePanel from '@/pages/kanban/components/BlockagePanel';
 
 const stages: Array<{ key: PipelineStage; label: string; tone: string }> = [
   { key: 'pending', label: '简历收录', tone: 'border-sky-200 bg-sky-50 text-sky-700' },
@@ -144,6 +148,7 @@ function MoveDialog({ candidate, initialTarget, busy, error, onClose, onSubmit }
 }
 
 export default function KanbanPage() {
+  const { role } = useProductRole();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDemandId = Number(searchParams.get('demand')) || null;
   const requestedCandidateId = Number(searchParams.get('candidate')) || null;
@@ -166,6 +171,9 @@ export default function KanbanPage() {
   const [moveCandidate, setMoveCandidate] = useState<PipelineBoardCandidate | null>(null);
   const [moveBusy, setMoveBusy] = useState(false);
   const [moveError, setMoveError] = useState('');
+  const [kpiConfig, setKpiConfig] = useState<KpiStandardConfig | null>(null);
+
+  const canViewKpiConfig = role === 'manager' || role === 'admin';
 
   const activeDemands = useMemo(
     () => demands.filter((item) => item.status === 'active' && item.approval_status === 'approved'),
@@ -219,6 +227,18 @@ export default function KanbanPage() {
     if (demandId) sessionStorage.setItem(KANBAN_DEMAND_MEMORY_KEY, String(demandId));
     else sessionStorage.removeItem(KANBAN_DEMAND_MEMORY_KEY);
   }, [demandId]);
+
+  useEffect(() => {
+    if (!canViewKpiConfig || !demandId) {
+      setKpiConfig(null);
+      return;
+    }
+    let cancelled = false;
+    kpiStandardsApi.get()
+      .then((payload) => { if (!cancelled) setKpiConfig(payload.config); })
+      .catch(() => { if (!cancelled) setKpiConfig(null); });
+    return () => { cancelled = true; };
+  }, [canViewKpiConfig, demandId]);
 
   const rememberDetailCandidate = useCallback((candidateId: number | null) => {
     const next = new URLSearchParams(searchParams);
@@ -459,6 +479,10 @@ export default function KanbanPage() {
             })}
           </div>
         </div>
+      )}
+
+      {currentDemand && (
+        <BlockagePanel demand={currentDemand} kpiConfig={kpiConfig} />
       )}
 
       {selectedCandidate && (

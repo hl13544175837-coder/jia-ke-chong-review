@@ -32,6 +32,7 @@ const DirectorCockpitPage = lazy(() => import('@/pages/director/cockpit/page'));
 const DirectorProgressPage = lazy(() => import('@/pages/director/progress/page'));
 const DirectorInsightsPage = lazy(() => import('@/pages/director/insights/page'));
 const DirectorApprovalsPage = lazy(() => import('@/pages/director/approvals/page'));
+const KpiStandardsPage = lazy(() => import('@/pages/kpi-standards/page'));
 
 const dashboardRoles: ProductRole[] = ['admin', 'manager', 'recruiter'];
 const hrRoles: ProductRole[] = ['recruiter', 'manager', 'admin'];
@@ -104,7 +105,7 @@ const routes: RouteObject[] = [
       },
       {
         path: '/kpi-standards',
-        element: <RoleHomeRedirect />,
+        element: <RequireCompanyRole allow={managerRoles}><KpiStandardsPage /></RequireCompanyRole>,
       },
       {
         path: '/analytics',

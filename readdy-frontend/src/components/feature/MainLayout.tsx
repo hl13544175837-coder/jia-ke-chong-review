@@ -42,6 +42,7 @@ const managerNavItems: NavItem[] = [
   { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['manager'], menuCode: 'interviews' },
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['manager'], menuCode: 'pipeline' },
   { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['manager'], menuCode: 'candidates' },
+  { path: '/kpi-standards', icon: 'ri-tune-line', label: '口径配置', roles: ['manager'] },
 ];
 
 const adminNavItems: NavItem[] = [
@@ -52,6 +53,7 @@ const adminNavItems: NavItem[] = [
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['admin'], menuCode: 'pipeline' },
   { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['admin'], menuCode: 'candidates' },
   { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['admin'], menuCode: 'bi' },
+  { path: '/kpi-standards', icon: 'ri-tune-line', label: '口径配置', roles: ['admin'] },
 ];
 
 const directorNavItems: NavItem[] = [

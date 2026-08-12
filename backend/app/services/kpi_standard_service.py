@@ -28,6 +28,14 @@ DEFAULT_KPI_CONFIG = {
         "no_recommendation_days": 7,
         "low_interview_candidate_threshold": 20,
         "open_too_long_days": 60,
+        "high_if_status_paused_or_closed": False,
+        "high_if_zero_fill_and_blocked": False,
+        "medium_if_blocked": False,
+        "medium_fill_ratio_threshold": 0.5,
+    },
+    "health_thresholds": {
+        "green_threshold": 70,
+        "yellow_threshold": 40,
     },
 }
 
@@ -53,6 +61,7 @@ def _merge_with_defaults(config):
     for section in (
         "block_categories",
         "risk_thresholds",
+        "health_thresholds",
     ):
         value = config.get(section)
         if isinstance(value, dict) and isinstance(merged.get(section), dict):
@@ -105,6 +114,13 @@ def _number(value, *, minimum, maximum, field, fields):
     if number < minimum or number > maximum:
         fields[field] = f"必须在 {minimum} 到 {maximum} 之间"
     return number
+
+
+def _bool(value, *, field, fields):
+    if isinstance(value, bool):
+        return value
+    fields[field] = "必须是布尔值"
+    return False
 
 
 def validate_kpi_config(config):
@@ -198,6 +214,67 @@ def validate_kpi_config(config):
         field="risk_thresholds.open_too_long_days",
         fields=fields,
     )
+    high_if_status_paused_or_closed = _bool(
+        risk.get(
+            "high_if_status_paused_or_closed",
+            DEFAULT_KPI_CONFIG["risk_thresholds"]["high_if_status_paused_or_closed"],
+        ),
+        field="risk_thresholds.high_if_status_paused_or_closed",
+        fields=fields,
+    )
+    high_if_zero_fill_and_blocked = _bool(
+        risk.get(
+            "high_if_zero_fill_and_blocked",
+            DEFAULT_KPI_CONFIG["risk_thresholds"]["high_if_zero_fill_and_blocked"],
+        ),
+        field="risk_thresholds.high_if_zero_fill_and_blocked",
+        fields=fields,
+    )
+    medium_if_blocked = _bool(
+        risk.get(
+            "medium_if_blocked",
+            DEFAULT_KPI_CONFIG["risk_thresholds"]["medium_if_blocked"],
+        ),
+        field="risk_thresholds.medium_if_blocked",
+        fields=fields,
+    )
+    medium_fill_ratio_threshold = _number(
+        risk.get(
+            "medium_fill_ratio_threshold",
+            DEFAULT_KPI_CONFIG["risk_thresholds"]["medium_fill_ratio_threshold"],
+        ),
+        minimum=0,
+        maximum=1,
+        field="risk_thresholds.medium_fill_ratio_threshold",
+        fields=fields,
+    )
+
+    health = config.get("health_thresholds")
+    if not isinstance(health, dict):
+        fields["health_thresholds"] = "必须是对象"
+        health = {}
+    green_threshold = _number(
+        health.get(
+            "green_threshold",
+            DEFAULT_KPI_CONFIG["health_thresholds"]["green_threshold"],
+        ),
+        minimum=0,
+        maximum=100,
+        field="health_thresholds.green_threshold",
+        fields=fields,
+    )
+    yellow_threshold = _number(
+        health.get(
+            "yellow_threshold",
+            DEFAULT_KPI_CONFIG["health_thresholds"]["yellow_threshold"],
+        ),
+        minimum=0,
+        maximum=100,
+        field="health_thresholds.yellow_threshold",
+        fields=fields,
+    )
+    if green_threshold < yellow_threshold:
+        fields["health_thresholds.green_threshold"] = "绿色阈值不能低于黄色阈值"
 
     if fields:
         raise KpiStandardError(
@@ -217,6 +294,14 @@ def validate_kpi_config(config):
                 low_interview_candidate_threshold
             ),
             "open_too_long_days": int(open_too_long_days),
+            "high_if_status_paused_or_closed": high_if_status_paused_or_closed,
+            "high_if_zero_fill_and_blocked": high_if_zero_fill_and_blocked,
+            "medium_if_blocked": medium_if_blocked,
+            "medium_fill_ratio_threshold": float(medium_fill_ratio_threshold),
+        },
+        "health_thresholds": {
+            "green_threshold": int(green_threshold),
+            "yellow_threshold": int(yellow_threshold),
         },
     }
 

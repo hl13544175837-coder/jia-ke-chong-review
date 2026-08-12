@@ -1,196 +1,210 @@
 import { useMemo } from 'react';
-import { type Candidate } from '@/mocks/candidates';
-import { requisitions } from '@/mocks/jobs';
-import { loadKpiConfig, categorizeBlockReason } from '@/mocks/kpiStandards';
+import type { RecruitmentDemand } from '@/features/demands/types';
+import type { KpiStandardConfig } from '@/features/kpiStandards/types';
 
 interface BlockagePanelProps {
-  candidates: Candidate[];
+  demand: RecruitmentDemand;
+  kpiConfig: KpiStandardConfig | null;
 }
 
-export default function BlockagePanel({ candidates }: BlockagePanelProps) {
-  const kpiConfig = useMemo(() => loadKpiConfig(), []);
+const FLAG_LABELS: Record<string, string> = {
+  overdue: '已超过期望完成日期',
+  business_feedback_pending: '有候选人等待业务反馈',
+  low_interview_conversion: '推荐较多但尚未进入面试',
+  open_too_long: '需求开放时间较长',
+  hr_no_recommendation: '需求接收后尚未推荐候选人',
+  paused_or_closed: '需求已暂停或关闭',
+  zero_fill_and_blocked: '零入职且存在卡点',
+  blocked: '存在阻塞问题',
+  fill_ratio_low: 'HC 填充率偏低',
+};
 
-  // Block reason analysis
-  const blockAnalysis = useMemo(() => {
-    const map: Record<string, number> = {};
-    candidates.forEach((c) => {
-      const cat = categorizeBlockReason(c.blockReason, kpiConfig.blockCategories);
-      map[cat] = (map[cat] || 0) + 1;
-    });
+const HIGH_RISK_FLAGS = new Set(['overdue', 'paused_or_closed', 'zero_fill_and_blocked']);
 
-    const order = kpiConfig.blockCategories.map((c) => c.name);
-    if (!order.includes('无阻塞')) order.push('无阻塞');
-    return order.filter((k) => map[k] > 0).map((name) => ({ name, count: map[name] }));
-  }, [candidates, kpiConfig.blockCategories]);
+const STATUS_LABELS: Record<string, string> = {
+  pending: '待审核',
+  active: '招聘中',
+  paused: '已暂停',
+  filled: '已完成',
+  cancelled: '已取消',
+  closed: '已关闭',
+};
 
-  const blockedCount = candidates.filter((c) =>
-    c.blockReason && c.blockReason !== '暂无' && c.blockReason !== '暂无明显阻塞'
-  ).length;
+const STAGE_COLUMNS: { key: string; label: string }[] = [
+  { key: 'pending', label: '待筛选' },
+  { key: 'ai_screen', label: 'AI初筛' },
+  { key: 'business_review', label: '业务筛选' },
+  { key: 'interview', label: '面试' },
+  { key: 'offer', label: 'Offer' },
+  { key: 'onboarded', label: '已入职' },
+  { key: 'rejected', label: '已淘汰' },
+  { key: 'transferred', label: '已转需求' },
+];
 
-  // Position matrix - derive from requisitions
-  const positionMatrix = useMemo(() => {
-    const positions = candidates.map((c) => c.position);
-    const uniquePositions = [...new Set(positions)];
-    const thresholds = kpiConfig.riskThresholds;
+const LEVEL_RING: Record<'green' | 'yellow' | 'red', { color: string; label: string }> = {
+  green: { color: 'oklch(var(--primary-500))', label: '正常' },
+  yellow: { color: 'oklch(var(--accent-500))', label: '需关注' },
+  red: { color: 'oklch(var(--accent-600))', label: '高风险' },
+};
 
-    return uniquePositions.map((pos) => {
-      const posCandidates = candidates.filter((c) => c.position === pos);
-      const req = requisitions.find((r) => r.title === pos);
+export default function BlockagePanel({ demand, kpiConfig }: BlockagePanelProps) {
+  const health = demand.health ?? { score: 100, level: 'green' as const };
+  const ring = LEVEL_RING[health.level];
+  const flags = useMemo(() => demand.risk_flags ?? [], [demand.risk_flags]);
 
-      const stageDist: Record<string, number> = {};
-      posCandidates.forEach((c) => {
-        stageDist[c.stage] = (stageDist[c.stage] || 0) + 1;
-      });
+  const activeSwitchChips = useMemo(() => {
+    if (!kpiConfig) return [];
+    const thresholds = kpiConfig.risk_thresholds;
+    const chips: { label: string; on: boolean }[] = [
+      { label: '暂停/关闭视为高风险', on: thresholds.high_if_status_paused_or_closed },
+      { label: '零入职且有卡点视为高风险', on: thresholds.high_if_zero_fill_and_blocked },
+      { label: '存在阻塞视为需关注', on: thresholds.medium_if_blocked },
+      {
+        label: `填充率低于 ${Math.round(thresholds.medium_fill_ratio_threshold * 100)}% 视为需关注`,
+        on: thresholds.medium_fill_ratio_threshold > 0,
+      },
+    ];
+    return chips;
+  }, [kpiConfig]);
 
-      const blocked = posCandidates.filter((c) =>
-        c.blockReason && c.blockReason !== '暂无' && c.blockReason !== '暂无明显阻塞'
-      );
+  const stageRows = useMemo(() => {
+    const counts = demand.metrics?.current_stage_counts ?? {};
+    return STAGE_COLUMNS.map((column) => ({
+      ...column,
+      count: counts[column.key] ?? 0,
+    }));
+  }, [demand.metrics]);
 
-      let risk: 'high' | 'medium' | 'low' = 'low';
-      if (req) {
-        const fillRatio = req.headcount > 0 ? req.filled / req.headcount : 0;
+  const flagList = useMemo(
+    () =>
+      flags.map((flag) => ({
+        id: flag,
+        label: FLAG_LABELS[flag] ?? flag,
+        high: HIGH_RISK_FLAGS.has(flag),
+      })),
+    [flags],
+  );
 
-        // High risk
-        if (
-          (thresholds.highIfStatusPausedOrClosed && (req.statusCode === 'paused' || req.statusCode === 'closed')) ||
-          (thresholds.highIfZeroFillAndBlocked && fillRatio === 0 && blocked.length > 0)
-        ) {
-          risk = 'high';
-        }
-
-        // Medium risk
-        if (risk === 'low') {
-          if (thresholds.mediumIfBlocked && fillRatio < thresholds.mediumFillRatioThreshold && blocked.length > 0) {
-            risk = 'medium';
-          } else if (req.deadline) {
-            const today = new Date();
-            const deadline = new Date(req.deadline);
-            const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-            if (diffDays <= thresholds.deadlineWarningDays) {
-              risk = 'medium';
-            }
-          }
-        }
-      }
-
-      return {
-        position: pos,
-        total: posCandidates.length,
-        stages: stageDist,
-        blocked: blocked.length,
-        headcount: req?.headcount || 0,
-        filled: req?.filled || 0,
-        status: req?.status || '未知',
-        deadline: req?.deadline || null,
-        risk,
-      };
-    }).sort((a, b) => {
-      // 招聘专员视角：风险 > deadline 紧急度 > HC 缺口 > 阻塞人数
-      const riskScore = (r: typeof a.risk) => ({ high: 3, medium: 2, low: 1 }[r] || 0);
-      const riskDiff = riskScore(b.risk) - riskScore(a.risk);
-      if (riskDiff !== 0) return riskDiff;
-
-      const deadlineA = a.deadline ? new Date(a.deadline).getTime() : Infinity;
-      const deadlineB = b.deadline ? new Date(b.deadline).getTime() : Infinity;
-      const deadlineDiff = deadlineA - deadlineB; // 越近越靠前
-      if (deadlineDiff !== 0) return deadlineDiff;
-
-      const gapA = a.headcount - a.filled;
-      const gapB = b.headcount - b.filled;
-      const gapDiff = gapB - gapA; // 缺口越大越靠前
-      if (gapDiff !== 0) return gapDiff;
-
-      return b.blocked - a.blocked;
-    });
-  }, [candidates, kpiConfig.riskThresholds]);
-
-  const riskColor: Record<string, string> = {
-    high: 'text-accent-600 bg-accent-50 border-accent-200',
-    medium: 'text-primary-600 bg-primary-50 border-primary-200',
-    low: 'text-foreground-500 bg-background-100 border-background-200',
-  };
-
-  const riskLabel: Record<string, string> = {
-    high: '高风险',
-    medium: '需关注',
-    low: '正常',
-  };
-
-  // Color palette for the donut-like visualization
-  const catColors: Record<string, string> = {
-    '用人部门需求模糊': 'oklch(var(--accent-500))',
-    '面试官/用人部门响应慢': 'oklch(var(--secondary-500))',
-    '薪资不匹配': 'oklch(var(--primary-500))',
-    '候选人放弃': 'oklch(0.55 0.15 30)',
-    '其他原因': 'oklch(var(--foreground-400))',
-    '无阻塞': 'oklch(var(--background-300))',
-  };
-
-  const total = candidates.length;
-  let conicGradient = '';
-  let cumulative = 0;
-  blockAnalysis.forEach((item) => {
-    const pct = (item.count / total) * 100;
-    if (pct > 0) {
-      conicGradient += `${conicGradient ? ', ' : ''}${catColors[item.name] || 'oklch(var(--foreground-400))'} ${cumulative}% ${cumulative + pct}%`;
-      cumulative += pct;
-    }
-  });
+  const completionRate = useMemo(() => {
+    const headcount = Math.max(1, demand.headcount || 1);
+    return Math.round(((demand.metrics?.onboarded_count ?? 0) / headcount) * 100);
+  }, [demand]);
 
   return (
     <div className="space-y-6">
-      {/* Blockage Reason Distribution */}
-      <div className="bg-white rounded-xl border border-background-200 p-6">
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h3 className="font-bold text-foreground-900 text-base">阻塞原因分析</h3>
-            <p className="text-xs text-foreground-500 mt-0.5">
-              共 <span className="font-semibold text-accent-600">{blockedCount}</span> 人阻塞中
-              · {total - blockedCount} 人正常推进
+      {/* 需求健康度 + 风险标记 */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-background-200 p-6 flex items-center gap-5">
+          <div className="relative w-24 h-24 flex-shrink-0">
+            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="oklch(var(--background-200))" strokeWidth="10" />
+              <circle
+                cx="50"
+                cy="50"
+                r="42"
+                fill="none"
+                stroke={ring.color}
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeDasharray={`${health.score * 2.64} 264`}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-xl font-bold text-foreground-900">{health.score}</span>
+              <span className="text-[10px] text-foreground-400">健康度</span>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-sm font-semibold text-foreground-900">需求健康度</p>
+            <span
+              className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-medium border ${
+                health.level === 'green'
+                  ? 'text-primary-600 bg-primary-50 border-primary-200'
+                  : health.level === 'yellow'
+                    ? 'text-accent-600 bg-accent-50 border-accent-200'
+                    : 'text-accent-700 bg-accent-100 border-accent-200'
+              }`}
+            >
+              {ring.label}
+            </span>
+            <p className="text-xs text-foreground-400">
+              {STATUS_LABELS[demand.status] ?? demand.status} · {demand.metrics?.onboarded_count ?? 0}/{demand.headcount || 1} HC
             </p>
+            {demand.target_date && (
+              <p className="text-xs text-foreground-400">截止 {demand.target_date.slice(0, 10)}</p>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-6">
-          {/* Donut */}
-          <div className="w-44 h-44 relative flex-shrink-0">
-            <div
-              className="w-full h-full rounded-full"
-              style={{ background: `conic-gradient(${conicGradient || 'oklch(var(--background-200)) 0% 100%'})` }}
-            >
-              <div className="absolute inset-0 m-8 bg-white rounded-full flex flex-col items-center justify-center">
-                <span className="text-2xl font-bold text-foreground-900">{blockedCount}</span>
-                <span className="text-[10px] text-foreground-400">阻塞中</span>
-              </div>
-            </div>
+        <div className="sm:col-span-2 bg-white rounded-xl border border-background-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-foreground-900 text-base">风险标记</h3>
+            {flags.length > 0 ? (
+              <span className="text-xs text-foreground-500">
+                共 <span className="font-semibold text-accent-600">{flags.length}</span> 项
+              </span>
+            ) : (
+              <span className="text-xs text-primary-600 font-medium">当前无风险标记</span>
+            )}
           </div>
 
-          {/* Legend */}
-          <div className="flex-1 space-y-2.5">
-            {blockAnalysis.map((item) => {
-              const pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
-              return (
-                <div key={item.name} className="flex items-center gap-3 group cursor-pointer">
-                  <div
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: catColors[item.name] || '#999' }}
-                  ></div>
-                  <span className="text-sm text-foreground-700 flex-1">{item.name}</span>
-                  <span className="text-sm font-semibold text-foreground-900">{item.count} 人</span>
-                  <span className="text-xs text-foreground-400 w-10 text-right">{pct}%</span>
-                </div>
-              );
-            })}
-          </div>
+          {flagList.length > 0 ? (
+            <ul className="space-y-2">
+              {flagList.map((flag) => (
+                <li key={flag.id} className="flex items-center gap-2.5">
+                  <i
+                    className={`${flag.high ? 'ri-alert-fill text-accent-600' : 'ri-information-line text-primary-600'} text-sm`}
+                  ></i>
+                  <span className="text-sm text-foreground-700 flex-1">{flag.label}</span>
+                  <span
+                    className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-medium border whitespace-nowrap ${
+                      flag.high
+                        ? 'text-accent-600 bg-accent-50 border-accent-200'
+                        : 'text-primary-600 bg-primary-50 border-primary-200'
+                    }`}
+                  >
+                    {flag.high ? '高风险' : '需关注'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-foreground-500">
+              需求推进正常，没有需要关注的卡点。
+            </p>
+          )}
+
+          {activeSwitchChips.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-background-100">
+              <p className="text-xs text-foreground-400 mb-2">当前生效的风险口径（来自组织口径配置）</p>
+              <div className="flex flex-wrap gap-2">
+                {activeSwitchChips.map((chip) => (
+                  <span
+                    key={chip.label}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border ${
+                      chip.on
+                        ? 'bg-primary-50 text-primary-700 border-primary-200'
+                        : 'bg-background-50 text-foreground-400 border-background-100'
+                    }`}
+                  >
+                    <i className={`${chip.on ? 'ri-checkbox-circle-line' : 'ri-checkbox-blank-circle-line'} text-xs`}></i>
+                    {chip.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Position × Stage Matrix */}
+      {/* 招聘进度矩阵 */}
       <div className="bg-white rounded-xl border border-background-200 p-6">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h3 className="font-bold text-foreground-900 text-base">岗位招聘进度矩阵</h3>
-            <p className="text-xs text-foreground-500 mt-0.5">按岗位追踪各阶段候选人分布 · 一眼定位卡点</p>
+            <h3 className="font-bold text-foreground-900 text-base">招聘进度矩阵</h3>
+            <p className="text-xs text-foreground-500 mt-0.5">
+              候选人阶段分布与 HC 完成情况 · 填充率 {completionRate}%
+            </p>
           </div>
         </div>
 
@@ -199,96 +213,91 @@ export default function BlockagePanel({ candidates }: BlockagePanelProps) {
             <thead>
               <tr className="border-b border-background-200">
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-foreground-500 whitespace-nowrap sticky left-0 bg-white z-10">
-                  岗位 / HC
+                  需求 / HC
                 </th>
-                {['待筛选', '初筛通过', '面试中', '已发Offer', '已入职', '已淘汰'].map((s) => (
-                  <th key={s} className="text-center px-2 py-2.5 text-xs font-medium text-foreground-500 whitespace-nowrap">
-                    {s}
+                {STAGE_COLUMNS.map((column) => (
+                  <th key={column.key} className="text-center px-2 py-2.5 text-xs font-medium text-foreground-500 whitespace-nowrap">
+                    {column.label}
                   </th>
                 ))}
                 <th className="text-center px-3 py-2.5 text-xs font-medium text-foreground-500 whitespace-nowrap">
-                  阻塞数
+                  风险标记
                 </th>
                 <th className="text-center px-3 py-2.5 text-xs font-medium text-foreground-500 whitespace-nowrap">
-                  风险
+                  健康度
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-background-100">
-              {positionMatrix.map((row) => {
-                const interviewCount = (row.stages['一面'] || 0) + (row.stages['二面'] || 0) + (row.stages['终面'] || 0);
-                return (
-                  <tr key={row.position} className="hover:bg-background-50/50 transition-colors">
-                    <td className="px-3 py-3 sticky left-0 bg-white z-10">
-                      <p className="text-sm font-medium text-foreground-900">{row.position}</p>
-                      <p className="text-xs text-foreground-400">
-                        {row.filled}/{row.headcount} HC
-                        {row.deadline && <span className="ml-1">· 截止 {row.deadline}</span>}
-                      </p>
-                    </td>
-                    <td className="text-center px-2 py-3">
-                      <span className={`inline-flex items-center justify-center min-w-[28px] h-7 rounded-md text-xs font-semibold ${
-                        (row.stages['待筛选'] || 0) > 0 ? 'bg-secondary-100 text-secondary-700' : 'bg-background-100 text-foreground-400'
-                      }`}>{row.stages['待筛选'] || 0}</span>
-                    </td>
-                    <td className="text-center px-2 py-3">
-                      <span className={`inline-flex items-center justify-center min-w-[28px] h-7 rounded-md text-xs font-semibold ${
-                        (row.stages['初筛通过'] || 0) > 0 ? 'bg-primary-100 text-primary-700' : 'bg-background-100 text-foreground-400'
-                      }`}>{row.stages['初筛通过'] || 0}</span>
-                    </td>
-                    <td className="text-center px-2 py-3">
-                      <span className={`inline-flex items-center justify-center min-w-[28px] h-7 rounded-md text-xs font-semibold ${
-                        interviewCount > 0 ? 'bg-accent-100 text-accent-700' : 'bg-background-100 text-foreground-400'
-                      }`}>{interviewCount}</span>
-                    </td>
-                    <td className="text-center px-2 py-3">
-                      <span className={`inline-flex items-center justify-center min-w-[28px] h-7 rounded-md text-xs font-semibold ${
-                        (row.stages['已发Offer'] || 0) > 0 ? 'bg-primary-200 text-primary-800' : 'bg-background-100 text-foreground-400'
-                      }`}>{row.stages['已发Offer'] || 0}</span>
-                    </td>
-                    <td className="text-center px-2 py-3">
-                      <span className={`inline-flex items-center justify-center min-w-[28px] h-7 rounded-md text-xs font-semibold ${
-                        (row.stages['已入职'] || 0) > 0 ? 'bg-primary-300 text-primary-800' : 'bg-background-100 text-foreground-400'
-                      }`}>{row.stages['已入职'] || 0}</span>
-                    </td>
-                    <td className="text-center px-2 py-3">
-                      <span className={`inline-flex items-center justify-center min-w-[28px] h-7 rounded-md text-xs font-semibold ${
-                        (row.stages['已淘汰'] || 0) > 0 ? 'bg-background-200 text-foreground-500' : 'bg-background-100 text-foreground-400'
-                      }`}>{row.stages['已淘汰'] || 0}</span>
-                    </td>
-                    <td className="text-center px-3 py-3">
-                      {row.blocked > 0 ? (
-                        <span className="inline-flex items-center justify-center min-w-[28px] h-7 rounded-md text-xs font-bold bg-accent-100 text-accent-700">
-                          <i className="ri-alert-line mr-0.5"></i>{row.blocked}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-foreground-400">-</span>
-                      )}
-                    </td>
-                    <td className="text-center px-3 py-3">
-                      <span className={`inline-block px-2 py-1 rounded-md text-[10px] font-medium border whitespace-nowrap ${riskColor[row.risk]}`}>
-                        {riskLabel[row.risk]}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
+              <tr className="hover:bg-background-50/50 transition-colors">
+                <td className="px-3 py-3 sticky left-0 bg-white z-10">
+                  <p className="text-sm font-medium text-foreground-900">{demand.job_title}</p>
+                  <p className="text-xs text-foreground-400">
+                    {demand.metrics?.onboarded_count ?? 0}/{demand.headcount || 1} HC
+                    {demand.owner_hr_name && <span className="ml-1">· {demand.owner_hr_name}</span>}
+                  </p>
+                </td>
+                {stageRows.map((column) => (
+                  <td key={column.key} className="text-center px-2 py-3">
+                    <span
+                      className={`inline-flex items-center justify-center min-w-[28px] h-7 rounded-md text-xs font-semibold ${
+                        column.count > 0
+                          ? column.key === 'interview'
+                            ? 'bg-accent-100 text-accent-700'
+                            : column.key === 'onboarded'
+                              ? 'bg-primary-200 text-primary-800'
+                              : column.key === 'rejected' || column.key === 'transferred'
+                                ? 'bg-background-200 text-foreground-500'
+                                : 'bg-primary-100 text-primary-700'
+                          : 'bg-background-100 text-foreground-400'
+                      }`}
+                    >
+                      {column.count}
+                    </span>
+                  </td>
+                ))}
+                <td className="text-center px-3 py-3">
+                  {flags.length > 0 ? (
+                    <span className="inline-flex items-center justify-center min-w-[28px] h-7 rounded-md text-xs font-bold bg-accent-100 text-accent-700">
+                      <i className="ri-alert-line mr-0.5"></i>
+                      {flags.length}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-foreground-400">-</span>
+                  )}
+                </td>
+                <td className="text-center px-3 py-3">
+                  <span
+                    className={`inline-block px-2 py-1 rounded-md text-[10px] font-medium border whitespace-nowrap ${
+                      health.level === 'green'
+                        ? 'text-primary-600 bg-primary-50 border-primary-200'
+                        : health.level === 'yellow'
+                          ? 'text-primary-600 bg-primary-50 border-primary-200'
+                          : 'text-accent-600 bg-accent-50 border-accent-200'
+                    }`}
+                  >
+                    {health.score} 分 · {ring.label}
+                  </span>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Summary insight */}
-      <div className="bg-background-50 border border-background-200 rounded-xl p-4">
-        <p className="text-sm text-foreground-700 leading-relaxed">
-          <i className="ri-lightbulb-line text-accent-500 mr-1"></i>
-          <strong>洞察：</strong>
-          当前 {blockedCount} 位候选人处于阻塞状态，主要集中在「面试官响应慢」与「薪资不匹配」。
-          建议重点关注「高级前端工程师」岗位（需求模糊导致 1 人卡在初筛，JD 已反复修改 3 次），
-          以及「测试工程师」岗位（面试官 5 天未反馈，候选人有竞品 Offer 流失风险）。
-          招聘专员 <strong>张敏</strong> 的 4 位候选人中 3 人阻塞，负载压力最大。
-        </p>
-      </div>
+      {/* 动态洞察 */}
+      {flagList.length > 0 && (
+        <div className="bg-background-50 border border-background-200 rounded-xl p-4">
+          <p className="text-sm text-foreground-700 leading-relaxed">
+            <i className="ri-lightbulb-line text-accent-500 mr-1"></i>
+            <strong>洞察：</strong>
+            该需求存在 {flags.length} 项需关注问题：
+            {flagList.slice(0, 2).map((flag) => flag.label).join('、')}
+            {flagList.length > 2 ? ` 等 ${flagList.length} 项` : ''}。
+            建议优先处理高风险标记后再推进候选人流程。
+          </p>
+        </div>
+      )}
     </div>
   );
 }

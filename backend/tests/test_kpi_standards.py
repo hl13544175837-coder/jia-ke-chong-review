@@ -12,15 +12,15 @@ def _custom_config():
         "risk_thresholds": {
             "high_if_status_paused_or_closed": True,
             "high_if_zero_fill_and_blocked": True,
-            "attention_hc_gap_ratio": 0.6,
-            "attention_if_blocked": True,
+            "medium_if_blocked": True,
+            "medium_fill_ratio_threshold": 0.6,
             "deadline_warning_days": 10,
             "stale_stage_days": 5,
             "no_recommendation_days": 4,
             "low_interview_candidate_threshold": 12,
             "open_too_long_days": 45,
         },
-        "process_health_thresholds": {
+        "health_thresholds": {
             "green_threshold": 75,
             "yellow_threshold": 45,
         },
@@ -39,8 +39,13 @@ def _effective_custom_config():
                 "no_recommendation_days",
                 "low_interview_candidate_threshold",
                 "open_too_long_days",
+                "high_if_status_paused_or_closed",
+                "high_if_zero_fill_and_blocked",
+                "medium_if_blocked",
+                "medium_fill_ratio_threshold",
             )
         },
+        "health_thresholds": config["health_thresholds"],
     }
 
 
@@ -61,6 +66,17 @@ def test_kpi_standards_are_org_scoped_versioned_and_audited(client, make_user, a
     assert defaults.status_code == 200
     assert defaults.get_json()["version"] == 0
     assert "process_health_thresholds" not in defaults.get_json()["config"]
+    assert defaults.get_json()["config"]["health_thresholds"] == {
+        "green_threshold": 70,
+        "yellow_threshold": 40,
+    }
+    assert defaults.get_json()["config"]["risk_thresholds"][
+        "high_if_status_paused_or_closed"
+    ] is False
+    assert (
+        defaults.get_json()["config"]["risk_thresholds"]["medium_fill_ratio_threshold"]
+        == 0.5
+    )
 
     saved = client.put(
         "/api/kpi-standards",
@@ -120,7 +136,8 @@ def test_kpi_standards_reject_unauthorized_and_invalid_writes(client, make_user)
     invalid = _custom_config()
     invalid["block_categories"][0]["name"] = ""
     invalid["risk_thresholds"]["deadline_warning_days"] = 0
-    invalid["process_health_thresholds"] = {
+    invalid["risk_thresholds"]["high_if_zero_fill_and_blocked"] = "yes"
+    invalid["health_thresholds"] = {
         "green_threshold": 30,
         "yellow_threshold": 60,
     }
@@ -134,4 +151,6 @@ def test_kpi_standards_reject_unauthorized_and_invalid_writes(client, make_user)
     assert set(response.get_json()["fields"]) == {
         "block_categories.0.name",
         "risk_thresholds.deadline_warning_days",
+        "risk_thresholds.high_if_zero_fill_and_blocked",
+        "health_thresholds.green_threshold",
     }

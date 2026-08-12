@@ -22,6 +22,10 @@ const demandRiskLabels: Record<string, string> = {
   open_too_long: '需求开放时间较长',
   hr_no_recommendation: '需求接收后尚未推荐候选人',
   no_active_candidates: '当前没有仍在推进的候选人',
+  paused_or_closed: '需求已暂停或关闭',
+  zero_fill_and_blocked: '零入职且存在卡点',
+  blocked: '存在阻塞问题',
+  fill_ratio_low: 'HC 填充率偏低',
 };
 
 export type DemandRiskLevel = 'high' | 'medium' | 'low';

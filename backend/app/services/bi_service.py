@@ -461,6 +461,91 @@ def _demand_alerts(demand_record, metrics, *, config):
             }
         )
 
+    status = demand_record.status
+    completion_rate = metrics["hc"]["completion_rate"]
+    # 组织级风险开关（KPI 标准配置）：阻塞 = 已有 high/medium 告警
+    blocked = any(
+        alert["priority"] in {"high", "medium"} for alert in alerts
+    )
+    if (
+        thresholds.get("high_if_status_paused_or_closed")
+        and status in {"paused", "closed"}
+    ):
+        alerts.append(
+            {
+                "kind": "demand_paused_or_closed",
+                "priority": "high",
+                "title": f"{title}已暂停或关闭",
+                "detail": (
+                    f"需求当前状态为{'暂停' if status == 'paused' else '关闭'}"
+                    "，请确认后续安排"
+                ),
+                "demand_id": demand_id,
+                "job_id": job_id,
+                "candidate_id": None,
+                "stage": None,
+                "age_days": 0,
+                "action_path": f"/kanban?demand={demand_id}",
+            }
+        )
+    if (
+        thresholds.get("high_if_zero_fill_and_blocked")
+        and completion_rate == 0
+        and blocked
+    ):
+        alerts.append(
+            {
+                "kind": "zero_fill_and_blocked",
+                "priority": "high",
+                "title": f"{title}零入职且存在卡点",
+                "detail": "目前没有候选人入职，且需求已存在需要关注的问题",
+                "demand_id": demand_id,
+                "job_id": job_id,
+                "candidate_id": None,
+                "stage": None,
+                "age_days": 0,
+                "action_path": f"/kanban?demand={demand_id}",
+            }
+        )
+    if thresholds.get("medium_if_blocked") and blocked:
+        alerts.append(
+            {
+                "kind": "demand_blocked",
+                "priority": "medium",
+                "title": f"{title}存在阻塞问题",
+                "detail": "需求已有需要关注的风险或告警，请优先处理",
+                "demand_id": demand_id,
+                "job_id": job_id,
+                "candidate_id": None,
+                "stage": None,
+                "age_days": 0,
+                "action_path": f"/kanban?demand={demand_id}",
+            }
+        )
+    fill_ratio_threshold = thresholds.get("medium_fill_ratio_threshold", 0.5)
+    if (
+        status in OPEN_DEMAND_STATUSES
+        and not metrics["hc"]["completion_suggested"]
+        and completion_rate < fill_ratio_threshold * 100
+    ):
+        alerts.append(
+            {
+                "kind": "fill_ratio_low",
+                "priority": "medium",
+                "title": f"{title}HC 填充率偏低",
+                "detail": (
+                    f"当前入职填充率 {int(completion_rate)}%，"
+                    f"低于设定的 {int(fill_ratio_threshold * 100)}% 阈值"
+                ),
+                "demand_id": demand_id,
+                "job_id": job_id,
+                "candidate_id": None,
+                "stage": None,
+                "age_days": 0,
+                "action_path": f"/kanban?demand={demand_id}",
+            }
+        )
+
     responsibility = metrics["current_responsibility"]
     for alert in alerts:
         alert["owner_hr_id"] = responsibility["owner_hr_id"]
@@ -498,8 +583,13 @@ def build_team_operational_overview(org_id):
         if metrics["demand"]["status"] in OPEN_DEMAND_STATUSES
     ]
     alerts = []
+    risk_thresholds = config["risk_thresholds"]
     for demand, metrics in zip(demands, metrics_rows):
-        if metrics["demand"]["status"] in OPEN_DEMAND_STATUSES:
+        status = metrics["demand"]["status"]
+        if status in OPEN_DEMAND_STATUSES or (
+            risk_thresholds.get("high_if_status_paused_or_closed")
+            and status in {"paused", "closed"}
+        ):
             alerts.extend(_demand_alerts(demand, metrics, config=config))
     priority_order = {"high": 0, "medium": 1, "low": 2}
     alerts.sort(

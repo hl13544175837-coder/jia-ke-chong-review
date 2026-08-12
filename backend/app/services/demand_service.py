@@ -482,7 +482,59 @@ def risk_flags(demand, metrics, config=None):
             today - start_date
         ).days >= thresholds["no_recommendation_days"]:
             flags.append("hr_no_recommendation")
+
+    # 组织级风险开关（KPI 标准配置，false 时不产生额外标记）
+    if (
+        thresholds.get("high_if_status_paused_or_closed")
+        and demand.status in {"paused", "closed"}
+    ):
+        flags.append("paused_or_closed")
+    blocked = bool(flags)
+    if (
+        thresholds.get("high_if_zero_fill_and_blocked")
+        and metrics["onboarded_count"] == 0
+        and blocked
+    ):
+        flags.append("zero_fill_and_blocked")
+    if thresholds.get("medium_if_blocked") and blocked:
+        flags.append("blocked")
+    headcount = max(1, int(demand.headcount or 1))
+    if (
+        demand.status in OPEN_STATUSES
+        and metrics["onboarded_count"] < headcount * thresholds.get(
+            "medium_fill_ratio_threshold", 0.5
+        )
+    ):
+        flags.append("fill_ratio_low")
     return flags
+
+
+# 健康度扣分（每类风险标记的固定扣分，100 分制）
+HEALTH_DEDUCTIONS = {
+    "overdue": 25,
+    "paused_or_closed": 20,
+    "zero_fill_and_blocked": 15,
+    "open_too_long": 15,
+    "business_feedback_pending": 10,
+    "hr_no_recommendation": 10,
+    "low_interview_conversion": 10,
+    "fill_ratio_low": 10,
+}
+
+
+def _health_from_flags(flags, config):
+    """100 分制健康度：按已产出的风险标记扣分，按组织阈值分级。"""
+    health = config.get("health_thresholds") or {}
+    green_threshold = int(health.get("green_threshold", 70))
+    yellow_threshold = int(health.get("yellow_threshold", 40))
+    score = max(0, 100 - sum(HEALTH_DEDUCTIONS.get(flag, 0) for flag in flags))
+    if score >= green_threshold:
+        level = "green"
+    elif score >= yellow_threshold:
+        level = "yellow"
+    else:
+        level = "red"
+    return {"score": score, "level": level}
 
 
 def demand_payload(demand, *, include_jd=False, config=None):
@@ -499,6 +551,7 @@ def demand_payload(demand, *, include_jd=False, config=None):
             org_id=demand.org_id,
         ).first()
     metrics = demand_metrics(demand)
+    risk = risk_flags(demand, metrics, config=config)
     payload = {
         "id": demand.id,
         "job_id": demand.job_id,
@@ -539,11 +592,8 @@ def demand_payload(demand, *, include_jd=False, config=None):
         "completion_suggested": (
             metrics["onboarded_count"] >= max(1, int(demand.headcount or 1))
         ),
-        "risk_flags": risk_flags(
-            demand,
-            metrics,
-            config=config,
-        ),
+        "risk_flags": risk,
+        "health": _health_from_flags(risk, config),
         "created_at": demand.created_at.isoformat() if demand.created_at else None,
         "updated_at": demand.updated_at.isoformat() if demand.updated_at else None,
     }
