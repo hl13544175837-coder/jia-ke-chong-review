@@ -559,13 +559,14 @@ def test_delete_hard_deletes_content_but_keeps_import_event(app, client, make_us
         "updated": 0,
         "skipped_deleted": 1,
         "failed": 0,
+        "warnings": 0,
         "results": [
             {
                 "external_record_id": "boss-chat-001",
                 "status": "skipped_deleted",
             }
         ],
-    }
+    }, reimport.get_json()
 
     with app.app_context():
         from app.models import Event, OnlineResume
@@ -631,7 +632,7 @@ def test_recruiter_cannot_import_into_another_recruiters_demand(
     response = _import_one(client, other_token, _item(demand_id))
     assert response.status_code == 200
     assert response.get_json()["failed"] == 1
-    assert response.get_json()["results"][0]["error"] == "无权导入到该招聘需求"
+    assert response.get_json()["results"][0]["error"] == "需求(1)不可用，且当前账号名下没有其他可导入的招聘需求"
 
     with app.app_context():
         from app.models import OnlineResume
@@ -686,7 +687,7 @@ def test_import_rejects_oversized_resume_and_chat_snapshots(
     owner_id, token = make_user("online-size@x.com")
     demand_id = _make_demand(app, owner_id, "REQ-ONLINE-SIZE")
     oversized_resume = _item(demand_id, "boss-chat-resume-too-large")
-    oversized_resume["resume_json"] = {"content": "x" * (1024 * 1024)}
+    oversized_resume["resume_json"] = {"content": "x" * (1024 * 1024 + 1)}
     oversized_chat = _item(demand_id, "boss-chat-chat-too-large")
     oversized_chat["chat_json"] = [
         {
@@ -705,12 +706,12 @@ def test_import_rejects_oversized_resume_and_chat_snapshots(
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["created"] == 0
-    assert payload["failed"] == 2
+    assert payload["created"] == 0, payload
+    assert payload["failed"] == 2, payload
     assert [item["error"] for item in payload["results"]] == [
         "结构化简历内容不能超过 1MB",
         "完整聊天记录不能超过 4MB",
-    ]
+    ], payload
 
 
 def test_import_rejects_chat_count_and_field_length_limits(

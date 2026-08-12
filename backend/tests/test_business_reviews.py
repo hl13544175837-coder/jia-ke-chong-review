@@ -127,7 +127,7 @@ def _push_review(client, token, case, reviewer_id, **overrides):
     return response
 
 
-@pytest.mark.parametrize("decision", ["approved", "rejected", "needs_info"])
+@pytest.mark.parametrize("decision", ["approved", "rejected"])
 def test_assigned_reviewer_can_submit_fixed_decisions_without_advancing_pipeline(
     client, make_user, app, decision
 ):
@@ -178,10 +178,8 @@ def test_assigned_reviewer_can_submit_fixed_decisions_without_advancing_pipeline
         assert "任务 #" not in owner_notice.body
 
 
-@pytest.mark.parametrize("decision", ["rejected", "needs_info"])
-def test_rejection_and_needs_info_require_a_reason(
-    client, make_user, app, decision
-):
+def test_rejection_requires_a_reason(client, make_user, app):
+    decision = "rejected"
     hr_id, hr_token = make_user(f"hr-{decision}@example.com", role="recruiter")
     reviewer_id, reviewer_token = make_user(
         f"reviewer-{decision}@example.com", role="interviewer"

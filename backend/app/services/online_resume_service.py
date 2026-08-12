@@ -606,6 +606,13 @@ class OnlineResumeService:
         resume_json = item.get("resume_json")
         if not isinstance(resume_json, dict):
             resume_json = {}
+        else:
+            # 先校验外部显式传入的结构化简历：超限必须拒绝，不能静默丢弃后重建
+            self._validate_serialized_size(
+                resume_json,
+                max_bytes=self.MAX_RESUME_JSON_BYTES,
+                error_message="结构化简历内容不能超过 1MB",
+            )
         extracted_info = resume_json.get("extracted_info")
         info = extracted_info if isinstance(extracted_info, dict) else {}
         if not info:

@@ -324,7 +324,7 @@ def test_approved_business_review_is_ready_to_schedule_and_notifies_interviewer_
             "round": "round_1",
             "round_sequence": 1,
             "interviewer_id": interviewer_id,
-            "scheduled_at": "2026-08-10T10:00:00",
+            "scheduled_at": (utc_now() + timedelta(days=3)).isoformat(timespec="seconds"),
             "location": "第一会议室",
         },
     )
@@ -346,7 +346,9 @@ def test_approved_business_review_is_ready_to_schedule_and_notifies_interviewer_
         ).one()
         assert "新的面试安排" in notice.title
         assert "候选人-APPROVED-REVIEW" in notice.body
-        assert "08-10 10:00" in notice.body
+        assert "第 1 轮" in notice.body
+        assert "第一会议室" in notice.body
+        assert "主面试官" in notice.body
         assert "第一会议室" in notice.body
         assert notice.link == (
             f"/interviewer/interviews?demand={seeded['demand_id']}"

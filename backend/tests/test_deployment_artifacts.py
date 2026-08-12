@@ -59,8 +59,8 @@ def test_sit_server_build_is_explicitly_unrestricted_but_ga_is_strict():
         assert f"--build-arg {build_arg}={ga_value}" in ga.stdout
 
 
-def test_rc_images_receive_three_account_role_map_but_ga_does_not():
-    role_map = "100001:recruiter,100000:interviewer,100002:interviewer"
+def test_rc_images_receive_four_account_role_map_but_ga_does_not():
+    role_map = "100000:interviewer,100001:manager,100002:recruiter,100003:interviewer"
     rc = subprocess.run(
         ["make", "-n", "build", "PKG_TAG=RC", "PKG_VERSION=role-map-test"],
         cwd=str(ROOT),
@@ -981,7 +981,7 @@ def test_small_team_sit_release_uses_safe_roles_manual_resume_and_clean_context(
     assert "/docs/acceptance-assets/" in gitignore
     assert "diagrams" in dockerignore
     assert "docs/acceptance-assets" in dockerignore
-    assert "20260807_16" in deployment
+    assert "20260811_18" in deployment
     assert "AUTH_GATEWAY_ROLE_MAP" in deployment
 
 

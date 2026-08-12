@@ -224,7 +224,7 @@ def test_original_interviewer_can_edit_feedback_with_audit(client, make_user, ap
     response = client.patch(
         f"/api/interview/feedback/{feedback_id}",
         headers=_auth(token),
-        json={"satisfaction": "pending", "note": "补充观察"},
+        json={"satisfaction": "unsatisfied", "note": "补充观察"},
     )
 
     assert response.status_code == 200
@@ -248,7 +248,7 @@ def test_original_interviewer_can_edit_feedback_with_audit(client, make_user, ap
             "note": "初次评价",
         }
         assert event.payload["after"] == {
-            "satisfaction": "pending",
+            "satisfaction": "unsatisfied",
             "job_match": "",
             "recommendation": "",
             "strengths": "",
@@ -310,12 +310,12 @@ def test_simple_feedback_validation(client, make_user, app, payload, field):
         ),
         (
             {
-                "satisfaction": "pending",
+                "satisfaction": "satisfied",
                 "job_match": "medium",
                 "recommendation": "hold",
                 "strengths": "表达清楚",
                 "concerns": "经验待核实",
-                "note": "",
+                "note": "过" * 1001,
             },
             "note",
         ),
@@ -422,7 +422,7 @@ def test_manager_and_admin_can_correct_feedback(client, make_user, app, role):
         headers=_auth(author_token),
         json={
             "assignment_id": assignment_id,
-            "satisfaction": "pending",
+            "satisfaction": "unsatisfied",
             "note": "待补充",
         },
     )
