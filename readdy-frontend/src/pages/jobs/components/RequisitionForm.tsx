@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { provinceCityData } from '@/mocks/options';
+import { provinceCityData } from '@/lib/geoData';
 import type { ProductRole } from '@/auth/productRoleModel';
 import type { DemandOwnerOption, RecruitmentDemandInput } from '@/features/demands/types';
 

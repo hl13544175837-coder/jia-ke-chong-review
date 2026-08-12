@@ -1,48 +1,4 @@
-export const jobTitles = [
-  { value: '前端开发工程师', label: '前端开发工程师' },
-  { value: '后端开发工程师', label: '后端开发工程师' },
-  { value: '全栈工程师', label: '全栈工程师' },
-  { value: '产品经理', label: '产品经理' },
-  { value: 'UI/UX设计师', label: 'UI/UX设计师' },
-  { value: '测试工程师', label: '测试工程师' },
-  { value: '数据分析师', label: '数据分析师' },
-  { value: '项目经理', label: '项目经理' },
-  { value: '市场运营', label: '市场运营' },
-  { value: 'HRBP', label: 'HRBP' },
-];
-
-export const departments = [
-  { value: 'tech', label: '技术部' },
-  { value: 'product', label: '产品部' },
-  { value: 'design', label: '设计部' },
-  { value: 'marketing', label: '市场部' },
-  { value: 'data', label: '数据部' },
-  { value: 'hr', label: '人力资源部' },
-  { value: 'finance', label: '财务部' },
-  { value: 'operations', label: '运营部' },
-];
-
-export const interviewTypes = [
-  { value: 'phone', label: '电话面试' },
-  { value: 'tech', label: '技术面试' },
-  { value: 'hr', label: 'HR面试' },
-  { value: 'final', label: '终面' },
-];
-
-export const candidateStages = [
-  { value: 'new', label: '待筛选', color: 'bg-secondary-100 text-secondary-700' },
-  { value: 'screening', label: '初筛通过', color: 'bg-primary-100 text-primary-700' },
-  { value: 'interviewing', label: '面试中', color: 'bg-accent-100 text-accent-700' },
-  { value: 'offer', label: '已发Offer', color: 'bg-primary-100 text-primary-700' },
-  { value: 'hired', label: '已入职', color: 'bg-accent-100 text-accent-700' },
-  { value: 'rejected', label: '已淘汰', color: 'bg-secondary-100 text-secondary-700' },
-];
-
-export const urgencyLevels = [
-  { value: 'urgent', label: '紧急', color: 'bg-accent-100 text-accent-700' },
-  { value: 'high', label: '高', color: 'bg-primary-100 text-primary-700' },
-  { value: 'normal', label: '普通', color: 'bg-secondary-100 text-secondary-700' },
-];
+/** 静态省市区地理数据：仅用于表单输入建议，非业务数据。 */
 
 export interface ProvinceCity {
   name: string;
@@ -80,8 +36,8 @@ export const provinceCityData: ProvinceCity[] = [
   { name: '甘肃省', cities: ['兰州', '天水', '酒泉', '庆阳', '张掖'] },
   { name: '青海省', cities: ['西宁', '海东', '格尔木'] },
   { name: '宁夏回族自治区', cities: ['银川', '石嘴山', '吴忠', '中卫'] },
-  { name: '新疆维吾尔自治区', cities: ['乌鲁木齐', '克拉玛依', '库尔勒', '昌吉', '伊犁'] },
-  { name: '香港特别行政区', cities: ['中西区', '湾仔区', '东区', '九龙城', '油尖旺'] },
+  { name: '新疆维吾尔自治区', cities: ['乌鲁木齐', '喀什', '伊犁', '克拉玛依', '昌吉'] },
+  { name: '香港特别行政区', cities: ['香港岛', '九龙', '新界'] },
   { name: '澳门特别行政区', cities: ['澳门半岛', '氹仔', '路环'] },
-  { name: '台湾省', cities: ['台北', '新北', '台中', '高雄', '台南', '桃园', '新竹'] },
+  { name: '台湾省', cities: ['台北', '高雄', '台中', '台南', '新竹'] },
 ];
