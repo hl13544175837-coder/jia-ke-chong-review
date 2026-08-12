@@ -81,8 +81,16 @@ MODEL_ROUTES = {
 
 
 def route_model(difficulty: str = "fast") -> Dict[str, str]:
-    """根据难度返回 {model, thinking}。难度未知时回退 fast。"""
-    return MODEL_ROUTES.get(difficulty, MODEL_ROUTES["fast"])
+    """根据难度返回 {model, thinking}；难度未知时回退 fast。
+
+    模型名可用环境变量覆盖（LLM_MODEL_FAST / LLM_MODEL_THINK / LLM_MODEL_PRO），
+    便于非 DeepSeek 供应商（如 DashScope 兼容端点）接入；未设置时保持默认路由。
+    """
+    fallback = MODEL_ROUTES.get(difficulty, MODEL_ROUTES["fast"])
+    override = os.getenv(f"LLM_MODEL_{difficulty.upper()}")
+    if override and override.strip():
+        return {**fallback, "model": override.strip()}
+    return fallback
 
 
 def load_llm_config() -> Dict[str, Any]:

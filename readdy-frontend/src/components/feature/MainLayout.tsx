@@ -32,6 +32,7 @@ const recruiterNavItems: NavItem[] = [
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['recruiter'], menuCode: 'pipeline' },
   { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['recruiter'], menuCode: 'candidates' },
   { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['recruiter'], menuCode: 'bi' },
+  { path: '/ai-assistant', icon: 'ri-robot-2-line', label: 'AI 助手', roles: ['recruiter'] },
 ];
 
 const managerNavItems: NavItem[] = [
@@ -43,6 +44,7 @@ const managerNavItems: NavItem[] = [
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['manager'], menuCode: 'pipeline' },
   { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['manager'], menuCode: 'candidates' },
   { path: '/kpi-standards', icon: 'ri-tune-line', label: '口径配置', roles: ['manager'] },
+  { path: '/ai-assistant', icon: 'ri-robot-2-line', label: 'AI 助手', roles: ['manager'] },
 ];
 
 const adminNavItems: NavItem[] = [
@@ -54,6 +56,7 @@ const adminNavItems: NavItem[] = [
   { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['admin'], menuCode: 'candidates' },
   { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['admin'], menuCode: 'bi' },
   { path: '/kpi-standards', icon: 'ri-tune-line', label: '口径配置', roles: ['admin'] },
+  { path: '/ai-assistant', icon: 'ri-robot-2-line', label: 'AI 助手', roles: ['admin'] },
 ];
 
 const directorNavItems: NavItem[] = [

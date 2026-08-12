@@ -33,6 +33,7 @@ const DirectorProgressPage = lazy(() => import('@/pages/director/progress/page')
 const DirectorInsightsPage = lazy(() => import('@/pages/director/insights/page'));
 const DirectorApprovalsPage = lazy(() => import('@/pages/director/approvals/page'));
 const KpiStandardsPage = lazy(() => import('@/pages/kpi-standards/page'));
+const AIAssistantPage = lazy(() => import('@/pages/ai-assistant/page'));
 
 const dashboardRoles: ProductRole[] = ['admin', 'manager', 'recruiter'];
 const hrRoles: ProductRole[] = ['recruiter', 'manager', 'admin'];
@@ -113,7 +114,7 @@ const routes: RouteObject[] = [
       },
       {
         path: '/ai-assistant',
-        element: <RoleHomeRedirect />,
+        element: <RequireCompanyRole allow={hrRoles}><AIAssistantPage /></RequireCompanyRole>,
       },
       {
         path: '/settings',
