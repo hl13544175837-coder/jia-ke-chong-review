@@ -55,7 +55,7 @@ backendCriticalBusiness:
       --network host
       --user "$(id -u):$(id -g)"
       -e HOME=/tmp
-      -v "$CI_PROJECT_DIR:/workspace:ro"
+      -v "$CI_PROJECT_DIR:/workspace"
       -w /workspace
       "$PYTHON_DOCKER_IMAGE"
       python -m pytest -q
@@ -131,7 +131,11 @@ frontendBrowserSmoke:
     - export PYTHON_BASE_IMAGE="registry.ymdd.tech/library/python:3.12-uv"
     - bash scripts/ci-build-python-image.sh "$PYTHON_DOCKER_IMAGE"
     - bash scripts/ci-npm-install.sh readdy-frontend
-    - readdy-frontend/node_modules/.bin/playwright install chromium
+    - >-
+      PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright
+      PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright
+      PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=120000
+      timeout 600 readdy-frontend/node_modules/.bin/playwright install chromium
     - PYTHON_DOCKER_IMAGE="$PYTHON_DOCKER_IMAGE" bash scripts/run-isolated-browser-smoke.sh
   after_script:
     - sudo docker rm -f "zhipin-browser-smoke-${CI_JOB_ID}" || true

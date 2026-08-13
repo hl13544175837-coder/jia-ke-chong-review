@@ -1139,7 +1139,12 @@ def test_gitlab_python_jobs_use_the_internal_python_312_image():
         assert 'PYTHON_BASE_IMAGE="registry.ymdd.tech/library/python:3.12-uv"' in job
         assert "command -v python3.12 || command -v python3" not in job
     assert "timeout: 30m" in backend_job
+    assert '-v "$CI_PROJECT_DIR:/workspace"' in backend_job
+    assert '-v "$CI_PROJECT_DIR:/workspace:ro"' not in backend_job
     assert "PYTHON_DOCKER_IMAGE" in browser_job
+    assert "PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright" in browser_job
+    assert "PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=120000" in browser_job
+    assert "timeout 600 readdy-frontend/node_modules/.bin/playwright install chromium" in browser_job
 
     image_builder = (ROOT / "scripts" / "ci-build-python-image.sh").read_text(
         encoding="utf-8"
