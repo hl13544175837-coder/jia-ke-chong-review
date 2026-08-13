@@ -4,6 +4,14 @@ export interface ResumeSection {
   value: unknown;
 }
 
+export interface WorkHistoryPresentation {
+  company: string;
+  role: string;
+  period: string;
+  details: Array<{ label: string; value: unknown }>;
+  remaining: Record<string, unknown>;
+}
+
 const FIELD_LABELS: Record<string, string> = {
   name: '姓名',
   name_masked: '姓名',
@@ -131,6 +139,58 @@ function hasDisplayValue(value: unknown) {
   if (Array.isArray(value)) return value.length > 0;
   if (isResumeRecord(value)) return Object.keys(value).length > 0;
   return true;
+}
+
+function displayText(value: unknown) {
+  return hasDisplayValue(value) && !isResumeRecord(value) && !Array.isArray(value)
+    ? String(value).trim()
+    : '';
+}
+
+export function normalizeWorkHistoryItem(value: Record<string, unknown>): WorkHistoryPresentation {
+  const consumed = new Set<string>();
+  const firstText = (aliases: string[]) => {
+    for (const alias of aliases) {
+      const text = displayText(value[alias]);
+      if (text) {
+        consumed.add(alias);
+        return text;
+      }
+    }
+    return '';
+  };
+
+  const company = firstText(['company']);
+  const role = firstText(['position', 'title', 'role']);
+  let period = firstText(['duration', 'period']);
+  if (!period) {
+    const start = displayText(value.start_date);
+    const end = displayText(value.end_date);
+    if (start) consumed.add('start_date');
+    if (end) consumed.add('end_date');
+    period = [start, end].filter(Boolean).join(' – ');
+  }
+
+  const details: WorkHistoryPresentation['details'] = [];
+  for (const key of ['description', 'desc', 'responsibilities', 'responsibility', 'achievements']) {
+    if (!hasDisplayValue(value[key])) continue;
+    consumed.add(key);
+    details.push({ label: resumeFieldLabel(key), value: value[key] });
+  }
+
+  const knownAliases = new Set([
+    'company', 'position', 'title', 'role', 'duration', 'period', 'start_date', 'end_date',
+  ]);
+  const remaining = Object.fromEntries(
+    Object.entries(value).filter(([key, item]) => (
+      !consumed.has(key)
+      && !knownAliases.has(key)
+      && !HIDDEN_KEYS.has(key)
+      && hasDisplayValue(item)
+    )),
+  );
+
+  return { company, role, period, details, remaining };
 }
 
 function normalizedResume(resume: unknown): Record<string, unknown> {

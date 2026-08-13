@@ -1,6 +1,7 @@
 import {
   buildResumeSections,
   isResumeRecord,
+  normalizeWorkHistoryItem,
   resumeFieldLabel,
 } from './resumePresentation';
 
@@ -45,6 +46,42 @@ function ResumeValue({ value }: { value: unknown }) {
   return <PrimitiveValue value={value} />;
 }
 
+function WorkHistoryValue({ value }: { value: unknown }) {
+  if (!Array.isArray(value) || !value.every(isResumeRecord)) return <ResumeValue value={value} />;
+  return (
+    <div className="space-y-3">
+      {value.map((item, index) => {
+        const work = normalizeWorkHistoryItem(item);
+        const hasRemaining = Object.keys(work.remaining).length > 0;
+        return (
+          <article key={index} data-ui="work-history-card" className="rounded-xl border border-background-200 bg-white p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <div className="min-w-0">
+                <p className="break-words text-sm font-semibold text-foreground-900">{work.company || '公司待补充'}</p>
+                {work.role && <p className="mt-1 text-xs text-foreground-500">{work.role}</p>}
+              </div>
+              {work.period && <span className="w-fit shrink-0 whitespace-nowrap rounded-md bg-background-100 px-2 py-1 text-xs text-foreground-500">{work.period}</span>}
+            </div>
+            {(work.details.length > 0 || hasRemaining) && (
+              <div className="mt-3 space-y-3 border-t border-background-100 pt-3">
+                {work.details.map((detail, detailIndex) => (
+                  <div key={`${detail.label}-${detailIndex}`}>
+                    <p className="text-[11px] font-medium text-foreground-400">{detail.label}</p>
+                    <div className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-foreground-700">
+                      <ResumeValue value={detail.value} />
+                    </div>
+                  </div>
+                ))}
+                {hasRemaining && <RecordValue value={work.remaining} />}
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 /** 阅读主体放左栏的信息块（宽屏时占 2/3） */
 const MAIN_SECTION_KEYS = new Set(['work', 'projects', 'other']);
 
@@ -52,7 +89,11 @@ function Section({ section }: { section: { key: string; title: string; value: un
   return (
     <section key={section.key} className="border-t border-background-200 pt-4 first:border-t-0 first:pt-0">
       <h4 className="mb-3 text-sm font-semibold text-foreground-900">{section.title}</h4>
-      <div className="text-sm leading-6 text-foreground-700"><ResumeValue value={section.value} /></div>
+      <div className="text-sm leading-6 text-foreground-700">
+        {section.key === 'work'
+          ? <WorkHistoryValue value={section.value} />
+          : <ResumeValue value={section.value} />}
+      </div>
     </section>
   );
 }
