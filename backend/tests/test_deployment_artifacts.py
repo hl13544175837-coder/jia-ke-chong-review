@@ -1096,6 +1096,24 @@ def test_gitlab_pipeline_declares_every_job_stage():
     )
 
 
+def test_gitlab_pipeline_cancels_superseded_test_jobs_before_they_consume_runner_capacity():
+    pipeline = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+
+    assert "workflow:" in pipeline
+    assert "auto_cancel:" in pipeline
+    assert "on_new_commit: interruptible" in pipeline
+    for job_name in [
+        "frontendQuality:",
+        "backendCriticalBusiness:",
+        "frontendBrowserSmoke:",
+        "buildTest:",
+    ]:
+        job_start = pipeline.index(job_name)
+        next_job = pipeline.find("\n\n", job_start)
+        job_block = pipeline[job_start:] if next_job == -1 else pipeline[job_start:next_job]
+        assert "interruptible: true" in job_block
+
+
 def test_flask_static_fallback_targets_the_active_readdy_build():
     app_factory = (ROOT / "backend" / "app" / "__init__.py").read_text(
         encoding="utf-8"

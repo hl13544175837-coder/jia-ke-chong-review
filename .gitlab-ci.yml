@@ -2,6 +2,12 @@ stages:
   - verify
   - build
 
+# 同一分支有新提交时，取消尚未完成的旧流水线。所有 job 共用 t_FRONTEND
+# Runner；不取消会让过期的验证/镜像任务排队，导致当前提交长期停在 00s 无日志。
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+
 # 依赖/浏览器下载缓存：lockfile 变化才失效，大幅减少 npm ci 与 playwright 下载耗时
 variables:
   NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm-cache"
@@ -20,6 +26,7 @@ cache:
 
 frontendQuality:
   stage: verify
+  interruptible: true
   timeout: 40m
   script:
     - node --version
@@ -42,6 +49,7 @@ frontendQuality:
 # 它不跑大量页面样式检查，避免把发布时间花在低业务价值的用例上。
 backendCriticalBusiness:
   stage: verify
+  interruptible: true
   timeout: 20m
   script:
     - export PYTHON_BIN="$(command -v python3.12 || command -v python3)"
@@ -111,6 +119,7 @@ backendCriticalBusiness:
 
 frontendBrowserSmoke:
   stage: verify
+  interruptible: true
   # 首次跑需下载浏览器，网络慢时可能卡住；40 分钟超时兜底，快速失败而不是挂 1 小时
   timeout: 40m
   script:
@@ -137,6 +146,7 @@ frontendBrowserSmoke:
 
 buildTest:
   stage: build
+  interruptible: true
   # Docker 拉取、构建和推送均受明确上限保护，避免 runner 无限挂起。
   timeout: 45m
   variables:
