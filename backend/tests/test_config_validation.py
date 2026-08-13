@@ -246,6 +246,82 @@ def _safe_sit_values(backup_dir):
     }
 
 
+def _safe_internal_trial_values(persistent_dir):
+    uploads = persistent_dir / "uploads"
+    backups = persistent_dir / "backups"
+    uploads.mkdir()
+    backups.mkdir()
+    return {
+        "JWT_SECRET": "i" * 48,
+        "JWT_EXPIRY_HOURS": "8",
+        "FLASK_DEBUG": "false",
+        "ALLOW_INSECURE_SIT_STARTUP": "false",
+        "DATABASE_URL": "mysql+pymysql://user:secret@db.internal:3306/zhipin_trial",
+        "CORS_ORIGINS": "https://trial-zhipin.yimidida.com",
+        "SECURITY_HEADERS_ENABLED": "true",
+        "RATE_LIMIT_ENABLED": "true",
+        "RATE_LIMIT_LOGIN": "10",
+        "RATE_LIMIT_AGENT_CHAT": "20",
+        "RATE_LIMIT_RESUME_UPLOAD": "8",
+        "BACKUP_DIR": str(backups),
+        "UPLOAD_FOLDER": str(uploads),
+        "LOCAL_SCHEMA_COMPAT": "false",
+        "AUTO_MIGRATE_DATABASE": "false",
+        "ALLOW_EMPTY_DATABASE_BOOTSTRAP": "false",
+        "ALLOW_PUBLIC_REGISTRATION": "false",
+        "BOSS_CLI_AUTO_INSTALL": "false",
+        "RESUME_AI_ENABLED": "false",
+        "AI_HUMAN_REVIEW_REQUIRED": "true",
+        "AUTH_DISABLED": "false",
+        "FIELD_ENCRYPTION_KEY": Fernet.generate_key().decode("ascii"),
+    }
+
+
+def test_internal_trial_profile_accepts_real_data_with_ai_disabled(
+    persistent_test_dir,
+):
+    checks = run_checks(
+        _safe_internal_trial_values(persistent_test_dir),
+        ROOT,
+        ROOT / "backend" / ".env",
+        profile="internal-trial",
+    )
+
+    assert [check.name for check in checks if not check.ok] == []
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("RESUME_AI_ENABLED", "true"),
+        ("AUTH_DISABLED", "true"),
+        ("ALLOW_INSECURE_SIT_STARTUP", "true"),
+        ("ALLOW_PUBLIC_REGISTRATION", "true"),
+        ("SECURITY_HEADERS_ENABLED", "false"),
+        ("RATE_LIMIT_ENABLED", "false"),
+        ("DATABASE_URL", "sqlite:////tmp/zhipin-trial.db"),
+        ("UPLOAD_FOLDER", "/tmp/zhipin-uploads"),
+        ("BACKUP_DIR", "/tmp/zhipin-backups"),
+    ],
+)
+def test_internal_trial_profile_rejects_unsafe_runtime_values(
+    persistent_test_dir,
+    key,
+    value,
+):
+    values = _safe_internal_trial_values(persistent_test_dir)
+    values[key] = value
+
+    checks = run_checks(
+        values,
+        ROOT,
+        ROOT / "backend" / ".env",
+        profile="internal-trial",
+    )
+
+    assert any(check.name == key and not check.ok for check in checks)
+
+
 def test_sit_profile_accepts_safe_small_team_configuration(
     persistent_test_dir,
 ):

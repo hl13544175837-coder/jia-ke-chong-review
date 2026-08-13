@@ -194,10 +194,11 @@ def run_checks(
     *,
     profile: str = "production",
 ) -> list[CheckResult]:
-    if profile not in {"production", "sit-team"}:
+    if profile not in {"production", "sit-team", "internal-trial"}:
         raise ValueError(f"unsupported readiness profile: {profile}")
 
     is_sit_team = profile == "sit-team"
+    is_internal_trial = profile == "internal-trial"
     secret = values.get("JWT_SECRET", "")
     database_url = values.get("DATABASE_URL", "")
     database_kind = _database_kind(database_url)
@@ -286,7 +287,7 @@ def run_checks(
             "AI_RECRUITMENT_COMPLIANCE_ACK",
             (
                 not resume_ai_enabled
-                if is_sit_team
+                if is_sit_team or is_internal_trial
                 else _is_true(values.get("AI_RECRUITMENT_COMPLIANCE_ACK"))
             ),
             "真实候选人数据进入 AI 前必须显式确认合规边界；Test 关闭 AI 时无需确认",
@@ -295,7 +296,7 @@ def run_checks(
             "CANDIDATE_PRIVACY_NOTICE_URL",
             (
                 not resume_ai_enabled
-                if is_sit_team
+                if is_sit_team or is_internal_trial
                 else bool(values.get("CANDIDATE_PRIVACY_NOTICE_URL", "").strip())
             ),
             "必须配置候选人隐私告知/授权说明地址；Test 关闭 AI 时无需配置",
@@ -329,6 +330,21 @@ def run_checks(
                 ),
             ]
         )
+    elif is_internal_trial:
+        checks.extend(
+            [
+                CheckResult(
+                    "RESUME_AI_ENABLED",
+                    _is_false(values.get("RESUME_AI_ENABLED")),
+                    "真实数据内部试用本轮必须关闭简历 AI，使用人工补录",
+                ),
+                CheckResult(
+                    "AUTH_DISABLED",
+                    _is_false(values.get("AUTH_DISABLED")),
+                    "真实数据内部试用必须保留后端 JWT 校验，不使用宽松网关免鉴权模式",
+                ),
+            ]
+        )
     return checks
 
 
@@ -339,9 +355,9 @@ def main() -> int:
     parser.add_argument("--project-root", default=str(root), help="Project root containing .gitignore")
     parser.add_argument(
         "--profile",
-        choices=("production", "sit-team"),
+        choices=("production", "sit-team", "internal-trial"),
         default="production",
-        help="Validation rules: strict production or disposable-data small-team SIT",
+        help="Validation rules: production, disposable-data SIT, or strict real-data internal trial",
     )
     args = parser.parse_args()
 
