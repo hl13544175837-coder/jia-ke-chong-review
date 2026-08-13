@@ -1,34 +1,36 @@
-# 核心招聘流程小范围试用验证记录
+# 核心招聘流程内部试用验证记录
 
-## 范围
+## 交付范围
 
 - 分支：`codex/core-trial-readiness-20260813`
-- 基线：公司 `test` 的 `22b37e8`
+- 公司 `test` 基线：`22b37e8`
+- 已验证代码候选：`2b732da`；本文件作为证据提交后，以分支 `HEAD` 为最终交付提交
 - 核心链路：招聘需求、简历入库、候选人流程、面试、Offer、看板
-- 数据边界：只使用隔离测试数据库和临时附件；本轮验证未连接公司真实数据库
-- 非放行项：AI 简历解析、AI 助手、BOSS、OA、外部通知、外部日历
+- 试用数据：交付配置允许公司内部授权同事使用真实数据；自动化验证使用隔离临时数据库和临时附件，没有连接或改写公司真实数据库
+- 本轮非放行项：AI 简历解析、AI 岗位画像、AI 助手、BOSS 自动化、OA 自动审批、外部消息和外部日历
 
-## 基线结果
+## 已完成的稳定性优化
 
-### 后端与 Agent
+1. 新增严格的 `internal-trial` 就绪检查和配置模板，要求正式数据库、长期附件与备份目录、安全响应头、限流和正常账号密码登录。
+2. 内部试用默认关闭简历 AI 与岗位画像 AI，外部模型不可用时不会拖住创建需求、人工补录简历或候选人推进。
+3. 关闭简历 AI 时，上传文件先保留原件并等待人工确认；资料确认成功后才进入上传时选定需求的“待筛选”，避免未确认简历提前进入流程。
+4. 新增一条六模块 API 完整闭环，覆盖需求 → 简历 → 流程 → 面试 → Offer → 入职 → 看板，并验证重复操作不会生成重复记录。
+5. 浏览器冒烟扩展到招聘需求、简历库、招聘进度、面试、Offer、数据看板，同时保留五角色登录和越权拦截检查。
+6. 核心闭环已加入现有 `backendCriticalBusiness` CI 任务；未新增 stage、Runner 或重复依赖安装。
 
-命令：
+## 最终自动化结果
+
+### 后端、Agent 与核心流程
 
 ```bash
 .venv/bin/python -m pytest backend/tests base_agent/tests -q
 ```
 
-首次结果：`853 passed, 1 failed, 5 warnings`。唯一失败是
-`test_dev_gateway_account_prefix_treats_like_wildcards_as_literal_text`：测试使用默认
-`FLASK_DEBUG=false` 的配置，导致本地开发登录桥未注册并返回 405。
+- 结果：`871 passed, 5 warnings`
+- 耗时：`314.66s`（约 5 分 14 秒，与优化前基线相当）
+- Warning：第三方 SWIG 类型弃用提醒，不影响核心业务，分类为 P2
 
-分类：P0（本地/隔离试用登录测试阻塞）。生产代码只允许 debug 注册登录桥的设计正确，
-因此修复测试配置，使该回归显式使用 `FLASK_DEBUG=true`，未放宽生产 mock 边界。
-
-相关回归：认证、网关角色与注入测试 `23 passed`。
-
-修复后全量结果：`854 passed, 5 warnings`，耗时约 4 分 53 秒。5 条 warning 来自第三方
-SWIG 类型的弃用提示，未影响六条核心链路，分类为 P2。
+核心相关组合回归：`127 passed`。六模块主闭环单测：`1 passed`。
 
 ### 前端
 
@@ -40,20 +42,40 @@ npm run lint
 npm run build
 ```
 
-结果：契约测试 `35/35` 通过；TypeScript 通过；Lint 0 warning；Vite 生产构建成功。
+- 合同测试：`35/35` 通过
+- TypeScript：通过
+- ESLint：0 warning
+- Vite 正式构建：成功
 
-### 数据库与构建
+### 浏览器
 
-- Alembic 唯一 head：`20260811_18`
-- `git diff --check`：通过
-- `make -n build PKG_TAG=RC PKG_VERSION=core-trial-baseline`：前后端 RC 镜像命令均可生成
+```bash
+bash scripts/run-isolated-browser-smoke.sh
+```
 
-## 当前问题清单
+- 结果：`9 passed`
+- 覆盖：五角色入口、招聘专员六个核心工作区、未登录拦截、越权拦截
+- 隔离性：临时数据库、临时附件、随机本地端口；结束后临时服务全部退出
 
-- P0：0（基线发现的本地登录桥测试配置问题已修复）
-- P1：0（待新增六模块闭环和浏览器冒烟继续验证）
-- P2：第三方 SWIG 弃用 warning 5 条，不属于本轮核心链路阻塞项
+### 部署与 GitLab 兼容
 
-## 后续证据
+```bash
+.venv/bin/python -m pytest backend/tests/test_deployment_artifacts.py -q
+```
 
-本文件将在新增 `internal-trial` 门禁、六模块 API 闭环、五角色浏览器冒烟和最终全量门禁后继续更新。
+- 结果：`29 passed`
+- `.gitlab-ci.yml` 不包含公司旧 GitLab 不支持的 `workflow:` 或 `auto_cancel:`
+- 四个 CI job 都有 `interruptible: true` 和明确的 20–45 分钟超时，不会在 Runner 已开始执行后无限挂住
+- 前端、后端、浏览器和镜像构建沿用现有 `t_FRONTEND` Runner，不新增排队来源
+
+## 问题分级与边界
+
+- P0：0
+- P1：0
+- P2：第三方 SWIG 弃用 warning 5 条，不阻塞内部小范围试用
+- 公司 Runner 是否排队属于 GitLab 基础设施状态；代码可以限制任务执行时长，但不能替公司平台保证排队时间
+- 推送独立分支不会合并或改动 `test`；当前 CI 的 `only` 规则也不会因普通功能分支 push 自动触发公司构建
+
+## 试用结论
+
+代码候选已达到公司内部小范围试用标准。建议先由一名招聘专员用一条 1 HC 真实需求跑通完整闭环，确认备份和页面数据一致后，再逐步增加试用同事。AI 和外部系统保持关闭，不作为本轮核心流程的依赖。
