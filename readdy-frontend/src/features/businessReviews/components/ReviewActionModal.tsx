@@ -9,6 +9,7 @@ import type {
   BusinessReviewDecisionInput,
   BusinessReviewTask,
 } from '@/features/businessReviews/types';
+import { candidateDisplayName } from '@/features/candidates/candidateDisplayName';
 
 type BusinessDecision = BusinessReviewDecisionInput['decision'];
 
@@ -96,7 +97,9 @@ export default function ReviewActionModal<TAction extends string = BusinessDecis
   const commentRequired = action !== 'approved';
   const commentMissing = commentRequired && !comment.trim();
 
-  const candidateName = businessTask?.candidate.name_masked ?? legacyRecord?.candidateName ?? '候选人';
+  const candidateName = businessTask
+    ? candidateDisplayName(businessTask.candidate)
+    : String(legacyRecord?.candidateName || '').trim() || '候选人';
   const position = businessTask?.demand.job_title ?? legacyRecord?.position ?? '岗位未填写';
   const pusher = businessTask?.created_by_name ?? legacyRecord?.pusher ?? '招聘专员';
   const pushedAt = businessTask?.created_at ?? legacyRecord?.pushTime ?? null;

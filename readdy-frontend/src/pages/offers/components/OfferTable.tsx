@@ -2,6 +2,7 @@ import type { OfferOaStatus, OfferWorkbenchRecord } from '@/features/offers/type
 import ActionButton from '@/components/ui/ActionButton';
 import RowActionMenu, { type RowActionItem } from '@/components/ui/RowActionMenu';
 import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
+import { candidateDisplayName } from '@/features/candidates/candidateDisplayName';
 import { offerOaStatusLabels } from '../workbench';
 
 interface Props {
@@ -58,6 +59,7 @@ export default function OfferTable({ offers, onOpenCandidate, onOpenDemand, onOp
         </thead>
         <tbody className="divide-y divide-background-200">
           {offers.map((offer) => {
+            const candidateName = candidateDisplayName(offer);
             const menuItems: RowActionItem[] = [
               { key: 'candidate', label: '查看候选人简历', icon: <i className="ri-file-user-line" />, onSelect: () => onOpenCandidate(offer) },
               { key: 'demand', label: '查看招聘需求', icon: <i className="ri-briefcase-line" />, onSelect: () => onOpenDemand(offer) },
@@ -66,7 +68,7 @@ export default function OfferTable({ offers, onOpenCandidate, onOpenDemand, onOp
             ];
             return <tr key={`${offer.candidate_id}-${offer.demand_id}`} className="bg-white hover:bg-background-50">
               <td className="px-5 py-4">
-                <button type="button" onClick={() => onOpenCandidate(offer)} className="max-w-full truncate text-left font-semibold text-foreground-900 hover:text-primary-700 hover:underline">{offer.candidate_name}</button>
+                <button type="button" onClick={() => onOpenCandidate(offer)} className="max-w-full truncate text-left font-semibold text-foreground-900 hover:text-primary-700 hover:underline">{candidateName}</button>
                 <p className="mt-1 truncate text-xs text-foreground-500">{offer.position || '岗位未填写'} · {offer.request_no || '需求编号未填写'}</p>
               </td>
               <td className="px-5 py-4 text-foreground-700">{offer.completed_interview_rounds} 轮</td>
@@ -81,7 +83,7 @@ export default function OfferTable({ offers, onOpenCandidate, onOpenDemand, onOp
                   <ActionButton size="sm" tone={offer.oa_status === 'not_started' ? 'primary' : 'secondary'} onClick={() => onRegister(offer)}>
                     {offer.oa_status === 'not_started' ? '登记 OA 结果' : '更新 OA 结果'}
                   </ActionButton>
-                  <RowActionMenu ariaLabel={`打开${offer.candidate_name}的 Offer 操作`} items={menuItems} />
+                  <RowActionMenu ariaLabel={`打开${candidateName}的 Offer 操作`} items={menuItems} />
                 </div>
               </td>
             </tr>;

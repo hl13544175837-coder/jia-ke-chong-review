@@ -112,7 +112,10 @@ export default function OffersPage() {
   const scopedOffers = useMemo(() => requestedDemandId
     ? offers.filter((item) => item.demand_id === requestedDemandId)
     : offers, [offers, requestedDemandId]);
-  const counts = useMemo(() => buildOfferTabCounts(scopedOffers), [scopedOffers]);
+  const counts = useMemo(
+    () => buildOfferTabCounts(scopedOffers, { recentDays: rangeDays }),
+    [rangeDays, scopedOffers],
+  );
   const visibleOffers = useMemo(() => filterAndSortOffers({
     items: scopedOffers,
     tab: activeTab,

@@ -6,6 +6,7 @@ import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewTask } from '@/features/businessReviews/types';
 import { interviewsApi } from '@/features/interviews/api';
 import { formatInterviewDateTime } from '@/features/interviews/dateTime';
+import { candidateDisplayName } from '@/features/candidates/candidateDisplayName';
 import {
   localReminderKind,
   type LocalInterviewReminderKind,
@@ -140,8 +141,8 @@ export default function InterviewerDashboardPage() {
           <div className="divide-y divide-background-100">
             {work.pendingReviews.map((task) => (
               <button key={task.id} type="button" onClick={() => navigate(`/interviewer/screening?task=${task.id}`)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-background-50">
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-sm font-bold text-amber-700">{task.candidate.name_masked.slice(0, 1) || '候'}</span>
-                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-foreground-900">{task.candidate.name_masked}</span><span className="mt-0.5 block truncate text-xs text-foreground-500">{task.demand.job_title} · {task.demand.department || '部门未填写'}</span></span>
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-sm font-bold text-amber-700">{candidateDisplayName(task.candidate).slice(0, 1)}</span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-foreground-900">{candidateDisplayName(task.candidate)}</span><span className="mt-0.5 block truncate text-xs text-foreground-500">{task.demand.job_title} · {task.demand.department || '部门未填写'}</span></span>
                 <span className="text-xs font-medium text-primary-600">去筛选</span>
               </button>
             ))}

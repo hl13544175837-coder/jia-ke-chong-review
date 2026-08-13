@@ -150,11 +150,19 @@ export function isTodayOfferTask(offer: OfferRecord, now = new Date()) {
   return false;
 }
 
-export function buildOfferTabCounts(items: OfferWorkbenchRecord[]) {
+export function buildOfferTabCounts(
+  items: OfferWorkbenchRecord[],
+  { recentDays, now = new Date() }: { recentDays?: number; now?: Date } = {},
+) {
+  const scopedItems = recentDays === undefined ? items : items.filter((offer) => {
+    const updated = parsedTime(offer.oa_updated_at || offer.updated_at || offer.created_at);
+    if (!updated) return true;
+    return updated.getTime() >= now.getTime() - recentDays * 86_400_000;
+  });
   return {
-    pending_registration: items.filter((item) => item.oa_status === 'not_started').length,
-    follow_up: items.filter((item) => item.oa_status === 'pending' || item.oa_status === 'rejected').length,
-    completed: items.filter((item) => item.oa_status === 'approved' || item.oa_status === 'completed').length,
+    pending_registration: scopedItems.filter((item) => item.oa_status === 'not_started').length,
+    follow_up: scopedItems.filter((item) => item.oa_status === 'pending' || item.oa_status === 'rejected').length,
+    completed: scopedItems.filter((item) => item.oa_status === 'approved' || item.oa_status === 'completed').length,
   };
 }
 

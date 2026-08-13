@@ -14,6 +14,7 @@ import { businessReviewsApi } from '@/features/businessReviews/api';
 import type { BusinessReviewDecisionInput, BusinessReviewTask } from '@/features/businessReviews/types';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 import CandidateJourneySummary from '@/components/candidates/CandidateJourneySummary';
+import { candidateDisplayName } from '@/features/candidates/candidateDisplayName';
 import { candidatesApi } from '@/features/candidates/api';
 import type { CandidateJourney } from '@/features/candidates/types';
 import ActionButton from '@/components/ui/ActionButton';
@@ -45,6 +46,7 @@ function actionError(error: unknown) {
 }
 
 export default function BusinessReviewDetail({ task, onReview }: BusinessReviewDetailProps) {
+  const candidateName = candidateDisplayName(task.candidate);
   const [activeTab, setActiveTab] = useState<CandidateDetailTab>('interview');
   const [resumeAction, setResumeAction] = useState<'preview' | 'download' | null>(null);
   const [resumeError, setResumeError] = useState('');
@@ -130,10 +132,10 @@ export default function BusinessReviewDetail({ task, onReview }: BusinessReviewD
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-primary-50 text-lg font-bold text-primary-700">
-              {task.candidate.name_masked.charAt(0) || '候'}
+              {candidateName.charAt(0)}
             </div>
             <div className="min-w-0">
-              <h2 className="truncate text-lg font-bold text-foreground-900">{task.candidate.name_masked}</h2>
+              <h2 className="truncate text-lg font-bold text-foreground-900">{candidateName}</h2>
               <p className="mt-0.5 text-sm text-foreground-500">
                 {task.demand.job_title} · {task.demand.request_no || `需求 #${task.demand_id}`}
               </p>

@@ -27,6 +27,7 @@ import SemanticStatusBadge from '@/components/ui/SemanticStatusBadge';
 import { businessReviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import { userFacingError } from '@/lib/userFacingError';
 import ReviewActionModal from '@/features/businessReviews/components/ReviewActionModal';
+import { candidateDisplayName } from '@/features/candidates/candidateDisplayName';
 import BusinessReviewDetail from './components/BusinessReviewDetail';
 
 type Decision = BusinessReviewDecisionInput['decision'];
@@ -224,7 +225,7 @@ export default function InterviewerScreeningPage() {
     try {
       await businessReviewsApi.decideTask(reviewTask.id, { decision, note });
       const label = statusMeta[decision].label;
-      showToast(`已提交「${reviewTask.candidate.name_masked}」的筛选结果：${label}`);
+      showToast(`已提交「${candidateDisplayName(reviewTask.candidate)}」的筛选结果：${label}`);
       setReviewTask(null);
       closeTaskDetail();
       await loadTasks(false);
@@ -299,6 +300,7 @@ export default function InterviewerScreeningPage() {
         ) : (
           <div className="space-y-2">
             {visibleTasks.map((task) => {
+              const candidateName = candidateDisplayName(task.candidate);
               const meta = statusMeta[task.status];
               const StatusIcon = meta.icon;
               const due = dueState(task.due_at);
@@ -311,11 +313,11 @@ export default function InterviewerScreeningPage() {
                   >
                     <div className="flex items-start gap-3">
                       <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary-50 text-sm font-bold text-primary-700">
-                        {task.candidate.name_masked.charAt(0) || '候'}
+                        {candidateName.charAt(0)}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground-900">{task.candidate.name_masked}</span>
+                          <span className="text-sm font-semibold text-foreground-900">{candidateName}</span>
                           <SemanticStatusBadge tone={statusPresentation(businessReviewStatusPresentation, task.status, meta.label).tone} className="gap-1 px-2 py-0.5">
                             <StatusIcon size={12} aria-hidden="true" />
                             {meta.label}
@@ -365,7 +367,7 @@ export default function InterviewerScreeningPage() {
 
       {selectedTask && (
         <DetailDrawerShell
-          ariaLabel={`${selectedTask.candidate.name_masked}的业务筛选详情`}
+          ariaLabel={`${candidateDisplayName(selectedTask.candidate)}的业务筛选详情`}
           closeLabel="关闭业务筛选详情"
           onClose={closeTaskDetail}
           backdropClassName="workspace-detail-backdrop fixed inset-0 z-40 cursor-default bg-black/35 lg:left-[var(--workspace-sidebar-width)] lg:top-14"
