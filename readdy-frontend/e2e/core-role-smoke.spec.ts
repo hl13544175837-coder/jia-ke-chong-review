@@ -15,6 +15,15 @@ const roleCases: Array<{
   { role: 'admin', home: '/dashboard', expectedNavigation: '系统设置', corePath: '/settings', coreHeading: '系统设置' },
 ];
 
+const recruiterCoreWorkspaces = [
+  { path: '/jobs', heading: '招聘需求' },
+  { path: '/candidates', heading: '简历库' },
+  { path: '/kanban', heading: '招聘进度' },
+  { path: '/interviews', heading: '面试管理' },
+  { path: '/offers', heading: 'Offer 管理' },
+  { path: '/analytics', heading: '数据看板' },
+] as const;
+
 for (const roleCase of roleCases) {
   test(`@smoke ${roleCase.role} 可以进入自己的真实工作入口`, async ({ page }) => {
     await loginAs(page, roleCase.role);
@@ -45,6 +54,17 @@ test('@smoke recruiter 可以打开在线简历库', async ({ page }) => {
   await expect(dialog.getByRole('button', { name: '生成授权指令' })).toBeDisabled();
   await dialog.getByRole('button', { name: '关闭' }).click();
   await expect(dialog).toHaveCount(0);
+});
+
+test('@smoke recruiter 六个核心工作区均可稳定打开', async ({ page }) => {
+  await loginAs(page, 'recruiter');
+
+  for (const workspace of recruiterCoreWorkspaces) {
+    await page.goto(workspace.path);
+    await expect(page).toHaveURL(new RegExp(`${workspace.path.replace('/', '\\/')}(?:\\?|$)`));
+    await expect(page.getByRole('heading', { name: workspace.heading }).first()).toBeAttached();
+    await expect(page.getByText('页面加载失败', { exact: true })).toHaveCount(0);
+  }
 });
 
 test('@smoke 未登录不能直接进入受保护页面', async ({ page }) => {
