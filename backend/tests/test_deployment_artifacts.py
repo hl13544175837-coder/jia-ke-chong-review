@@ -1096,12 +1096,13 @@ def test_gitlab_pipeline_declares_every_job_stage():
     )
 
 
-def test_gitlab_pipeline_cancels_superseded_test_jobs_before_they_consume_runner_capacity():
+def test_gitlab_pipeline_uses_legacy_compatible_interruptible_jobs():
     pipeline = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
 
-    assert "workflow:" in pipeline
-    assert "auto_cancel:" in pipeline
-    assert "on_new_commit: interruptible" in pipeline
+    # 公司 GitLab 版本不支持 workflow.auto_cancel；保留 job 级 interruptible，
+    # 由平台支持时再手动或平台侧配置取消过期任务，避免 CI 配置被直接拒绝。
+    assert "workflow:" not in pipeline
+    assert "auto_cancel:" not in pipeline
     for job_name in [
         "frontendQuality:",
         "backendCriticalBusiness:",

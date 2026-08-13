@@ -2,12 +2,6 @@ stages:
   - verify
   - build
 
-# 同一分支有新提交时，取消尚未完成的旧流水线。所有 job 共用 t_FRONTEND
-# Runner；不取消会让过期的验证/镜像任务排队，导致当前提交长期停在 00s 无日志。
-workflow:
-  auto_cancel:
-    on_new_commit: interruptible
-
 # 依赖/浏览器下载缓存：lockfile 变化才失效，大幅减少 npm ci 与 playwright 下载耗时
 variables:
   NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm-cache"
