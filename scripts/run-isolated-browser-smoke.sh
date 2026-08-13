@@ -102,6 +102,27 @@ wait_for_url() {
   return 1
 }
 
+wait_for_container_url() {
+  local url="$1"
+  local label="$2"
+  local container_name="$3"
+  local log_file="$4"
+  for _ in {1..60}; do
+    if [[ "$("${DOCKER_CMD[@]}" inspect --format '{{.State.Running}}' "$container_name" 2>/dev/null || true)" != "true" ]]; then
+      echo "$label 容器在就绪前退出。" >&2
+      "${DOCKER_CMD[@]}" logs "$container_name" >&2 || true
+      return 1
+    fi
+    if curl --noproxy '*' --silent --fail --max-time 2 "$url" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "$label 未在 60 秒内就绪：$url" >&2
+  "${DOCKER_CMD[@]}" logs "$container_name" >&2 || true
+  return 1
+}
+
 REQUIRED_COMMANDS=("$NODE_BIN" curl)
 if [[ -n "$PYTHON_DOCKER_IMAGE" ]]; then
   REQUIRED_COMMANDS+=(sudo docker)
@@ -227,24 +248,7 @@ wait "$INIT_PID"
 PIDS=()
 
 (
-  if [[ -n "$PYTHON_DOCKER_IMAGE" ]]; then
-    exec "${DOCKER_CMD[@]}" run --rm \
-      --name "$BACKEND_CONTAINER_NAME" \
-      --network host \
-      --user "$(id -u):$(id -g)" \
-      -e HOME=/tmp \
-      "${DOCKER_BACKEND_ENV[@]}" \
-      -v "$PROJECT_DIR:/workspace:ro" \
-      -v "$SMOKE_ROOT:$SMOKE_ROOT" \
-      -w /workspace/backend \
-      "$PYTHON_DOCKER_IMAGE" \
-      python -m gunicorn \
-      --workers 1 \
-      --bind "0.0.0.0:$BACKEND_PORT" \
-      --timeout 120 \
-      --keep-alive 5 \
-      run:app
-  else
+  if [[ -z "$PYTHON_DOCKER_IMAGE" ]]; then
     cd backend
     exec env "${COMMON_BACKEND_ENV[@]}" \
       "$PYTHON_BIN" -m gunicorn \
@@ -256,12 +260,41 @@ PIDS=()
   fi
 ) >"$LOG_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
-PIDS+=("$BACKEND_PID")
-wait_for_url \
-  "http://127.0.0.1:$BACKEND_PORT/api/health" \
-  "后端" \
-  "$BACKEND_PID" \
-  "$LOG_DIR/backend.log"
+if [[ -n "$PYTHON_DOCKER_IMAGE" ]]; then
+  wait "$BACKEND_PID"
+  "${DOCKER_CMD[@]}" run -d --rm \
+    --name "$BACKEND_CONTAINER_NAME" \
+    --network host \
+    --user "$(id -u):$(id -g)" \
+    -e HOME=/tmp \
+    "${DOCKER_BACKEND_ENV[@]}" \
+    -v "$PROJECT_DIR:/workspace:ro" \
+    -v "$SMOKE_ROOT:$SMOKE_ROOT" \
+    -w /workspace/backend \
+    "$PYTHON_DOCKER_IMAGE" \
+    python -m gunicorn \
+    --workers 1 \
+    --bind "0.0.0.0:$BACKEND_PORT" \
+    --timeout 120 \
+    --keep-alive 5 \
+    run:app >/dev/null
+  "${DOCKER_CMD[@]}" logs --follow "$BACKEND_CONTAINER_NAME" \
+    >"$LOG_DIR/backend.log" 2>&1 &
+  BACKEND_PID=$!
+  PIDS+=("$BACKEND_PID")
+  wait_for_container_url \
+    "http://127.0.0.1:$BACKEND_PORT/api/health" \
+    "后端" \
+    "$BACKEND_CONTAINER_NAME" \
+    "$LOG_DIR/backend.log"
+else
+  PIDS+=("$BACKEND_PID")
+  wait_for_url \
+    "http://127.0.0.1:$BACKEND_PORT/api/health" \
+    "后端" \
+    "$BACKEND_PID" \
+    "$LOG_DIR/backend.log"
+fi
 backend_info="$(curl --noproxy '*' --silent --fail --max-time 3 \
   "http://127.0.0.1:$BACKEND_PORT/actuator/info")"
 [[ "$backend_info" == *"$HEAD_SHA"* ]] || {

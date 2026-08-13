@@ -1159,6 +1159,10 @@ def test_gitlab_python_jobs_use_the_internal_python_312_image():
     assert "timeout 900 pip install" in ci_dockerfile
     assert 'BACKEND_CONTAINER_NAME="zhipin-browser-smoke-${CI_JOB_ID:-$$}"' in browser_smoke
     assert 'rm -f "$BACKEND_CONTAINER_NAME"' in browser_smoke
+    assert 'run -d --rm' in browser_smoke
+    assert "wait_for_container_url" in browser_smoke
+    assert "docker inspect" not in browser_smoke
+    assert "inspect --format '{{.State.Running}}'" in browser_smoke
 
 
 def test_flask_static_fallback_targets_the_active_readdy_build():
