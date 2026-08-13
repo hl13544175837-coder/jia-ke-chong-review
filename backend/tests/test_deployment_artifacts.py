@@ -1163,6 +1163,9 @@ def test_gitlab_python_jobs_use_the_internal_python_312_image():
     browser_dockerfile = (
         ROOT / "readdy-frontend" / "Dockerfile.ci-browser"
     ).read_text(encoding="utf-8")
+    playwright_config = (
+        ROOT / "readdy-frontend" / "playwright.config.ts"
+    ).read_text(encoding="utf-8")
     assert "timeout 1200 sudo docker build" in image_builder
     assert "timeout 900 pip install" in ci_dockerfile
     assert 'BACKEND_CONTAINER_NAME="zhipin-browser-smoke-${CI_JOB_ID:-$$}"' in browser_smoke
@@ -1180,6 +1183,7 @@ def test_gitlab_python_jobs_use_the_internal_python_312_image():
     assert "PLAYWRIGHT_HTML_REPORT_DIR=/artifacts/playwright-report/html" in browser_smoke
     assert 'test-results:/artifacts/test-results"' in browser_smoke
     assert 'playwright-report:/artifacts/playwright-report"' in browser_smoke
+    assert "video: isolatedSmoke ? 'off' : 'retain-on-failure'" in playwright_config
 
 
 def test_flask_static_fallback_targets_the_active_readdy_build():

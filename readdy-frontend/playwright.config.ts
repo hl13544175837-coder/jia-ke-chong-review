@@ -24,7 +24,7 @@ export default defineConfig({
       : undefined,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: isolatedSmoke ? 'off' : 'retain-on-failure',
     viewport: { width: 1440, height: 900 },
     launchOptions: chromiumExecutable ? { executablePath: chromiumExecutable } : undefined,
   },
