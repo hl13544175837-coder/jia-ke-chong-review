@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 const externalBaseUrl = process.env.E2E_BASE_URL?.trim();
 const localBaseUrl = 'http://127.0.0.1:5290';
 const isolatedSmoke = process.env.CI_ISOLATED_SMOKE === 'true';
+const chromiumExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim();
 
 export default defineConfig({
   testDir: './e2e',
@@ -22,6 +23,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     viewport: { width: 1440, height: 900 },
+    launchOptions: chromiumExecutable ? { executablePath: chromiumExecutable } : undefined,
   },
   projects: [
     {

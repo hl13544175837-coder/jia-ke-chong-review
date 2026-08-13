@@ -124,22 +124,24 @@ backendCriticalBusiness:
 frontendBrowserSmoke:
   stage: verify
   interruptible: true
-  # 首次跑需下载浏览器，网络慢时可能卡住；40 分钟超时兜底，快速失败而不是挂 1 小时
-  timeout: 40m
+  # 冷缓存时两个隔离镜像各有 20 分钟硬上限，另留 5 分钟启动服务和跑核心冒烟。
+  timeout: 45m
   script:
     - export PYTHON_DOCKER_IMAGE="zhipin-ci-python:${CI_JOB_ID}"
+    - export PLAYWRIGHT_DOCKER_IMAGE="zhipin-ci-browser:${CI_JOB_ID}"
     - export PYTHON_BASE_IMAGE="registry.ymdd.tech/library/python:3.12-uv"
+    - export NODE_BASE_IMAGE="registry.ymdd.tech/library/node:20-alpine"
     - bash scripts/ci-build-python-image.sh "$PYTHON_DOCKER_IMAGE"
+    - bash scripts/ci-build-browser-image.sh "$PLAYWRIGHT_DOCKER_IMAGE"
     - bash scripts/ci-npm-install.sh readdy-frontend
     - >-
-      PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright
-      PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright
-      PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=120000
-      timeout 600 readdy-frontend/node_modules/.bin/playwright install chromium
-    - PYTHON_DOCKER_IMAGE="$PYTHON_DOCKER_IMAGE" bash scripts/run-isolated-browser-smoke.sh
+      PYTHON_DOCKER_IMAGE="$PYTHON_DOCKER_IMAGE"
+      PLAYWRIGHT_DOCKER_IMAGE="$PLAYWRIGHT_DOCKER_IMAGE"
+      bash scripts/run-isolated-browser-smoke.sh
   after_script:
     - sudo docker rm -f "zhipin-browser-smoke-${CI_JOB_ID}" || true
     - sudo docker rmi "zhipin-ci-python:${CI_JOB_ID}" || true
+    - sudo docker rmi "zhipin-ci-browser:${CI_JOB_ID}" || true
   artifacts:
     when: always
     expire_in: 7 days

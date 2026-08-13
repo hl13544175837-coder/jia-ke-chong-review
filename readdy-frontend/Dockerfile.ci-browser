@@ -1,0 +1,40 @@
+ARG NODE_BASE_IMAGE=registry.ymdd.tech/library/node:20-alpine
+FROM ${NODE_BASE_IMAGE}
+
+WORKDIR /workspace/readdy-frontend
+
+ENV HOME=/tmp
+ENV CI=true
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/local/bin/zhipin-chromium
+
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+    && timeout 600 apk add --no-cache \
+        ca-certificates \
+        chromium \
+        font-noto-cjk \
+        freetype \
+        harfbuzz \
+        nss \
+        ttf-freefont \
+    && chromium_path="$(command -v chromium-browser || command -v chromium)" \
+    && ln -s "$chromium_path" "$PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"
+
+COPY readdy-frontend/package.json readdy-frontend/package-lock.json ./
+RUN npm config set audit false \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set maxsockets 5 \
+    && timeout 900 sh -c 'npm ci --prefer-offline --fetch-timeout=600000 \
+        || { npm config set registry https://registry.npmmirror.com; \
+             npm config set replace-registry-host always; \
+             npm ci --prefer-offline --fetch-timeout=600000; }'
+
+COPY readdy-frontend/ ./
+
+RUN node --version \
+    && "$PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH" --version \
+    && node_modules/.bin/playwright --version
+
+CMD ["node_modules/.bin/playwright", "test", "e2e/core-role-smoke.spec.ts", "--project=chromium", "--workers=1", "--global-timeout=600000"]

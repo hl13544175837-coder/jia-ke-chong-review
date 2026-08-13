@@ -6,6 +6,7 @@ set -m
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 PYTHON_DOCKER_IMAGE="${PYTHON_DOCKER_IMAGE:-}"
+PLAYWRIGHT_DOCKER_IMAGE="${PLAYWRIGHT_DOCKER_IMAGE:-}"
 BACKEND_CONTAINER_NAME=""
 if [[ -n "$PYTHON_DOCKER_IMAGE" ]]; then
   PYTHON_BIN=""
@@ -352,28 +353,49 @@ anonymous_status="$(curl --noproxy '*' --silent --output /dev/null --write-out '
   exit 1
 }
 
-(
-  cd readdy-frontend
-  env \
-    CI=true \
-    CI_ISOLATED_SMOKE=true \
-    E2E_BASE_URL="http://127.0.0.1:$FRONTEND_PORT" \
-    E2E_PASSWORD=Zhipin2026 \
-    E2E_RECRUITER_USER=hr01 \
-    E2E_RECRUITER_PASSWORD=Zhipin2026 \
-    E2E_MANAGER_USER=manager01 \
-    E2E_MANAGER_PASSWORD=Zhipin2026 \
-    E2E_INTERVIEWER_USER=interviewer01 \
-    E2E_INTERVIEWER_PASSWORD=Zhipin2026 \
-    E2E_DIRECTOR_USER=director01 \
-    E2E_DIRECTOR_PASSWORD=Zhipin2026 \
-    E2E_ADMIN_USER=admin01 \
-    E2E_ADMIN_PASSWORD=Zhipin2026 \
-    node_modules/.bin/playwright test \
-    e2e/core-role-smoke.spec.ts \
-    --project=chromium \
-    --workers=1 \
-    --global-timeout=600000
+PLAYWRIGHT_ENV=(
+  "CI=true"
+  "CI_ISOLATED_SMOKE=true"
+  "E2E_BASE_URL=http://127.0.0.1:$FRONTEND_PORT"
+  "E2E_PASSWORD=Zhipin2026"
+  "E2E_RECRUITER_USER=hr01"
+  "E2E_RECRUITER_PASSWORD=Zhipin2026"
+  "E2E_MANAGER_USER=manager01"
+  "E2E_MANAGER_PASSWORD=Zhipin2026"
+  "E2E_INTERVIEWER_USER=interviewer01"
+  "E2E_INTERVIEWER_PASSWORD=Zhipin2026"
+  "E2E_DIRECTOR_USER=director01"
+  "E2E_DIRECTOR_PASSWORD=Zhipin2026"
+  "E2E_ADMIN_USER=admin01"
+  "E2E_ADMIN_PASSWORD=Zhipin2026"
 )
+
+if [[ -n "$PLAYWRIGHT_DOCKER_IMAGE" ]]; then
+  mkdir -p \
+    "$PROJECT_DIR/readdy-frontend/playwright-report" \
+    "$PROJECT_DIR/readdy-frontend/test-results"
+  DOCKER_PLAYWRIGHT_ENV=()
+  for item in "${PLAYWRIGHT_ENV[@]}"; do
+    DOCKER_PLAYWRIGHT_ENV+=("-e" "$item")
+  done
+  "${DOCKER_CMD[@]}" run --rm \
+    --network host \
+    --user "$(id -u):$(id -g)" \
+    -e HOME=/tmp \
+    "${DOCKER_PLAYWRIGHT_ENV[@]}" \
+    -v "$PROJECT_DIR/readdy-frontend/playwright-report:/workspace/readdy-frontend/playwright-report" \
+    -v "$PROJECT_DIR/readdy-frontend/test-results:/workspace/readdy-frontend/test-results" \
+    "$PLAYWRIGHT_DOCKER_IMAGE"
+else
+  (
+    cd readdy-frontend
+    env "${PLAYWRIGHT_ENV[@]}" \
+      node_modules/.bin/playwright test \
+      e2e/core-role-smoke.spec.ts \
+      --project=chromium \
+      --workers=1 \
+      --global-timeout=600000
+  )
+fi
 
 echo "隔离浏览器冒烟通过：当前 checkout、临时数据库、五角色与权限负路径均已验证。"
