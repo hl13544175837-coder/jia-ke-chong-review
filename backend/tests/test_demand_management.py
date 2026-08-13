@@ -52,6 +52,45 @@ def test_demand_creation_can_create_matching_job_profile(client, make_user, app)
       assert job.status == "active"
 
 
+def test_demand_creation_skips_jd_model_when_job_profile_ai_is_disabled(
+    client, make_user, app, monkeypatch
+):
+    hr_id, token = make_user("manual-demand-profile@example.com", role="recruiter")
+    app.config["JOB_PROFILE_AI_ENABLED"] = False
+    calls = []
+
+    def track_extract(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {"must_have_skills": ["不应生成"]}
+
+    monkeypatch.setattr(
+        "app.services.demand_service.extract_jd_structured",
+        track_extract,
+    )
+
+    created = client.post(
+        "/api/demands",
+        headers=_auth(token),
+        json={
+            "job_title": "人工维护需求",
+            "jd_text": "岗位信息由招聘专员人工维护。",
+            "owner_hr_id": hr_id,
+            "city": "上海",
+            "requester_department": "技术部",
+            "hiring_manager_name": "技术负责人",
+            "requested_at": "2026-08-13",
+            "target_date": "2026-09-30",
+            "headcount": 1,
+        },
+    )
+
+    assert created.status_code == 201
+    assert calls == []
+    with app.app_context():
+        job = db.session.get(Job, created.get_json()["job_id"])
+        assert job.jd_structured == {}
+
+
 def test_demand_creation_rolls_back_job_and_demand_when_second_audit_fails(
     client, make_user, app, monkeypatch
 ):

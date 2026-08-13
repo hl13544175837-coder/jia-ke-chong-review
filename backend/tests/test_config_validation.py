@@ -238,6 +238,7 @@ def _safe_sit_values(backup_dir):
         "ALLOW_PUBLIC_REGISTRATION": "false",
         "BOSS_CLI_AUTO_INSTALL": "false",
         "RESUME_AI_ENABLED": "false",
+        "JOB_PROFILE_AI_ENABLED": "false",
         "AI_HUMAN_REVIEW_REQUIRED": "true",
         "AUTH_DISABLED": "true",
         "AUTH_GATEWAY_USER_ROLE": "recruiter",
@@ -271,6 +272,7 @@ def _safe_internal_trial_values(persistent_dir):
         "ALLOW_PUBLIC_REGISTRATION": "false",
         "BOSS_CLI_AUTO_INSTALL": "false",
         "RESUME_AI_ENABLED": "false",
+        "JOB_PROFILE_AI_ENABLED": "false",
         "AI_HUMAN_REVIEW_REQUIRED": "true",
         "AUTH_DISABLED": "false",
         "FIELD_ENCRYPTION_KEY": Fernet.generate_key().decode("ascii"),
@@ -294,6 +296,7 @@ def test_internal_trial_profile_accepts_real_data_with_ai_disabled(
     ("key", "value"),
     [
         ("RESUME_AI_ENABLED", "true"),
+        ("JOB_PROFILE_AI_ENABLED", "true"),
         ("AUTH_DISABLED", "true"),
         ("ALLOW_INSECURE_SIT_STARTUP", "true"),
         ("ALLOW_PUBLIC_REGISTRATION", "true"),

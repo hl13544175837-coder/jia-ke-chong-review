@@ -1,7 +1,7 @@
 import logging
 import sys
 from pathlib import Path
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, current_app, request, jsonify, g
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from ..services.match_service import MatchService
@@ -79,6 +79,12 @@ def clarify_job():
     title = (data.get("title") or "").strip()
     if not jd_text:
         return jsonify({"error": "jd_text required"}), 400
+    if not current_app.config.get("JOB_PROFILE_AI_ENABLED", True):
+        return jsonify({
+            "questions": [],
+            "ai_disabled": True,
+            "warning": "当前环境未启用岗位画像 AI，可直接保存人工填写的职位信息",
+        })
 
     import json as _json
     import re
@@ -131,7 +137,11 @@ def create_job():
         if extra:
             jd_text = f"{jd_text}\n\n【HR 澄清补充】\n{extra}"
 
-    structured = _extract_jd_structured(None, jd_text)
+    structured = (
+        _extract_jd_structured(None, jd_text)
+        if current_app.config.get("JOB_PROFILE_AI_ENABLED", True)
+        else {}
+    )
 
     job = Job(
         title=data["title"],
@@ -209,7 +219,11 @@ def update_job(job_id):
             return jsonify({"error": "JD 不能为空"}), 400
         job.jd_text = jd_text
         # JD 变了，重新结构化
-        job.jd_structured = _extract_jd_structured(None, jd_text)
+        job.jd_structured = (
+            _extract_jd_structured(None, jd_text)
+            if current_app.config.get("JOB_PROFILE_AI_ENABLED", True)
+            else {}
+        )
     if "city" in data:
         job.city = _clean_optional(data.get("city"), 80)
     if "department" in data:

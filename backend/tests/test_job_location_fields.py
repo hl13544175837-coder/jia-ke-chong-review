@@ -45,6 +45,47 @@ def test_jobs_store_and_return_location_fields(client, make_user, monkeypatch):
     assert detail_body["job_code"] == "SH-BE-001"
 
 
+def test_job_create_and_clarify_skip_model_when_job_profile_ai_is_disabled(
+    client, make_user, app, monkeypatch
+):
+    _, token = make_user("manual-job-profile@x.com", role="recruiter")
+    app.config["JOB_PROFILE_AI_ENABLED"] = False
+    extract_calls = []
+    chat_calls = []
+
+    def track_extract(*args, **kwargs):
+        extract_calls.append((args, kwargs))
+        return {"must_have_skills": ["不应生成"]}
+
+    def track_chat(*args, **kwargs):
+        chat_calls.append((args, kwargs))
+        return '{"questions":[]}'
+
+    from app.api import jobs as jobs_api
+
+    monkeypatch.setattr(jobs_api, "_extract_jd_structured", track_extract)
+    monkeypatch.setattr("llm_client.LLMClient.chat", track_chat)
+
+    clarified = client.post(
+        "/api/jobs/clarify",
+        headers=_auth(token),
+        json={"title": "人工岗位", "jd_text": "由招聘专员人工维护"},
+    )
+    created = client.post(
+        "/api/jobs",
+        headers=_auth(token),
+        json={"title": "人工岗位", "jd_text": "由招聘专员人工维护"},
+    )
+
+    assert clarified.status_code == 200
+    assert clarified.get_json()["questions"] == []
+    assert clarified.get_json()["ai_disabled"] is True
+    assert created.status_code == 201
+    assert created.get_json()["structured"] == {}
+    assert extract_calls == []
+    assert chat_calls == []
+
+
 def test_jobs_update_location_fields_without_restructuring_jd(client, make_user, monkeypatch):
     _, token = make_user("hr-location-edit@x.com", role="recruiter")
 

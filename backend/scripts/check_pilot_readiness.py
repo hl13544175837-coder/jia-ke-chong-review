@@ -339,6 +339,11 @@ def run_checks(
                     "真实数据内部试用本轮必须关闭简历 AI，使用人工补录",
                 ),
                 CheckResult(
+                    "JOB_PROFILE_AI_ENABLED",
+                    _is_false(values.get("JOB_PROFILE_AI_ENABLED")),
+                    "真实数据内部试用本轮必须关闭岗位画像 AI，使用人工填写的 JD",
+                ),
+                CheckResult(
                     "AUTH_DISABLED",
                     _is_false(values.get("AUTH_DISABLED")),
                     "真实数据内部试用必须保留后端 JWT 校验，不使用宽松网关免鉴权模式",

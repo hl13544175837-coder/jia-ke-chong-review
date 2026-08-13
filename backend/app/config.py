@@ -40,6 +40,10 @@ class Config:
     LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
     LLM_API_URL = os.environ.get("LLM_API_URL", "")
     RESUME_AI_ENABLED = _resume_ai_enabled()
+    JOB_PROFILE_AI_ENABLED = os.environ.get(
+        "JOB_PROFILE_AI_ENABLED",
+        "true",
+    ).lower() == "true"
     # 模型解析可能超过公司网关等待时间；生产默认落库后由后台任务解析。
     RESUME_PARSE_ASYNC_ENABLED = os.environ.get(
         "RESUME_PARSE_ASYNC_ENABLED", "true"

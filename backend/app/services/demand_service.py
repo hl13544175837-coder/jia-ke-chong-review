@@ -9,6 +9,7 @@ from math import ceil
 import re
 from uuid import uuid4
 
+from flask import current_app
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import aliased
 
@@ -231,6 +232,11 @@ def create_demand_from_input(data, *, org_id, actor_id, actor_role, job=None):
     )
     created_job = False
     if job is None:
+        structured = (
+            extract_jd_structured(None, values["jd_text_snapshot"])
+            if current_app.config.get("JOB_PROFILE_AI_ENABLED", True)
+            else {}
+        )
         job = Job(
             org_id=org_id,
             title=values["job_title_snapshot"],
@@ -238,7 +244,7 @@ def create_demand_from_input(data, *, org_id, actor_id, actor_role, job=None):
             department=values["department"],
             job_code=clean_text(data.get("job_code"), 80),
             jd_text=values["jd_text_snapshot"],
-            jd_structured=extract_jd_structured(None, values["jd_text_snapshot"]),
+            jd_structured=structured,
             owner_hr_id=values["owner"].id,
             status="active",
         )
