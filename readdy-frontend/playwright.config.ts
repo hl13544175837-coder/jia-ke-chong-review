@@ -4,6 +4,8 @@ const externalBaseUrl = process.env.E2E_BASE_URL?.trim();
 const localBaseUrl = 'http://127.0.0.1:5290';
 const isolatedSmoke = process.env.CI_ISOLATED_SMOKE === 'true';
 const chromiumExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim();
+const playwrightOutputDir = process.env.PLAYWRIGHT_OUTPUT_DIR?.trim();
+const playwrightHtmlReportDir = process.env.PLAYWRIGHT_HTML_REPORT_DIR?.trim();
 
 export default defineConfig({
   testDir: './e2e',
@@ -12,8 +14,9 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI
-    ? [['line'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]
+    ? [['line'], ['html', { open: 'never', outputFolder: playwrightHtmlReportDir || 'playwright-report' }]]
     : [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
+  outputDir: playwrightOutputDir || 'test-results',
   use: {
     baseURL: externalBaseUrl || localBaseUrl,
     proxy: isolatedSmoke

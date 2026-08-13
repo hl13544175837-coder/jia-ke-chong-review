@@ -378,13 +378,17 @@ if [[ -n "$PLAYWRIGHT_DOCKER_IMAGE" ]]; then
   for item in "${PLAYWRIGHT_ENV[@]}"; do
     DOCKER_PLAYWRIGHT_ENV+=("-e" "$item")
   done
+  DOCKER_PLAYWRIGHT_ENV+=(
+    -e "PLAYWRIGHT_OUTPUT_DIR=/artifacts/test-results/output"
+    -e "PLAYWRIGHT_HTML_REPORT_DIR=/artifacts/playwright-report/html"
+  )
   "${DOCKER_CMD[@]}" run --rm \
     --network host \
     --user "$(id -u):$(id -g)" \
     -e HOME=/tmp \
     "${DOCKER_PLAYWRIGHT_ENV[@]}" \
-    -v "$PROJECT_DIR/readdy-frontend/playwright-report:/workspace/readdy-frontend/playwright-report" \
-    -v "$PROJECT_DIR/readdy-frontend/test-results:/workspace/readdy-frontend/test-results" \
+    -v "$PROJECT_DIR/readdy-frontend/playwright-report:/artifacts/playwright-report" \
+    -v "$PROJECT_DIR/readdy-frontend/test-results:/artifacts/test-results" \
     "$PLAYWRIGHT_DOCKER_IMAGE"
 else
   (

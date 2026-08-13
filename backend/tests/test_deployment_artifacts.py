@@ -1176,6 +1176,10 @@ def test_gitlab_python_jobs_use_the_internal_python_312_image():
     assert "timeout 600 apk add --no-cache" in browser_dockerfile
     assert "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1" in browser_dockerfile
     assert "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH" in browser_dockerfile
+    assert "PLAYWRIGHT_OUTPUT_DIR=/artifacts/test-results/output" in browser_smoke
+    assert "PLAYWRIGHT_HTML_REPORT_DIR=/artifacts/playwright-report/html" in browser_smoke
+    assert 'test-results:/artifacts/test-results"' in browser_smoke
+    assert 'playwright-report:/artifacts/playwright-report"' in browser_smoke
 
 
 def test_flask_static_fallback_targets_the_active_readdy_build():
