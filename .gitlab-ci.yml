@@ -44,14 +44,21 @@ frontendQuality:
 backendCriticalBusiness:
   stage: verify
   interruptible: true
-  timeout: 20m
+  # 冷缓存时 Python 3.12 测试镜像最多准备 20 分钟，另留 10 分钟跑关键业务测试。
+  timeout: 30m
   script:
-    - export PYTHON_BIN="$(command -v python3.12 || command -v python3)"
-    - $PYTHON_BIN --version
-    - $PYTHON_BIN -c 'import sys; assert (3, 11) <= sys.version_info[:2] < (3, 14), f"需要 Python 3.11-3.13，当前 {sys.version.split()[0]}"'
-    - $PYTHON_BIN -m pip install --disable-pip-version-check --no-input -r backend/requirements.txt
+    - export PYTHON_DOCKER_IMAGE="zhipin-ci-python:${CI_JOB_ID}"
+    - export PYTHON_BASE_IMAGE="registry.ymdd.tech/library/python:3.12-uv"
+    - bash scripts/ci-build-python-image.sh "$PYTHON_DOCKER_IMAGE"
     - >-
-      $PYTHON_BIN -m pytest -q
+      sudo docker run --rm
+      --network host
+      --user "$(id -u):$(id -g)"
+      -e HOME=/tmp
+      -v "$CI_PROJECT_DIR:/workspace:ro"
+      -w /workspace
+      "$PYTHON_DOCKER_IMAGE"
+      python -m pytest -q
       backend/tests/test_auth_security.py
       backend/tests/test_auth_passwords.py
       backend/tests/test_access_control_hardening.py
@@ -105,6 +112,8 @@ backendCriticalBusiness:
       backend/tests/test_interview_management_contract.py::test_mark_conducted_is_explicit_idempotent_and_never_advances_pipeline
       backend/tests/test_candidate_journey.py
       backend/tests/test_core_trial_workflow.py
+  after_script:
+    - sudo docker rmi "zhipin-ci-python:${CI_JOB_ID}" || true
   tags:
     - t_FRONTEND
   only:
@@ -118,14 +127,15 @@ frontendBrowserSmoke:
   # 首次跑需下载浏览器，网络慢时可能卡住；40 分钟超时兜底，快速失败而不是挂 1 小时
   timeout: 40m
   script:
-    - export PYTHON_BIN="$(command -v python3.12 || command -v python3)"
-    - $PYTHON_BIN --version
-    - $PYTHON_BIN -c 'import sys; assert (3, 11) <= sys.version_info[:2] < (3, 14), f"需要 Python 3.11-3.13，当前 {sys.version.split()[0]}"'
-    - $PYTHON_BIN -m pip install --disable-pip-version-check --no-input -r backend/requirements.txt
-    - export PYTHON_BIN
+    - export PYTHON_DOCKER_IMAGE="zhipin-ci-python:${CI_JOB_ID}"
+    - export PYTHON_BASE_IMAGE="registry.ymdd.tech/library/python:3.12-uv"
+    - bash scripts/ci-build-python-image.sh "$PYTHON_DOCKER_IMAGE"
     - bash scripts/ci-npm-install.sh readdy-frontend
     - readdy-frontend/node_modules/.bin/playwright install chromium
-    - bash scripts/run-isolated-browser-smoke.sh
+    - PYTHON_DOCKER_IMAGE="$PYTHON_DOCKER_IMAGE" bash scripts/run-isolated-browser-smoke.sh
+  after_script:
+    - sudo docker rm -f "zhipin-browser-smoke-${CI_JOB_ID}" || true
+    - sudo docker rmi "zhipin-ci-python:${CI_JOB_ID}" || true
   artifacts:
     when: always
     expire_in: 7 days

@@ -1,0 +1,21 @@
+ARG PYTHON_BASE_IMAGE=registry.ymdd.tech/library/python:3.12-uv
+FROM ${PYTHON_BASE_IMAGE}
+
+WORKDIR /workspace
+
+ENV HOME=/tmp
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+COPY backend/requirements.txt /tmp/zhipin-requirements.txt
+RUN timeout 900 pip install --no-cache-dir --retries 5 --timeout 60 \
+        -r /tmp/zhipin-requirements.txt \
+        -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    || { status=$?; \
+        if [ "$status" -eq 124 ]; then \
+            echo "Python dependency installation exceeded 15 minutes" >&2; \
+        fi; \
+        exit "$status"; \
+    }
+
+CMD ["python", "--version"]

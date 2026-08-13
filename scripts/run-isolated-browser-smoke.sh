@@ -5,7 +5,13 @@ set -m
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-if [[ -n "${PYTHON_BIN:-}" ]]; then
+PYTHON_DOCKER_IMAGE="${PYTHON_DOCKER_IMAGE:-}"
+BACKEND_CONTAINER_NAME=""
+if [[ -n "$PYTHON_DOCKER_IMAGE" ]]; then
+  PYTHON_BIN=""
+  DOCKER_CMD=(sudo docker)
+  BACKEND_CONTAINER_NAME="zhipin-browser-smoke-${CI_JOB_ID:-$$}"
+elif [[ -n "${PYTHON_BIN:-}" ]]; then
   PYTHON_BIN="$PYTHON_BIN"
 elif [[ -x "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/.venv/bin/python" ]]; then
   PYTHON_BIN="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/.venv/bin/python"
@@ -34,6 +40,9 @@ cleanup() {
   local pid
   local active_pids=("${PIDS[@]}")
   local active_logs=("${LOG_FILES[@]}")
+  if [[ -n "$BACKEND_CONTAINER_NAME" ]]; then
+    "${DOCKER_CMD[@]}" rm -f "$BACKEND_CONTAINER_NAME" >/dev/null 2>&1 || true
+  fi
   for pid in "${active_pids[@]}"; do
     kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
   done
@@ -93,15 +102,26 @@ wait_for_url() {
   return 1
 }
 
-for command in "$PYTHON_BIN" "$NODE_BIN" curl; do
+REQUIRED_COMMANDS=("$NODE_BIN" curl)
+if [[ -n "$PYTHON_DOCKER_IMAGE" ]]; then
+  REQUIRED_COMMANDS+=(sudo docker)
+else
+  REQUIRED_COMMANDS+=("$PYTHON_BIN")
+fi
+for command in "${REQUIRED_COMMANDS[@]}"; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "缺少浏览器冒烟依赖：$command" >&2
     exit 1
   }
 done
 
-"$PYTHON_BIN" -c 'import flask, sqlalchemy, alembic, gunicorn, bcrypt'
-"$PYTHON_BIN" -c 'import sys; assert (3, 11) <= sys.version_info[:2] < (3, 14), f"需要 Python 3.11-3.13，当前 {sys.version.split()[0]}"'
+if [[ -n "$PYTHON_DOCKER_IMAGE" ]]; then
+  "${DOCKER_CMD[@]}" run --rm "$PYTHON_DOCKER_IMAGE" \
+    python -c 'import flask, sqlalchemy, alembic, gunicorn, bcrypt; import sys; assert (3, 11) <= sys.version_info[:2] < (3, 14)'
+else
+  "$PYTHON_BIN" -c 'import flask, sqlalchemy, alembic, gunicorn, bcrypt'
+  "$PYTHON_BIN" -c 'import sys; assert (3, 11) <= sys.version_info[:2] < (3, 14), f"需要 Python 3.11-3.13，当前 {sys.version.split()[0]}"'
+fi
 "$NODE_BIN" -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (!((major === 20 && minor >= 19) || (major === 22 && minor >= 12) || major > 22)) throw new Error(`需要 Node 20.19-20.x 或 22.12+，当前 ${process.versions.node}`)'
 
 HEAD_SHA="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
@@ -115,7 +135,7 @@ ALLOCATED_PORT=""
 allocate_port() {
   local port
   while :; do
-    port="$("$PYTHON_BIN" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+    port="$("$NODE_BIN" -e 'const net=require("net"); const s=net.createServer(); s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})')"
     [[ " ${PORTS[*]:-} " == *" $port "* ]] || break
   done
   PORTS+=("$port")
@@ -155,17 +175,43 @@ COMMON_BACKEND_ENV=(
   "BUILD_CHANNEL=CI"
 )
 
+if [[ -n "$PYTHON_DOCKER_IMAGE" ]]; then
+  DOCKER_BACKEND_ENV=()
+  for item in "${COMMON_BACKEND_ENV[@]}"; do
+    DOCKER_BACKEND_ENV+=("-e" "$item")
+  done
+fi
+
 cd "$PROJECT_DIR"
 LOG_FILES+=("$LOG_DIR/init.log" "$LOG_DIR/backend.log" "$LOG_DIR/oauth.log" "$LOG_DIR/frontend.log")
 (
-  env "${COMMON_BACKEND_ENV[@]}" "$PYTHON_BIN" \
-    backend/scripts/bootstrap_database.py \
-    --database-url "$DATABASE_URL" \
-    --allow-empty
-  cd backend
-  env "${COMMON_BACKEND_ENV[@]}" "$PYTHON_BIN" seed_dev.py
-  env "${COMMON_BACKEND_ENV[@]}" "$PYTHON_BIN" scripts/verify_demand_scope.py \
-    --database "$DATABASE_URL"
+  if [[ -n "$PYTHON_DOCKER_IMAGE" ]]; then
+    DOCKER_PYTHON_BASE=(
+      "${DOCKER_CMD[@]}" run --rm --network host
+      --user "$(id -u):$(id -g)"
+      -e HOME=/tmp
+      "${DOCKER_BACKEND_ENV[@]}"
+      -v "$PROJECT_DIR:/workspace:ro"
+      -v "$SMOKE_ROOT:$SMOKE_ROOT"
+    )
+    "${DOCKER_PYTHON_BASE[@]}" -w /workspace "$PYTHON_DOCKER_IMAGE" \
+      python backend/scripts/bootstrap_database.py \
+      --database-url "$DATABASE_URL" \
+      --allow-empty
+    "${DOCKER_PYTHON_BASE[@]}" -w /workspace/backend "$PYTHON_DOCKER_IMAGE" \
+      python seed_dev.py
+    "${DOCKER_PYTHON_BASE[@]}" -w /workspace/backend "$PYTHON_DOCKER_IMAGE" \
+      python scripts/verify_demand_scope.py --database "$DATABASE_URL"
+  else
+    env "${COMMON_BACKEND_ENV[@]}" "$PYTHON_BIN" \
+      backend/scripts/bootstrap_database.py \
+      --database-url "$DATABASE_URL" \
+      --allow-empty
+    cd backend
+    env "${COMMON_BACKEND_ENV[@]}" "$PYTHON_BIN" seed_dev.py
+    env "${COMMON_BACKEND_ENV[@]}" "$PYTHON_BIN" scripts/verify_demand_scope.py \
+      --database "$DATABASE_URL"
+  fi
 ) >"$LOG_DIR/init.log" 2>&1 &
 INIT_PID=$!
 PIDS+=("$INIT_PID")
@@ -181,14 +227,33 @@ wait "$INIT_PID"
 PIDS=()
 
 (
-  cd backend
-  exec env "${COMMON_BACKEND_ENV[@]}" \
-    "$PYTHON_BIN" -m gunicorn \
-    --workers 1 \
-    --bind "127.0.0.1:$BACKEND_PORT" \
-    --timeout 120 \
-    --keep-alive 5 \
-    run:app
+  if [[ -n "$PYTHON_DOCKER_IMAGE" ]]; then
+    exec "${DOCKER_CMD[@]}" run --rm \
+      --name "$BACKEND_CONTAINER_NAME" \
+      --network host \
+      --user "$(id -u):$(id -g)" \
+      -e HOME=/tmp \
+      "${DOCKER_BACKEND_ENV[@]}" \
+      -v "$PROJECT_DIR:/workspace:ro" \
+      -v "$SMOKE_ROOT:$SMOKE_ROOT" \
+      -w /workspace/backend \
+      "$PYTHON_DOCKER_IMAGE" \
+      python -m gunicorn \
+      --workers 1 \
+      --bind "0.0.0.0:$BACKEND_PORT" \
+      --timeout 120 \
+      --keep-alive 5 \
+      run:app
+  else
+    cd backend
+    exec env "${COMMON_BACKEND_ENV[@]}" \
+      "$PYTHON_BIN" -m gunicorn \
+      --workers 1 \
+      --bind "127.0.0.1:$BACKEND_PORT" \
+      --timeout 120 \
+      --keep-alive 5 \
+      run:app
+  fi
 ) >"$LOG_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 PIDS+=("$BACKEND_PID")

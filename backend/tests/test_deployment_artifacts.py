@@ -1126,6 +1126,36 @@ def test_gitlab_pipeline_runs_core_trial_workflow():
     assert "auto_cancel:" not in pipeline
 
 
+def test_gitlab_python_jobs_use_the_internal_python_312_image():
+    pipeline = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    backend_start = pipeline.index("backendCriticalBusiness:")
+    browser_start = pipeline.index("frontendBrowserSmoke:")
+    build_start = pipeline.index("buildTest:")
+    backend_job = pipeline[backend_start:browser_start]
+    browser_job = pipeline[browser_start:build_start]
+
+    for job in [backend_job, browser_job]:
+        assert "scripts/ci-build-python-image.sh" in job
+        assert 'PYTHON_BASE_IMAGE="registry.ymdd.tech/library/python:3.12-uv"' in job
+        assert "command -v python3.12 || command -v python3" not in job
+    assert "timeout: 30m" in backend_job
+    assert "PYTHON_DOCKER_IMAGE" in browser_job
+
+    image_builder = (ROOT / "scripts" / "ci-build-python-image.sh").read_text(
+        encoding="utf-8"
+    )
+    ci_dockerfile = (ROOT / "backend" / "Dockerfile.ci").read_text(
+        encoding="utf-8"
+    )
+    browser_smoke = (ROOT / "scripts" / "run-isolated-browser-smoke.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "timeout 1200 sudo docker build" in image_builder
+    assert "timeout 900 pip install" in ci_dockerfile
+    assert 'BACKEND_CONTAINER_NAME="zhipin-browser-smoke-${CI_JOB_ID:-$$}"' in browser_smoke
+    assert 'rm -f "$BACKEND_CONTAINER_NAME"' in browser_smoke
+
+
 def test_flask_static_fallback_targets_the_active_readdy_build():
     app_factory = (ROOT / "backend" / "app" / "__init__.py").read_text(
         encoding="utf-8"
