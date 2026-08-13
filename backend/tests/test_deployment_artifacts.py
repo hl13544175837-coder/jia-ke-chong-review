@@ -1115,6 +1115,17 @@ def test_gitlab_pipeline_uses_legacy_compatible_interruptible_jobs():
         assert "interruptible: true" in job_block
 
 
+def test_gitlab_pipeline_runs_core_trial_workflow():
+    pipeline = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    job_start = pipeline.index("backendCriticalBusiness:")
+    job_end = pipeline.index("\nfrontendBrowserSmoke:", job_start)
+    job_block = pipeline[job_start:job_end]
+
+    assert "backend/tests/test_core_trial_workflow.py" in job_block
+    assert "workflow:" not in pipeline
+    assert "auto_cancel:" not in pipeline
+
+
 def test_flask_static_fallback_targets_the_active_readdy_build():
     app_factory = (ROOT / "backend" / "app" / "__init__.py").read_text(
         encoding="utf-8"

@@ -104,6 +104,7 @@ backendCriticalBusiness:
       backend/tests/test_interview_management_contract.py::test_future_interview_cannot_be_marked_conducted
       backend/tests/test_interview_management_contract.py::test_mark_conducted_is_explicit_idempotent_and_never_advances_pipeline
       backend/tests/test_candidate_journey.py
+      backend/tests/test_core_trial_workflow.py
   tags:
     - t_FRONTEND
   only:
