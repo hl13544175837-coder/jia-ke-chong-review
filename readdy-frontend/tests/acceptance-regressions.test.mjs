@@ -33,6 +33,7 @@ test('候选人姓名为空时统一显示可识别的候选人编号', async ()
   const { candidateDisplayName } = await jiti.import(helperPath.href);
 
   assert.equal(candidateDisplayName({ id: 35, name_masked: '' }), '候选人 #35');
+  assert.equal(candidateDisplayName({ id: 8, candidate_id: 35, candidate_name: '' }), '候选人 #35');
   assert.equal(candidateDisplayName({ id: 35, name_masked: '  ' }), '候选人 #35');
   assert.equal(candidateDisplayName({ id: 35, name_masked: '王小明' }), '王小明');
 });
