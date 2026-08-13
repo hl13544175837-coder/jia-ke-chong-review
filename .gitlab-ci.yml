@@ -5,6 +5,7 @@ stages:
 # 依赖/浏览器下载缓存：lockfile 变化才失效，大幅减少 npm ci 与 playwright 下载耗时
 variables:
   NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm-cache"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
   PLAYWRIGHT_BROWSERS_PATH: "$CI_PROJECT_DIR/.pw-browsers"
 
 cache:
@@ -13,6 +14,7 @@ cache:
       - readdy-frontend/package-lock.json
   paths:
     - .npm-cache/
+    - .pip-cache/
     - .pw-browsers/
   policy: pull-push
 
@@ -35,15 +37,91 @@ frontendQuality:
     - test
     - merge_requests
 
+# 这组测试只覆盖不能出错的业务：身份权限、跨组织/跨专员数据隔离、
+# 招聘主链、Offer 与 HC 数字、重复提交、简历原件/导出、审计留痕和注入防护。
+# 它不跑大量页面样式检查，避免把发布时间花在低业务价值的用例上。
+backendCriticalBusiness:
+  stage: verify
+  timeout: 20m
+  script:
+    - export PYTHON_BIN="$(command -v python3.12 || command -v python3)"
+    - $PYTHON_BIN --version
+    - $PYTHON_BIN -c 'import sys; assert (3, 11) <= sys.version_info[:2] < (3, 14), f"需要 Python 3.11-3.13，当前 {sys.version.split()[0]}"'
+    - $PYTHON_BIN -m pip install --disable-pip-version-check --no-input -r backend/requirements.txt
+    - >-
+      $PYTHON_BIN -m pytest -q
+      backend/tests/test_auth_security.py
+      backend/tests/test_auth_passwords.py
+      backend/tests/test_access_control_hardening.py
+      backend/tests/test_production_org_access_hardening.py
+      backend/tests/test_security_candidate_scope.py
+      backend/tests/test_security_hardening_next.py
+      backend/tests/test_csv_export_security.py
+      backend/tests/test_demand_scope_permissions.py
+      backend/tests/test_demand_pipeline_isolation.py
+      backend/tests/test_offer_lifecycle.py
+      backend/tests/test_idempotency_keys.py
+      backend/tests/test_audit_trail_pilot.py
+      backend/tests/test_resume_database_storage.py
+      backend/tests/test_resume_upload_duplicate_blocking.py
+      backend/tests/test_resume_preview_ticket.py
+      backend/tests/test_business_review_resume_access.py
+      backend/tests/test_agent_import_auth.py
+      backend/tests/test_agent_egress_security.py
+      backend/tests/test_boss_command_injection.py
+      backend/tests/test_gateway_dev_mock_injection.py
+      backend/tests/test_gateway_trial_roles.py
+      backend/tests/test_demand_p0_contract.py
+      backend/tests/test_demand_scope_migration.py
+      backend/tests/test_online_resume_imports.py
+      backend/tests/test_config_validation.py
+      backend/tests/test_demand_management.py::test_demands_can_be_created_listed_and_closed_with_metrics
+      backend/tests/test_demand_management.py::test_closed_demands_can_be_restored_without_mutating_job_template
+      backend/tests/test_demand_approval.py::test_interviewer_submits_pending_demand
+      backend/tests/test_demand_approval.py::test_owner_hr_approves_pending_demand
+      backend/tests/test_demand_approval.py::test_creator_resubmits_rejected_demand_and_history_is_audited
+      backend/tests/test_interview_reschedule_workflow.py
+      backend/tests/test_resume_recovery_workflow.py
+      backend/tests/test_talent_map.py::test_talent_map_can_save_companies_people_and_filter_by_company
+      backend/tests/test_talent_map.py::test_talent_maps_are_scoped_to_owner_unless_manager_or_admin
+      backend/tests/test_talent_map.py::test_talent_map_organization_can_keep_empty_roles_and_rename_existing_people
+      backend/tests/test_agent_conversations.py::test_agent_chat_creates_conversation_and_persists_messages
+      backend/tests/test_agent_conversations.py::test_agent_conversation_mutations_are_user_and_org_scoped
+      backend/tests/test_agent_conversations.py::test_agent_resume_after_relogin_only_needs_conversation_id
+      backend/tests/test_agent_conversations.py::test_interviewer_cannot_access_agent_endpoints
+      backend/tests/test_agent_safety_contract.py
+      backend/tests/test_analytics_truth.py
+      backend/tests/test_demand_bi_isolation.py::test_demand_bi_isolates_sibling_facts_and_labels_current_responsibility
+      backend/tests/test_demand_bi_isolation.py::test_demand_bi_enforces_demand_owner_scope
+      backend/tests/test_bi_operational_overview.py::test_team_overview_empty_state_is_successful_and_not_fabricated
+      backend/tests/test_interview_loop.py::test_feedback_persists_structured_reason_tags
+      backend/tests/test_business_reviews.py
+      backend/tests/test_demand_interview_rounds.py::test_primary_feedback_completes_round_but_never_advances_pipeline
+      backend/tests/test_demand_interview_rounds.py::test_only_one_active_primary_interviewer_per_round_sequence
+      backend/tests/test_demand_interview_rounds.py::test_feedback_requires_an_assignment_for_the_current_actor
+      backend/tests/test_interview_management_contract.py::test_future_interview_cannot_be_marked_conducted
+      backend/tests/test_interview_management_contract.py::test_mark_conducted_is_explicit_idempotent_and_never_advances_pipeline
+      backend/tests/test_candidate_journey.py
+  tags:
+    - t_FRONTEND
+  only:
+    - api
+    - test
+    - merge_requests
+
 frontendBrowserSmoke:
   stage: verify
-  # 首次跑需下载浏览器，网络慢时可能卡住；30 分钟超时兜底，快速失败而不是挂 1 小时
-  timeout: 30m
+  # 首次跑需下载浏览器，网络慢时可能卡住；40 分钟超时兜底，快速失败而不是挂 1 小时
+  timeout: 40m
   script:
+    - export PYTHON_BIN="$(command -v python3.12 || command -v python3)"
+    - $PYTHON_BIN --version
+    - $PYTHON_BIN -c 'import sys; assert (3, 11) <= sys.version_info[:2] < (3, 14), f"需要 Python 3.11-3.13，当前 {sys.version.split()[0]}"'
+    - $PYTHON_BIN -m pip install --disable-pip-version-check --no-input -r backend/requirements.txt
+    - export PYTHON_BIN
     - bash scripts/ci-npm-install.sh readdy-frontend
-    - cd readdy-frontend
-    - npx playwright install chromium
-    - npm run test:e2e:smoke
+    - readdy-frontend/node_modules/.bin/playwright install chromium
+    - bash scripts/run-isolated-browser-smoke.sh
   artifacts:
     when: always
     expire_in: 7 days
@@ -52,11 +130,15 @@ frontendBrowserSmoke:
       - readdy-frontend/test-results/
   tags:
     - t_FRONTEND
-  rules:
-    - if: '$E2E_BASE_URL && $E2E_PASSWORD && ($CI_COMMIT_BRANCH == "api" || $CI_COMMIT_BRANCH == "test")'
+  only:
+    - api
+    - test
+    - merge_requests
 
 buildTest:
   stage: build
+  # Docker 拉取、构建和推送均受明确上限保护，避免 runner 无限挂起。
+  timeout: 45m
   variables:
     rc_version: $PKG_TAG
     projectid: $CI_PROJECT_ID
@@ -78,3 +160,4 @@ buildTest:
     - t_FRONTEND
   only:
     - api
+    - test

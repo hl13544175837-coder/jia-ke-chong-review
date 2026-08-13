@@ -5,6 +5,7 @@ import type { RecruitmentDemand } from '@/features/demands/types';
 import { onlineResumesApi } from '../api';
 import type { OnlineResumeItem, OnlineResumeOwnerOption } from '../types';
 import { suspiciousResumeFields } from '../quality';
+import { presentOnlineResumeDemand } from '../presentation';
 import OnlineResumeDetailDrawer from './OnlineResumeDetailDrawer';
 import { AgentConnectionDialog } from './AgentConnectionDialog';
 
@@ -425,7 +426,9 @@ export default function OnlineResumeList() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-background-100">
-                {items.map((item) => (
+                {items.map((item) => {
+                  const demand = presentOnlineResumeDemand(item.demand);
+                  return (
                   <tr key={item.id} className="align-top hover:bg-background-50/60">
                     <td className="px-4 py-4">
                       <button
@@ -438,7 +441,12 @@ export default function OnlineResumeList() {
                       <p className="mt-1 text-xs text-foreground-400">{item.source_platform}</p>
                     </td>
                     <td className="px-4 py-4">
-                      <p className="font-medium text-foreground-800" title={item.demand.request_no}>{item.demand.title}</p>
+                      <p
+                        className={demand.available ? 'font-medium text-foreground-800' : 'font-medium text-amber-700'}
+                        title={demand.requestNo || undefined}
+                      >
+                        {demand.title}
+                      </p>
                     </td>
                     <td className="whitespace-nowrap px-4 py-4 text-foreground-700">
                       {item.extracted.age ? <span>{item.extracted.age}</span> : <span className="text-foreground-400">-</span>}
@@ -502,7 +510,8 @@ export default function OnlineResumeList() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

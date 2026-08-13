@@ -467,6 +467,291 @@ def test_task_lists_and_detail_are_scoped_to_owner_and_assigned_reviewer(
     assert "raw_file_path" not in str(payload)
 
 
+def test_business_review_list_excludes_cross_org_legacy_relations(
+    client,
+    make_user,
+    app,
+):
+    local_owner_id, _ = make_user(
+        "business-local-owner@example.com",
+        role="recruiter",
+        name="Local Owner",
+        org_id=1,
+    )
+    _, admin_token = make_user(
+        "business-local-admin@example.com",
+        role="admin",
+        org_id=1,
+    )
+    foreign_candidate_owner, _ = make_user(
+        "business-foreign-owner@example.com",
+        role="recruiter",
+        org_id=2,
+    )
+    foreign_reviewer_id, _ = make_user(
+        "business-foreign-reviewer@example.com",
+        role="interviewer",
+        name="SECRET-ORG2-REVIEWER",
+        org_id=2,
+    )
+    foreign_creator_id, _ = make_user(
+        "business-foreign-creator@example.com",
+        role="recruiter",
+        name="SECRET-ORG2-CREATOR",
+        org_id=2,
+    )
+    case = _seed_review_case(app, local_owner_id, suffix="CROSS-ORG-LEGACY")
+    with app.app_context():
+        foreign_candidate = Candidate(
+            org_id=2,
+            owner_hr_id=foreign_candidate_owner,
+            name_masked="SECRET-ORG2-CANDIDATE",
+            resume_json={"summary": "SECRET-ORG2-RESUME"},
+        )
+        db.session.add(foreign_candidate)
+        db.session.flush()
+        task = BusinessReviewTask(
+            org_id=1,
+            demand_id=case["demand_id"],
+            candidate_id=foreign_candidate.id,
+            reviewer_id=foreign_reviewer_id,
+            created_by=foreign_creator_id,
+            decided_by=foreign_creator_id,
+            status="approved",
+        )
+        db.session.add(task)
+        db.session.commit()
+
+    response = client.get("/api/business-reviews", headers=_auth(admin_token))
+
+    assert response.status_code == 200
+    assert response.get_json() == []
+
+
+@pytest.mark.parametrize("corrupted_relation", ["demand_owner", "demand_job"])
+def test_business_review_creation_fails_closed_on_cross_org_demand_relations(
+    client,
+    make_user,
+    app,
+    corrupted_relation,
+):
+    owner_id, _ = make_user(
+        f"business-create-owner-{corrupted_relation}@example.com",
+        role="recruiter",
+        org_id=1,
+    )
+    _, manager_token = make_user(
+        f"business-create-manager-{corrupted_relation}@example.com",
+        role="manager",
+        org_id=1,
+    )
+    reviewer_id, _ = make_user(
+        f"business-create-reviewer-{corrupted_relation}@example.com",
+        role="interviewer",
+        org_id=1,
+    )
+    foreign_owner_id, _ = make_user(
+        f"business-create-foreign-{corrupted_relation}@example.com",
+        role="recruiter",
+        name="SECRET-FOREIGN-OWNER",
+        org_id=2,
+    )
+    case = _seed_review_case(
+        app,
+        owner_id,
+        suffix=f"CREATE-{corrupted_relation.upper()}",
+    )
+
+    with app.app_context():
+        demand = db.session.get(RecruitmentDemand, case["demand_id"])
+        if corrupted_relation == "demand_owner":
+            demand.owner_hr_id = foreign_owner_id
+        else:
+            foreign_job = Job(
+                org_id=2,
+                title="SECRET-FOREIGN-JOB",
+                jd_text="SECRET-FOREIGN-JD",
+                owner_hr_id=foreign_owner_id,
+                status="active",
+            )
+            db.session.add(foreign_job)
+            db.session.flush()
+            demand.job_id = foreign_job.id
+            demand.job_title_snapshot = ""
+        db.session.commit()
+        before = {
+            "tasks": BusinessReviewTask.query.count(),
+            "stages": PipelineStage.query.count(),
+            "notifications": Notification.query.count(),
+        }
+
+    response = client.post(
+        "/api/business-reviews",
+        headers=_auth(manager_token),
+        json={
+            "demand_id": case["demand_id"],
+            "candidate_id": case["candidate_id"],
+            "reviewer_id": reviewer_id,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "business_review_scope_corrupted"
+    assert "SECRET-FOREIGN" not in str(response.get_json())
+    with app.app_context():
+        assert BusinessReviewTask.query.count() == before["tasks"]
+        assert PipelineStage.query.count() == before["stages"]
+        assert Notification.query.count() == before["notifications"]
+
+
+@pytest.mark.parametrize("corrupted_relation", ["demand_owner", "demand_job"])
+def test_business_review_decision_rejects_cross_org_demand_relations_without_notification(
+    client,
+    make_user,
+    app,
+    corrupted_relation,
+):
+    owner_id, owner_token = make_user(
+        f"business-demand-owner-{corrupted_relation}@example.com",
+        role="recruiter",
+        org_id=1,
+    )
+    reviewer_id, reviewer_token = make_user(
+        f"business-demand-reviewer-{corrupted_relation}@example.com",
+        role="interviewer",
+        org_id=1,
+    )
+    foreign_owner_id, _ = make_user(
+        f"business-demand-foreign-{corrupted_relation}@example.com",
+        role="recruiter",
+        org_id=2,
+    )
+    case = _seed_review_case(
+        app,
+        owner_id,
+        suffix=f"DEMAND-{corrupted_relation.upper()}",
+    )
+    task = _push_review(
+        client,
+        owner_token,
+        case,
+        reviewer_id,
+    ).get_json()
+
+    with app.app_context():
+        demand = db.session.get(RecruitmentDemand, case["demand_id"])
+        if corrupted_relation == "demand_owner":
+            demand.owner_hr_id = foreign_owner_id
+        else:
+            foreign_job = Job(
+                org_id=2,
+                title="SECRET ORG2 JOB",
+                jd_text="SECRET ORG2 JD",
+                owner_hr_id=foreign_owner_id,
+                status="active",
+            )
+            db.session.add(foreign_job)
+            db.session.flush()
+            demand.job_id = foreign_job.id
+        db.session.commit()
+        notification_count = Notification.query.count()
+
+    response = client.post(
+        f"/api/business-reviews/{task['id']}/decision",
+        headers=_auth(reviewer_token),
+        json={"decision": "approved", "note": ""},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "business_review_scope_corrupted"
+    with app.app_context():
+        saved = db.session.get(BusinessReviewTask, task["id"])
+        assert saved.status == "pending"
+        assert saved.pending_slot == 1
+        assert saved.decided_by is None
+        assert Notification.query.count() == notification_count
+
+
+def test_business_review_writes_fail_closed_on_cross_org_legacy_relations(
+    client,
+    make_user,
+    app,
+):
+    owner_id, owner_token = make_user(
+        "business-write-owner@example.com",
+        role="recruiter",
+        org_id=1,
+    )
+    reviewer_id, reviewer_token = make_user(
+        "business-write-reviewer@example.com",
+        role="interviewer",
+        org_id=1,
+    )
+    replacement_id, _ = make_user(
+        "business-write-replacement@example.com",
+        role="interviewer",
+        org_id=1,
+    )
+    foreign_owner_id, _ = make_user(
+        "business-write-foreign@example.com",
+        role="recruiter",
+        org_id=2,
+    )
+    case = _seed_review_case(app, owner_id, suffix="WRITE-CROSS-ORG")
+    with app.app_context():
+        foreign_candidate = Candidate(
+            org_id=2,
+            owner_hr_id=foreign_owner_id,
+            name_masked="SECRET-FOREIGN-CANDIDATE",
+            resume_json={"summary": "SECRET-FOREIGN-RESUME"},
+        )
+        db.session.add(foreign_candidate)
+        db.session.flush()
+        task = BusinessReviewTask(
+            org_id=1,
+            demand_id=case["demand_id"],
+            candidate_id=foreign_candidate.id,
+            reviewer_id=reviewer_id,
+            created_by=owner_id,
+            status="pending",
+            pending_slot=1,
+        )
+        db.session.add(task)
+        db.session.commit()
+        task_id = task.id
+        notification_count = Notification.query.count()
+
+    responses = [
+        client.patch(
+            f"/api/business-reviews/{task_id}/reviewer",
+            headers=_auth(owner_token),
+            json={"reviewer_id": replacement_id},
+        ),
+        client.post(
+            f"/api/business-reviews/{task_id}/remind",
+            headers=_auth(owner_token),
+        ),
+        client.post(
+            f"/api/business-reviews/{task_id}/decision",
+            headers=_auth(reviewer_token),
+            json={"decision": "approved", "note": ""},
+        ),
+    ]
+
+    assert [response.status_code for response in responses] == [409, 409, 409]
+    assert all(
+        response.get_json()["code"] == "business_review_scope_corrupted"
+        for response in responses
+    )
+    with app.app_context():
+        task = db.session.get(BusinessReviewTask, task_id)
+        assert task.status == "pending"
+        assert task.pending_slot == 1
+        assert task.reviewer_id == reviewer_id
+        assert task.decided_by is None
+        assert Notification.query.count() == notification_count
+
+
 def test_owner_can_remind_pending_business_reviewer_without_duplicate_notifications(
     client, make_user, app
 ):

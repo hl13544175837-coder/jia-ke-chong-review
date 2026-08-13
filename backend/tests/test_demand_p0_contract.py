@@ -69,6 +69,135 @@ def test_create_demand_rejects_missing_confirmed_required_fields(
     }
 
 
+def test_create_demand_rejects_non_positive_headcount(client, make_user, app):
+    owner_id, token = make_user("invalid-hc-demand@example.com", role="recruiter")
+    job_id = _make_job(app, owner_id)
+
+    for suffix, headcount in [("ZERO", 0), ("NEGATIVE", -1)]:
+        response = client.post(
+            "/api/demands",
+            headers=_auth(token),
+            json=_valid_payload(
+                job_id,
+                owner_id,
+                suffix,
+                headcount=headcount,
+            ),
+        )
+
+        assert response.status_code == 400
+        assert response.get_json()["fields"]["headcount"] == "HC 必须是大于 0 的整数"
+
+
+def test_demand_headcount_rejects_boolean_fraction_and_decimal_text(
+    client,
+    make_user,
+    app,
+):
+    owner_id, token = make_user("strict-integer-hc@example.com", role="recruiter")
+    job_id = _make_job(app, owner_id)
+
+    for suffix, headcount in [
+        ("BOOLEAN", True),
+        ("FRACTION", 10000.9),
+        ("DECIMAL-TEXT", "1.5"),
+    ]:
+        response = client.post(
+            "/api/demands",
+            headers=_auth(token),
+            json=_valid_payload(job_id, owner_id, suffix, headcount=headcount),
+        )
+
+        assert response.status_code == 400
+        assert response.get_json()["fields"]["headcount"] == "HC 必须是大于 0 的整数"
+
+
+def test_demand_headcount_has_a_production_upper_bound(client, make_user, app):
+    owner_id, token = make_user("bounded-hc-demand@example.com", role="recruiter")
+    job_id = _make_job(app, owner_id)
+
+    oversized = client.post(
+        "/api/demands",
+        headers=_auth(token),
+        json=_valid_payload(
+            job_id,
+            owner_id,
+            "OVERSIZED",
+            headcount=10_001,
+        ),
+    )
+
+    assert oversized.status_code == 400
+    assert oversized.get_json()["fields"]["headcount"] == "单条招聘需求的 HC 不能超过 10000"
+
+    boundary = client.post(
+        "/api/demands",
+        headers=_auth(token),
+        json=_valid_payload(
+            job_id,
+            owner_id,
+            "BOUNDARY",
+            headcount=10_000,
+        ),
+    )
+
+    assert boundary.status_code == 201
+    demand_id = boundary.get_json()["id"]
+
+    update = client.patch(
+        f"/api/demands/{demand_id}",
+        headers=_auth(token),
+        json={"headcount": 10_001},
+    )
+
+    assert update.status_code == 400
+    assert update.get_json()["fields"]["headcount"] == "单条招聘需求的 HC 不能超过 10000"
+    unchanged = client.get(f"/api/demands/{demand_id}", headers=_auth(token))
+    assert unchanged.status_code == 200
+    assert unchanged.get_json()["headcount"] == 10_000
+
+    for invalid_headcount in (True, 9999.9, "2.5"):
+        invalid_update = client.patch(
+            f"/api/demands/{demand_id}",
+            headers=_auth(token),
+            json={"headcount": invalid_headcount},
+        )
+        assert invalid_update.status_code == 400
+        assert invalid_update.get_json()["fields"]["headcount"] == "HC 必须是大于 0 的整数"
+
+    still_unchanged = client.get(f"/api/demands/{demand_id}", headers=_auth(token))
+    assert still_unchanged.status_code == 200
+    assert still_unchanged.get_json()["headcount"] == 10_000
+
+
+def test_business_requester_cannot_submit_oversized_headcount(client, make_user, app):
+    interviewer_id, token = make_user(
+        "bounded-hc-interviewer@example.com",
+        role="interviewer",
+    )
+
+    response = client.post(
+        "/api/demands",
+        headers=_auth(token),
+        json={
+            "job_title": "仓配运营负责人",
+            "jd_text": "负责仓配运营团队和履约质量",
+            "owner_hr_id": interviewer_id,
+            "request_no": "REQ-P0-INTERVIEWER-OVERSIZED",
+            "requester_name": "业务负责人",
+            "requester_department": "供应链部",
+            "city": "上海",
+            "hiring_manager_name": "业务负责人",
+            "requested_at": "2026-07-10",
+            "target_date": "2026-08-10",
+            "headcount": 10_001,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["fields"]["headcount"] == "单条招聘需求的 HC 不能超过 10000"
+
+
 def test_demand_list_is_paginated_filterable_and_newest_first(
     client, make_user, app
 ):
@@ -117,6 +246,36 @@ def test_demand_list_is_paginated_filterable_and_newest_first(
     assert filtered.status_code == 200
     assert [item["request_no"] for item in filtered.get_json()["items"]] == [
         "REQ-P0-NEW"
+    ]
+
+
+def test_demand_keyword_treats_sql_like_wildcards_as_literal_text(
+    client, make_user, app
+):
+    owner_id, token = make_user("demand-like-escape@example.com", role="recruiter")
+    literal_job_id = _make_job(app, owner_id, title="增长100%负责人")
+    wildcard_job_id = _make_job(app, owner_id, title="增长100X负责人")
+
+    for suffix, job_id in [
+        ("LITERAL-PERCENT", literal_job_id),
+        ("WILDCARD-LOOKALIKE", wildcard_job_id),
+    ]:
+        response = client.post(
+            "/api/demands",
+            headers=_auth(token),
+            json=_valid_payload(job_id, owner_id, suffix),
+        )
+        assert response.status_code == 201
+
+    response = client.get(
+        "/api/demands",
+        query_string={"q": "100%"},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 200
+    assert [item["job_title"] for item in response.get_json()["items"]] == [
+        "增长100%负责人"
     ]
 
 

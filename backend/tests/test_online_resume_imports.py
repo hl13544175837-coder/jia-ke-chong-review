@@ -1,6 +1,8 @@
 from datetime import datetime
 from unittest.mock import Mock
 
+from sqlalchemy import event
+
 
 def _headers(token, key=None):
     headers = {"Authorization": f"Bearer {token}"}
@@ -9,13 +11,13 @@ def _headers(token, key=None):
     return headers
 
 
-def _make_demand(app, owner_id, request_no="REQ-ONLINE-001"):
+def _make_demand(app, owner_id, request_no="REQ-ONLINE-001", *, org_id=1):
     with app.app_context():
         from app import db
         from app.models import Job, RecruitmentDemand
 
         job = Job(
-            org_id=1,
+            org_id=org_id,
             title="Java开发",
             jd_text="Java",
             owner_hr_id=owner_id,
@@ -23,7 +25,7 @@ def _make_demand(app, owner_id, request_no="REQ-ONLINE-001"):
         db.session.add(job)
         db.session.flush()
         demand = RecruitmentDemand(
-            org_id=1,
+            org_id=org_id,
             job_id=job.id,
             owner_hr_id=owner_id,
             job_title_snapshot="Java开发",
@@ -159,6 +161,251 @@ def test_manager_and_admin_can_read_online_resumes_in_their_org(
         f"/api/online-resumes/{resume_id}",
         headers=_headers(owner_token),
     ).status_code == 200
+
+
+def test_orphaned_legacy_demand_is_returned_as_unavailable_instead_of_crashing(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-orphan-demand@x.com")
+    with app.app_context():
+        from app import db
+        from app.models import OnlineResume
+
+        row = OnlineResume(
+            org_id=1,
+            owner_hr_id=owner_id,
+            demand_id=999_999,
+            external_record_id="legacy-orphan-demand",
+            boss_account="legacy-account",
+            source_platform="legacy",
+            display_name="历史孤儿候选人",
+            resume_json={"extracted_info": {"name": "历史孤儿候选人"}},
+            chat_json=[],
+        )
+        db.session.add(row)
+        db.session.commit()
+        resume_id = row.id
+
+    listing = client.get("/api/online-resumes", headers=_headers(token))
+    detail = client.get(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(token),
+    )
+
+    assert listing.status_code == 200
+    assert listing.get_json()["items"][0]["demand"] is None
+    assert detail.status_code == 200
+    assert detail.get_json()["item"]["demand"] is None
+
+
+def test_cross_org_legacy_demand_is_not_disclosed_by_online_resume(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-cross-org-owner@x.com", org_id=1)
+    foreign_owner_id, _ = make_user("online-cross-org-foreign@x.com", org_id=2)
+    foreign_demand_id = _make_demand(
+        app,
+        foreign_owner_id,
+        "REQ-SECRET-ORG-2",
+        org_id=2,
+    )
+    with app.app_context():
+        from app import db
+        from app.models import OnlineResume
+
+        row = OnlineResume(
+            org_id=1,
+            owner_hr_id=owner_id,
+            demand_id=foreign_demand_id,
+            external_record_id="legacy-cross-org-demand",
+            boss_account="legacy-account",
+            source_platform="legacy",
+            display_name="跨组织陈旧关联候选人",
+            resume_json={"extracted_info": {"name": "跨组织陈旧关联候选人"}},
+            chat_json=[],
+        )
+        db.session.add(row)
+        db.session.commit()
+        resume_id = row.id
+
+    listing = client.get("/api/online-resumes", headers=_headers(token))
+    detail = client.get(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(token),
+    )
+
+    assert listing.status_code == 200
+    assert listing.get_json()["items"][0]["demand"] is None
+    assert detail.status_code == 200
+    assert detail.get_json()["item"]["demand"] is None
+    assert "REQ-SECRET-ORG-2" not in listing.get_data(as_text=True)
+    assert "REQ-SECRET-ORG-2" not in detail.get_data(as_text=True)
+
+
+def test_cross_org_job_title_is_not_disclosed_through_legacy_demand(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-cross-org-job-owner@x.com", org_id=1)
+    with app.app_context():
+        from app import db
+        from app.models import Job, OnlineResume, RecruitmentDemand
+
+        foreign_job = Job(
+            org_id=2,
+            title="ORG2-SECRET-JOB-TITLE",
+            jd_text="其他组织机密 JD",
+            owner_hr_id=owner_id,
+        )
+        db.session.add(foreign_job)
+        db.session.flush()
+        demand = RecruitmentDemand(
+            org_id=1,
+            job_id=foreign_job.id,
+            owner_hr_id=owner_id,
+            job_title_snapshot="",
+            request_no="REQ-LOCAL-WITH-FOREIGN-JOB",
+            status="active",
+        )
+        db.session.add(demand)
+        db.session.flush()
+        row = OnlineResume(
+            org_id=1,
+            owner_hr_id=owner_id,
+            demand_id=demand.id,
+            external_record_id="legacy-cross-org-job",
+            boss_account="legacy-account",
+            source_platform="legacy",
+            display_name="职位错链候选人",
+            resume_json={"extracted_info": {"name": "职位错链候选人"}},
+            chat_json=[],
+        )
+        db.session.add(row)
+        db.session.commit()
+        resume_id = row.id
+
+    listing = client.get("/api/online-resumes", headers=_headers(token))
+    detail = client.get(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(token),
+    )
+
+    assert listing.status_code == 200
+    assert listing.get_json()["items"][0]["demand"] is None
+    assert detail.status_code == 200
+    assert detail.get_json()["item"]["demand"] is None
+    assert "ORG2-SECRET-JOB-TITLE" not in listing.get_data(as_text=True)
+    assert "ORG2-SECRET-JOB-TITLE" not in detail.get_data(as_text=True)
+
+
+def test_cross_org_legacy_owner_name_is_not_disclosed_to_manager(
+    app,
+    client,
+    make_user,
+):
+    local_owner_id, _ = make_user("online-local-owner@x.com", org_id=1)
+    foreign_owner_id, _ = make_user(
+        "online-foreign-owner@x.com",
+        name="其他组织负责人姓名",
+        org_id=2,
+    )
+    _, manager_token = make_user(
+        "online-local-manager@x.com",
+        role="manager",
+        org_id=1,
+    )
+    demand_id = _make_demand(app, local_owner_id, "REQ-LOCAL-OWNER")
+    with app.app_context():
+        from app import db
+        from app.models import OnlineResume
+
+        row = OnlineResume(
+            org_id=1,
+            owner_hr_id=foreign_owner_id,
+            demand_id=demand_id,
+            external_record_id="legacy-cross-org-owner",
+            boss_account="legacy-account",
+            source_platform="legacy",
+            display_name="负责人错链候选人",
+            resume_json={"extracted_info": {"name": "负责人错链候选人"}},
+            chat_json=[],
+        )
+        db.session.add(row)
+        db.session.commit()
+
+    listing = client.get("/api/online-resumes", headers=_headers(manager_token))
+
+    assert listing.status_code == 200
+    assert listing.get_json()["items"][0]["owner_name"] == ""
+    assert "其他组织负责人姓名" not in listing.get_data(as_text=True)
+
+
+def test_online_resume_page_bulk_loads_jobs_without_n_plus_one(
+    app,
+    make_user,
+):
+    owner_id, _ = make_user("online-query-count@x.com", org_id=1)
+    with app.app_context():
+        from app import db
+        from app.models import Job, OnlineResume, RecruitmentDemand
+        from app.services.online_resume_service import OnlineResumeService
+
+        rows = []
+        for index in range(20):
+            job = Job(
+                org_id=1,
+                title=f"批量岗位{index}",
+                jd_text="批量查询测试",
+                owner_hr_id=owner_id,
+            )
+            db.session.add(job)
+            db.session.flush()
+            demand = RecruitmentDemand(
+                org_id=1,
+                job_id=job.id,
+                owner_hr_id=owner_id,
+                job_title_snapshot="",
+                request_no=f"REQ-BULK-{index}",
+                status="active",
+            )
+            db.session.add(demand)
+            db.session.flush()
+            row = OnlineResume(
+                org_id=1,
+                owner_hr_id=owner_id,
+                demand_id=demand.id,
+                external_record_id=f"bulk-query-{index}",
+                boss_account="bulk-account",
+                source_platform="bulk-test",
+                display_name=f"批量候选人{index}",
+                resume_json={"extracted_info": {"name": f"批量候选人{index}"}},
+                chat_json=[],
+            )
+            db.session.add(row)
+            rows.append(row)
+        db.session.commit()
+        db.session.expire_all()
+        loaded_rows = OnlineResume.query.order_by(OnlineResume.id).all()
+        selects = []
+
+        def record_select(_conn, _cursor, statement, _parameters, _context, _executemany):
+            if statement.lstrip().upper().startswith("SELECT"):
+                selects.append(statement)
+
+        event.listen(db.engine, "before_cursor_execute", record_select)
+        try:
+            payload = OnlineResumeService()._serialize_page(loaded_rows)
+        finally:
+            event.remove(db.engine, "before_cursor_execute", record_select)
+
+    assert len(payload) == 20
+    assert sum("FROM jobs" in statement for statement in selects) <= 1
+    assert len(selects) <= 3
 
 
 def test_recruiter_owner_filter_cannot_escape_self_scope(
@@ -766,18 +1013,71 @@ def test_import_rejects_invalid_or_oversized_source_url(
     invalid_scheme["source_url"] = "javascript:alert(1)"
     oversized_url = _item(demand_id, "boss-chat-long-url")
     oversized_url["source_url"] = "https://example.com/" + ("x" * 1981)
+    missing_host = _item(demand_id, "boss-chat-missing-host")
+    missing_host["source_url"] = "https:///chat/123"
+    control_character = _item(demand_id, "boss-chat-control-character")
+    control_character["source_url"] = "https://example.com/chat\njavascript:alert(1)"
+    backslash_confusion = _item(demand_id, "boss-chat-backslash")
+    backslash_confusion["source_url"] = "https://trusted.example\\@evil.example/chat"
 
     response = client.post(
         "/api/agent-imports/online-resumes",
         headers=_headers(token),
-        json={"items": [invalid_scheme, oversized_url]},
+        json={
+            "items": [
+                invalid_scheme,
+                oversized_url,
+                missing_host,
+                control_character,
+                backslash_confusion,
+            ]
+        },
     )
 
     assert response.status_code == 200
     assert [item["error"] for item in response.get_json()["results"]] == [
         "来源链接必须以 http:// 或 https:// 开头",
         "来源链接长度不能超过 2000 个字符",
+        "来源链接格式无效",
+        "来源链接格式无效",
+        "来源链接格式无效",
     ]
+
+
+def test_detail_does_not_return_unsafe_legacy_source_url(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-legacy-url@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-LEGACY-URL")
+    with app.app_context():
+        from app import db
+        from app.models import OnlineResume
+
+        row = OnlineResume(
+            org_id=1,
+            owner_hr_id=owner_id,
+            demand_id=demand_id,
+            external_record_id="legacy-unsafe-url",
+            boss_account="legacy-account",
+            source_platform="legacy",
+            display_name="历史候选人",
+            resume_json={"extracted_info": {"name": "历史候选人"}},
+            chat_json=[],
+            source_url="javascript:alert(1)",
+        )
+        db.session.add(row)
+        db.session.commit()
+        resume_id = row.id
+
+    response = client.get(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(token),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["item"]["source_url"] is None
 
 
 def test_patch_rejects_oversized_resume_json(app, client, make_user):

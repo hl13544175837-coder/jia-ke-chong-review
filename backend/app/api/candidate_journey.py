@@ -7,7 +7,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from flask import Blueprint, Response, current_app, jsonify, request, g
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from runtime_paths import DEFAULT_UPLOAD_FOLDER, RuntimePathError, resolve_stored_upload_path
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
@@ -92,7 +92,13 @@ def register_candidate_journey_routes(bp):
             db.session.query(PipelineStage, RecruitmentDemand, Job)
             .join(latest, PipelineStage.id == latest.c.max_id)
             .join(RecruitmentDemand, RecruitmentDemand.id == PipelineStage.demand_id)
-            .join(Job, Job.id == PipelineStage.job_id)
+            .outerjoin(
+                Job,
+                and_(
+                    Job.id == PipelineStage.job_id,
+                    Job.org_id == g.org_id,
+                ),
+            )
             .filter(PipelineStage.candidate_id == candidate_id)
             .filter(
                 RecruitmentDemand.id.in_(
@@ -105,8 +111,10 @@ def register_candidate_journey_routes(bp):
         )
         items = [{
             "demand_id": demand.id,
-            "job_id": ps.job_id,
-            "job_title": demand.job_title_snapshot or job.title,
+            "job_id": job.id if job else None,
+            "job_title": (
+                demand.job_title_snapshot or job.title if job else None
+            ),
             "department": demand.department or demand.requester_department or "",
             "city": demand.city or "",
             "demand_status": demand.status,
@@ -161,7 +169,11 @@ def register_candidate_journey_routes(bp):
         elif not can_read_demand(g.user_id, g.role, g.org_id, demand):
             return jsonify({"error": "Forbidden"}), 403
         job = demand.job
-        job_id = demand.job_id
+        if job is None or not same_org(job, g.org_id):
+            job = None
+            job_id = None
+        else:
+            job_id = demand.job_id
 
         approval_events = (
             Event.query.filter(
@@ -177,7 +189,10 @@ def register_candidate_journey_routes(bp):
         }
         approval_actor_names = {
             user.id: user.name
-            for user in User.query.filter(User.id.in_(approval_actor_ids)).all()
+            for user in User.query.filter(
+                User.id.in_(approval_actor_ids),
+                User.org_id == g.org_id,
+            ).all()
         } if approval_actor_ids else {}
         demand_approval = {
             "status": demand.approval_status,
@@ -211,7 +226,10 @@ def register_candidate_journey_routes(bp):
         }
         review_user_names = {
             user.id: user.name
-            for user in User.query.filter(User.id.in_(review_user_ids)).all()
+            for user in User.query.filter(
+                User.id.in_(review_user_ids),
+                User.org_id == g.org_id,
+            ).all()
         } if review_user_ids else {}
         business_reviews = [{
             "id": item.id,
@@ -229,9 +247,18 @@ def register_candidate_journey_routes(bp):
         # 阶段时间线（含操作人、备注）
         stage_rows = (
             db.session.query(PipelineStage, User)
-            .outerjoin(User, User.id == PipelineStage.updated_by)
-            .filter(PipelineStage.candidate_id == candidate_id,
-                    PipelineStage.demand_id == demand.id)
+            .outerjoin(
+                User,
+                and_(
+                    User.id == PipelineStage.updated_by,
+                    User.org_id == g.org_id,
+                ),
+            )
+            .filter(
+                PipelineStage.org_id == g.org_id,
+                PipelineStage.candidate_id == candidate_id,
+                PipelineStage.demand_id == demand.id,
+            )
             .order_by(PipelineStage.id.asc())
             .all()
         )
@@ -249,7 +276,11 @@ def register_candidate_journey_routes(bp):
 
         # AI 面试得分
         ai_rows = (Interview.query
-                   .filter_by(candidate_id=candidate_id, demand_id=demand.id)
+                   .filter_by(
+                       org_id=g.org_id,
+                       candidate_id=candidate_id,
+                       demand_id=demand.id,
+                   )
                    .order_by(Interview.id.desc()).all())
         ai_interviews = [{
             "id": iv.id, "score": iv.score, "pass": iv.pass_recommended,
@@ -258,8 +289,15 @@ def register_candidate_journey_routes(bp):
 
         # 面试官评分
         fb_rows = (db.session.query(InterviewFeedback, User)
-                   .outerjoin(User, User.id == InterviewFeedback.interviewer_id)
-                   .filter(InterviewFeedback.candidate_id == candidate_id,
+                   .outerjoin(
+                       User,
+                       and_(
+                           User.id == InterviewFeedback.interviewer_id,
+                           User.org_id == g.org_id,
+                       ),
+                   )
+                   .filter(InterviewFeedback.org_id == g.org_id,
+                           InterviewFeedback.candidate_id == candidate_id,
                            InterviewFeedback.demand_id == demand.id)
                    .order_by(InterviewFeedback.id.desc()).all())
         feedback = [{
@@ -274,7 +312,13 @@ def register_candidate_journey_routes(bp):
         feedback_by_assignment = {item["assignment_id"]: item for item in feedback if item.get("assignment_id")}
         assignment_rows = (
             db.session.query(InterviewAssignment, User)
-            .outerjoin(User, User.id == InterviewAssignment.interviewer_id)
+            .outerjoin(
+                User,
+                and_(
+                    User.id == InterviewAssignment.interviewer_id,
+                    User.org_id == g.org_id,
+                ),
+            )
             .filter(
                 InterviewAssignment.org_id == g.org_id,
                 InterviewAssignment.candidate_id == candidate_id,
@@ -318,8 +362,15 @@ def register_candidate_journey_routes(bp):
         ]
 
         disposition_rows = (db.session.query(CandidateDisposition, User)
-                            .outerjoin(User, User.id == CandidateDisposition.created_by)
-                            .filter(CandidateDisposition.candidate_id == candidate_id,
+                            .outerjoin(
+                                User,
+                                and_(
+                                    User.id == CandidateDisposition.created_by,
+                                    User.org_id == g.org_id,
+                                ),
+                            )
+                            .filter(CandidateDisposition.org_id == g.org_id,
+                                    CandidateDisposition.candidate_id == candidate_id,
                                     CandidateDisposition.demand_id == demand.id)
                             .order_by(CandidateDisposition.id.desc()).all())
         dispositions = [{

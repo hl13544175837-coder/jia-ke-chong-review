@@ -149,7 +149,7 @@ export default function DemandDetailPanel({
               <Field label="用人负责人"><input required value={draft.hiring_manager_name} onChange={(event) => patch('hiring_manager_name', event.target.value)} className="field" /></Field>
               <Field label="提需求日期"><input type="date" required value={draft.requested_at} onChange={(event) => patch('requested_at', event.target.value)} className="field" /></Field>
               <Field label="期望完成日期"><input type="date" required min={draft.requested_at} value={draft.target_date} onChange={(event) => patch('target_date', event.target.value)} className="field" /></Field>
-              <Field label="HC"><input type="number" min={1} required value={draft.headcount} onChange={(event) => patch('headcount', Number(event.target.value) || 1)} className="field" /></Field>
+              <Field label="HC"><input type="number" min={1} max={10000} required value={draft.headcount} onChange={(event) => patch('headcount', Number(event.target.value) || 1)} className="field" /></Field>
               <label className="col-span-2 block text-sm font-medium text-foreground-700">备注<textarea value={draft.note || ''} onChange={(event) => patch('note', event.target.value)} rows={5} className="field mt-1 resize-none" /></label>
             </form>
           )}

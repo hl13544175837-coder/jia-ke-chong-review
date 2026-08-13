@@ -4,8 +4,10 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from flask import current_app
+from sqlalchemy.orm import selectinload
 
 from .. import db
 from ..models import Event, OnlineResume, RecruitmentDemand, User
@@ -23,6 +25,46 @@ class OnlineResumeValidationError(Exception):
     message: str
 
 
+def _normalize_source_url(value: str | None, *, max_length: int) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise OnlineResumeValidationError("来源链接格式无效")
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if len(normalized) > max_length:
+        raise OnlineResumeValidationError(
+            f"来源链接长度不能超过 {max_length} 个字符"
+        )
+    if not normalized.lower().startswith(("http://", "https://")):
+        raise OnlineResumeValidationError(
+            "来源链接必须以 http:// 或 https:// 开头"
+        )
+    if "\\" in normalized or any(ord(char) < 32 or ord(char) == 127 for char in normalized):
+        raise OnlineResumeValidationError("来源链接格式无效")
+    try:
+        parsed = urlsplit(normalized)
+        _ = parsed.port
+    except ValueError as exc:
+        raise OnlineResumeValidationError("来源链接格式无效") from exc
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or any(char.isspace() for char in normalized)
+    ):
+        raise OnlineResumeValidationError("来源链接格式无效")
+    return normalized
+
+
+def _safe_serialized_source_url(value: str | None, *, max_length: int) -> str | None:
+    """Hide unsafe legacy URLs without mutating historical database rows."""
+    try:
+        return _normalize_source_url(value, max_length=max_length)
+    except OnlineResumeValidationError:
+        return None
 
 
 def _validate_extracted_quality(info: dict) -> None:
@@ -378,7 +420,7 @@ class OnlineResumeService:
             demand.id: demand
             for demand in RecruitmentDemand.query.filter(
                 RecruitmentDemand.id.in_(demand_ids)
-            ).all()
+            ).options(selectinload(RecruitmentDemand.job)).all()
         }
         owners = {
             owner.id: owner
@@ -402,6 +444,16 @@ class OnlineResumeService:
         owner: User | None,
         include_full: bool = True,
     ) -> dict:
+        if demand is not None:
+            demand_job = demand.job
+            if (
+                demand.org_id != resume.org_id
+                or demand_job is None
+                or demand_job.org_id != resume.org_id
+            ):
+                demand = None
+        if owner is not None and owner.org_id != resume.org_id:
+            owner = None
         demand_summary = None
         if demand is not None:
             title = demand.job_title_snapshot or (demand.job.title if demand.job else "")
@@ -434,7 +486,10 @@ class OnlineResumeService:
                 "summary": info.get("summary") or "",
             },
             "latest_chat": chat[-1] if chat else None,
-            "source_url": resume.source_url,
+            "source_url": _safe_serialized_source_url(
+                resume.source_url,
+                max_length=self.MAX_SOURCE_URL_LENGTH,
+            ),
             "created_at": resume.created_at.isoformat() if resume.created_at else None,
             "updated_at": resume.updated_at.isoformat() if resume.updated_at else None,
         }
@@ -636,19 +691,10 @@ class OnlineResumeService:
             chat_json = []
         chat_json = self._normalize_chat_messages(chat_json)
 
-        source_url = item.get("source_url")
-        if source_url is not None and not isinstance(source_url, str):
-            raise OnlineResumeValidationError("来源链接格式无效")
-        normalized_source_url = source_url.strip() if isinstance(source_url, str) else None
-        if normalized_source_url:
-            if len(normalized_source_url) > self.MAX_SOURCE_URL_LENGTH:
-                raise OnlineResumeValidationError(
-                    "来源链接长度不能超过 2000 个字符"
-                )
-            if not normalized_source_url.lower().startswith(("http://", "https://")):
-                raise OnlineResumeValidationError(
-                    "来源链接必须以 http:// 或 https:// 开头"
-                )
+        normalized_source_url = _normalize_source_url(
+            item.get("source_url"),
+            max_length=self.MAX_SOURCE_URL_LENGTH,
+        )
 
         # external_record_id 可选：缺省自动生成，保证幂等去重
         external_record_id = self._optional_text(

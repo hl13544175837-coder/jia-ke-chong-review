@@ -73,7 +73,7 @@ def oauth_login():
     user = User.query.filter(
         db.or_(
             User.email == account,
-            User.email.like(f"{account}@%"),
+            User.email.startswith(f"{account}@", autoescape=True),
             User.name == account,
         )
     ).first()

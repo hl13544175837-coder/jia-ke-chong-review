@@ -457,7 +457,10 @@ def test_pilot_readiness_check_fails_without_required_production_env(tmp_path):
     assert "short-secret" not in result.stdout
 
 
-def test_pilot_readiness_check_passes_with_production_env(tmp_path):
+def test_pilot_readiness_check_passes_with_production_env(
+    tmp_path,
+    persistent_test_dir,
+):
     script = ROOT / "backend" / "scripts" / "check_pilot_readiness.py"
     env_file = tmp_path / "backend" / ".env"
     env_file.parent.mkdir()
@@ -476,7 +479,7 @@ def test_pilot_readiness_check_passes_with_production_env(tmp_path):
             "RATE_LIMIT_LOGIN=10",
             "RATE_LIMIT_AGENT_CHAT=20",
             "RATE_LIMIT_RESUME_UPLOAD=8",
-            "BACKUP_DIR=/var/backups/zhipin",
+            "BACKUP_DIR=" + str(persistent_test_dir),
             "UPLOAD_FOLDER=/var/lib/zhipin/uploads",
             "LOCAL_SCHEMA_COMPAT=false",
             "ALLOW_PUBLIC_REGISTRATION=false",
@@ -501,7 +504,10 @@ def test_pilot_readiness_check_passes_with_production_env(tmp_path):
     assert "试点部署前自检通过" in result.stdout
 
 
-def test_pilot_readiness_rejects_insecure_sit_startup_flag(tmp_path):
+def test_pilot_readiness_rejects_insecure_sit_startup_flag(
+    tmp_path,
+    persistent_test_dir,
+):
     script = ROOT / "backend" / "scripts" / "check_pilot_readiness.py"
     env_file = tmp_path / "backend" / ".env"
     env_file.parent.mkdir()
@@ -518,7 +524,7 @@ def test_pilot_readiness_rejects_insecure_sit_startup_flag(tmp_path):
             "RATE_LIMIT_LOGIN=10",
             "RATE_LIMIT_AGENT_CHAT=20",
             "RATE_LIMIT_RESUME_UPLOAD=8",
-            "BACKUP_DIR=/var/backups/zhipin",
+            "BACKUP_DIR=" + str(persistent_test_dir),
             "UPLOAD_FOLDER=/var/lib/zhipin/uploads",
             "LOCAL_SCHEMA_COMPAT=false",
             "ALLOW_PUBLIC_REGISTRATION=false",
@@ -543,7 +549,10 @@ def test_pilot_readiness_rejects_insecure_sit_startup_flag(tmp_path):
     assert "[FAIL] ALLOW_INSECURE_SIT_STARTUP" in result.stdout
 
 
-def test_pilot_readiness_rejects_public_sit_secret_and_schema_mutation(tmp_path):
+def test_pilot_readiness_rejects_public_sit_secret_and_schema_mutation(
+    tmp_path,
+    persistent_test_dir,
+):
     script = ROOT / "backend" / "scripts" / "check_pilot_readiness.py"
     env_file = tmp_path / "backend" / ".env"
     env_file.parent.mkdir()
@@ -562,7 +571,7 @@ def test_pilot_readiness_rejects_public_sit_secret_and_schema_mutation(tmp_path)
             "RATE_LIMIT_LOGIN=10",
             "RATE_LIMIT_AGENT_CHAT=20",
             "RATE_LIMIT_RESUME_UPLOAD=8",
-            "BACKUP_DIR=/var/backups/zhipin",
+            "BACKUP_DIR=" + str(persistent_test_dir),
             "UPLOAD_FOLDER=/var/lib/zhipin/uploads",
             "LOCAL_SCHEMA_COMPAT=false",
             "ALLOW_PUBLIC_REGISTRATION=false",
@@ -589,7 +598,10 @@ def test_pilot_readiness_rejects_public_sit_secret_and_schema_mutation(tmp_path)
     assert "[FAIL] ALLOW_EMPTY_DATABASE_BOOTSTRAP" in result.stdout
 
 
-def test_pilot_readiness_check_requires_ai_compliance_flags(tmp_path):
+def test_pilot_readiness_check_requires_ai_compliance_flags(
+    tmp_path,
+    persistent_test_dir,
+):
     script = ROOT / "backend" / "scripts" / "check_pilot_readiness.py"
     env_file = tmp_path / "backend" / ".env"
     env_file.parent.mkdir()
@@ -606,7 +618,7 @@ def test_pilot_readiness_check_requires_ai_compliance_flags(tmp_path):
             "RATE_LIMIT_LOGIN=10",
             "RATE_LIMIT_AGENT_CHAT=20",
             "RATE_LIMIT_RESUME_UPLOAD=8",
-            "BACKUP_DIR=/var/backups/zhipin",
+            "BACKUP_DIR=" + str(persistent_test_dir),
             "UPLOAD_FOLDER=/var/lib/zhipin/uploads",
             "LOCAL_SCHEMA_COMPAT=false",
             "ALLOW_PUBLIC_REGISTRATION=false",

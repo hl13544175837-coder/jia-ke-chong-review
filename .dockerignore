@@ -37,6 +37,9 @@ tmp
 **/.ruff_cache
 **/.cache
 **/.vite
+.npm-cache
+.pip-cache
+.pw-browsers
 outputs
 minutes
 diagrams

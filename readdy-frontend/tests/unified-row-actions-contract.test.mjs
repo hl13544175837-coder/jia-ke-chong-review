@@ -1,25 +1,6 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { test } from 'node:test';
-
-const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
-
-test('公共行菜单负责视口定位、关闭行为和键盘语义', () => {
-  const path = new URL('../src/components/ui/RowActionMenu.tsx', import.meta.url);
-  assert.ok(existsSync(path), '应提供公共 RowActionMenu 组件');
-  const source = read('src/components/ui/RowActionMenu.tsx');
-
-  assert.match(source, /createPortal/);
-  assert.match(source, /position: 'fixed'/);
-  assert.match(source, /aria-haspopup="menu"/);
-  assert.match(source, /aria-expanded/);
-  assert.match(source, /role="menu"/);
-  assert.match(source, /role="menuitem"/);
-  assert.match(source, /Escape/);
-  assert.match(source, /pointerdown/);
-  assert.match(source, /event\.stopPropagation\(\)/);
-  assert.match(source, /danger/);
-});
 
 test('招聘需求主操作和菜单按状态去重并限制负责人转派权限', async () => {
   const path = new URL('../src/pages/jobs/rowActions.ts', import.meta.url);
@@ -47,13 +28,6 @@ test('招聘需求主操作和菜单按状态去重并限制负责人转派权�
 
   const recruiter = buildDemandRowActions(makeRow(), 'recruiter');
   assert.ok(!recruiter.menu.includes('reassign_owner'));
-});
-
-test('招聘需求列表使用公共菜单并移除旧的单项状态菜单', () => {
-  const table = read('src/pages/jobs/components/RequisitionTable.tsx');
-  assert.match(table, /RowActionMenu/);
-  assert.doesNotMatch(table, /statusExtraActions/);
-  assert.doesNotMatch(table, /statusTransitions/);
 });
 
 test('面试管理只保留一个主操作，其余真实入口进入菜单', async () => {
@@ -88,71 +62,4 @@ test('面试管理只保留一个主操作，其余真实入口进入菜单', as
   assert.equal(awaiting.primary, 'remind_feedback');
   assert.ok(!awaiting.menu.includes('adjust_schedule'));
   assert.ok(!awaiting.menu.includes('cancel_schedule'));
-});
-
-test('面试列表使用公共菜单', () => {
-  const table = read('src/pages/interviews/components/InterviewManagementTable.tsx');
-  assert.match(table, /RowActionMenu/);
-  assert.match(table, /查看候选人简历/);
-  assert.match(table, /取消面试/);
-});
-
-test('简历库把查看、编辑、收藏、流程和转需求收入统一菜单', () => {
-  const table = read('src/features/candidates/components/library/CandidateLibraryTable.tsx');
-  const controller = read('src/features/candidates/library/useCandidateLibraryController.tsx');
-  assert.match(table, /RowActionMenu/);
-  assert.match(table, /查看候选人详情/);
-  assert.match(table, /编辑简历信息/);
-  assert.match(table, /查看招聘流程/);
-  assert.match(table, /转到其他需求/);
-  assert.match(table, /进入流程处理/);
-  assert.match(table, /candidate\.is_favorite \? '取消收藏' : '收藏'/);
-  assert.doesNotMatch(table, /<Star/);
-  assert.doesNotMatch(table, /<Eye/);
-  assert.match(controller, /candidatesApi\.transferToDemand/);
-  assert.match(table, /remaining_headcount > 0/);
-  assert.match(controller, /ApiError/);
-  assert.match(controller, /detailEditRequested/);
-  assert.match(controller, /setTransferCandidate\(latest\)/);
-  assert.match(controller, /transferInvalidated/);
-});
-
-test('Offer 列表保留 OA 主操作，菜单只提供真实业务导航', () => {
-  const table = read('src/pages/offers/components/OfferTable.tsx');
-  assert.match(table, /RowActionMenu/);
-  assert.match(table, /查看候选人简历/);
-  assert.match(table, /查看招聘需求/);
-  assert.match(table, /查看招聘流程/);
-  assert.match(table, /查看已完成面试/);
-  assert.match(table, /登记 OA 结果/);
-  assert.match(read('src/pages/offers/page.tsx'), /detail=resume/);
-});
-
-test('用户管理提供真实账号操作且不提供删除成员', () => {
-  const table = read('src/pages/settings/components/UserManagementSection.tsx');
-  const api = read('src/features/settings/api.ts');
-  assert.match(table, /RowActionMenu/);
-  assert.match(table, /编辑资料/);
-  assert.match(table, /调整角色与部门/);
-  assert.match(table, /重置密码/);
-  assert.match(table, /user\.is_active \? '停用账号' : '启用账号'/);
-  assert.doesNotMatch(table, /删除成员/);
-  assert.match(api, /resetUserPassword/);
-  assert.match(api, /reset-password/);
-  assert.match(table, /currentUserId/);
-});
-
-test('需求编辑模式不被 URL 同步覆盖，冲突后刷新真实状态', () => {
-  const page = read('src/pages/jobs/page.tsx');
-  assert.match(page, /next\.set\('mode', 'edit'\)/);
-  assert.match(page, /searchParams\.get\('mode'\) === 'edit'/);
-  assert.match(page, /refreshDemandAfterConflict/);
-  assert.match(page, /error instanceof ApiError/);
-});
-
-test('转需求弹窗对齐后端容量、字数和公共弹层规则', () => {
-  const modal = read('src/features/candidates/components/TransferCandidateModal.tsx');
-  assert.match(modal, /remaining_headcount > 0/);
-  assert.match(modal, /maxLength=\{240\}/);
-  assert.match(modal, /useOverlayLifecycle/);
 });

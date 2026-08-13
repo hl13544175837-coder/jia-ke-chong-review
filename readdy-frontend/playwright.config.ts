@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const externalBaseUrl = process.env.E2E_BASE_URL?.trim();
 const localBaseUrl = 'http://127.0.0.1:5290';
+const isolatedSmoke = process.env.CI_ISOLATED_SMOKE === 'true';
 
 export default defineConfig({
   testDir: './e2e',
@@ -14,6 +15,9 @@ export default defineConfig({
     : [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
     baseURL: externalBaseUrl || localBaseUrl,
+    proxy: isolatedSmoke
+      ? { server: 'http://127.0.0.1:9', bypass: '127.0.0.1,localhost' }
+      : undefined,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

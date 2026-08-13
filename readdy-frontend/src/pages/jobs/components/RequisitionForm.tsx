@@ -208,6 +208,7 @@ export default function RequisitionForm({
             <input
               type="number"
               min={1}
+              max={10000}
               required
               value={formData.headcount}
               onChange={(e) => setFormData({ ...formData, headcount: parseInt(e.target.value) || 1 })}

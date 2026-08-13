@@ -7,7 +7,7 @@ export interface OnlineResumeChatMessage {
 export interface OnlineResumeItem {
   id: number;
   display_name: string;
-  demand: { id: number; request_no: string; title: string };
+  demand: { id: number; request_no: string; title: string } | null;
   boss_account: string;
   source_platform: string;
   source_url: string | null;

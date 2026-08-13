@@ -1,6 +1,7 @@
 import io
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 
@@ -333,3 +334,27 @@ def test_legacy_match_endpoint_requires_job_owner(client, make_user, app):
     )
 
     assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {"job_id": "not-a-number"},
+        {"job_id": True},
+        {"job_id": 0},
+    ],
+)
+def test_legacy_match_endpoint_rejects_invalid_json_contract(
+    client, make_user, payload
+):
+    _, token = make_user("legacy-match-invalid@x.com", role="recruiter")
+
+    response = client.post(
+        "/api/match",
+        headers=_auth(token),
+        json=payload,
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "job_id must be a positive integer"

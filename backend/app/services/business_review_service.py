@@ -18,6 +18,7 @@ from ..models import (
     Candidate,
     CandidateDemandFlow,
     Event,
+    Job,
     Notification,
     PipelineStage,
     RecruitmentDemand,
@@ -113,6 +114,48 @@ def _pending_task(task_model, *, org_id, demand_id, candidate_id, lock=False):
     return db.session.execute(statement).scalar_one_or_none()
 
 
+def _task_relations_in_org(task, *, lock=False):
+    def scoped(model, object_id):
+        if object_id is None:
+            return None
+        statement = select(model).where(
+            model.id == object_id,
+            model.org_id == task.org_id,
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return db.session.execute(statement).scalar_one_or_none()
+
+    demand = scoped(RecruitmentDemand, task.demand_id)
+    candidate = scoped(Candidate, task.candidate_id)
+    reviewer = scoped(User, task.reviewer_id)
+    creator = scoped(User, task.created_by)
+    decider = scoped(User, task.decided_by) if task.decided_by else None
+    demand_owner = scoped(User, demand.owner_hr_id) if demand is not None else None
+    demand_job = scoped(Job, demand.job_id) if demand is not None else None
+    valid = (
+        demand is not None
+        and candidate is not None
+        and reviewer is not None
+        and creator is not None
+        and demand_owner is not None
+        and demand_job is not None
+        and (task.decided_by is None or decider is not None)
+    )
+    return valid, demand, candidate, reviewer, creator, decider
+
+
+def _require_task_relations_in_org(task, *, lock=False):
+    relations = _task_relations_in_org(task, lock=lock)
+    if not relations[0]:
+        raise BusinessReviewError(
+            "业务筛选任务存在跨组织或失效关联，已拒绝操作",
+            code="business_review_scope_corrupted",
+            status_code=409,
+        )
+    return relations[1:]
+
+
 def _validate_creation_scope(*, org_id, demand_id, candidate_id, reviewer_id, actor_id):
     actor = db.session.get(User, actor_id)
     if actor is None or actor.org_id != org_id or not actor.is_active:
@@ -135,6 +178,26 @@ def _validate_creation_scope(*, org_id, demand_id, candidate_id, reviewer_id, ac
     if demand is None:
         raise BusinessReviewError(
             "招聘需求不存在", code="demand_not_found", status_code=404
+        )
+    demand_owner = db.session.execute(
+        select(User)
+        .where(
+            User.id == demand.owner_hr_id,
+            User.org_id == org_id,
+            User.is_active.is_(True),
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    demand_job = db.session.execute(
+        select(Job)
+        .where(Job.id == demand.job_id, Job.org_id == org_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if demand_owner is None or demand_job is None:
+        raise BusinessReviewError(
+            "业务筛选任务存在跨组织或失效关联，已拒绝操作",
+            code="business_review_scope_corrupted",
+            status_code=409,
         )
     if actor.role == "recruiter" and demand.owner_hr_id != actor_id:
         raise BusinessReviewError(
@@ -349,7 +412,11 @@ def list_business_reviews(org_id, user_id, role, status=None):
         query = query.filter(task_model.id < 0)
     if status:
         query = query.filter(task_model.status == status)
-    return query.order_by(task_model.created_at.desc(), task_model.id.desc()).all()
+    tasks = query.order_by(
+        task_model.created_at.desc(),
+        task_model.id.desc(),
+    ).all()
+    return [task for task in tasks if _task_relations_in_org(task)[0]]
 
 
 def _can_read_task(*, task, demand, user_id, role):
@@ -371,7 +438,9 @@ def get_business_review(org_id, task_id, user_id, role):
             code="business_review_not_found",
             status_code=404,
         )
-    demand = db.session.get(RecruitmentDemand, task.demand_id)
+    demand, _candidate, _reviewer, _creator, _decider = (
+        _require_task_relations_in_org(task)
+    )
     if not _can_read_task(
         task=task, demand=demand, user_id=user_id, role=role
     ):
@@ -396,8 +465,10 @@ def reassign_business_review(org_id, task_id, actor_id, reviewer_id):
             code="business_review_already_decided",
         )
 
+    demand, candidate, current_reviewer, _creator, _decider = (
+        _require_task_relations_in_org(task, lock=True)
+    )
     actor = db.session.get(User, actor_id)
-    demand = db.session.get(RecruitmentDemand, task.demand_id)
     if (
         actor is None
         or actor.org_id != org_id
@@ -430,10 +501,9 @@ def reassign_business_review(org_id, task_id, actor_id, reviewer_id):
     if reviewer.id == task.reviewer_id:
         return task, True
 
-    old_reviewer_id = task.reviewer_id
+    old_reviewer_id = current_reviewer.id
     task.reviewer_id = reviewer.id
-    candidate = db.session.get(Candidate, task.candidate_id)
-    candidate_name = candidate.name_masked if candidate else "候选人"
+    candidate_name = candidate.name_masked or "候选人"
     job_title = (
         demand.job_title_snapshot or (demand.job.title if demand.job else "招聘需求")
         if demand
@@ -498,8 +568,10 @@ def remind_business_review(org_id, task_id, actor_id):
             code="business_review_already_decided",
         )
 
+    demand, candidate, reviewer, _creator, _decider = (
+        _require_task_relations_in_org(task, lock=True)
+    )
     actor = db.session.get(User, actor_id)
-    demand = db.session.get(RecruitmentDemand, task.demand_id)
     if (
         actor is None
         or actor.org_id != org_id
@@ -524,13 +596,12 @@ def remind_business_review(org_id, task_id, actor_id):
         db.session.rollback()
         return task, True
 
-    candidate = db.session.get(Candidate, task.candidate_id)
-    candidate_name = candidate.name_masked if candidate else "候选人"
+    candidate_name = candidate.name_masked or "候选人"
     job_title = demand.job_title_snapshot if demand else "招聘需求"
     db.session.add(
         Notification(
             org_id=org_id,
-            user_id=task.reviewer_id,
+            user_id=reviewer.id,
             demand_id=task.demand_id,
             type="business_review_reminder",
             title="请尽快完成业务筛选",
@@ -588,20 +659,25 @@ def decide_business_review(org_id, task_id, actor_id, decision, note):
             code="business_review_already_decided",
         )
 
-    demand = db.session.get(RecruitmentDemand, task.demand_id)
+    demand, candidate, reviewer, _creator, _decider = (
+        _require_task_relations_in_org(task, lock=True)
+    )
+    if reviewer.id != actor_id:
+        raise BusinessReviewError(
+            "Forbidden", code="forbidden", status_code=403
+        )
     task.status = decision
     task.pending_slot = None
     task.business_note = note
     task.decided_by = actor_id
     task.decided_at = utc_now()
     if demand is not None and demand.owner_hr_id is not None:
-        candidate = db.session.get(Candidate, task.candidate_id)
         decision_label = {
             "approved": "已通过，待安排面试",
             "rejected": "不合适，待 HR 确认",
             "needs_info": "需要 HR 补充信息",
         }[decision]
-        candidate_name = candidate.name_masked if candidate else "候选人"
+        candidate_name = candidate.name_masked or "候选人"
         job_title = demand.job_title_snapshot or (
             demand.job.title if demand.job else "招聘需求"
         )
@@ -671,8 +747,12 @@ def _original_resume_payload(candidate):
     return payload
 
 
-def _demand_focus_points(demand):
-    if demand is None or demand.job is None:
+def _demand_focus_points(demand, *, org_id):
+    if (
+        demand is None
+        or demand.job is None
+        or demand.job.org_id != org_id
+    ):
         return []
     structured = demand.job.jd_structured or {}
     if not isinstance(structured, dict):
@@ -690,8 +770,11 @@ def _demand_focus_points(demand):
 
 
 def business_review_payload(task):
-    demand = db.session.get(RecruitmentDemand, task.demand_id)
-    candidate = db.session.get(Candidate, task.candidate_id)
+    valid, demand, candidate, reviewer, creator, decider = (
+        _task_relations_in_org(task)
+    )
+    if not valid:
+        demand = candidate = reviewer = creator = decider = None
     latest_stage = (
         PipelineStage.query.filter_by(
             org_id=task.org_id,
@@ -701,9 +784,6 @@ def business_review_payload(task):
         .order_by(PipelineStage.id.desc())
         .first()
     )
-    reviewer = db.session.get(User, task.reviewer_id)
-    creator = db.session.get(User, task.created_by)
-    decider = db.session.get(User, task.decided_by) if task.decided_by else None
     return {
         "id": task.id,
         "org_id": task.org_id,
@@ -735,7 +815,7 @@ def business_review_payload(task):
             ),
             "city": demand.city or "" if demand else "",
             "jd_text": demand.jd_text_snapshot if demand else None,
-            "focus_points": _demand_focus_points(demand),
+            "focus_points": _demand_focus_points(demand, org_id=task.org_id),
             "owner_hr_id": demand.owner_hr_id if demand else None,
         },
         "candidate": {

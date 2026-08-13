@@ -14,6 +14,7 @@ from ..models import (
     TalentMapContactLog,
     TalentMapPerson,
 )
+from ..sql_safety import LIKE_ESCAPE_CHAR, escape_like_literal
 from .access import can_manage_job, same_org
 
 bp = Blueprint("talent_maps", __name__)
@@ -263,17 +264,27 @@ def _filtered_people_query(talent_map):
     status = _clean(request.args.get("status"), 80)
     keyword = _clean(request.args.get("keyword"), 120)
     if company:
-        query = query.filter(TalentMapCompany.company_name.ilike(f"%{company}%"))
+        company_pattern = f"%{escape_like_literal(company)}%"
+        query = query.filter(
+            TalentMapCompany.company_name.ilike(
+                company_pattern,
+                escape=LIKE_ESCAPE_CHAR,
+            )
+        )
     if city:
-        query = query.filter(TalentMapPerson.city.ilike(f"%{city}%"))
+        city_pattern = f"%{escape_like_literal(city)}%"
+        query = query.filter(
+            TalentMapPerson.city.ilike(city_pattern, escape=LIKE_ESCAPE_CHAR)
+        )
     if status:
         query = query.filter(TalentMapPerson.contact_status == status)
     if keyword:
+        keyword_pattern = f"%{escape_like_literal(keyword)}%"
         query = query.filter(
             db.or_(
-                TalentMapPerson.name.ilike(f"%{keyword}%"),
-                TalentMapPerson.title.ilike(f"%{keyword}%"),
-                TalentMapPerson.evaluation.ilike(f"%{keyword}%"),
+                TalentMapPerson.name.ilike(keyword_pattern, escape=LIKE_ESCAPE_CHAR),
+                TalentMapPerson.title.ilike(keyword_pattern, escape=LIKE_ESCAPE_CHAR),
+                TalentMapPerson.evaluation.ilike(keyword_pattern, escape=LIKE_ESCAPE_CHAR),
             )
         )
     return query.order_by(TalentMapPerson.updated_at.desc(), TalentMapPerson.id.desc())

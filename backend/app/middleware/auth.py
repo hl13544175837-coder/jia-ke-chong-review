@@ -1,6 +1,7 @@
 import functools
 import jwt
 from flask import request, jsonify, g, current_app
+from sqlalchemy.exc import IntegrityError
 from .. import db
 
 
@@ -62,9 +63,11 @@ def _provision_gateway_user(emp_code):
     db.session.add(user)
     try:
         db.session.commit()
-    except Exception:  # 并发首次请求可能撞唯一键，回滚后重查
+    except IntegrityError:  # 并发首次请求可能撞唯一键，回滚后重查
         db.session.rollback()
         user = User.query.filter_by(email=email).first()
+        if user is None:
+            raise
     return user
 
 
@@ -163,8 +166,12 @@ def require_auth(f):
             g.user_id = user.id
             g.role = user.role
             g.org_id = user.org_id or 1
+            g.authenticated_user = user
             g.gateway_auth = True
-            return f(*args, **kwargs)
+            try:
+                return f(*args, **kwargs)
+            finally:
+                g.pop("authenticated_user", None)
 
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
         user, error = authenticate_token(token)
@@ -173,7 +180,11 @@ def require_auth(f):
         g.user_id = user.id
         g.role = user.role
         g.org_id = user.org_id or 1
-        return f(*args, **kwargs)
+        g.authenticated_user = user
+        try:
+            return f(*args, **kwargs)
+        finally:
+            g.pop("authenticated_user", None)
     return decorated
 
 
@@ -192,9 +203,13 @@ def require_agent_import_auth(f):
         g.user_id = user.id
         g.role = user.role
         g.org_id = user.org_id or 1
+        g.authenticated_user = user
         g.auth_scope = AGENT_IMPORT_SCOPE
         g.audit_source = "external_agent"
-        return f(*args, **kwargs)
+        try:
+            return f(*args, **kwargs)
+        finally:
+            g.pop("authenticated_user", None)
 
     return decorated
 

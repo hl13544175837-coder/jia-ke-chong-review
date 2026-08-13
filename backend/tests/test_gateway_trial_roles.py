@@ -1,3 +1,6 @@
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 from app import db
 from app.models import User
 from app.services.gateway_role_service import (
@@ -67,3 +70,61 @@ def test_unmapped_gateway_user_defaults_to_recruiter(app, client):
     with app.app_context():
         user = User.query.filter_by(email="emp999@gateway.local").one()
         assert user.role == "recruiter"
+
+
+def test_gateway_user_provision_does_not_hide_unrelated_database_failures(
+    app, monkeypatch
+):
+    """只有唯一键并发冲突可重查；连接等真实故障必须原样暴露。"""
+    from app.middleware.auth import _provision_gateway_user
+
+    with app.test_request_context("/api/auth/me"):
+        monkeypatch.setattr(
+            db.session,
+            "commit",
+            lambda: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+        )
+
+        with pytest.raises(RuntimeError, match="database unavailable"):
+            _provision_gateway_user("EMP-DB-FAIL")
+
+
+def test_gateway_user_provision_recovers_only_the_expected_unique_key_race(
+    app, monkeypatch
+):
+    """两个首请求撞同一工号时可重查赢家，不需要额外通用兜底。"""
+    from app.middleware.auth import _provision_gateway_user
+
+    with app.test_request_context("/api/auth/me"):
+        winner = User(
+            org_id=1,
+            name="EMP-RACE",
+            email="emp-race@gateway.local",
+            role="recruiter",
+            password_hash="!gateway-managed",
+            is_active=True,
+        )
+        original_commit = db.session.commit
+        commit_calls = 0
+
+        def collide_once():
+            nonlocal commit_calls
+            commit_calls += 1
+            if commit_calls == 1:
+                raise IntegrityError("insert", {}, Exception("unique"))
+            return original_commit()
+
+        original_rollback = db.session.rollback
+
+        def install_winner_after_rollback():
+            original_rollback()
+            db.session.add(winner)
+            original_commit()
+
+        monkeypatch.setattr(db.session, "commit", collide_once)
+        monkeypatch.setattr(db.session, "rollback", install_winner_after_rollback)
+
+        resolved = _provision_gateway_user("EMP-RACE")
+
+        assert resolved.id == winner.id
+        assert resolved.email == "emp-race@gateway.local"

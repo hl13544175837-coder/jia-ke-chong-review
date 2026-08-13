@@ -2,7 +2,7 @@
 
 > **状态（2026-07-11）：** demand-scoped P0 已形成合并前代码候选。把候选 fast-forward 推到 CFPD `test` 只更新代码源，不代表 Libra 已构建或 SIT 已部署。RC/SIT entrypoint 支持真正空库的显式 bootstrap 和已有库的 `alembic -c /app/backend/alembic.ini upgrade head`；`GA`/生产对两者默认关闭，生产仍严格执行本手册的备份、唯一 migration job 和回滚门禁。
 
-> **当前代码边界：** 当前 additive 链在 `20260722_07` 后增加试点审批/业务筛选 `20260724_08`、候选人收藏/合并审计 `20260726_09`、组织设置持久化 `20260728_10` 和简历指纹保护 `20260729_11`，head 为 `20260729_11`，仍没有 Strict revision；SQLite 已有升级覆盖，09、10 与 11 都不支持在线破坏性 downgrade，MySQL/PostgreSQL 尚无同引擎证据。当前 backfill 只能回填到已存在的 Demand，不自动创建 B 类“历史迁移需求”；当 B 类不为 0 时必须先交付并评审专用创建迁移，不得手填 SQL。在 Strict revision、B 类处理和同引擎验证补齐前，Phase D 结论必须是 NO-GO。
+> **当前代码边界（2026-08-13 现场复核）：** 当前 additive head 为 `20260811_18`；revision 12–18 继续增加简历版本、面试改约、OA 登记、简历数据库副本、在线简历、人才地图人员字段与联系记录。当前仍没有 Strict revision，MySQL/PostgreSQL 同引擎恢复与迁移证据也未在仓库内形成完成证明。`verify_demand_scope.py` 现同时检查主流程事实、Offer 历史事件，以及业务筛选任务、通知、上传批次、在线简历的直接 Demand 关联；业务筛选任务和在线简历必须有 Demand，通知和上传批次允许合法的全局/待归类空值，Offer 系统事件允许操作人为空，非空孤儿或跨组织关联仍会阻断。当前 backfill 只能回填到已存在的 Demand，不自动创建 B 类“历史迁移需求”；当 B 类不为 0 时必须先交付并评审专用创建迁移，不得手填 SQL。在 Strict revision、B 类处理和同引擎验证补齐前，Phase D 结论必须是 NO-GO。
 
 > `ALLOW_INSECURE_SIT_STARTUP=true` 只跳过当前可丢弃数据 SIT 的生产启动配置自检。它不跳过 Alembic、请求编号唯一约束、Demand 停写、verify 或本手册的数据归属对账，也不让 `LOCAL_SCHEMA_COMPAT` 在 `FLASK_DEBUG=false` 时获得建表权限。
 
@@ -102,7 +102,7 @@ mysql --host=<host> --user=<user> <restore_db> < <backup_id>.sql
    alembic current
    ```
 
-4. 确认 `alembic current == 20260729_11`，检查 Demand/flow 表、nullable `demand_id`、`current_demand_id`、面试 `primary_slot`、Demand `default_interviewer_id`、`(org_id, request_no)` 唯一索引和 FK、`offer_records` 生命周期列及 `(org_id, demand_id, candidate_id)` 唯一约束、`offer_events` 历史表、`kpi_standards` 组织唯一索引、AI 会话归档列和 `agent_call_logs` 组织级索引，以及 `candidate_favorites`、`candidate_merges`、`organization_settings` 的索引与唯一约束、`users.department`、`candidates.resume_sha256` 和 `(org_id, resume_sha256)` 普通索引。
+4. 确认 `alembic current == 20260811_18`，检查 Demand/flow 表、nullable `demand_id`、`current_demand_id`、面试 `primary_slot`、Demand `default_interviewer_id`、`(org_id, request_no)` 唯一索引和 FK、`offer_records` 生命周期列及 `(org_id, demand_id, candidate_id)` 唯一约束、`offer_events` 历史表、`kpi_standards` 组织唯一索引、AI 会话归档列和 `agent_call_logs` 组织级索引，以及 `candidate_favorites`、`candidate_merges`、`organization_settings`、在线简历、人才地图人员和联系记录的索引与约束、`users.department`、`candidates.resume_sha256` 和 `(org_id, resume_sha256)` 普通索引。
 5. revision `20260711_02` 使用 `lower(trim(status))` 识别历史取消态，再检测重复有效主面试安排和重复 `assignment_id` 反馈；发现冲突即中止并输出冲突组，不自动选择保留行。清理获得业务批准后再重跑；成功后建立 `(org_id,demand_id,candidate_id,primary_slot)` 与 `feedback.assignment_id` 两个唯一索引。
 6. revision `20260711_03` 只增加可空默认面试官外键，旧 Demand 不猜测人员；revision `20260711_04` 将空编号补为 `LEGACY-DEMAND-<id>`、对非空编号去首尾空格/转大写/截至 80 字符，并在建唯一索引前检测同组织冲突；冲突未经业务批准不得继续。该数据规范化不可由 downgrade 逆向还原。
 7. revision `20260722_07` 只对明确缺少 `title_source` / `archived` 的旧会话结构重算历史组织归属：`conversations.org_id` 以 owner `users.org_id` 为真源，消息再跟随所属会话；已具备 07 完整结构的幂等重跑不得覆盖现有组织值。revision 06 若缺少 `conversations`、`conversation_messages` 任一基础表（包括两表全缺），属于 schema drift，必须停止并恢复正确基线，禁止静默 stamp head 或临时猜建表。
@@ -192,7 +192,7 @@ python3 backend/scripts/verify_demand_scope.py --database <database> --output <v
 ### 8.2 切换
 
 1. 由唯一 migration job 应用 strict revision（实际 revision ID 以代码为准），将核心 Demand 归属约束收紧。
-2. 部署 Demand-scoped 后端与前端。`/api/health` 只做进程 liveness；应用版本、`alembic current == 20260729_11`、唯一索引和受控 API 必须作为独立部署门禁核对。
+2. 部署 Demand-scoped 后端与前端。`/api/health` 只做进程 liveness；应用版本、`alembic current == 20260811_18`、唯一索引和受控 API 必须作为独立部署门禁核对。
 3. 记录 cutover marker，至少包含：
 
    ```text
@@ -271,7 +271,7 @@ libra_commit_id:
 backend_version_or_image_digest:
 frontend_asset_hash:
 alembic_before:
-alembic_after:  # 本代码候选应为 20260729_11；Strict 后以实际 revision 为准
+alembic_after:  # 本代码候选应为 20260811_18；Strict 后以实际 revision 为准
 
 audit_report_path_sha256:
 approved_mapping_path_sha256:

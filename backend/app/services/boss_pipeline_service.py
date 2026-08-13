@@ -32,7 +32,14 @@ from ..models import (
     Candidate,
     UploadBatch,
 )
-from .boss_service import BossService
+from .boss_service import (
+    MAX_BOSS_EXTERNAL_ID_LENGTH,
+    MAX_BOSS_SECURITY_ID_LENGTH,
+    BossService,
+    _safe_external_id,
+    _safe_optional_external_id,
+    _safe_positive_numeric_id,
+)
 from .interview_service import PreScreenService
 logger = logging.getLogger(__name__)
 
@@ -179,12 +186,36 @@ class BossPipelineService:
         stopped_reason = None
 
         for idx, item in enumerate(items[:limit]):
-            geek_id = _safe_str(item.get("geek_id"), 64)
+            geek_id = _safe_external_id(
+                item.get("geek_id"),
+                max_len=MAX_BOSS_EXTERNAL_ID_LENGTH,
+            )
             name_hint = _safe_str(item.get("name"), 100)
             if not geek_id:
                 failed += 1
                 results.append({"geek_id": "", "name": name_hint, "status": "error",
-                                "reason": "缺少 geek_id"})
+                                "reason": "geek_id 缺失或格式无效"})
+                continue
+            safe_job = _safe_optional_external_id(
+                item.get("job") or boss_job,
+                max_len=MAX_BOSS_EXTERNAL_ID_LENGTH,
+            )
+            safe_security_id = _safe_optional_external_id(
+                item.get("security_id"),
+                max_len=MAX_BOSS_SECURITY_ID_LENGTH,
+            )
+            safe_friend_id = None
+            raw_friend_id = item.get("friend_id")
+            if raw_friend_id not in (None, ""):
+                safe_friend_id = _safe_positive_numeric_id(raw_friend_id)
+            if "" in (safe_job, safe_security_id, safe_friend_id):
+                failed += 1
+                results.append({
+                    "geek_id": geek_id,
+                    "name": name_hint,
+                    "status": "error",
+                    "reason": "BOSS 标识格式无效",
+                })
                 continue
             if geek_id in existing:
                 skipped += 1
@@ -198,8 +229,8 @@ class BossPipelineService:
 
             dl = self.boss.recruiter_resume_download(
                 encrypt_geek_id=geek_id,
-                job=_safe_str(item.get("job") or boss_job, 64) or None,
-                security_id=_safe_str(item.get("security_id"), 80) or None,
+                job=safe_job,
+                security_id=safe_security_id,
                 cookies_override=cookies_override,
             )
             if not dl.get("ok"):
@@ -231,9 +262,9 @@ class BossPipelineService:
                     "raw_markdown": md_text,
                     "boss": {
                         "geek_id": geek_id,
-                        "security_id": _safe_str(item.get("security_id"), 80) or None,
-                        "friend_id": item.get("friend_id"),
-                        "job": _safe_str(item.get("job") or boss_job, 64) or None,
+                        "security_id": safe_security_id,
+                        "friend_id": safe_friend_id,
+                        "job": safe_job,
                     },
                 },
                 raw_file_path=fpath,

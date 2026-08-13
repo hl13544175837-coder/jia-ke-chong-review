@@ -64,7 +64,7 @@ AUTO_MIGRATE_DATABASE=false
 
 `CORS_ORIGINS` 每一项必须是无路径的完整 HTTP(S) origin；`*`、`null`、带用户名/密码、path、query、fragment、空格或非 HTTP(S) scheme 都会被自检和生产启动护栏拒绝。错误只输出条目序号、脱敏 scheme/host 和原因，不回显 userinfo 或 query 中的密码/token。
 
-`UPLOAD_FOLDER` 在试点/生产必须显式配置为非临时目录的绝对路径，并由宿主机卷或等价持久存储承载。Flask、backup、restore、cleanup 和 readiness 共用同一路径解析规则；运维脚本在非 debug 模式下遇到缺失、相对或 `/tmp` 路径会 fail closed。
+`UPLOAD_FOLDER` 在试点/生产必须显式配置为非临时目录的绝对路径，并由宿主机卷或等价持久存储承载。Flask、backup、restore、cleanup 和 readiness 共用同一路径解析规则；运维脚本在非 debug 模式下遇到缺失、相对或 `/tmp` 路径会 fail closed。`BACKUP_DIR` 还必须在执行自检前由运维创建，并确认它是可写目录；`/dev`、`/proc`、`/run`、`/sys` 及临时目录不会被当成持久备份位置。
 
 `FIELD_ENCRYPTION_KEY` 不能复制占位值。启用 BOSS 或进入测试/生产前，先生成固定 Fernet 密钥：
 
@@ -90,7 +90,7 @@ python seed_dev.py
 ```bash
 cd backend
 alembic upgrade head
-alembic current  # 当前收口候选应为 20260807_16
+alembic current  # 当前收口候选应为 20260811_18
 python scripts/audit_demand_scope.py --database <local-sqlite-fixture> \
   --output <audit-report.json> --manifest-output <mapping-to-review.json>
 # 必须由 Product/Data Owner 将审批后的条目标记 approved=true
@@ -102,7 +102,7 @@ python scripts/verify_demand_scope.py --database <local-sqlite-fixture> \
   --output <verify-report.json>
 ```
 
-上述命令的具体参数以各脚本 `--help` 为准。只有 `verify_demand_scope.py` 返回成功且 `request_no_issues=[]`、`default_interviewer_mismatches=[]` 才能结束停写；`default_interviewer_warnings` 中的停用账号只是后续人工换人提示，不代表跨组织或孤儿数据。MySQL/PostgreSQL 不用本地 SQLite 结果代替同引擎验证；其发布与回滚门禁见 [docs/10_demand_id迁移与回滚手册.md](docs/10_demand_id迁移与回滚手册.md)。
+上述命令的具体参数以各脚本 `--help` 为准。只有 `verify_demand_scope.py` 返回成功，且 `mismatches=[]`、`unmapped_total=0`、`request_no_issues=[]`、`default_interviewer_mismatches=[]` 才能结束停写。校验范围包括主流程事实、Offer 历史事件，以及直接关联 Demand 的业务筛选任务、通知、上传批次和在线简历；业务筛选任务和在线简历必须有 Demand，通知和上传批次允许合法的全局/待归类空值，Offer 系统事件允许操作人为空，但任何非空的孤儿或跨组织关联都必须阻断。`default_interviewer_warnings` 中的停用账号只是后续人工换人提示，不代表跨组织或孤儿数据。MySQL/PostgreSQL 不用本地 SQLite 结果代替同引擎验证；其发布与回滚门禁见 [docs/10_demand_id迁移与回滚手册.md](docs/10_demand_id迁移与回滚手册.md)。
 
 ### BOSS 直聘后端接口（实验辅助能力）
 

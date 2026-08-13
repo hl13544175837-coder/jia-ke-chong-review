@@ -626,6 +626,340 @@ def test_verify_checks_revision_completeness_and_job_consistency(tmp_path):
     assert verified["mismatch_total"] == 0
 
 
+def test_verify_reports_orphaned_online_resume_demand(tmp_path):
+    path = tmp_path / "orphaned-online-resume.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    url = _database_url(path)
+
+    audit = _load_script("audit_demand_scope")
+    manifest = audit.build_mapping_manifest(
+        audit.audit_database(url),
+        categories=("A",),
+        approved=True,
+    )
+    _load_script("backfill_demand_scope").backfill_database(
+        url,
+        manifest,
+        apply=True,
+    )
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO online_resumes "
+        "(id, org_id, owner_hr_id, demand_id, boss_account, source_platform, "
+        "external_record_id, display_name, resume_json, is_manually_edited, "
+        "chat_json, created_at, updated_at) "
+        "VALUES (1, 1, 1, 999999, 'legacy-account', 'legacy', "
+        "'orphan-demand', 'Orphan', '{}', 0, '[]', "
+        "'2026-01-01', '2026-01-01')"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(url)
+
+    assert report["ok"] is False
+    assert {
+        "table": "online_resumes",
+        "record_id": 1,
+        "demand_id": 999999,
+        "issues": ["orphan_demand"],
+    } in report["mismatches"]
+
+
+def test_verify_reports_cross_org_online_resume_owner(tmp_path):
+    path = tmp_path / "cross-org-online-resume-owner.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    url = _database_url(path)
+
+    audit = _load_script("audit_demand_scope")
+    manifest = audit.build_mapping_manifest(
+        audit.audit_database(url),
+        categories=("A",),
+        approved=True,
+    )
+    _load_script("backfill_demand_scope").backfill_database(
+        url,
+        manifest,
+        apply=True,
+    )
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO online_resumes "
+        "(id, org_id, owner_hr_id, demand_id, boss_account, source_platform, "
+        "external_record_id, display_name, resume_json, is_manually_edited, "
+        "chat_json, created_at, updated_at) "
+        "VALUES (1, 1, 2, 10, 'legacy-account', 'legacy', "
+        "'cross-org-owner', 'CrossOrg', '{}', 0, '[]', "
+        "'2026-01-01', '2026-01-01')"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(url)
+
+    assert report["ok"] is False
+    assert {
+        "table": "online_resumes",
+        "record_id": 1,
+        "demand_id": 10,
+        "issues": ["owner_org_mismatch"],
+    } in report["mismatches"]
+
+
+def test_verify_reports_cross_org_business_review_relations(tmp_path):
+    path = tmp_path / "cross-org-business-review.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    url = _database_url(path)
+
+    audit = _load_script("audit_demand_scope")
+    manifest = audit.build_mapping_manifest(
+        audit.audit_database(url),
+        categories=("A",),
+        approved=True,
+    )
+    _load_script("backfill_demand_scope").backfill_database(
+        url,
+        manifest,
+        apply=True,
+    )
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO candidates (id, org_id, owner_hr_id, resume_json, created_at) "
+        "VALUES (2, 2, 2, '{}', '2026-01-01')"
+    )
+    connection.execute(
+        "INSERT INTO business_review_tasks "
+        "(id, org_id, demand_id, candidate_id, reviewer_id, status, pending_slot, "
+        "created_by, decided_by, created_at, updated_at) "
+        "VALUES (1, 1, 10, 2, 2, 'approved', NULL, 2, 2, "
+        "'2026-01-01', '2026-01-01')"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(url)
+
+    assert report["ok"] is False
+    assert {
+        "table": "business_review_tasks",
+        "record_id": 1,
+        "demand_id": 10,
+        "issues": [
+            "candidate_org_mismatch",
+            "reviewer_org_mismatch",
+            "created_by_org_mismatch",
+            "decided_by_org_mismatch",
+        ],
+    } in report["mismatches"]
+
+
+def _prepare_verified_direct_fact_database(path):
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    url = _database_url(path)
+    audit = _load_script("audit_demand_scope")
+    manifest = audit.build_mapping_manifest(
+        audit.audit_database(url),
+        categories=("A",),
+        approved=True,
+    )
+    _load_script("backfill_demand_scope").backfill_database(
+        url,
+        manifest,
+        apply=True,
+    )
+    return url
+
+
+def test_verify_reports_orphaned_and_cross_org_offer_event_relations(tmp_path):
+    path = tmp_path / "invalid-offer-event-relations.db"
+    url = _prepare_verified_direct_fact_database(path)
+
+    connection = sqlite3.connect(path)
+    connection.executemany(
+        "INSERT INTO offer_events "
+        "(id, org_id, offer_id, action, to_status, actor_id, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            (1, 2, 1, "approve", "approved", 1, "2026-01-16"),
+            (2, 1, 999999, "approve", "approved", 999998, "2026-01-16"),
+            (3, 1, 1, "system_sync", "approved", None, "2026-01-16"),
+        ],
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(url)
+
+    assert report["ok"] is False
+    assert {
+        "table": "offer_events",
+        "record_id": 1,
+        "demand_id": 10,
+        "issues": ["offer_org_mismatch", "actor_org_mismatch"],
+    } in report["mismatches"]
+    assert {
+        "table": "offer_events",
+        "record_id": 2,
+        "demand_id": None,
+        "issues": ["orphan_offer", "orphan_actor"],
+    } in report["mismatches"]
+    assert not any(
+        item["table"] == "offer_events" and item["record_id"] == 3
+        for item in report["mismatches"]
+    )
+
+
+def test_verify_reports_cross_org_notification_user_without_demand(tmp_path):
+    path = tmp_path / "cross-org-notification-user.db"
+    url = _prepare_verified_direct_fact_database(path)
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO notifications "
+        "(id, org_id, user_id, demand_id, type, title) "
+        "VALUES (1, 1, 2, NULL, 'system', '跨组织通知')"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(url)
+
+    assert report["ok"] is False
+    assert {
+        "table": "notifications",
+        "record_id": 1,
+        "demand_id": None,
+        "issues": ["user_org_mismatch"],
+    } in report["mismatches"]
+
+
+def test_verify_reports_orphaned_notification_user_without_demand(tmp_path):
+    path = tmp_path / "orphaned-notification-user.db"
+    url = _prepare_verified_direct_fact_database(path)
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO notifications "
+        "(id, org_id, user_id, demand_id, type, title) "
+        "VALUES (1, 1, 999999, NULL, 'system', '孤儿通知')"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(url)
+
+    assert report["ok"] is False
+    assert {
+        "table": "notifications",
+        "record_id": 1,
+        "demand_id": None,
+        "issues": ["orphan_user"],
+    } in report["mismatches"]
+
+
+def test_verify_reports_cross_org_upload_owner_and_target_job_without_demand(
+    tmp_path,
+):
+    path = tmp_path / "cross-org-upload-relations.db"
+    url = _prepare_verified_direct_fact_database(path)
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO jobs "
+        "(id, org_id, title, jd_text, owner_hr_id, status, created_at) "
+        "VALUES (2, 2, 'Other org job', 'JD', 2, 'active', '2026-01-01')"
+    )
+    connection.execute(
+        "INSERT INTO upload_batches "
+        "(id, org_id, owner_hr_id, target_job_id, demand_id, source_channel) "
+        "VALUES (1, 1, 2, 2, NULL, '跨组织上传')"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(url)
+
+    assert report["ok"] is False
+    assert {
+        "table": "upload_batches",
+        "record_id": 1,
+        "demand_id": None,
+        "issues": ["owner_org_mismatch", "target_job_org_mismatch"],
+    } in report["mismatches"]
+
+
+def test_verify_reports_orphaned_upload_owner_and_target_job_without_demand(
+    tmp_path,
+):
+    path = tmp_path / "orphaned-upload-relations.db"
+    url = _prepare_verified_direct_fact_database(path)
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO upload_batches "
+        "(id, org_id, owner_hr_id, target_job_id, demand_id, source_channel) "
+        "VALUES (1, 1, 999998, 999999, NULL, '孤儿上传')"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(url)
+
+    assert report["ok"] is False
+    assert {
+        "table": "upload_batches",
+        "record_id": 1,
+        "demand_id": None,
+        "issues": ["orphan_owner", "orphan_target_job"],
+    } in report["mismatches"]
+
+
+def test_verify_allows_global_notifications_and_unassigned_upload_batches(tmp_path):
+    path = tmp_path / "optional-direct-demand-links.db"
+    _create_legacy_database(path, scenario="one", all_facts=True)
+    _upgrade(path)
+    url = _database_url(path)
+
+    audit = _load_script("audit_demand_scope")
+    manifest = audit.build_mapping_manifest(
+        audit.audit_database(url),
+        categories=("A",),
+        approved=True,
+    )
+    _load_script("backfill_demand_scope").backfill_database(
+        url,
+        manifest,
+        apply=True,
+    )
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO notifications "
+        "(org_id, user_id, demand_id, type, title) "
+        "VALUES (1, 1, NULL, 'system', '全局通知')"
+    )
+    connection.execute(
+        "INSERT INTO upload_batches "
+        "(org_id, owner_hr_id, target_job_id, demand_id, source_channel) "
+        "VALUES (1, NULL, NULL, NULL, '待归类上传')"
+    )
+    connection.commit()
+    connection.close()
+
+    report = _load_script("verify_demand_scope").verify_database(url)
+
+    assert report["ok"] is True
+    assert report["unmapped_by_table"]["notifications"] == 0
+    assert report["unmapped_by_table"]["upload_batches"] == 0
+
+
 def test_verify_reports_missing_interview_uniqueness_index(tmp_path):
     path = tmp_path / "missing-interview-index.db"
     _create_legacy_database(path, scenario="one", all_facts=True)

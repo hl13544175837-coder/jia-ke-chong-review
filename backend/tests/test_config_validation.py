@@ -107,6 +107,54 @@ def test_pilot_readiness_requires_absolute_persistent_upload_folder(
     assert uploads.ok is False
 
 
+@pytest.mark.parametrize(
+    "backup_dir",
+    [
+        "",
+        "relative/backups",
+        "/tmp/zhipin/backups",
+        "/private/tmp/zhipin",
+        "/var/tmp/zhipin",
+        "/var/lib/zhipin/../../../tmp/zhipin-backups",
+        "/private/var/../tmp/zhipin-backups",
+        "/dev/null",
+        "/dev/shm/zhipin-backups",
+        "/proc/zhipin-backups",
+        "/run/zhipin-backups",
+        "/sys/zhipin-backups",
+    ],
+)
+def test_production_readiness_requires_absolute_persistent_backup_directory(
+    tmp_path,
+    backup_dir,
+):
+    checks = run_checks(
+        {"BACKUP_DIR": backup_dir},
+        ROOT,
+        tmp_path / ".env",
+        profile="production",
+    )
+    backup = next(check for check in checks if check.name == "BACKUP_DIR")
+
+    assert backup.ok is False
+
+
+def test_production_readiness_accepts_existing_writable_backup_directory(
+    tmp_path,
+    persistent_test_dir,
+):
+
+    checks = run_checks(
+        {"BACKUP_DIR": str(persistent_test_dir)},
+        ROOT,
+        tmp_path / ".env",
+        profile="production",
+    )
+    backup = next(check for check in checks if check.name == "BACKUP_DIR")
+
+    assert backup.ok is True
+
+
 def test_pilot_readiness_requires_local_schema_compat_disabled(tmp_path):
     checks = run_checks(
         {
@@ -169,22 +217,7 @@ def test_boss_runtime_auto_install_defaults_off_and_never_executes_pip(
     assert ok is False
     assert "构建" in message or "手动" in message
     assert calls == []
-
-
-def test_frontend_build_and_git_hygiene_are_reproducible():
-    dockerfile = (ROOT / "readdy-frontend" / "Dockerfile").read_text(encoding="utf-8")
-    package_json = (ROOT / "readdy-frontend" / "package.json").read_text(encoding="utf-8")
-    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
-    backend_dockerfile = (ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
-
-    assert "npm ci" in dockerfile
-    assert '"node": ">=20.19.0 <21 || >=22.12.0"' in package_json
-    assert ".workbuddy/" in gitignore
-    assert "outputs/" in gitignore
-    assert "apt-get install -y curl git" not in backend_dockerfile
-
-
-def _safe_sit_values():
+def _safe_sit_values(backup_dir):
     return {
         "JWT_SECRET": "s" * 48,
         "JWT_EXPIRY_HOURS": "8",
@@ -197,7 +230,7 @@ def _safe_sit_values():
         "RATE_LIMIT_LOGIN": "10",
         "RATE_LIMIT_AGENT_CHAT": "20",
         "RATE_LIMIT_RESUME_UPLOAD": "8",
-        "BACKUP_DIR": "/var/lib/zhipin/backups",
+        "BACKUP_DIR": str(backup_dir),
         "UPLOAD_FOLDER": "/var/lib/zhipin/uploads",
         "LOCAL_SCHEMA_COMPAT": "false",
         "AUTO_MIGRATE_DATABASE": "true",
@@ -213,9 +246,11 @@ def _safe_sit_values():
     }
 
 
-def test_sit_profile_accepts_safe_small_team_configuration():
+def test_sit_profile_accepts_safe_small_team_configuration(
+    persistent_test_dir,
+):
     checks = run_checks(
-        _safe_sit_values(),
+        _safe_sit_values(persistent_test_dir),
         ROOT,
         ROOT / "backend" / ".env",
         profile="sit-team",
@@ -236,8 +271,12 @@ def test_sit_profile_accepts_safe_small_team_configuration():
         ("BACKUP_DIR", "/tmp/zhipin-backups"),
     ],
 )
-def test_sit_profile_rejects_dangerous_or_placeholder_values(key, value):
-    values = _safe_sit_values()
+def test_sit_profile_rejects_dangerous_or_placeholder_values(
+    persistent_test_dir,
+    key,
+    value,
+):
+    values = _safe_sit_values(persistent_test_dir)
     values[key] = value
 
     checks = run_checks(

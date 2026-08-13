@@ -33,6 +33,66 @@ def test_candidate_pipelines_lists_current_stage_per_job(client, make_user, app)
     assert body["pipelines"][0]["job_id"] == jid
     assert body["pipelines"][0]["demand_id"] == did
 
+
+def test_candidate_pipelines_hides_cross_org_job_relation(client, make_user, app):
+    owner_id, owner_token = make_user(
+        "pipeline-cross-job-owner@x.com",
+        role="recruiter",
+        org_id=1,
+    )
+    foreign_owner_id, _ = make_user(
+        "pipeline-cross-job-foreign@x.com",
+        role="recruiter",
+        org_id=2,
+    )
+    _, demand_id, candidate_id = _seed(app, owner_id)
+
+    with app.app_context():
+        from app import db
+        from app.models import Job, PipelineStage, RecruitmentDemand
+
+        foreign_job = Job(
+            org_id=2,
+            title="SECRET-FOREIGN-PIPELINE-JOB",
+            jd_text="SECRET-FOREIGN-PIPELINE-JD",
+            owner_hr_id=foreign_owner_id,
+            status="active",
+        )
+        db.session.add(foreign_job)
+        db.session.flush()
+        demand = db.session.get(RecruitmentDemand, demand_id)
+        demand.job_id = foreign_job.id
+        demand.job_title_snapshot = ""
+        db.session.add(PipelineStage(
+            org_id=1,
+            demand_id=demand_id,
+            job_id=foreign_job.id,
+            candidate_id=candidate_id,
+            stage="ai_screen",
+            updated_by=owner_id,
+        ))
+        db.session.commit()
+
+    response = client.get(
+        f"/api/candidates/{candidate_id}/pipelines",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["pipelines"] == [{
+        "demand_id": demand_id,
+        "job_id": None,
+        "job_title": None,
+        "department": "",
+        "city": "",
+        "demand_status": "active",
+        "stage": "ai_screen",
+        "updated_at": body["pipelines"][0]["updated_at"],
+    }]
+    assert "SECRET-FOREIGN-PIPELINE" not in str(body)
+
+
 def test_journey_aggregates_timeline_and_feedback(client, make_user, app):
     uid, token = make_user("hr@x.com", role="recruiter")
     interviewer_id, interviewer_token = make_user(
@@ -201,6 +261,170 @@ def test_journey_includes_demand_review_business_review_interview_round_and_offe
         headers=_auth(unrelated_interviewer_token),
     )
     assert forbidden.status_code == 403
+
+
+def test_journey_never_resolves_user_names_from_another_org(client, make_user, app):
+    owner_id, owner_token = make_user(
+        "journey-org-owner@x.com", role="recruiter", name="本组织招聘", org_id=1
+    )
+    outsider_id, _ = make_user(
+        "journey-org-outsider@x.com", role="manager", name="外部组织敏感姓名", org_id=2
+    )
+    _, demand_id, candidate_id = _seed(app, owner_id)
+
+    with app.app_context():
+        from app import db
+        from app.models import (
+            BusinessReviewTask,
+            CandidateDisposition,
+            Event,
+            InterviewAssignment,
+            InterviewFeedback,
+            PipelineStage,
+            RecruitmentDemand,
+        )
+
+        demand = db.session.get(RecruitmentDemand, demand_id)
+        demand.created_by = outsider_id
+        demand.reviewed_by = outsider_id
+        demand.approval_status = "approved"
+        db.session.add(Event(
+            org_id=demand.org_id,
+            demand_id=demand.id,
+            actor_id=outsider_id,
+            actor_role="manager",
+            action="demand.approved",
+            entity_id=demand.id,
+            entity_type="recruitment_demand",
+            payload={},
+        ))
+        db.session.add(PipelineStage(
+            org_id=demand.org_id,
+            demand_id=demand.id,
+            job_id=demand.job_id,
+            candidate_id=candidate_id,
+            stage="interview",
+            updated_by=outsider_id,
+            note="历史阶段记录",
+        ))
+        db.session.add(BusinessReviewTask(
+            org_id=demand.org_id,
+            demand_id=demand.id,
+            candidate_id=candidate_id,
+            reviewer_id=outsider_id,
+            created_by=outsider_id,
+            decided_by=outsider_id,
+            status="approved",
+        ))
+        assignment = InterviewAssignment(
+            org_id=demand.org_id,
+            demand_id=demand.id,
+            job_id=demand.job_id,
+            candidate_id=candidate_id,
+            interviewer_id=outsider_id,
+            created_by=owner_id,
+            round="round_1",
+            round_sequence=1,
+            status="completed",
+        )
+        db.session.add(assignment)
+        db.session.flush()
+        db.session.add(InterviewFeedback(
+            org_id=demand.org_id,
+            demand_id=demand.id,
+            job_id=demand.job_id,
+            candidate_id=candidate_id,
+            assignment_id=assignment.id,
+            interviewer_id=outsider_id,
+            round="round_1",
+            score=4,
+            passed=True,
+        ))
+        db.session.add(CandidateDisposition(
+            org_id=demand.org_id,
+            demand_id=demand.id,
+            job_id=demand.job_id,
+            candidate_id=candidate_id,
+            created_by=outsider_id,
+            reason="experience_gap",
+        ))
+        db.session.commit()
+
+    response = client.get(
+        f"/api/candidates/{candidate_id}/journey?demand_id={demand_id}",
+        headers=_auth(owner_token),
+    )
+    assert response.status_code == 200
+    journey = response.get_json()
+    assert journey["demand_approval"]["submitted_by_name"] is None
+    assert journey["demand_approval"]["reviewed_by_name"] is None
+    assert journey["demand_approval"]["history"][0]["actor_name"] is None
+    assert journey["business_reviews"][0]["created_by_name"] is None
+    assert journey["business_reviews"][0]["reviewer_name"] is None
+    assert journey["business_reviews"][0]["decided_by_name"] is None
+    assert journey["timeline"][0]["updated_by_name"] is None
+    assert journey["feedback"][0]["interviewer_name"] is None
+    assert journey["interview_rounds"][0]["interviewer_name"] is None
+    assert journey["dispositions"][0]["created_by_name"] is None
+    assert "外部组织敏感姓名" not in str(journey)
+
+
+def test_journey_hides_cross_org_demand_job_but_keeps_local_history(
+    client,
+    make_user,
+    app,
+):
+    owner_id, owner_token = make_user(
+        "journey-cross-job-owner@x.com",
+        role="recruiter",
+        org_id=1,
+    )
+    foreign_owner_id, _ = make_user(
+        "journey-cross-job-foreign@x.com",
+        role="recruiter",
+        org_id=2,
+    )
+    _, demand_id, candidate_id = _seed(app, owner_id)
+
+    with app.app_context():
+        from app import db
+        from app.models import Job, PipelineStage, RecruitmentDemand
+
+        foreign_job = Job(
+            org_id=2,
+            title="SECRET-FOREIGN-JOURNEY-JOB",
+            jd_text="SECRET-FOREIGN-JOURNEY-JD",
+            owner_hr_id=foreign_owner_id,
+            status="active",
+        )
+        db.session.add(foreign_job)
+        db.session.flush()
+        demand = db.session.get(RecruitmentDemand, demand_id)
+        demand.job_id = foreign_job.id
+        demand.job_title_snapshot = ""
+        db.session.add(PipelineStage(
+            org_id=1,
+            demand_id=demand_id,
+            job_id=foreign_job.id,
+            candidate_id=candidate_id,
+            stage="ai_screen",
+            updated_by=owner_id,
+            note="本组织旅程记录",
+        ))
+        db.session.commit()
+
+    response = client.get(
+        f"/api/candidates/{candidate_id}/journey?demand_id={demand_id}",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 200
+    journey = response.get_json()
+    assert journey["job_id"] is None
+    assert journey["job_title"] is None
+    assert journey["current_stage"] == "ai_screen"
+    assert journey["timeline"][0]["note"] == "本组织旅程记录"
+    assert "SECRET-FOREIGN-JOURNEY" not in str(journey)
 
 
 def test_business_reviewer_without_interview_assignment_cannot_see_interview_results(

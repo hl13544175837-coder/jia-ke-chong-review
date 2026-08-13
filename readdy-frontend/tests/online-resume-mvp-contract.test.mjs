@@ -68,6 +68,28 @@ test('列表覆盖加载、失败重试、空态和真实数据展示', () => {
   assert.doesNotMatch(list, /@\/mocks/);
 });
 
+test('历史在线简历关联需求缺失时仍能安全展示', async () => {
+  const presentation = await import('../src/features/onlineResumes/presentation.ts');
+
+  assert.deepEqual(presentation.presentOnlineResumeDemand(null), {
+    available: false,
+    requestNo: '',
+    title: '关联需求已不可用',
+  });
+  assert.deepEqual(
+    presentation.presentOnlineResumeDemand({
+      id: 12,
+      request_no: 'REQ-012',
+      title: 'Java 开发',
+    }),
+    {
+      available: true,
+      requestNo: 'REQ-012',
+      title: 'Java 开发',
+    },
+  );
+});
+
 test('聊天发送方兼容未知值且来源链接安全打开', () => {
   const types = readOptional(files.types);
   const detail = readOptional(files.detail);
@@ -79,7 +101,12 @@ test('聊天发送方兼容未知值且来源链接安全打开', () => {
   assert.match(detail, /system:\s*'系统'/);
   assert.match(detail, /message\.sender\.trim\(\)/);
   assert.match(detail, /未知发送方/);
-  assert.match(detail, /href=\{resume\.source_url\}/);
+  assert.match(detail, /function safeExternalHttpUrl/);
+  assert.match(detail, /new URL\(value\)/);
+  assert.match(detail, /\['http:', 'https:'\]\.includes\(parsed\.protocol\)/);
+  assert.match(detail, /safeExternalHttpUrl\(resume\.source_url\)/);
+  assert.match(detail, /href=\{safeSourceUrl\}/);
+  assert.doesNotMatch(detail, /href=\{resume\.source_url\}/);
   assert.match(detail, /target="_blank"/);
   assert.match(detail, /rel="noopener noreferrer"/);
   assert.match(detail, /resume\.source_platform/);

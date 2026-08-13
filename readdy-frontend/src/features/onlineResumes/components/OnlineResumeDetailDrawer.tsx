@@ -6,6 +6,7 @@ import DetailDrawerShell from '@/components/ui/DetailDrawerShell';
 import { onlineResumesApi } from '../api';
 import type { OnlineResumeItem } from '../types';
 import { suspiciousResumeFields } from '../quality';
+import { presentOnlineResumeDemand } from '../presentation';
 
 interface OnlineResumeDetailDrawerProps {
   resumeId: number;
@@ -41,6 +42,24 @@ function textValue(source: Record<string, unknown>, keys: string[]) {
 function profileSource(resume: OnlineResumeItem) {
   const extracted = resume.resume_json.extracted_info;
   return isRecord(extracted) ? extracted : resume.resume_json;
+}
+
+function safeExternalHttpUrl(value: string | null) {
+  const hasControlCharacter = value
+    ? Array.from(value).some((character) => {
+        const codePoint = character.charCodeAt(0);
+        return codePoint < 32 || codePoint === 127;
+      })
+    : false;
+  if (!value || value.includes('\\') || hasControlCharacter) return null;
+  try {
+    const parsed = new URL(value);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+    if (!parsed.hostname || parsed.username || parsed.password) return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
 }
 
 function draftFromResume(resume: OnlineResumeItem): BasicProfileDraft {
@@ -107,6 +126,8 @@ export default function OnlineResumeDetailDrawer({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const safeSourceUrl = resume ? safeExternalHttpUrl(resume.source_url) : null;
+  const demand = resume ? presentOnlineResumeDemand(resume.demand) : null;
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -187,7 +208,8 @@ export default function OnlineResumeDetailDrawer({
           {resume && (
             <>
               <p className="mt-1 text-xs text-foreground-500">
-                {resume.demand.request_no} · {resume.demand.title} · {resume.source_platform} · {resume.boss_account}
+                {demand?.available ? `${demand.requestNo} · ${demand.title}` : demand?.title}
+                {' · '}{resume.source_platform} · {resume.boss_account}
               </p>
               {suspiciousResumeFields(profileSource(resume)).length > 0 && (
                 <span
@@ -197,9 +219,9 @@ export default function OnlineResumeDetailDrawer({
                   疑似异常数据
                 </span>
               )}
-              {resume.source_url && (
+              {safeSourceUrl && (
                 <a
-                  href={resume.source_url}
+                  href={safeSourceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-2 inline-flex text-xs font-medium text-primary-700 hover:text-primary-800 hover:underline"

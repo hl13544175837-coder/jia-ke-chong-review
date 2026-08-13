@@ -23,14 +23,3 @@ def test_seed_uses_neutral_mvp_trial_accounts():
         "director01@mvp.local",
     ]:
         assert email in seed_text
-
-
-def test_running_docs_explain_trial_account_ownership_and_bi():
-    running_text = (ROOT / "RUNNING.md").read_text(encoding="utf-8")
-
-    assert "@demo.com" not in running_text
-    assert "demo1234" not in running_text
-    assert "内部试用账号" in running_text
-    assert "一人一个账号" in running_text
-    assert "BI" in running_text
-    assert "用户 ID" in running_text

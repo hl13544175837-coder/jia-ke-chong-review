@@ -1,5 +1,7 @@
 # backend/tests/conftest.py
 import sys
+import shutil
+from uuid import uuid4
 from pathlib import Path
 
 # 让 `import app` 生效（backend/ 入 sys.path）
@@ -10,6 +12,22 @@ if str(BACKEND_DIR) not in sys.path:
 import pytest
 from app import create_app, db as _db
 from app.config import TestingConfig
+
+
+@pytest.fixture()
+def persistent_test_dir():
+    """Create a writable directory outside OS temp roots for readiness tests."""
+    path = BACKEND_DIR.parent / ".pytest-persistent" / uuid4().hex
+    path.mkdir(parents=True)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+        parent = path.parent
+        try:
+            parent.rmdir()
+        except OSError:
+            pass
 
 
 @pytest.fixture()

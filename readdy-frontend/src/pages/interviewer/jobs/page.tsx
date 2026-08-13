@@ -298,6 +298,7 @@ export default function InterviewerJobsPage() {
     if (!draft.targetDate) errors.target_date = '请选择期望到岗日期';
     else if (draft.requestedAt && draft.targetDate < draft.requestedAt) errors.target_date = '期望到岗日期不能早于需求日期';
     if (!Number.isInteger(draft.headcount) || draft.headcount < 1) errors.headcount = 'HC 必须大于 0';
+    else if (draft.headcount > 10000) errors.headcount = '单条招聘需求的 HC 不能超过 10000';
     if (!draft.jdText.trim()) errors.jd_text = '所选模板缺少完整 JD';
     return errors;
   };
@@ -529,7 +530,7 @@ export default function InterviewerJobsPage() {
                       <input required value={draft.city} onChange={(event) => setDraft((current) => ({ ...current, city: event.target.value }))} className={inputClass} />
                     </FormField>
                     <FormField label="HC" error={formErrors.headcount}>
-                      <input type="number" min={1} required value={draft.headcount} onChange={(event) => setDraft((current) => ({ ...current, headcount: Number(event.target.value) || 1 }))} className={inputClass} />
+                      <input type="number" min={1} max={10000} required value={draft.headcount} onChange={(event) => setDraft((current) => ({ ...current, headcount: Number(event.target.value) || 1 }))} className={inputClass} />
                     </FormField>
                     <FormField label="需求日期" error={formErrors.requested_at}>
                       <input type="date" required value={draft.requestedAt} onChange={(event) => setDraft((current) => ({ ...current, requestedAt: event.target.value }))} className={inputClass} />

@@ -17,6 +17,70 @@ def test_active_user_can_login(client, make_user):
     assert r.get_json()["role"] == "manager"
     assert r.get_json()["user_id"] == user_id
 
+
+def test_login_rejects_non_string_password_without_server_error(client, make_user):
+    make_user("typed-password@x.com", password="pw123456")
+
+    for password in (123456, True, [], {}):
+        response = client.post(
+            "/api/auth/login",
+            json={"email": "typed-password@x.com", "password": password},
+        )
+
+        assert response.status_code == 401
+        assert response.get_json() == {"error": "Invalid credentials"}
+
+
+def test_login_rejects_non_object_json_and_non_string_email(client, make_user):
+    make_user("typed-login@x.com", password="pw123456")
+
+    payloads = (
+        [],
+        "typed-login@x.com",
+        123456,
+        {"email": ["typed-login@x.com"], "password": "pw123456"},
+        {"email": {"value": "typed-login@x.com"}, "password": "pw123456"},
+    )
+    for payload in payloads:
+        response = client.post("/api/auth/login", json=payload)
+
+        assert response.status_code == 401
+        assert response.get_json() == {"error": "Invalid credentials"}
+
+
+def test_register_rejects_non_object_json_without_server_error(client):
+    for payload in ([], "bad-register", 123456):
+        response = client.post("/api/auth/register", json=payload)
+
+        assert response.status_code == 400
+        assert response.get_json() == {"error": "email and password required"}
+
+
+def test_register_rejects_non_string_name_without_server_error(client):
+    response = client.post(
+        "/api/auth/register",
+        json={"name": ["bad"], "email": "bad-name@x.com", "password": "pw123456"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_change_password_rejects_non_object_and_non_string_values(client, make_user):
+    _, token = make_user("typed-change@x.com", password="oldpw123")
+    headers = {"Authorization": f"Bearer {token}"}
+    payloads = (
+        [],
+        "bad-change",
+        123456,
+        {"old_password": "oldpw123", "new_password": 123456},
+        {"old_password": ["oldpw123"], "new_password": "newpw123"},
+    )
+
+    for payload in payloads:
+        response = client.post("/api/auth/change-password", headers=headers, json=payload)
+
+        assert response.status_code == 400
+
 def test_register_empty_body_returns_400(client):
     r = client.post("/api/auth/register", json={})
     assert r.status_code == 400
@@ -111,3 +175,52 @@ def test_auth_disabled_does_not_bypass_auth_in_production(app):
 
     with app.test_request_context("/api/auth/me"):
         assert _auth_disabled() is False
+
+
+def test_require_auth_exposes_the_user_it_already_validated(app, client, make_user):
+    """接口应复用鉴权层查到的用户，不应再查询并防御“不存在”的死分支。"""
+    from flask import g, jsonify
+    from app.middleware.auth import require_auth
+
+    user_id, token = make_user("auth-context@example.com", role="recruiter")
+
+    @app.get("/_test/authenticated-user")
+    @require_auth
+    def authenticated_user_probe():
+        return jsonify({
+            "id": g.authenticated_user.id,
+            "role": g.authenticated_user.role,
+        })
+
+    response = client.get(
+        "/_test/authenticated-user",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"id": user_id, "role": "recruiter"}
+    assert "authenticated_user" not in g
+
+
+def test_auth_me_reuses_the_single_user_lookup(
+    app, client, make_user, monkeypatch
+):
+    from app import db
+
+    _, token = make_user("single-auth-query@example.com", role="recruiter")
+    original_get = db.session.get
+    calls = []
+
+    def track_get(model, identifier, *args, **kwargs):
+        calls.append((model, identifier))
+        return original_get(model, identifier, *args, **kwargs)
+
+    monkeypatch.setattr(db.session, "get", track_get)
+
+    response = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert len(calls) == 1

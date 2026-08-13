@@ -14,11 +14,15 @@ bp = Blueprint("match", __name__)
 @require_auth
 @require_role("recruiter", "manager", "admin")
 def match():
-    data = request.get_json()
-    job_id = data.get("job_id")
-    if not job_id:
-        return jsonify({"error": "job_id required"}), 400
-    job = db.get_or_404(Job, int(job_id))
+    data = request.get_json(silent=True)
+    raw_job_id = data.get("job_id") if isinstance(data, dict) else None
+    try:
+        job_id = int(raw_job_id) if not isinstance(raw_job_id, bool) else 0
+    except (TypeError, ValueError):
+        job_id = 0
+    if job_id <= 0:
+        return jsonify({"error": "job_id must be a positive integer"}), 400
+    job = db.get_or_404(Job, job_id)
     if not same_org(job, g.org_id):
         return jsonify({"error": "岗位不存在"}), 404
     if not can_manage_job(g.user_id, g.role, job):
@@ -27,7 +31,7 @@ def match():
         return jsonify({"error": "岗位已关闭，请先恢复在招后再运行匹配"}), 400
     svc = MatchService()
     results = svc.rank_for_job(
-        int(job_id),
+        job_id,
         candidate_query=visible_candidate_query(g.user_id, g.role),
     )
     return jsonify({"job_id": job_id, "results": results})

@@ -36,6 +36,8 @@ BOSS_PYPI_PKG = "kabi-boss-cli"
 BOSS_BIN_NAME = "boss"
 # recruiter 子命令信封里 data 字段最大保留长度，超长截断避免撑爆 LLM/前端
 MAX_DATA_CHARS = 8000
+MAX_BOSS_EXTERNAL_ID_LENGTH = 64
+MAX_BOSS_SECURITY_ID_LENGTH = 256
 
 
 def _auto_install_enabled() -> bool:
@@ -255,6 +257,36 @@ def _safe_text(value: Any, max_len: int = 200) -> str:
     return s[:max_len]
 
 
+_EXTERNAL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def _safe_external_id(
+    value: Any,
+    max_len: int = MAX_BOSS_EXTERNAL_ID_LENGTH,
+) -> str:
+    """Allow only opaque identifier characters before passing values to a CLI."""
+    normalized = _safe_text(value, max_len=max_len + 1)
+    if len(normalized) > max_len:
+        return ""
+    return normalized if _EXTERNAL_ID_PATTERN.fullmatch(normalized) else ""
+
+
+def _safe_optional_external_id(
+    value: Any,
+    max_len: int = MAX_BOSS_EXTERNAL_ID_LENGTH,
+) -> Optional[str]:
+    if value is None or value == "":
+        return None
+    return _safe_external_id(value, max_len)
+
+
+def _safe_positive_numeric_id(value: Any, max_len: int = 20) -> str:
+    normalized = str(value or "").strip()
+    if not normalized.isdigit() or len(normalized) > max_len:
+        return ""
+    return normalized if int(normalized) > 0 else ""
+
+
 def parse_cookies(raw: Any) -> Dict[str, str]:
     """把客户端提交的 cookie 解析成 {name: value} dict。
 
@@ -329,8 +361,11 @@ class BossService:
             page = max(1, int(page))
         except (TypeError, ValueError):
             limit, page = 10, 1
+        safe_job = _safe_optional_external_id(job)
+        if safe_job == "":
+            return {"ok": False, "data": None, "error": {"code": "invalid_params", "message": "job 格式无效"}}
         args = ["recruiter", "recommend", "-n", str(limit), "-p", str(page)]
-        args += _opt("--job", job)
+        args += _opt("--job", safe_job)
         return _run(args, timeout=45, cookies_override=cookies_override)
 
     def recruiter_inbox(
@@ -347,8 +382,11 @@ class BossService:
             page = max(1, int(page))
         except (TypeError, ValueError):
             label, limit, page = 0, 20, 1
+        safe_job = _safe_optional_external_id(job)
+        if safe_job == "":
+            return {"ok": False, "data": None, "error": {"code": "invalid_params", "message": "job 格式无效"}}
         args = ["recruiter", "inbox", "--label", str(label), "-n", str(limit)]
-        args += _opt("--job", job)
+        args += _opt("--job", safe_job)
         return _run(args, timeout=45, cookies_override=cookies_override)
 
     # ── 招聘端 · 简历 ──────────────────────────────────────
@@ -359,12 +397,19 @@ class BossService:
         security_id: Optional[str] = None,
         cookies_override: Optional[str] = None,
     ) -> Dict[str, Any]:
-        gid = _safe_text(encrypt_geek_id, 64)
+        gid = _safe_external_id(encrypt_geek_id)
         if not gid:
             return {"ok": False, "data": None, "error": {"code": "invalid_params", "message": "encrypt_geek_id 不能为空"}}
+        safe_job = _safe_optional_external_id(job)
+        safe_security_id = _safe_optional_external_id(
+            security_id,
+            max_len=MAX_BOSS_SECURITY_ID_LENGTH,
+        )
+        if safe_job == "" or safe_security_id == "":
+            return {"ok": False, "data": None, "error": {"code": "invalid_params", "message": "BOSS 标识格式无效"}}
         args = ["recruiter", "resume", gid]
-        args += _opt("--job", job)
-        args += _opt("--security-id", security_id)
+        args += _opt("--job", safe_job)
+        args += _opt("--security-id", safe_security_id)
         return _run(args, timeout=45, cookies_override=cookies_override)
 
     def recruiter_resume_download(
@@ -375,12 +420,19 @@ class BossService:
         cookies_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """下载候选人简历 Markdown。用 `-o -` 输出到 stdout，直接拿 md 文本。"""
-        gid = _safe_text(encrypt_geek_id, 64)
+        gid = _safe_external_id(encrypt_geek_id)
         if not gid:
             return {"ok": False, "data": None, "error": {"code": "invalid_params", "message": "encrypt_geek_id 不能为空"}}
+        safe_job = _safe_optional_external_id(job)
+        safe_security_id = _safe_optional_external_id(
+            security_id,
+            max_len=MAX_BOSS_SECURITY_ID_LENGTH,
+        )
+        if safe_job == "" or safe_security_id == "":
+            return {"ok": False, "data": None, "error": {"code": "invalid_params", "message": "BOSS 标识格式无效"}}
         args = ["recruiter", "resume-download", gid]
-        args += _opt("--job", job)
-        args += _opt("--security-id", security_id)
+        args += _opt("--job", safe_job)
+        args += _opt("--security-id", safe_security_id)
         args += ["-o", "-"]  # 输出到 stdout
         # resume-download 无 --json 选项，stdout 即 Markdown；下载不做截断
         return _run(args, timeout=60, want_json=False, cookies_override=cookies_override, truncate=False)
@@ -393,12 +445,19 @@ class BossService:
         cookies_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """查看候选人简历，返回格式化 Markdown（用于前端在线查看）。"""
-        gid = _safe_text(encrypt_geek_id, 64)
+        gid = _safe_external_id(encrypt_geek_id)
         if not gid:
             return {"ok": False, "data": None, "error": {"code": "invalid_params", "message": "encrypt_geek_id 不能为空"}}
+        safe_job = _safe_optional_external_id(job)
+        safe_security_id = _safe_optional_external_id(
+            security_id,
+            max_len=MAX_BOSS_SECURITY_ID_LENGTH,
+        )
+        if safe_job == "" or safe_security_id == "":
+            return {"ok": False, "data": None, "error": {"code": "invalid_params", "message": "BOSS 标识格式无效"}}
         args = ["recruiter", "resume-download", gid]
-        args += _opt("--job", job)
-        args += _opt("--security-id", security_id)
+        args += _opt("--job", safe_job)
+        args += _opt("--security-id", safe_security_id)
         args += ["-o", "-"]  # 输出到 stdout
         # 在线查看不做截断
         return _run(args, timeout=60, want_json=False, cookies_override=cookies_override, truncate=False)
@@ -409,7 +468,7 @@ class BossService:
 
     def recruiter_chat(self, friend_id: str, cookies_override: Optional[str] = None) -> Dict[str, Any]:
         """聊天记录。"""
-        fid = _safe_text(friend_id, 64)
+        fid = _safe_positive_numeric_id(friend_id)
         if not fid:
             return {"ok": False, "data": None, "error": {"code": "invalid_params", "message": "friend_id 不能为空"}}
         args = ["recruiter", "chat", fid]

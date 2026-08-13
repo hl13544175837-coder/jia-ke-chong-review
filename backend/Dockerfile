@@ -25,11 +25,26 @@ RUN for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sourc
             sed -i 's/security.debian.org/mirrors.aliyun.com/g' "$f"; \
         fi; \
     done && \
-    apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+    for attempt in 1 2 3; do \
+        timeout 180 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 update && \
+        timeout 180 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 install -y curl && break; \
+        if [ "$attempt" = 3 ]; then exit 1; fi; \
+        sleep 5; \
+    done && rm -rf /var/lib/apt/lists/*
 
 # Copy backend requirements first to leverage Docker cache
 COPY backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN timeout 900 pip install --no-cache-dir --retries 5 --timeout 60 \
+        -r /app/backend/requirements.txt \
+        -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    || { status=$?; \
+        if [ "$status" -eq 124 ]; then \
+            echo "Python 依赖安装超过 15 分钟，终止构建" >&2; \
+        fi; \
+        exit "$status"; \
+    }
 
 # Copy backend and base_agent modules
 COPY backend /app/backend

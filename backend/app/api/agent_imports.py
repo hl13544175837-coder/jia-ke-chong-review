@@ -3,14 +3,12 @@ from datetime import timedelta
 import jwt
 from flask import Blueprint, current_app, g, jsonify, request
 
-from .. import db
 from ..middleware.auth import (
     AGENT_IMPORT_SCOPE,
     require_agent_import_auth,
     require_auth,
     require_role,
 )
-from ..models import User
 from ..services.online_resume_service import (
     OnlineResumeService,
     OnlineResumeValidationError,
@@ -30,9 +28,7 @@ def create_agent_import_token():
         return jsonify({
             "error": "生成导入凭证不支持 Idempotency-Key",
         }), 400
-    user = db.session.get(User, g.user_id)
-    if user is None or not user.is_active or user.role != "recruiter":
-        return jsonify({"error": "Forbidden"}), 403
+    user = g.authenticated_user
 
     issued_at = utc_now()
     expires_at = issued_at + timedelta(

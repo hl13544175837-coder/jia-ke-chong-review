@@ -6,6 +6,7 @@ This script is read-only. It never prints secret values and never writes .env.
 
 import argparse
 import fnmatch
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -120,11 +121,31 @@ def _valid_persistent_directory(value: str | None) -> bool:
     path = Path(raw).expanduser()
     if not path.is_absolute():
         return False
-    normalized = path.as_posix().rstrip("/")
-    return not any(
-        normalized == temporary or normalized.startswith(temporary + "/")
-        for temporary in ("/tmp", "/private/tmp", "/var/tmp")
-    )
+    try:
+        normalized = path.resolve(strict=False)
+        rejected_roots = {
+            Path(temporary).resolve(strict=False)
+            for temporary in (
+                "/tmp",
+                "/private/tmp",
+                "/var/tmp",
+                "/dev",
+                "/proc",
+                "/run",
+                "/sys",
+            )
+        }
+    except OSError:
+        return False
+    if any(
+        normalized == temporary or temporary in normalized.parents
+        for temporary in rejected_roots
+    ):
+        return False
+    try:
+        return normalized.is_dir() and os.access(normalized, os.W_OK | os.X_OK)
+    except OSError:
+        return False
 
 
 def _valid_gateway_role_map(value: str | None) -> bool:
@@ -216,11 +237,7 @@ def run_checks(
         CheckResult("RATE_LIMIT_RESUME_UPLOAD", _is_positive_int(values.get("RATE_LIMIT_RESUME_UPLOAD")), "必须显式配置正整数"),
         CheckResult(
             "BACKUP_DIR",
-            (
-                _valid_persistent_directory(values.get("BACKUP_DIR"))
-                if is_sit_team
-                else bool(values.get("BACKUP_DIR", "").strip())
-            ),
+            _valid_persistent_directory(values.get("BACKUP_DIR")),
             "必须配置非临时目录的绝对服务器备份路径",
         ),
         CheckResult(

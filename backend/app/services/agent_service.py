@@ -353,6 +353,8 @@ def _tool_web_search(query: str = "", max_results: int = 5, **_) -> Dict[str, An
     query = (query or "").strip()
     if not query:
         return {"error": "搜索关键词不能为空"}
+    if query.startswith("-"):
+        return {"error": "搜索关键词格式无效"}
     if not current_app.config.get("AGENT_WEB_SEARCH_ENABLED", False):
         return {"error": "联网搜索未启用"}
     if _web_search_is_sensitive(query):

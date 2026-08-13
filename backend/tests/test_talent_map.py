@@ -150,6 +150,63 @@ def test_talent_map_can_save_companies_people_and_filter_by_company(client, make
     assert listed.get_json()[0]["id"] == talent_map["id"]
 
 
+def test_talent_map_filters_treat_sql_like_wildcards_as_literal_text(
+    client, make_user, app
+):
+    hr_id, token = make_user(
+        "talent-map-like-escape@example.com",
+        role="recruiter",
+        name="地图HR",
+    )
+    with app.app_context():
+        talent_map = TalentMap(org_id=1, name="通配符地图", owner_hr_id=hr_id)
+        db.session.add(talent_map)
+        db.session.flush()
+        literal_company = TalentMapCompany(
+            org_id=1,
+            map_id=talent_map.id,
+            company_name="增长100%公司",
+        )
+        ordinary_company = TalentMapCompany(
+            org_id=1,
+            map_id=talent_map.id,
+            company_name="增长100X公司",
+        )
+        db.session.add_all([literal_company, ordinary_company])
+        db.session.flush()
+        db.session.add_all([
+            TalentMapPerson(
+                org_id=1,
+                map_id=talent_map.id,
+                company_id=literal_company.id,
+                owner_hr_id=hr_id,
+                name="百分号候选人",
+                tags=[],
+            ),
+            TalentMapPerson(
+                org_id=1,
+                map_id=talent_map.id,
+                company_id=ordinary_company.id,
+                owner_hr_id=hr_id,
+                name="普通候选人",
+                tags=[],
+            ),
+        ])
+        db.session.commit()
+        map_id = talent_map.id
+
+    response = client.get(
+        f"/api/talent-maps/{map_id}",
+        query_string={"company": "%"},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.get_json()["people"]] == [
+        "百分号候选人"
+    ]
+
+
 def test_talent_maps_are_scoped_to_owner_unless_manager_or_admin(client, make_user, app):
     owner_id, owner_token = make_user("talent-owner@example.com", role="recruiter", name="地图负责人")
     _, other_token = make_user("talent-other@example.com", role="recruiter", name="其他HR")

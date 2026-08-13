@@ -252,7 +252,7 @@ gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --keep-alive 5 "run:app"
 
 | P0 模型/表 | 关键字段或约束 | 唯一 Owner 语义 |
 |---|---|---|
-| `RecruitmentDemand` / `recruitment_demands` | `org_id`, `job_id`, `job_title_snapshot`, `jd_text_snapshot`, `city`, `department`, `headcount`, `owner_hr_id`, `default_interviewer_id`, `request_no`, `created_by`, `requested_at`, `accepted_at`, `target_date`, `status`, `closed_at`, `closed_by`, `close_reason`；`(org_id, request_no)` 唯一 | 具体招聘任务；同一 Job 允许并行或历史多个 Demand，Demand 状态不反向改写 Job 状态；默认面试官只是后续安排初值 |
+| `RecruitmentDemand` / `recruitment_demands` | `org_id`, `job_id`, `job_title_snapshot`, `jd_text_snapshot`, `city`, `department`, `headcount`, `owner_hr_id`, `default_interviewer_id`, `request_no`, `created_by`, `requested_at`, `accepted_at`, `target_date`, `status`, `closed_at`, `closed_by`, `close_reason`；`(org_id, request_no)` 唯一；`headcount` 由服务层统一限制为 `1–10000` | 具体招聘任务；同一 Job 允许并行或历史多个 Demand，Demand 状态不反向改写 Job 状态；默认面试官只是后续安排初值 |
 | `Candidate` | 新增 `current_demand_id` | 候选人当前唯一活跃招聘流的快速定位指针，不替代历史流水 |
 | `CandidateDemandFlow` / `candidate_demand_flows` | `org_id`, `candidate_id`, `demand_id`, `owner_hr_id`, `status`, `started_at`, `ended_at`, `transfer_from_demand_id`, `transfer_reason`；唯一约束 `(org_id, candidate_id, demand_id)` | 候选人在某 Demand 下的应聘关系与活动状态；当前阶段从该 Demand 的最新 `PipelineStage` 取得，P0 仅允许一个 active flow |
 | 主流程与业务事实 | `pipeline_stages`, `interviews`, `interview_assignments`, `interview_feedback`, `offers`, `dispositions`, `events`, `notifications`, `upload_batches` 增加可回填的 `demand_id` | 所有业务事实在严格切换后按 Demand 归属；`job_id` 仅保留画像或兼容语义 |

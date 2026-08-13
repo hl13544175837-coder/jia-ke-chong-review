@@ -345,6 +345,16 @@ EXPECTED_FOREIGN_KEYS = {
     },
 }
 DEFAULT_INTERVIEWER_ROLES = {"interviewer", "manager", "admin"}
+DIRECT_DEMAND_FACT_SPECS = (
+    "business_review_tasks",
+    "notifications",
+    "upload_batches",
+    "online_resumes",
+)
+REQUIRED_DIRECT_DEMAND_FACTS = {
+    "business_review_tasks",
+    "online_resumes",
+}
 
 
 def _safe(value):
@@ -580,6 +590,14 @@ def verify_database(database_url):
                 for row in connection.execute(select(user_table)).mappings()
             }
 
+        offer_table = metadata.tables.get("offer_records")
+        offers = {}
+        if offer_table is not None:
+            offers = {
+                row["id"]: dict(row)
+                for row in connection.execute(select(offer_table)).mappings()
+            }
+
         for demand in demands.values():
             issues = []
             job = jobs.get(demand.get("job_id"))
@@ -689,6 +707,114 @@ def verify_database(database_url):
                         {
                             "table": table_name,
                             "record_id": context["record_id"],
+                            "demand_id": demand_id,
+                            "issues": issues,
+                        }
+                    )
+            unmapped_by_table[table_name] = unmapped
+
+        # Offer history is exposed together with an Offer. Validate its direct
+        # links independently because it does not carry the candidate/job pair
+        # used by the legacy fact audit above.
+        offer_event_table = metadata.tables.get("offer_events")
+        if offer_event_table is not None:
+            for event in connection.execute(select(offer_event_table)).mappings():
+                offer = offers.get(event.get("offer_id"))
+                issues = []
+                if offer is None:
+                    issues.append("orphan_offer")
+                elif offer.get("org_id", 1) != event.get("org_id", 1):
+                    issues.append("offer_org_mismatch")
+                actor_id = event.get("actor_id")
+                if actor_id is not None:
+                    actor = users.get(actor_id)
+                    if actor is None:
+                        issues.append("orphan_actor")
+                    elif actor.get("org_id", 1) != event.get("org_id", 1):
+                        issues.append("actor_org_mismatch")
+                if issues:
+                    mismatches.append(
+                        {
+                            "table": "offer_events",
+                            "record_id": event.get("id"),
+                            "demand_id": offer.get("demand_id") if offer else None,
+                            "issues": issues,
+                        }
+                    )
+
+        # These records belong directly to a Demand but do not carry the
+        # candidate/job pair used by the legacy backfill audit. They still
+        # must be checked for null, orphaned and cross-organization links.
+        for table_name in DIRECT_DEMAND_FACT_SPECS:
+            table = metadata.tables.get(table_name)
+            if table is None or "demand_id" not in table.c:
+                continue
+            unmapped = 0
+            for row in connection.execute(select(table)).mappings():
+                demand_id = row.get("demand_id")
+                if demand_id is None:
+                    if table_name in REQUIRED_DIRECT_DEMAND_FACTS:
+                        unmapped += 1
+                issues = []
+                if demand_id is not None:
+                    demand = demands.get(demand_id)
+                    if demand is None:
+                        issues.append("orphan_demand")
+                    elif demand.get("org_id", 1) != row.get("org_id", 1):
+                        issues.append("org_mismatch")
+                if table_name == "online_resumes":
+                    owner = users.get(row.get("owner_hr_id"))
+                    if owner is None:
+                        issues.append("orphan_owner")
+                    elif owner.get("org_id", 1) != row.get("org_id", 1):
+                        issues.append("owner_org_mismatch")
+                elif table_name == "business_review_tasks":
+                    candidate = candidates.get(row.get("candidate_id"))
+                    if candidate is None:
+                        issues.append("orphan_candidate")
+                    elif candidate.get("org_id", 1) != row.get("org_id", 1):
+                        issues.append("candidate_org_mismatch")
+                    for field_name, issue_prefix in (
+                        ("reviewer_id", "reviewer"),
+                        ("created_by", "created_by"),
+                        ("decided_by", "decided_by"),
+                    ):
+                        user_id = row.get(field_name)
+                        if user_id is None:
+                            if field_name != "decided_by":
+                                issues.append(f"orphan_{issue_prefix}")
+                            continue
+                        user = users.get(user_id)
+                        if user is None:
+                            issues.append(f"orphan_{issue_prefix}")
+                        elif user.get("org_id", 1) != row.get("org_id", 1):
+                            issues.append(f"{issue_prefix}_org_mismatch")
+                elif table_name == "notifications":
+                    user = users.get(row.get("user_id"))
+                    if user is None:
+                        issues.append("orphan_user")
+                    elif user.get("org_id", 1) != row.get("org_id", 1):
+                        issues.append("user_org_mismatch")
+                elif table_name == "upload_batches":
+                    owner_id = row.get("owner_hr_id")
+                    if owner_id is not None:
+                        owner = users.get(owner_id)
+                        if owner is None:
+                            issues.append("orphan_owner")
+                        elif owner.get("org_id", 1) != row.get("org_id", 1):
+                            issues.append("owner_org_mismatch")
+                    target_job_id = row.get("target_job_id")
+                    if target_job_id is not None:
+                        target_job = jobs.get(target_job_id)
+                        if target_job is None:
+                            issues.append("orphan_target_job")
+                        elif target_job.get("org_id", 1) != row.get("org_id", 1):
+                            issues.append("target_job_org_mismatch")
+                if issues:
+                    mismatches.append(
+                        {
+                            "table": table_name,
+                            "record_id": row.get("id"),
                             "demand_id": demand_id,
                             "issues": issues,
                         }

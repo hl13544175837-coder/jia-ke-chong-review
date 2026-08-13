@@ -6,6 +6,7 @@ handlers should not reconstruct these business rules independently.
 
 from datetime import date, datetime, time
 from math import ceil
+import re
 from uuid import uuid4
 
 from sqlalchemy import and_, case, func, or_
@@ -13,6 +14,7 @@ from sqlalchemy.orm import aliased
 
 from .. import db
 from ..models import Candidate, Job, PipelineStage, RecruitmentDemand, User
+from ..sql_safety import LIKE_ESCAPE_CHAR, escape_like_literal
 from ..time_utils import utc_now
 from .demand_context_service import validate_recruiter_owner
 from .headcount_service import build_headcount_state
@@ -22,6 +24,7 @@ from .job_profile_service import extract_jd_structured
 PRIORITIES = {"A", "B", "C"}
 OPEN_STATUSES = {"pending", "active", "paused"}
 ALL_STATUSES = OPEN_STATUSES | {"filled", "cancelled", "closed"}
+MAX_DEMAND_HEADCOUNT = 10_000
 INTERVIEW_PROGRESS_STAGES = {
     "interview",
     "interview_first",
@@ -76,9 +79,13 @@ def parse_date(value):
 
 
 def _positive_int(value):
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and re.fullmatch(r"[0-9]+", value.strip()):
+        parsed = int(value.strip())
+    else:
         return None
     return parsed if parsed > 0 else None
 
@@ -137,6 +144,10 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
         fields["requester_department"] = "请填写用人部门"
     if headcount is None:
         fields["headcount"] = "HC 必须是大于 0 的整数"
+    elif headcount > MAX_DEMAND_HEADCOUNT:
+        fields["headcount"] = (
+            f"单条招聘需求的 HC 不能超过 {MAX_DEMAND_HEADCOUNT}"
+        )
     if requested_at is None:
         fields["requested_at"] = "请选择提需求日期"
     if not hiring_manager_name:
@@ -351,6 +362,10 @@ def apply_editable_fields(demand, data, *, org_id):
         value = _positive_int(data.get("headcount"))
         if value is None:
             fields["headcount"] = "HC 必须是大于 0 的整数"
+        elif value > MAX_DEMAND_HEADCOUNT:
+            fields["headcount"] = (
+                f"单条招聘需求的 HC 不能超过 {MAX_DEMAND_HEADCOUNT}"
+            )
         else:
             demand.headcount = value
     if "jd_text" in data:
@@ -662,13 +677,13 @@ def apply_list_filters(query, args):
 
     keyword = clean_text(args.get("q"), 120)
     if keyword:
-        pattern = f"%{keyword}%"
+        pattern = f"%{escape_like_literal(keyword)}%"
         query = query.filter(
             or_(
-                RecruitmentDemand.request_no.ilike(pattern),
-                RecruitmentDemand.job_title_snapshot.ilike(pattern),
-                RecruitmentDemand.requester_name.ilike(pattern),
-                RecruitmentDemand.hiring_manager_name.ilike(pattern),
+                RecruitmentDemand.request_no.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                RecruitmentDemand.job_title_snapshot.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                RecruitmentDemand.requester_name.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                RecruitmentDemand.hiring_manager_name.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
             )
         )
 
