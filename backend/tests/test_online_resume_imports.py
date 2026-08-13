@@ -879,8 +879,66 @@ def test_recruiter_cannot_import_into_another_recruiters_demand(
     response = _import_one(client, other_token, _item(demand_id))
     assert response.status_code == 200
     assert response.get_json()["failed"] == 1
-    assert response.get_json()["results"][0]["error"] == "需求(1)不可用，且当前账号名下没有其他可导入的招聘需求"
+    assert response.get_json()["results"][0]["error"] == (
+        "需求(1)不可用或无权导入，请选择当前账号可管理的招聘需求"
+    )
 
+    with app.app_context():
+        from app.models import OnlineResume
+
+        assert OnlineResume.query.count() == 0
+
+
+def test_online_resume_import_requires_an_explicit_demand(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-explicit-demand@x.com")
+    _make_demand(app, owner_id, "REQ-ONLINE-EXPLICIT")
+    item = _item(None, "missing-explicit-demand")
+    item.pop("demand_id")
+
+    response = _import_one(client, token, item)
+
+    assert response.status_code == 200
+    assert response.get_json()["created"] == 0
+    assert response.get_json()["failed"] == 1
+    assert response.get_json()["results"][0]["error"] == (
+        "在线简历导入必须指定明确的招聘需求"
+    )
+    with app.app_context():
+        from app.models import OnlineResume
+
+        assert OnlineResume.query.count() == 0
+
+
+def test_invalid_demand_never_falls_back_to_another_manageable_demand(
+    app,
+    client,
+    make_user,
+):
+    owner_id, token = make_user("online-no-demand-fallback@x.com")
+    _make_demand(app, owner_id, "REQ-ONLINE-OWN")
+    foreign_owner_id, _ = make_user("online-no-demand-fallback-foreign@x.com")
+    foreign_demand_id = _make_demand(
+        app,
+        foreign_owner_id,
+        "REQ-ONLINE-FOREIGN-EXPLICIT",
+    )
+
+    response = _import_one(
+        client,
+        token,
+        _item(foreign_demand_id, "foreign-demand-must-fail"),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["created"] == 0
+    assert response.get_json()["failed"] == 1
+    assert response.get_json()["results"][0]["error"] == (
+        f"需求({foreign_demand_id})不可用或无权导入，请选择当前账号可管理的招聘需求"
+    )
     with app.app_context():
         from app.models import OnlineResume
 
@@ -1176,6 +1234,24 @@ def test_import_accepts_normal_structured_fields(app, client, make_user):
         "target_position": "Java 开发工程师",
         "salary_expectation": "20-30K",
         "location": "上海",
+    })
+
+    response = _import_one(client, token, item)
+
+    assert response.status_code == 200
+    assert response.get_json()["created"] == 1
+
+
+def test_import_accepts_boss_salary_unit_before_separator(
+    app, client, make_user
+):
+    owner_id, token = make_user("online-quality-boss-salary@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-QUALITY-BOSS-SALARY")
+    item = _item(demand_id, "boss-salary")
+    item["resume_json"]["extracted_info"].update({
+        "target_position": "Python工程师",
+        "salary_expectation": "25K-35K",
+        "location": "北京",
     })
 
     response = _import_one(client, token, item)

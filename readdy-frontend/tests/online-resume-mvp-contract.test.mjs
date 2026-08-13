@@ -90,6 +90,24 @@ test('历史在线简历关联需求缺失时仍能安全展示', async () => {
   );
 });
 
+test('BOSS 常见薪资区间不会被误标为疑似异常数据', async () => {
+  const { suspiciousResumeFields } = await import('../src/features/onlineResumes/quality.ts');
+
+  assert.deepEqual(
+    suspiciousResumeFields({
+      target_position: 'Python工程师',
+      salary_expectation: '25K-35K',
+      location: '北京',
+      summary: '5年Python经验',
+    }),
+    [],
+  );
+  assert.deepEqual(
+    suspiciousResumeFields({ salary_expectation: '30K-4350K' }),
+    ['salary_expectation'],
+  );
+});
+
 test('聊天发送方兼容未知值且来源链接安全打开', () => {
   const types = readOptional(files.types);
   const detail = readOptional(files.detail);

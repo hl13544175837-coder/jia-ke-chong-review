@@ -115,10 +115,9 @@ class OnlineResumeService:
     ) -> dict:
         """Create or update by (org, owner, platform, external_record_id).
 
-        支持极简导入：外部 Agent 只需提供 name + 基本信息（phone/position/
-        resume_text 等），demand_id / external_record_id / resume_json 均可省略，
-        系统自动补全；需求 ID 填错或未填时自动归入当前账号首个可管理需求，
-        不因需求归属报错。
+        支持轻量导入：外部 Agent 提供 name、明确的 demand_id 和基本信息
+        （phone/position/resume_text 等）；external_record_id / resume_json 可省略，
+        系统自动补全。需求缺失、不可用或无权管理时逐条拒绝，绝不猜测归属。
         """
 
         if not isinstance(items, list):
@@ -572,11 +571,7 @@ class OnlineResumeService:
         role: str,
         demand_id: int | None,
     ) -> tuple[RecruitmentDemand | None, str | None]:
-        """宽容解析需求：指定 ID 不可用/无权时自动回退到首个可管理需求。
-
-        返回 (demand, warning)；demand 为 None 表示账号下没有任何可导入需求，
-        warning 描述原因（可直接展示给调用方/外部 Agent）。
-        """
+        """严格解析需求，避免简历被静默归入不相关的招聘需求。"""
         if demand_id is not None and demand_id > 0:
             try:
                 demand = resolve_demand_context(
@@ -590,47 +585,10 @@ class OnlineResumeService:
                 owner_hr_id, role, org_id, demand
             ):
                 return demand, None
-            auto = self._first_manageable_demand(
-                org_id=org_id,
-                owner_hr_id=owner_hr_id,
-                role=role,
-            )
-            if auto is not None:
-                return auto, (
-                    f"需求({demand_id})不可用或无权导入，"
-                    f"已自动归入 {auto.request_no}"
-                )
             return None, (
-                f"需求({demand_id})不可用，且当前账号名下没有其他可导入的招聘需求"
+                f"需求({demand_id})不可用或无权导入，请选择当前账号可管理的招聘需求"
             )
-        auto = self._first_manageable_demand(
-            org_id=org_id,
-            owner_hr_id=owner_hr_id,
-            role=role,
-        )
-        if auto is not None:
-            return auto, None
-        return None, "当前账号名下没有可导入的招聘需求，请先创建需求或联系管理员"
-
-    def _first_manageable_demand(
-        self,
-        *,
-        org_id: int,
-        owner_hr_id: int,
-        role: str,
-    ) -> RecruitmentDemand | None:
-        demands = (
-            RecruitmentDemand.query.filter_by(org_id=org_id, status="active")
-            .order_by(RecruitmentDemand.id.asc())
-            .all()
-        )
-        for demand in demands:
-            try:
-                if can_manage_demand(owner_hr_id, role, org_id, demand):
-                    return demand
-            except Exception:
-                continue
-        return None
+        return None, "在线简历导入必须指定明确的招聘需求"
 
     def _validate_import_item(self, item: dict) -> dict:
         if not isinstance(item, dict):
@@ -644,7 +602,7 @@ class OnlineResumeService:
         if not display_name:
             raise OnlineResumeValidationError("候选人姓名不能为空")
 
-        # demand_id 可选：空/0/非法都不直接报错，交给 _resolve_manageable_demand 宽容处理
+        # demand_id 必须明确传入；禁止静默猜测需求，以免候选人进入错误流程。
         demand_id: int | None = None
         raw_demand_id = item.get("demand_id")
         if raw_demand_id not in (None, "", 0):

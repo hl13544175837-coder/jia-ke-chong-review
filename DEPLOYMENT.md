@@ -661,7 +661,7 @@ MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录 Demand/�
 
 ---
 
-外部 Agent 通过 `/api/agent-imports/online-resumes` 或 `/api/agent-imports/full-resumes` 单向推送数据。前者写独立 `online_resumes` 表并保留完整聊天快照，后者复用现有完整简历上传与候选人库。智聘不会启动、选择或控制 Agent；两个库不自动关联、搬移、覆盖或删除。
+外部 Agent 通过 `/api/agent-imports/online-resumes` 或 `/api/agent-imports/full-resumes` 单向推送数据。前者写独立 `online_resumes` 表并保留完整聊天快照，后者复用现有完整简历上传与候选人库。两条导入都必须明确携带当前账号有权管理的 active `demand_id`；缺失、无效或越权时逐条拒绝，禁止自动选择任意需求。智聘不会启动、选择或控制 Agent；两个库不自动关联、搬移、覆盖或删除。
 
 ## 10. 常见问题
 

@@ -27,7 +27,10 @@ def invalid_salary_value(value: str) -> bool:
         return False
     if not any(pattern.match(stripped) for pattern in _SALARY_VALID_PATTERNS):
         return True
-    match = re.match(r"^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)", stripped)
+    match = re.match(
+        r"^(\d+(?:\.\d+)?)\s*[kKwW万]?\s*-\s*(\d+(?:\.\d+)?)",
+        stripped,
+    )
     if match:
         low = float(match.group(1))
         high = float(match.group(2))

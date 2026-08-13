@@ -2,7 +2,7 @@ export type SuspiciousResumeField = 'target_position' | 'salary_expectation' | '
 
 const SALARY_PATTERNS = [
   /^面议$/,
-  /^\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*[kKwW万]/,
+  /^\d+(\.\d+)?\s*[kKwW万]?\s*-\s*\d+(\.\d+)?\s*[kKwW万]/,
   /^\d+(\.\d+)?\s*[kKwW万]\s*[×x*]\s*\d+\s*薪$/,
 ];
 
@@ -15,7 +15,7 @@ function invalidSalary(value: string): boolean {
   const stripped = value.trim();
   if (!stripped) return false;
   if (!SALARY_PATTERNS.some((pattern) => pattern.test(stripped))) return true;
-  const match = /^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/.exec(stripped);
+  const match = /^(\d+(?:\.\d+)?)\s*[kKwW万]?\s*-\s*(\d+(?:\.\d+)?)/.exec(stripped);
   if (match) {
     const low = Number(match[1]);
     const high = Number(match[2]);
