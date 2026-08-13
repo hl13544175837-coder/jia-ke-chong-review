@@ -413,3 +413,53 @@ def test_update_candidate_profile_refreshes_related_job_matches(client, make_use
         {"id": pipeline_job_id, "title": "增长产品经理"},
     ]
     assert called_job_ids == [source_job_id, pipeline_job_id]
+
+
+def test_update_candidate_profile_skips_match_model_when_resume_ai_is_disabled(
+    client, make_user, app, monkeypatch
+):
+    uid, token = make_user("profile-manual-only@x.com", role="recruiter")
+    app.config["RESUME_AI_ENABLED"] = False
+    with app.app_context():
+        from app import db
+        from app.models import Candidate, Job, PipelineStage
+
+        job = Job(title="人工补录岗位", jd_text="x", owner_hr_id=uid)
+        db.session.add(job)
+        db.session.flush()
+        candidate = Candidate(
+            owner_hr_id=uid,
+            name_masked="待补录候选人",
+            resume_json={"extracted_info": {}},
+        )
+        db.session.add(candidate)
+        db.session.flush()
+        db.session.add(PipelineStage(
+            candidate_id=candidate.id,
+            job_id=job.id,
+            stage="pending",
+            updated_by=uid,
+        ))
+        db.session.commit()
+        candidate_id = candidate.id
+
+    model_calls = []
+
+    def track_model_call(*args, **kwargs):
+        model_calls.append((args, kwargs))
+        return []
+
+    monkeypatch.setattr(
+        "app.services.match_service.MatchService.rank_for_job",
+        track_model_call,
+    )
+
+    response = client.patch(
+        f"/api/resume/{candidate_id}/profile",
+        headers=_auth(token),
+        json={"profile": {"name": "人工补录候选人", "summary": "已补录"}},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["rematched_jobs"] == []
+    assert model_calls == []

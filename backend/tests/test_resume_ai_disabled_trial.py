@@ -88,3 +88,72 @@ def test_trial_retry_does_not_call_model_when_resume_ai_is_disabled(
     assert body["error"] == (
         "当前测试环境未启用模型解析，原始简历已保留，请手动补录基础信息。"
     )
+
+
+def test_trial_upload_with_target_demand_enters_pipeline_when_ai_is_disabled(
+    client, make_user, app, tmp_path
+):
+    owner_id, token = make_user("manual-resume-demand@example.com", role="recruiter")
+    app.config.update(RESUME_AI_ENABLED=False, UPLOAD_FOLDER=str(tmp_path))
+    with app.app_context():
+        from app import db
+        from app.models import Job, RecruitmentDemand
+
+        job = Job(org_id=1, owner_hr_id=owner_id, title="人工补录岗位", jd_text="x")
+        db.session.add(job)
+        db.session.flush()
+        demand = RecruitmentDemand(
+            org_id=1,
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no="REQ-MANUAL-RESUME",
+            status="active",
+        )
+        db.session.add(demand)
+        db.session.commit()
+        demand_id = demand.id
+
+    response = client.post(
+        "/api/resume/upload",
+        headers=_auth(token),
+        data={
+            "files": (io.BytesIO(b"%PDF-1.4 manual demand"), "manual-demand.pdf"),
+            "target_demand_id": str(demand_id),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 202
+    result = response.get_json()["results"][0]
+    assert result["status"] == "needs_confirmation"
+    assert result["target_demand_id"] == demand_id
+    assert result["pipeline_joined"] is False
+    assert result["pipeline_pending_confirmation"] is True
+    candidate_id = result["candidate_id"]
+    before_confirmation = client.get(
+        f"/api/pipeline/demands/{demand_id}/board",
+        headers=_auth(token),
+    ).get_json()
+    assert all(
+        item["candidate_id"] != candidate_id
+        for item in before_confirmation["candidates"]
+    )
+
+    confirmed = client.patch(
+        f"/api/resume/{candidate_id}/profile",
+        headers=_auth(token),
+        json={"profile": {"name": "人工补录候选人", "summary": "已确认原件"}},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.get_json()["pipeline_joined"] is True
+    assert confirmed.get_json()["pipeline_stage"] == "pending"
+    board = client.get(
+        f"/api/pipeline/demands/{demand_id}/board",
+        headers=_auth(token),
+    ).get_json()
+    row = next(
+        item
+        for item in board["candidates"]
+        if item["candidate_id"] == candidate_id
+    )
+    assert row["stage"] == "pending"

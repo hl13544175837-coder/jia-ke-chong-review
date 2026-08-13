@@ -154,6 +154,9 @@ def _related_jobs_for_candidate(candidate):
 
 
 def _refresh_related_job_matches(candidate):
+    if not current_app.config.get("RESUME_AI_ENABLED", True):
+        return []
+
     from ..match_service import MatchService
 
     jobs = _related_jobs_for_candidate(candidate)
@@ -284,13 +287,21 @@ def _process_resume(
             demand_id=target_demand_id,
             payload={"file": display_name, "reason": "resume_ai_disabled"},
         )
-        results.append({
+        result = {
             "file": display_name,
             "status": "needs_confirmation",
             "candidate_id": candidate.id,
             "reason": RESUME_AI_DISABLED_MESSAGE,
             "parse_error": RESUME_AI_DISABLED_MESSAGE,
-        })
+        }
+        if target_demand_id:
+            result.update({
+                "target_demand_id": target_demand_id,
+                "target_job_id": target_job_id,
+                "pipeline_joined": False,
+                "pipeline_pending_confirmation": True,
+            })
+        results.append(result)
         return
 
     if current_app.config.get("RESUME_PARSE_ASYNC_ENABLED", True):

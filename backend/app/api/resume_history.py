@@ -31,9 +31,11 @@ def register_resume_history_routes(bp):
     )
     from ..services.resumes.parse_service import (
         RESUME_AI_DISABLED_MESSAGE,
+        _add_to_target_pipeline,
         _duplicate_upload_result,
         _refresh_related_job_matches,
     )
+    from ..services.pipeline_service import PipelineServiceError
     from ..services.resumes.version_service import (
         _actionable_parse_failure_message,
         _archive_current_resume,
@@ -367,19 +369,48 @@ def register_resume_history_routes(bp):
         svc = ResumeBatchService()
         candidate = svc.update_candidate_profile(candidate, profile, skills)
         rematched_jobs = _refresh_related_job_matches(candidate)
+        pipeline_result = {}
+        target_demand_id = None
+        if candidate.upload_batch_id:
+            from ..models import UploadBatch
+
+            batch = db.session.get(UploadBatch, candidate.upload_batch_id)
+            if batch is not None and batch.org_id == g.org_id and batch.demand_id:
+                target_demand_id = batch.demand_id
+                try:
+                    joined = _add_to_target_pipeline(candidate, target_demand_id)
+                except PipelineServiceError as error:
+                    pipeline_result = {
+                        "target_demand_id": target_demand_id,
+                        "target_job_id": batch.target_job_id,
+                        "pipeline_joined": False,
+                        "pipeline_error": error.message,
+                        "pipeline_error_code": error.code,
+                    }
+                else:
+                    pipeline_result = {
+                        "target_demand_id": target_demand_id,
+                        "target_job_id": batch.target_job_id,
+                        "pipeline_joined": True,
+                        "pipeline_deduplicated": not joined,
+                        "pipeline_stage": "pending",
+                    }
         record_event(
             "resume.profile_updated",
             entity_id=candidate.id,
             entity_type="candidate",
+            demand_id=target_demand_id,
             payload={
                 "actor_id": g.user_id,
                 "fields": sorted(profile.keys()),
                 "rematched_job_ids": [job["id"] for job in rematched_jobs],
+                "pipeline_joined": pipeline_result.get("pipeline_joined"),
             },
         )
         return jsonify({
             **_resume_detail_payload(candidate),
             "rematched_jobs": rematched_jobs,
+            **pipeline_result,
         })
 
 
