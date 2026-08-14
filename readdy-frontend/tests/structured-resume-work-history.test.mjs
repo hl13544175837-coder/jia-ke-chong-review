@@ -59,3 +59,13 @@ test('工作经历段落使用专用整体卡片而不是通用字段宫格', as
   assert.match(source, /section\.key === 'work'/);
   assert.match(source, /<WorkHistoryValue value=\{section\.value\}/);
 });
+
+test('结构化简历先展示顶部概览再让长内容使用整行宽度', async () => {
+  const source = await readFile(new URL('../src/components/candidates/StructuredResumeView.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /data-ui="resume-overview-grid"/);
+  assert.match(source, /data-ui="resume-main-sections"/);
+  assert.doesNotMatch(source, /lg:grid-cols-3/);
+  assert.doesNotMatch(source, /lg:col-span-2/);
+  assert.doesNotMatch(source, /<aside/);
+});
