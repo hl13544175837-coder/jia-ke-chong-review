@@ -360,6 +360,80 @@ def test_update_candidate_profile_syncs_resume_fields_and_tags(client, make_user
     assert detail["tags"][0]["tag"] == "Python"
 
 
+def test_update_candidate_profile_preserves_existing_offer_stage(client, make_user, app):
+    owner_id, token = make_user("profile-offer-stage@x.com", role="recruiter")
+    with app.app_context():
+        from app import db
+        from app.models import (
+            Candidate,
+            CandidateDemandFlow,
+            Job,
+            PipelineStage,
+            RecruitmentDemand,
+            UploadBatch,
+        )
+
+        job = Job(title="招聘运营专员", jd_text="负责招聘流程", owner_hr_id=owner_id)
+        db.session.add(job)
+        db.session.flush()
+        demand = RecruitmentDemand(
+            job_id=job.id,
+            owner_hr_id=owner_id,
+            request_no="REQ-PROFILE-OFFER-STAGE",
+            job_title_snapshot=job.title,
+            status="active",
+        )
+        db.session.add(demand)
+        db.session.flush()
+        batch = UploadBatch(
+            owner_hr_id=owner_id,
+            target_job_id=job.id,
+            demand_id=demand.id,
+            source_channel="内推",
+        )
+        db.session.add(batch)
+        db.session.flush()
+        candidate = Candidate(
+            owner_hr_id=owner_id,
+            current_demand_id=demand.id,
+            upload_batch_id=batch.id,
+            name_masked="流程中候选人",
+            resume_json={"extracted_info": {"name": "流程中候选人"}},
+        )
+        db.session.add(candidate)
+        db.session.flush()
+        db.session.add(CandidateDemandFlow(
+            candidate_id=candidate.id,
+            demand_id=demand.id,
+            owner_hr_id=owner_id,
+            status="active",
+        ))
+        db.session.add(PipelineStage(
+            candidate_id=candidate.id,
+            demand_id=demand.id,
+            job_id=job.id,
+            stage="offer",
+            updated_by=owner_id,
+        ))
+        db.session.commit()
+        candidate_id = candidate.id
+        demand_id = demand.id
+
+    response = client.patch(
+        f"/api/resume/{candidate_id}/profile",
+        headers=_auth(token),
+        json={"profile": {"name": "流程中候选人", "summary": "补全简历资料"}},
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        stages = PipelineStage.query.filter_by(
+            candidate_id=candidate_id,
+            demand_id=demand_id,
+        ).order_by(PipelineStage.id.asc()).all()
+        assert [stage.stage for stage in stages] == ["offer"]
+
+
 def test_update_candidate_profile_requires_owner_permission(client, make_user, app):
     owner_id, _owner_token = make_user("profile-owner@x.com", role="recruiter")
     _other_id, other_token = make_user("profile-other@x.com", role="recruiter")

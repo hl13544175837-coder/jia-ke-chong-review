@@ -92,6 +92,7 @@ backendCriticalBusiness:
       backend/tests/test_interview_reschedule_workflow.py
       backend/tests/test_resume_recovery_workflow.py
       backend/tests/test_resume_parse_retry.py::test_empty_parse_result_is_not_marked_as_success
+      backend/tests/test_resume_parse_retry.py::test_update_candidate_profile_preserves_existing_offer_stage
       backend/tests/test_talent_map.py::test_talent_map_can_save_companies_people_and_filter_by_company
       backend/tests/test_talent_map.py::test_talent_maps_are_scoped_to_owner_unless_manager_or_admin
       backend/tests/test_talent_map.py::test_talent_map_organization_can_keep_empty_roles_and_rename_existing_people
