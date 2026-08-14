@@ -156,6 +156,34 @@ def test_empty_document_resume_returns_empty_result_without_starting_workers():
     assert result.skills == []
 
 
+def test_empty_parse_result_is_not_marked_as_success(app, make_user, tmp_path):
+    from app.services.resume_service import ResumeBatchService
+
+    owner_id, _token = make_user("empty-parse@x.com", role="recruiter")
+    resume = tmp_path / "empty.pdf"
+    resume.write_bytes(b"%PDF-1.4 empty")
+
+    class EmptyParser:
+        def parse_resume(self, file_path):
+            assert Path(file_path) == resume
+            return {
+                "extracted_info": {},
+                "skills": [],
+                "parse_method": "vision",
+                "upload_date": "2026-08-13T15:58:37.305164",
+            }
+
+    with app.app_context():
+        candidate = ResumeBatchService(parser=EmptyParser()).parse_and_save(
+            str(resume),
+            owner_id,
+        )
+
+        assert candidate.parse_status == "failed"
+        assert candidate.resume_json == {}
+        assert candidate.parse_error == "简历解析结果为空，请重试或人工补录"
+
+
 def test_failed_resume_upload_keeps_retryable_candidate(client, make_user, app, monkeypatch, tmp_path):
     uid, token = make_user("retry-upload@x.com", role="recruiter")
 

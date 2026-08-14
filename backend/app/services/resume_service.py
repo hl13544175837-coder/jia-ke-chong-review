@@ -319,6 +319,23 @@ class ResumeBatchService:
 
     def _apply_parse_result(self, candidate: Candidate, result: dict) -> None:
         info = result.get("extracted_info", {}) if isinstance(result, dict) else {}
+        skills = result.get("skills", []) if isinstance(result, dict) else []
+        has_profile_content = isinstance(info, dict) and any(
+            value is not None
+            and value != ""
+            and (not isinstance(value, (list, dict)) or bool(value))
+            for value in info.values()
+        )
+        has_skill_content = isinstance(skills, list) and any(
+            isinstance(item, dict)
+            and str(item.get("skill_name") or item.get("tag") or "").strip()
+            for item in skills
+        )
+        if not has_profile_content and not has_skill_content:
+            candidate.resume_json = {}
+            candidate.parse_status = "failed"
+            candidate.parse_error = "简历解析结果为空，请重试或人工补录"
+            return
         # 质量校验: 抽取字段疑似异常时标记失败,不写入 ok 状态(防止脏数据进简历库)
         issues = check_extracted_quality(info)
         if issues:

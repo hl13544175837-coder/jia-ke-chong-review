@@ -69,3 +69,15 @@ test('结构化简历先展示顶部概览再让长内容使用整行宽度', as
   assert.doesNotMatch(source, /lg:col-span-2/);
   assert.doesNotMatch(source, /<aside/);
 });
+
+test('只有解析器元数据时不应伪装成结构化简历内容', async () => {
+  const helperPath = new URL('../src/components/candidates/resumePresentation.ts', import.meta.url);
+  const { buildResumeSections } = await jiti.import(helperPath.href);
+
+  assert.deepEqual(buildResumeSections({
+    extracted_info: {},
+    skills: [],
+    parse_method: 'vision',
+    upload_date: '2026-08-13T15:58:37.305164',
+  }), []);
+});
