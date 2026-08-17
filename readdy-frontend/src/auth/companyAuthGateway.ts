@@ -231,6 +231,7 @@ export function createCompanyAuthGateway(config: CompanyAuthGatewayConfig) {
       const resolved = await resolveSession(session.token, session.empCode, session.role);
       return {
         ...session,
+        name: GATEWAY_DISPLAY_NAME_BY_EMP_CODE[session.empCode] ?? session.name,
         user_id: resolved.userId,
         role: resolved.role,
       };

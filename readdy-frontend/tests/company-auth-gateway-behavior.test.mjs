@@ -124,6 +124,24 @@ test('恢复旧登录状态时重新读取菜单和后端角色', async () => {
   assert.equal(restored.user_id, 42);
 });
 
+test('恢复旧登录状态时按工号刷新业务显示名', async () => {
+  const { gateway } = gatewayScenario({
+    menuCodes: ['dashboard_interviewer'],
+    backendRole: 'interviewer',
+    profile: { empName: '测试管理员', ymEmpCode: '100000' },
+  });
+
+  const restored = await gateway.revalidate({
+    token: 'company-token',
+    empCode: '100000',
+    user_id: 7,
+    role: 'interviewer',
+    name: '测试管理员',
+  });
+
+  assert.equal(restored.name, '面试官02');
+});
+
 test('恢复旧登录状态遇到后端拒绝时不保留旧身份', async () => {
   const { gateway } = gatewayScenario({
     menuCodes: ['dashboard_interviewer'],
