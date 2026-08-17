@@ -27,13 +27,15 @@ export interface DemandRowActions {
 }
 
 export function buildDemandRowActions(
-  row: Pick<RequisitionRow, 'statusCode' | 'remainingHeadcount' | 'source'>,
+  row: Pick<RequisitionRow, 'statusCode' | 'remainingHeadcount' | 'stageAll' | 'source'>,
   role: ProductRole | null,
 ): DemandRowActions {
   const canManage = role === 'recruiter' || role === 'manager' || role === 'admin';
-  if (!canManage) return { primary: null, menu: ['view', 'view_candidates'] };
+  const hasCandidates = row.stageAll > 0;
+  if (!canManage) return { primary: null, menu: hasCandidates ? ['view', 'view_candidates'] : ['view'] };
 
-  const menu: DemandMenuAction[] = ['view', 'edit', 'view_candidates', 'adjust_priority'];
+  const menu: DemandMenuAction[] = ['view', 'edit', 'adjust_priority'];
+  if (hasCandidates) menu.splice(2, 0, 'view_candidates');
   if (role === 'manager' || role === 'admin') menu.push('reassign_owner');
 
   let primary: DemandPrimaryAction = null;
@@ -52,7 +54,7 @@ export function buildDemandRowActions(
     primary = 'restore';
     menu.push('cancel', 'close');
   } else if (row.statusCode === 'filled' || row.statusCode === 'cancelled' || row.statusCode === 'closed') {
-    primary = 'view_candidates';
+    primary = hasCandidates ? 'view_candidates' : null;
     menu.push('restore');
   }
 

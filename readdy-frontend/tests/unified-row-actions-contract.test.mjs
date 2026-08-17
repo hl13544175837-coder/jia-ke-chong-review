@@ -6,10 +6,11 @@ test('招聘需求主操作和菜单按状态去重并限制负责人转派权�
   const path = new URL('../src/pages/jobs/rowActions.ts', import.meta.url);
   assert.ok(existsSync(path), '应提供招聘需求行操作策略');
   const { buildDemandRowActions } = await import(path.href);
-  const makeRow = ({ statusCode = 'active', remainingHeadcount = 1, approvalStatus = 'approved' } = {}) => ({
+  const makeRow = ({ statusCode = 'active', remainingHeadcount = 1, stageAll = 0, approvalStatus = 'approved' } = {}) => ({
     id: '1',
     statusCode,
     remainingHeadcount,
+    stageAll,
     source: { approval_status: approvalStatus },
   });
 
@@ -25,6 +26,15 @@ test('招聘需求主操作和菜单按状态去重并限制负责人转派权�
   const paused = buildDemandRowActions(makeRow({ statusCode: 'paused' }), 'admin');
   assert.equal(paused.primary, 'restore');
   assert.ok(!paused.menu.includes('restore'));
+
+  for (const statusCode of ['filled', 'cancelled', 'closed']) {
+    const terminalWithoutCandidates = buildDemandRowActions(makeRow({ statusCode, stageAll: 0 }), 'admin');
+    assert.equal(terminalWithoutCandidates.primary, null, `${statusCode} 且无候选人不应跳转空的简历库`);
+    assert.ok(!terminalWithoutCandidates.menu.includes('view_candidates'));
+
+    const terminalWithCandidates = buildDemandRowActions(makeRow({ statusCode, stageAll: 1 }), 'admin');
+    assert.equal(terminalWithCandidates.primary, 'view_candidates', `${statusCode} 有历史候选人时可查看`);
+  }
 
   const recruiter = buildDemandRowActions(makeRow(), 'recruiter');
   assert.ok(!recruiter.menu.includes('reassign_owner'));
