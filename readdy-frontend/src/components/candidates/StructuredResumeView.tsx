@@ -68,6 +68,72 @@ function ResumeValue({ value, dense = false }: { value: unknown; dense?: boolean
   return <PrimitiveValue value={value} />;
 }
 
+function ProfileFactItems({ value, fallbackLabel }: { value: unknown; fallbackLabel: string }) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    const simple = value.every((item) => !isResumeRecord(item) && !Array.isArray(item));
+    if (simple) {
+      return (
+        <div data-ui="resume-profile-fact" className="flex min-w-0 items-baseline gap-1.5">
+          <span className="shrink-0 text-[11px] font-medium text-foreground-400">{fallbackLabel}</span>
+          <div className="min-w-0 text-sm text-foreground-800"><ResumeValue value={value} /></div>
+        </div>
+      );
+    }
+    return <>{value.map((item, index) => <ProfileFactItems key={index} value={item} fallbackLabel={fallbackLabel} />)}</>;
+  }
+  if (isResumeRecord(value)) {
+    return (
+      <>
+        {Object.entries(value)
+          .filter(([, item]) => item !== null && item !== undefined && item !== '')
+          .map(([key, item]) => (
+            <ProfileFactItems key={key} value={item} fallbackLabel={resumeFieldLabel(key)} />
+          ))}
+      </>
+    );
+  }
+  if (value === null || value === undefined || value === '') return null;
+  return (
+    <div data-ui="resume-profile-fact" className="flex min-w-0 items-baseline gap-1.5">
+      <span className="shrink-0 text-[11px] font-medium text-foreground-400">{fallbackLabel}</span>
+      <span className="min-w-0 break-words text-sm text-foreground-800"><PrimitiveValue value={value} /></span>
+    </div>
+  );
+}
+
+function ProfileFactsValue({ sections }: { sections: ResumeSectionView[] }) {
+  return (
+    <section data-ui="resume-profile-facts" className="flex flex-wrap items-baseline gap-x-6 gap-y-2 px-3 py-2.5">
+      {sections.map((section) => (
+        <ProfileFactItems key={section.key} value={section.value} fallbackLabel={section.title} />
+      ))}
+    </section>
+  );
+}
+
+function ProfileLongValue({ value, title }: { value: unknown; title: string }) {
+  if (!isResumeRecord(value)) return <ResumeValue value={value} />;
+  const entries = Object.entries(value).filter(([, item]) => item !== null && item !== undefined && item !== '');
+  if (entries.length === 1) return <ResumeValue value={entries[0][1]} />;
+  return (
+    <div className="space-y-2">
+      {entries.map(([key, item]) => (
+        <div key={key}>
+          {resumeFieldLabel(key) !== title && (
+            <p className="mb-0.5 text-[11px] font-medium text-foreground-400">{resumeFieldLabel(key)}</p>
+          )}
+          <div className="whitespace-pre-wrap break-words"><ResumeValue value={item} /></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProfileSupplementValue({ value }: { value: unknown }) {
+  return <ResumeValue value={value} dense />;
+}
+
 function WorkHistoryValue({ value }: { value: unknown }) {
   if (!Array.isArray(value) || !value.every(isResumeRecord)) return <ResumeValue value={value} />;
   return (
@@ -116,18 +182,37 @@ function ProjectHistoryValue({ value }: { value: unknown }) {
   );
 }
 
-const PROFILE_SECTION_ORDER = ['basic', 'education', 'target', 'summary', 'skills', 'certificates'];
-const PROFILE_SECTION_KEYS = new Set(PROFILE_SECTION_ORDER);
+const PROFILE_FACT_SECTION_KEYS = ['basic', 'education', 'target'];
+const PROFILE_LONG_SECTION_KEYS = ['summary'];
+const PROFILE_SUPPLEMENT_SECTION_KEYS = ['skills', 'certificates'];
+const PROFILE_SECTION_KEYS = new Set([
+  ...PROFILE_FACT_SECTION_KEYS,
+  ...PROFILE_LONG_SECTION_KEYS,
+  ...PROFILE_SUPPLEMENT_SECTION_KEYS,
+]);
 const MAIN_SECTION_KEYS = new Set(['work', 'projects', 'other']);
 
 function ProfileStrip({ sections }: { sections: ResumeSectionView[] }) {
+  const sectionByKey = new Map(sections.map((section) => [section.key, section]));
+  const factSections = PROFILE_FACT_SECTION_KEYS.flatMap((key) => sectionByKey.get(key) ?? []);
+  const longSections = PROFILE_LONG_SECTION_KEYS.flatMap((key) => sectionByKey.get(key) ?? []);
+  const supplementSections = PROFILE_SUPPLEMENT_SECTION_KEYS.flatMap((key) => sectionByKey.get(key) ?? []);
   return (
     <div data-ui="resume-profile-strip" className="divide-y divide-background-200 rounded-lg border border-background-200 bg-white">
-      {sections.map((section) => (
+      {factSections.length > 0 && <ProfileFactsValue sections={factSections} />}
+      {longSections.map((section) => (
+        <section key={section.key} data-ui="resume-profile-long" className="grid gap-2 px-3 py-2.5 sm:grid-cols-[88px_minmax(0,1fr)] sm:gap-4">
+          <h4 className="text-xs font-semibold text-foreground-600">{section.title}</h4>
+          <div className="min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-foreground-700">
+            <ProfileLongValue value={section.value} title={section.title} />
+          </div>
+        </section>
+      ))}
+      {supplementSections.map((section) => (
         <section key={section.key} className="grid gap-2 px-3 py-2.5 sm:grid-cols-[88px_minmax(0,1fr)] sm:gap-4">
           <h4 className="text-xs font-semibold text-foreground-600">{section.title}</h4>
           <div className="min-w-0 text-sm leading-5 text-foreground-700">
-            <ResumeValue value={section.value} dense />
+            <ProfileSupplementValue value={section.value} />
           </div>
         </section>
       ))}
@@ -160,9 +245,7 @@ export default function StructuredResumeView({
     return <div className="rounded-lg border border-background-200 bg-background-50 px-4 py-6 text-center text-sm text-foreground-500">{emptyText}</div>;
   }
 
-  const profileSections = sections
-    .filter((section) => PROFILE_SECTION_KEYS.has(section.key))
-    .sort((left, right) => PROFILE_SECTION_ORDER.indexOf(left.key) - PROFILE_SECTION_ORDER.indexOf(right.key));
+  const profileSections = sections.filter((section) => PROFILE_SECTION_KEYS.has(section.key));
   const mainSections = sections.filter((section) => MAIN_SECTION_KEYS.has(section.key));
 
   return (

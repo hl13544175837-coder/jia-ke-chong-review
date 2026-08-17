@@ -66,17 +66,30 @@ test('基础和教育信息集中在顶部高密度画像，长经历随后使�
   const source = await readFile(new URL('../src/components/candidates/StructuredResumeView.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /data-ui="resume-profile-strip"/);
+  assert.match(source, /data-ui="resume-profile-facts"/);
+  assert.match(source, /data-ui="resume-profile-long"/);
   assert.match(source, /data-ui="resume-main-sections"/);
   assert.match(source, /PROFILE_SECTION_KEYS/);
   assert.doesNotMatch(source, /data-ui="resume-overview-grid"/);
   assert.doesNotMatch(source, /<aside/);
 });
 
-test('顶部画像固定先展示基本信息和教育经历', async () => {
+test('基本信息、教育经历和求职目标合并成自动换行的顶部信息带', async () => {
   const source = await readFile(new URL('../src/components/candidates/StructuredResumeView.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /PROFILE_SECTION_ORDER = \['basic', 'education', 'target', 'summary', 'skills', 'certificates'\]/);
-  assert.match(source, /sort\(\(left, right\) => PROFILE_SECTION_ORDER\.indexOf\(left\.key\) - PROFILE_SECTION_ORDER\.indexOf\(right\.key\)\)/);
+  assert.match(source, /PROFILE_FACT_SECTION_KEYS = \['basic', 'education', 'target'\]/);
+  assert.match(source, /function ProfileFactsValue/);
+  assert.match(source, /flex flex-wrap/);
+  assert.doesNotMatch(source, /PROFILE_SECTION_ORDER/);
+});
+
+test('个人概况等长文本横跨剩余宽度而不进入多列宫格', async () => {
+  const source = await readFile(new URL('../src/components/candidates/StructuredResumeView.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /PROFILE_LONG_SECTION_KEYS = \['summary'\]/);
+  assert.match(source, /function ProfileLongValue/);
+  assert.match(source, /data-ui="resume-profile-long"/);
+  assert.doesNotMatch(source, /<ResumeValue value=\{section\.value\} dense \/>/);
 });
 
 test('项目经历使用响应式双列并完整展示', async () => {
@@ -98,4 +111,21 @@ test('只有解析器元数据时不应伪装成结构化简历内容', async ()
     parse_method: 'vision',
     upload_date: '2026-08-13T15:58:37.305164',
   }), []);
+});
+
+test('招聘专员、招聘主管和面试官的简历入口统一复用公共结构化简历组件', async () => {
+  const entrypoints = [
+    '../src/features/candidates/components/library/CandidateLibraryDetail.tsx',
+    '../src/features/onlineResumes/components/OnlineResumeDetailDrawer.tsx',
+    '../src/pages/jobs/components/DemandCandidateResumeDetail.tsx',
+    '../src/pages/interviews/components/RecruiterInterviewDetailDrawer.tsx',
+    '../src/pages/interviewer/interviews/components/InterviewerInterviewDetailDrawer.tsx',
+    '../src/pages/interviewer/screening/components/BusinessReviewDetail.tsx',
+  ];
+
+  for (const entrypoint of entrypoints) {
+    const source = await readFile(new URL(entrypoint, import.meta.url), 'utf8');
+    assert.match(source, /import StructuredResumeView from ['"]@\/components\/candidates\/StructuredResumeView['"]/);
+    assert.match(source, /<StructuredResumeView\b/);
+  }
 });
