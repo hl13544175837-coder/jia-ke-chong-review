@@ -5,35 +5,31 @@ import { createJiti } from 'jiti';
 
 const jiti = createJiti(import.meta.url, { interopDefault: true });
 
-test('流程总览保留飞书基准的 11 步、5 组和 4 类接口状态', async () => {
-  const { recruitmentFlowGroups, integrationStatusMeta } = await jiti.import(
+test('流程总览以当前真实状态绘制角色泳道和分支', async () => {
+  const { recruitmentSwimlanes, recruitmentFlowNodes, recruitmentFlowConnections } = await jiti.import(
     new URL('../src/features/recruitmentFlow/flow.ts', import.meta.url).href,
   );
 
-  assert.equal(recruitmentFlowGroups.length, 5);
-  assert.equal(recruitmentFlowGroups.flatMap((group) => group.steps).length, 11);
-  assert.deepEqual(Object.keys(integrationStatusMeta).sort(), [
-    'backend_ready', 'external_pending', 'frontend_connected', 'validated',
+  assert.deepEqual(recruitmentSwimlanes.map((lane) => lane.id), [
+    'requester', 'recruiter', 'business_reviewer', 'interviewer', 'candidate', 'manager', 'system',
   ]);
-  assert.match(
-    recruitmentFlowGroups.flatMap((group) => group.steps).map((step) => step.title).join(' '),
-    /创建并提交招聘需求.*确认实际入职/,
-  );
-  assert.match(
-    recruitmentFlowGroups.flatMap((group) => group.steps).find((step) => step.order === 9).branch,
-    /加面 → 回到第 6 步/,
-  );
+  assert.match(recruitmentFlowNodes.map((node) => node.status).join(' '), /pending.*ai_screen.*business_review.*interview.*onboarded.*rejected/);
+  assert.ok(recruitmentFlowNodes.some((node) => node.id === 'offer_draft'));
+  assert.match(recruitmentFlowNodes.map((node) => node.status).join(' '), /draft.*approved.*sent.*accepted.*declined.*expired/);
+  assert.ok(recruitmentFlowConnections.some((connection) => connection.label === '加面'));
+  assert.ok(recruitmentFlowConnections.some((connection) => connection.label === '淘汰'));
+  assert.equal(Math.max(...recruitmentFlowNodes.map((node) => node.column)), 8);
+  assert.equal(new Set(recruitmentFlowNodes.map((node) => `${node.lane}:${node.column}`)).size, recruitmentFlowNodes.length);
 });
 
-test('流程总览页展示基准声明、四列泳道和关键分支，不调用 API', async () => {
+test('流程总览页是只读的状态流转泳道图，不调用 API', async () => {
   const source = await readFile(new URL('../src/pages/recruitment-flow/page.tsx', import.meta.url), 'utf8');
-  assert.match(source, /以飞书基准为准/);
+  assert.match(source, /状态流转泳道图/);
   assert.match(source, /当前页面不调用接口/);
-  assert.match(source, /状态流转/);
-  assert.match(source, /主责角色/);
-  assert.match(source, /动作说明/);
-  assert.match(source, /接口准备情况/);
-  assert.match(source, /step\.branch/);
+  assert.match(source, /<svg/);
+  assert.match(source, /recruitmentFlowConnections/);
+  assert.match(source, /recruitmentSwimlanes/);
+  assert.doesNotMatch(source, /以飞书基准为准/);
   assert.doesNotMatch(source, /apiRequest\(|fetch\(|axios\./);
 });
 
