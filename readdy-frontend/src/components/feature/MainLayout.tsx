@@ -32,6 +32,7 @@ const recruiterNavItems: NavItem[] = [
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['recruiter'], menuCode: 'pipeline' },
   { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['recruiter'], menuCode: 'candidates' },
   { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['recruiter'], menuCode: 'bi' },
+  { path: '/recruitment-flow', icon: 'ri-route-line', label: '招聘流程', roles: ['recruiter'] },
   { path: '/ai-assistant', icon: 'ri-robot-2-line', label: 'AI 助手', roles: ['recruiter'] },
 ];
 
@@ -44,6 +45,7 @@ const managerNavItems: NavItem[] = [
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['manager'], menuCode: 'pipeline' },
   { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['manager'], menuCode: 'candidates' },
   { path: '/kpi-standards', icon: 'ri-tune-line', label: '口径配置', roles: ['manager'] },
+  { path: '/recruitment-flow', icon: 'ri-route-line', label: '招聘流程', roles: ['manager'] },
   { path: '/ai-assistant', icon: 'ri-robot-2-line', label: 'AI 助手', roles: ['manager'] },
 ];
 
@@ -56,6 +58,7 @@ const adminNavItems: NavItem[] = [
   { path: '/talent-map', icon: 'ri-map-pin-user-line', label: '人才地图', roles: ['admin'], menuCode: 'candidates' },
   { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['admin'], menuCode: 'bi' },
   { path: '/kpi-standards', icon: 'ri-tune-line', label: '口径配置', roles: ['admin'] },
+  { path: '/recruitment-flow', icon: 'ri-route-line', label: '招聘流程', roles: ['admin'] },
   { path: '/ai-assistant', icon: 'ri-robot-2-line', label: 'AI 助手', roles: ['admin'] },
 ];
 
@@ -65,6 +68,7 @@ const directorNavItems: NavItem[] = [
   { path: '/director/insights', icon: 'ri-organization-chart', label: '人才供需', roles: ['hr_director'], menuCode: 'bi' },
   { path: '/director/approvals', icon: 'ri-shield-check-line', label: '审批与风险', roles: ['hr_director'], menuCode: 'pipeline' },
   { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['hr_director'], menuCode: 'bi' },
+  { path: '/recruitment-flow', icon: 'ri-route-line', label: '招聘流程', roles: ['hr_director'] },
 ];
 
 const interviewerNavItems: NavItem[] = [
@@ -73,6 +77,7 @@ const interviewerNavItems: NavItem[] = [
   { path: '/interviewer/screening', icon: 'ri-file-search-line', label: '候选人筛选', roles: ['interviewer'], menuCode: 'interviews' },
   { path: '/interviewer/interviews', icon: 'ri-calendar-event-line', label: '我的面试', roles: ['interviewer'], menuCode: 'interviews' },
   { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '数据看板', roles: ['interviewer'], menuCode: 'bi' },
+  { path: '/recruitment-flow', icon: 'ri-route-line', label: '招聘流程', roles: ['interviewer'] },
 ];
 
 const bottomNavItems: NavItem[] = [

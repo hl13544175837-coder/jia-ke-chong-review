@@ -36,3 +36,16 @@ test('流程总览页展示基准声明、四列泳道和关键分支，不调�
   assert.match(source, /step\.branch/);
   assert.doesNotMatch(source, /apiRequest\(|fetch\(|axios\./);
 });
+
+test('所有主角色可从导航进入流程总览路由', async () => {
+  const [routerSource, layoutSource] = await Promise.all([
+    readFile(new URL('../src/router/config.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/components/feature/MainLayout.tsx', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(routerSource, /const RecruitmentFlowPage = lazy\(\(\) => import\('@\/pages\/recruitment-flow\/page'\)\)/);
+  assert.match(routerSource, /path: '\/recruitment-flow'/);
+  for (const role of ['recruiter', 'manager', 'admin', 'interviewer', 'hr_director']) {
+    assert.match(layoutSource, new RegExp(`path: '/recruitment-flow'.*label: '招聘流程'.*roles: \\['${role}'\\]`));
+  }
+});
