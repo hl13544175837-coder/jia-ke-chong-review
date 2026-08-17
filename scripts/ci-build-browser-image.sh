@@ -8,14 +8,14 @@ NODE_BASE_IMAGE="${NODE_BASE_IMAGE:-registry.ymdd.tech/library/node:20-alpine}"
 
 cd "$PROJECT_DIR"
 
-timeout 1200 sudo docker build \
+timeout 2400 sudo docker build \
   --build-arg "NODE_BASE_IMAGE=$NODE_BASE_IMAGE" \
   --tag "$IMAGE_NAME" \
   --file readdy-frontend/Dockerfile.ci-browser \
   . || {
   status=$?
   if [[ "$status" -eq 124 ]]; then
-    echo "Browser CI image preparation exceeded 20 minutes" >&2
+    echo "Browser CI image preparation exceeded 40 minutes" >&2
   fi
   exit "$status"
 }
