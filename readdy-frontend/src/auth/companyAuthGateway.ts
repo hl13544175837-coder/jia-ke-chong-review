@@ -46,6 +46,18 @@ interface CompanyAuthGatewayConfig {
   fetcher?: typeof fetch;
 }
 
+/**
+ * SIT 真实业务场景显示名。
+ * PGS 同步用户姓名为只读（接口拒绝更新），前端按工号展示与菜单业务对应的名称，
+ * 角色、菜单和数据范围仍由 PGS 菜单与后端工号映射决定，这里只影响登录后的显示名。
+ */
+const GATEWAY_DISPLAY_NAME_BY_EMP_CODE: Record<string, string> = {
+  '100000': '面试官02',
+  '100001': '招聘主管',
+  '100002': '招聘专员',
+  '100003': '面试官01',
+};
+
 export class CompanyAuthError extends Error {
   status: number;
 
@@ -124,7 +136,8 @@ export function createCompanyAuthGateway(config: CompanyAuthGatewayConfig) {
     const data = ensureGatewaySuccess(body, response.status, '获取公司用户信息失败');
     const info = data.userInfo ?? {};
     const empCode = info.ymEmpCode || info.yhUserCode || '';
-    const name = info.empName || info.nickname || info.yhUserCode || info.ymEmpCode || '用户';
+    const rawName = info.empName || info.nickname || info.yhUserCode || info.ymEmpCode || '用户';
+    const name = GATEWAY_DISPLAY_NAME_BY_EMP_CODE[empCode] ?? rawName;
     if (!empCode) {
       throw new CompanyAuthError(502, '公司账号缺少工号，请联系系统管理员');
     }
