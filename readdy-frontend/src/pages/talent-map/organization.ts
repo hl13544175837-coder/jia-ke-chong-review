@@ -24,6 +24,27 @@ export interface OrganizationDepartmentDraft {
 export const DEFAULT_DEPARTMENT_NAME = '未分部门';
 export const DEFAULT_ROLE_NAME = '待补充岗位';
 
+export interface CompanyPeopleSummary {
+  total: number;
+  confirmed: number;
+  contacting: number;
+  pending: number;
+}
+
+export function summarizeCompanyPeople(
+  people: Array<Pick<TalentMapPerson, 'company_id' | 'contact_status'>>,
+  companyId: number,
+): CompanyPeopleSummary {
+  return people.reduce<CompanyPeopleSummary>((summary, person) => {
+    if (person.company_id !== companyId) return summary;
+    summary.total += 1;
+    if (person.contact_status === '已确认') summary.confirmed += 1;
+    else if (person.contact_status === '沟通中') summary.contacting += 1;
+    else summary.pending += 1;
+    return summary;
+  }, { total: 0, confirmed: 0, contacting: 0, pending: 0 });
+}
+
 function departmentName(value?: string) {
   return value?.trim() || DEFAULT_DEPARTMENT_NAME;
 }

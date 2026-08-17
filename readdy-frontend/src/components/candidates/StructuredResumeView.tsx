@@ -11,21 +11,27 @@ interface StructuredResumeViewProps {
   compact?: boolean;
 }
 
+interface ResumeSectionView {
+  key: string;
+  title: string;
+  value: unknown;
+}
+
 function PrimitiveValue({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === '') return <span className="text-foreground-400">未填写</span>;
   if (typeof value === 'boolean') return <>{value ? '是' : '否'}</>;
   return <>{String(value)}</>;
 }
 
-function RecordValue({ value }: { value: Record<string, unknown> }) {
+function RecordValue({ value, dense = false }: { value: Record<string, unknown>; dense?: boolean }) {
   const entries = Object.entries(value).filter(([, item]) => item !== null && item !== undefined && item !== '');
   return (
-    <dl className="grid gap-2 sm:grid-cols-2">
+    <dl className={dense ? 'grid grid-cols-2 gap-x-5 gap-y-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid gap-x-5 gap-y-2 sm:grid-cols-2'}>
       {entries.map(([key, item]) => (
-        <div key={key} className="min-w-0 rounded-lg bg-background-50 px-3 py-2.5">
+        <div key={key} className="min-w-0">
           <dt className="text-[11px] font-medium text-foreground-400">{resumeFieldLabel(key)}</dt>
-          <dd className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-foreground-700">
-            <ResumeValue value={item} />
+          <dd className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-5 text-foreground-800">
+            <ResumeValue value={item} dense={dense} />
           </dd>
         </div>
       ))}
@@ -33,48 +39,63 @@ function RecordValue({ value }: { value: Record<string, unknown> }) {
   );
 }
 
-function ResumeValue({ value }: { value: unknown }) {
+function ResumeValue({ value, dense = false }: { value: unknown; dense?: boolean }) {
   if (Array.isArray(value)) {
     if (value.length === 0) return <span className="text-foreground-400">未填写</span>;
     const simple = value.every((item) => !isResumeRecord(item) && !Array.isArray(item));
     if (simple) {
-      return <div className="flex flex-wrap gap-2">{value.map((item, index) => <span key={`${String(item)}-${index}`} className="rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700"><PrimitiveValue value={item} /></span>)}</div>;
+      return (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((item, index) => (
+            <span key={`${String(item)}-${index}`} className="rounded-md bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700">
+              <PrimitiveValue value={item} />
+            </span>
+          ))}
+        </div>
+      );
     }
-    return <div className="space-y-2">{value.map((item, index) => <div key={index} className="rounded-lg border border-background-200 bg-white p-3">{isResumeRecord(item) ? <RecordValue value={item} /> : <ResumeValue value={item} />}</div>)}</div>;
+    return (
+      <div className={dense ? 'space-y-2' : 'space-y-3'}>
+        {value.map((item, index) => (
+          <div key={index} className="border-l-2 border-background-200 pl-3">
+            {isResumeRecord(item) ? <RecordValue value={item} dense={dense} /> : <ResumeValue value={item} dense={dense} />}
+          </div>
+        ))}
+      </div>
+    );
   }
-  if (isResumeRecord(value)) return <RecordValue value={value} />;
+  if (isResumeRecord(value)) return <RecordValue value={value} dense={dense} />;
   return <PrimitiveValue value={value} />;
 }
 
 function WorkHistoryValue({ value }: { value: unknown }) {
   if (!Array.isArray(value) || !value.every(isResumeRecord)) return <ResumeValue value={value} />;
   return (
-    <div className="space-y-3">
+    <div data-ui="work-history-timeline" className="relative space-y-0 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:w-px before:bg-background-200">
       {value.map((item, index) => {
         const work = normalizeWorkHistoryItem(item);
         const hasRemaining = Object.keys(work.remaining).length > 0;
         return (
-          <article key={index} data-ui="work-history-card" className="rounded-xl border border-background-200 bg-white p-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-              <div className="min-w-0">
-                <p className="break-words text-sm font-semibold text-foreground-900">{work.company || '公司待补充'}</p>
-                {work.role && <p className="mt-1 text-xs text-foreground-500">{work.role}</p>}
+          <article key={index} data-ui="work-history-entry" className="relative grid gap-2 py-3 pl-6 sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-5">
+            <span className="absolute left-0 top-[18px] h-[11px] w-[11px] rounded-full border-2 border-primary-400 bg-white" />
+            <div className="text-xs font-medium leading-5 text-foreground-500">{work.period || '时间待补充'}</div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <h5 className="break-words text-sm font-semibold text-foreground-900">{work.company || '公司待补充'}</h5>
+                {work.role && <span className="text-xs font-medium text-primary-700">{work.role}</span>}
               </div>
-              {work.period && <span className="w-fit shrink-0 whitespace-nowrap rounded-md bg-background-100 px-2 py-1 text-xs text-foreground-500">{work.period}</span>}
-            </div>
-            {(work.details.length > 0 || hasRemaining) && (
-              <div className="mt-3 space-y-3 border-t border-background-100 pt-3">
-                {work.details.map((detail, detailIndex) => (
-                  <div key={`${detail.label}-${detailIndex}`}>
-                    <p className="text-[11px] font-medium text-foreground-400">{detail.label}</p>
-                    <div className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-foreground-700">
-                      <ResumeValue value={detail.value} />
+              {(work.details.length > 0 || hasRemaining) && (
+                <div className="mt-2 space-y-2 text-sm leading-6 text-foreground-700">
+                  {work.details.map((detail, detailIndex) => (
+                    <div key={`${detail.label}-${detailIndex}`}>
+                      <span className="mr-2 text-[11px] font-medium text-foreground-400">{detail.label}</span>
+                      <div className="whitespace-pre-wrap break-words"><ResumeValue value={detail.value} /></div>
                     </div>
-                  </div>
-                ))}
-                {hasRemaining && <RecordValue value={work.remaining} />}
-              </div>
-            )}
+                  ))}
+                  {hasRemaining && <RecordValue value={work.remaining} />}
+                </div>
+              )}
+            </div>
           </article>
         );
       })}
@@ -82,17 +103,48 @@ function WorkHistoryValue({ value }: { value: unknown }) {
   );
 }
 
-/** 长内容使用整行宽度，短内容集中在顶部概览区。 */
+function ProjectHistoryValue({ value }: { value: unknown }) {
+  if (!Array.isArray(value)) return <ResumeValue value={value} />;
+  return (
+    <div data-ui="project-history-grid" className="grid gap-3 md:grid-cols-2">
+      {value.map((item, index) => (
+        <article key={index} className="border-l-2 border-primary-200 bg-background-50/70 px-3 py-2.5">
+          {isResumeRecord(item) ? <RecordValue value={item} /> : <ResumeValue value={item} />}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+const PROFILE_SECTION_ORDER = ['basic', 'education', 'target', 'summary', 'skills', 'certificates'];
+const PROFILE_SECTION_KEYS = new Set(PROFILE_SECTION_ORDER);
 const MAIN_SECTION_KEYS = new Set(['work', 'projects', 'other']);
 
-function Section({ section, overview = false }: { section: { key: string; title: string; value: unknown }; overview?: boolean }) {
+function ProfileStrip({ sections }: { sections: ResumeSectionView[] }) {
   return (
-    <section key={section.key} className={overview ? 'rounded-xl border border-background-200 bg-background-50 p-4' : 'border-t border-background-200 pt-5 first:border-t-0 first:pt-0'}>
-      <h4 className="mb-3 text-sm font-semibold text-foreground-900">{section.title}</h4>
+    <div data-ui="resume-profile-strip" className="divide-y divide-background-200 rounded-lg border border-background-200 bg-white">
+      {sections.map((section) => (
+        <section key={section.key} className="grid gap-2 px-3 py-2.5 sm:grid-cols-[88px_minmax(0,1fr)] sm:gap-4">
+          <h4 className="text-xs font-semibold text-foreground-600">{section.title}</h4>
+          <div className="min-w-0 text-sm leading-5 text-foreground-700">
+            <ResumeValue value={section.value} dense />
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function Section({ section }: { section: ResumeSectionView }) {
+  return (
+    <section className="border-t border-background-200 pt-4 first:border-t-0 first:pt-0">
+      <h4 className="mb-2 text-sm font-semibold text-foreground-900">{section.title}</h4>
       <div className="text-sm leading-6 text-foreground-700">
         {section.key === 'work'
           ? <WorkHistoryValue value={section.value} />
-          : <ResumeValue value={section.value} />}
+          : section.key === 'projects'
+            ? <ProjectHistoryValue value={section.value} />
+            : <ResumeValue value={section.value} />}
       </div>
     </section>
   );
@@ -108,19 +160,17 @@ export default function StructuredResumeView({
     return <div className="rounded-lg border border-background-200 bg-background-50 px-4 py-6 text-center text-sm text-foreground-500">{emptyText}</div>;
   }
 
+  const profileSections = sections
+    .filter((section) => PROFILE_SECTION_KEYS.has(section.key))
+    .sort((left, right) => PROFILE_SECTION_ORDER.indexOf(left.key) - PROFILE_SECTION_ORDER.indexOf(right.key));
   const mainSections = sections.filter((section) => MAIN_SECTION_KEYS.has(section.key));
-  const sideSections = sections.filter((section) => !MAIN_SECTION_KEYS.has(section.key));
 
   return (
-    <div className={compact ? 'space-y-4' : 'space-y-5'} data-ui="structured-resume-view">
-      <p className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-800">
-        以下为系统结构化整理，方便快速阅读；关键信息请结合原版简历核对。
+    <div className={compact ? 'space-y-3' : 'space-y-4'} data-ui="structured-resume-view">
+      <p className="border-l-2 border-sky-300 bg-sky-50/70 px-3 py-1.5 text-xs leading-5 text-sky-800">
+        系统已结构化整理，便于快速阅读；关键信息请结合原版简历核对。
       </p>
-      {sideSections.length > 0 && (
-        <div data-ui="resume-overview-grid" className={compact ? 'grid gap-4' : 'grid gap-4 md:grid-cols-2 xl:grid-cols-3'}>
-          {sideSections.map((section) => <Section key={section.key} section={section} overview />)}
-        </div>
-      )}
+      {profileSections.length > 0 && <ProfileStrip sections={profileSections} />}
       {mainSections.length > 0 && (
         <div data-ui="resume-main-sections" className={compact ? 'space-y-4' : 'space-y-5'}>
           {mainSections.map((section) => <Section key={section.key} section={section} />)}

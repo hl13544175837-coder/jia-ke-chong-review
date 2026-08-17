@@ -7,7 +7,7 @@ import OrganizationEditorModal from '@/pages/talent-map/components/OrganizationE
 import CompanyEditModal from '@/pages/talent-map/components/CompanyEditModal';
 import CompanyTreeMap from '@/pages/talent-map/components/CompanyTreeMap';
 import AiImportWizard from '@/pages/talent-map/components/AiImportWizard';
-import { buildOrganization, organizationFromBoard } from '@/pages/talent-map/organization';
+import { buildOrganization, organizationFromBoard, summarizeCompanyPeople } from '@/pages/talent-map/organization';
 import type { OrganizationDepartment, OrganizationRole } from '@/pages/talent-map/organization';
 import { useTalentMapWorkspace } from '@/features/talentMaps/useTalentMapWorkspace';
 import type {
@@ -282,20 +282,16 @@ export default function TalentMapPage() {
       <button
         key={`${role.title}-${role.people.length}`}
         onClick={() => setActiveRole({ department: departments.find((d) => d.roles.includes(role))?.name ?? '', title: role.title })}
-        className="w-full text-left bg-white rounded-xl border border-background-200 p-3.5 transition-all cursor-pointer hover:border-primary-300 hover:shadow-sm group"
+        className="group w-full bg-white px-3 py-2.5 text-left transition-colors hover:bg-primary-50/50"
       >
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-semibold text-foreground-900 leading-tight">{role.title}</p>
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-primary-300" />
+          <p className="min-w-0 flex-1 text-sm font-semibold leading-tight text-foreground-900">{role.title}</p>
           <span className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${badge.className}`}>
             {badge.label}
           </span>
         </div>
-        {status === 'vacant' ? (
-          <p className="text-xs text-accent-600 mt-1.5">岗位空缺，等待录入</p>
-        ) : (
-          <p className="text-xs text-foreground-400 mt-1.5">{role.people.length} 位已录入</p>
-        )}
-        <div className="flex items-center justify-between mt-2.5">
+        <div className="mt-1.5 flex items-center justify-between pl-4">
           <div className="flex items-center">
             {role.people.slice(0, avatarCount).map((person) => (
               <div
@@ -305,10 +301,12 @@ export default function TalentMapPage() {
                 <span className="text-[10px] font-bold text-primary-700">{person.name.charAt(0)}</span>
               </div>
             ))}
-            {role.people.length === 0 && <span className="text-[10px] text-foreground-300">—</span>}
+            <span className="ml-1.5 text-[11px] text-foreground-400">
+              {status === 'vacant' ? '等待录入' : `${role.people.length} 位人才`}
+            </span>
           </div>
           <span className="text-[11px] text-foreground-400 group-hover:text-primary-600 flex items-center gap-0.5">
-            查看详情 <i className="ri-arrow-right-s-line"></i>
+            查看人才 <i className="ri-arrow-right-s-line"></i>
           </span>
         </div>
       </button>
@@ -375,10 +373,27 @@ export default function TalentMapPage() {
           </div>
         )}
         {!loading && !error && companies.length === 0 && (
-          <div className="mb-4 rounded-xl border border-dashed border-background-300 bg-white px-6 py-10 text-center">
+          <div className="mb-4 rounded-xl border border-background-200 bg-white px-6 py-8">
+            <div className="mx-auto max-w-3xl text-center">
             <i className="ri-map-2-line text-3xl text-foreground-300"></i>
             <p className="mt-2 text-sm font-medium text-foreground-800">还没有目标公司</p>
-            <p className="mt-1 text-xs text-foreground-500">先点右上角“新增公司”，再通过 AI 导入或手动录入人才。</p>
+            <p className="mt-1 text-xs text-foreground-500">人才地图按公司沉淀外部人才，三步即可开始使用。</p>
+            <div className="mt-5 grid gap-2 text-left sm:grid-cols-3">
+              {['1. 新增目标公司', '2. 设置部门和岗位', '3. 从简历库导入人才'].map((step) => (
+                <div key={step} className="rounded-lg bg-background-50 px-3 py-2.5 text-xs font-medium text-foreground-600">{step}</div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCompanyError(null);
+                setAddCompanyOpen(true);
+              }}
+              className="mt-5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600"
+            >
+              新增第一家公司
+            </button>
+            </div>
           </div>
         )}
 
@@ -500,28 +515,27 @@ export default function TalentMapPage() {
 
             {viewMode === 'company' && (
               <>
-            <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+            <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
               {filteredCompanies.map((company) => {
-                const people = companyPeople.filter((p) => p.company_id === company.id);
-                const confirmed = people.filter((p) => p.contact_status === '已确认').length;
+                const progress = summarizeCompanyPeople(allPeople, company.id);
                 const isActive = activeCompanyId === company.id;
                 return (
                   <button
                     key={company.id}
                     onClick={() => setActiveCompanyId(company.id)}
-                    className={`flex-shrink-0 px-5 py-3 rounded-xl border transition-all cursor-pointer text-left ${
+                    className={`flex-shrink-0 rounded-lg border px-3 py-2 text-left transition-all ${
                       isActive
                         ? 'border-primary-300 bg-white shadow-sm ring-1 ring-primary-200'
                         : 'border-background-200 bg-white hover:border-background-300'
                     }`}
                   >
                     <p className="text-sm font-semibold text-foreground-900 max-w-[180px] truncate">{company.company_name}</p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-[10px] text-foreground-500">{confirmed}/{people.length} 确认</span>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-[10px] text-foreground-500">{progress.confirmed}/{progress.total} 确认</span>
                       <div className="flex-1 h-1 bg-background-200 rounded-full overflow-hidden w-14">
                         <div
                           className="h-full bg-primary-400 rounded-full"
-                          style={{ width: `${people.length > 0 ? (confirmed / people.length) * 100 : 0}%` }}
+                          style={{ width: `${progress.total > 0 ? (progress.confirmed / progress.total) * 100 : 0}%` }}
                         ></div>
                       </div>
                     </div>
@@ -537,16 +551,17 @@ export default function TalentMapPage() {
               </div>
             )}
 
+            <div data-ui="talent-map-workspace-header" className="mb-4 rounded-xl border border-background-200 bg-white">
             {/* Company Description */}
             {activeCompany && (
-              <div className="bg-white rounded-xl border border-background-200 p-4 mb-4">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0">
-                    <i className="ri-building-4-line text-xl text-primary-500"></i>
+              <div className="border-b border-background-100 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary-50">
+                    <i className="ri-building-4-line text-lg text-primary-500"></i>
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-base font-bold text-foreground-900">{activeCompany.company_name}</h3>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-foreground-400 flex-wrap">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-foreground-400">
                       {activeCompany.industry && (
                         <span className="px-2 py-0.5 rounded bg-background-100">{activeCompany.industry}</span>
                       )}
@@ -587,8 +602,9 @@ export default function TalentMapPage() {
               </div>
             )}
 
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5">
             {/* Legend */}
-            <div className="flex flex-wrap items-center gap-4 mb-6 text-xs">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="text-foreground-500">状态：</span>
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded bg-primary-100 border border-primary-300"></span>
@@ -609,7 +625,7 @@ export default function TalentMapPage() {
             </div>
 
             {/* Search */}
-            <div className="relative mb-6 max-w-sm">
+            <div className="relative ml-auto w-full sm:w-72">
               <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-foreground-400 text-sm"></i>
               <input
                 type="text"
@@ -618,6 +634,8 @@ export default function TalentMapPage() {
                 placeholder="搜索姓名 / 岗位 / 部门 / 职级"
                 className="w-full pl-9 pr-3 py-2.5 bg-white border border-background-200 rounded-lg text-sm text-foreground-900 placeholder:text-foreground-400 focus:outline-none focus:border-primary-300"
               />
+            </div>
+            </div>
             </div>
               </>
             )}
@@ -652,19 +670,19 @@ export default function TalentMapPage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
+            <div data-ui="talent-map-department-list" className="space-y-3">
               {departments.map((dept) => (
-                <div key={dept.name} className="bg-white rounded-xl border border-background-200 p-5">
-                  <div className="flex items-center justify-between mb-4">
+                <section key={dept.name} className="overflow-hidden rounded-xl border border-background-200 bg-white">
+                  <div className="flex items-center justify-between border-b border-background-100 bg-background-50/70 px-3 py-2">
                     <div>
                       <h3 className="text-sm font-bold text-foreground-900">{dept.name}</h3>
-                      <p className="text-xs text-foreground-400 mt-0.5">{dept.roles.length} 个岗位</p>
+                      <p className="mt-0.5 text-xs text-foreground-400">{dept.roles.length} 个岗位 · {dept.roles.reduce((sum, role) => sum + role.people.length, 0)} 位人才</p>
                     </div>
                   </div>
-                  <div className="space-y-3">
+                  <div className="grid divide-y divide-background-100 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-3">
                     {dept.roles.map((role) => renderRoleCard(role))}
                   </div>
-                </div>
+                </section>
               ))}
             </div>
           )}
