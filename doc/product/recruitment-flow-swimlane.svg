@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1060" viewBox="0 0 2200 1060" role="img" aria-labelledby="title desc">
+  <title id="title">智聘招聘产品全流程状态流转泳道图</title>
+  <desc id="desc">按角色展示从需求到入职的真实产品流程；实线为当前产品内流程，橙色虚线为后续企业微信、OA、HRIS 对接。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L0,8 L8,4z" fill="#42617d"/></marker>
+    <marker id="futureArrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L0,8 L8,4z" fill="#c46c13"/></marker>
+    <style>
+      text{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;fill:#17324d}.title{font-size:34px;font-weight:700}.sub{font-size:16px;fill:#56708a}.lane{font-size:18px;font-weight:700}.laneSub{font-size:13px;fill:#65809a}.phase{font-size:16px;font-weight:700;fill:#42617d}.nodeTitle{font-size:15px;font-weight:700}.nodeStatus{font-size:11px;font-weight:700;letter-spacing:1px;fill:#50708c}.nodeDetail{font-size:12px;fill:#506b83}.edge{fill:none;stroke:#42617d;stroke-width:2.2;marker-end:url(#arrow)}.future{fill:none;stroke:#c46c13;stroke-width:2.2;stroke-dasharray:7 5;marker-end:url(#futureArrow)}.branch{fill:none;stroke:#c64154;stroke-width:2.2;marker-end:url(#arrow)}.label{font-size:12px;font-weight:700}.note{font-size:13px;fill:#56708a}
+    </style>
+  </defs>
+  <rect width="2200" height="1060" fill="#f8fafc"/>
+  <text x="54" y="62" class="title">智聘招聘产品全流程状态流转泳道图</text>
+  <text x="54" y="92" class="sub">产品 / 研发排期基准 · 绿色实线：当前产品内已具备的状态流转 · 橙色虚线：后续企业微信、OA、HRIS 对接</text>
+  <rect x="1570" y="42" width="180" height="30" rx="15" fill="#e8f7ee" stroke="#35a065"/><text x="1592" y="62" class="label" fill="#17653d">当前产品流程</text>
+  <rect x="1770" y="42" width="205" height="30" rx="15" fill="#fff4e5" stroke="#d98a29" stroke-dasharray="5 3"/><text x="1792" y="62" class="label" fill="#9b5811">后续外部接口</text>
+
+  <g fill="#eff5fb" stroke="#d7e3ef">
+    <rect x="210" y="128" width="250" height="46"/><rect x="460" y="128" width="270" height="46"/><rect x="730" y="128" width="300" height="46"/><rect x="1030" y="128" width="340" height="46"/><rect x="1370" y="128" width="430" height="46"/><rect x="1800" y="128" width="340" height="46"/>
+  </g>
+  <text x="300" y="157" class="phase">1. 需求</text><text x="545" y="157" class="phase">2. 简历与筛选</text><text x="815" y="157" class="phase">3. 业务筛选</text><text x="1130" y="157" class="phase">4. 面试</text><text x="1510" y="157" class="phase">5. Offer</text><text x="1900" y="157" class="phase">6. 入职闭环</text>
+
+  <g fill="#fff" stroke="#d7e3ef">
+    <rect x="30" y="174" width="180" height="110"/><rect x="30" y="284" width="180" height="110"/><rect x="30" y="394" width="180" height="110"/><rect x="30" y="504" width="180" height="110"/><rect x="30" y="614" width="180" height="110"/><rect x="30" y="724" width="180" height="110"/><rect x="30" y="834" width="180" height="110"/>
+  </g>
+  <g fill="#fff" stroke="#e4edf5"><rect x="210" y="174" width="1930" height="110"/><rect x="210" y="284" width="1930" height="110"/><rect x="210" y="394" width="1930" height="110"/><rect x="210" y="504" width="1930" height="110"/><rect x="210" y="614" width="1930" height="110"/><rect x="210" y="724" width="1930" height="110"/><rect x="210" y="834" width="1930" height="110"/></g>
+  <g><text x="55" y="221" class="lane">用人部门</text><text x="55" y="247" class="laneSub">发起需求</text><text x="55" y="331" class="lane">招聘专员</text><text x="55" y="357" class="laneSub">推进招聘主线</text><text x="55" y="441" class="lane">业务筛选人</text><text x="55" y="467" class="laneSub">判断业务匹配</text><text x="55" y="551" class="lane">面试官</text><text x="55" y="577" class="laneSub">面试与反馈</text><text x="55" y="661" class="lane">候选人</text><text x="55" y="687" class="laneSub">答复 Offer</text><text x="55" y="771" class="lane">招聘主管</text><text x="55" y="797" class="laneSub">审批</text><text x="55" y="881" class="lane">系统</text><text x="55" y="907" class="laneSub">记录状态与结果</text></g>
+
+  <!-- 当前产品节点 -->
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="250" y="195" width="170" height="68" rx="10"/><text x="266" y="216" class="nodeStatus">PENDING</text><text x="266" y="238" class="nodeTitle">创建招聘需求</text><text x="266" y="256" class="nodeDetail">岗位、HC、到岗日期</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="470" y="745" width="180" height="68" rx="10"/><text x="486" y="766" class="nodeStatus">PENDING</text><text x="486" y="788" class="nodeTitle">审核需求</text><text x="486" y="806" class="nodeDetail">通过 / 驳回补充</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="500" y="305" width="180" height="68" rx="10"/><text x="516" y="326" class="nodeStatus">PENDING</text><text x="516" y="348" class="nodeTitle">简历收录 / 确认</text><text x="516" y="366" class="nodeDetail">解析后加入流程</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="720" y="855" width="170" height="68" rx="10"/><text x="736" y="876" class="nodeStatus">AI_SCREEN</text><text x="736" y="898" class="nodeTitle">AI 初筛</text><text x="736" y="916" class="nodeDetail">转业务筛选或淘汰</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="835" y="415" width="180" height="68" rx="10"/><text x="851" y="436" class="nodeStatus">BUSINESS_REVIEW</text><text x="851" y="458" class="nodeTitle">业务筛选</text><text x="851" y="476" class="nodeDetail">通过 / 淘汰</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="1050" y="305" width="185" height="68" rx="10"/><text x="1066" y="326" class="nodeStatus">SCHEDULED</text><text x="1066" y="348" class="nodeTitle">安排面试</text><text x="1066" y="366" class="nodeDetail">创建、改约、取消</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="1255" y="525" width="170" height="68" rx="10"/><text x="1271" y="546" class="nodeStatus">INTERVIEW</text><text x="1271" y="568" class="nodeTitle">完成面试 / 反馈</text><text x="1271" y="586" class="nodeDetail">通过、加面或淘汰</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="1450" y="305" width="165" height="68" rx="10"/><text x="1466" y="326" class="nodeStatus">DRAFT</text><text x="1466" y="348" class="nodeTitle">Offer 草稿</text><text x="1466" y="366" class="nodeDetail">薪资、入职日期</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="1625" y="745" width="165" height="68" rx="10"/><text x="1641" y="766" class="nodeStatus">PENDING</text><text x="1641" y="788" class="nodeTitle">Offer 审批</text><text x="1641" y="806" class="nodeDetail">批准或退回修改</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="1805" y="305" width="170" height="68" rx="10"/><text x="1821" y="326" class="nodeStatus">SENT</text><text x="1821" y="348" class="nodeTitle">Offer 已发放</text><text x="1821" y="366" class="nodeDetail">等待候选人答复</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="1840" y="635" width="165" height="68" rx="10"/><text x="1856" y="656" class="nodeStatus">ACCEPTED</text><text x="1856" y="678" class="nodeTitle">接受 Offer</text><text x="1856" y="696" class="nodeDetail">进入待入职</text></g>
+  <g stroke="#35a065" fill="#f2fbf6"><rect x="2020" y="305" width="100" height="68" rx="10"/><text x="2032" y="326" class="nodeStatus">ONBOARD</text><text x="2032" y="348" class="nodeTitle">确认入职</text><text x="2032" y="366" class="nodeDetail">登记日期</text></g>
+  <g stroke="#35a065" fill="#e8f7ee"><rect x="2020" y="855" width="110" height="68" rx="10"/><text x="2032" y="876" class="nodeStatus">ONBOARDED</text><text x="2032" y="898" class="nodeTitle">已入职</text><text x="2032" y="916" class="nodeDetail">HC -1</text></g>
+  <g stroke="#c64154" fill="#fff1f2"><rect x="1410" y="855" width="155" height="68" rx="10"/><text x="1426" y="876" class="nodeStatus">REJECTED</text><text x="1426" y="898" class="nodeTitle">已淘汰</text><text x="1426" y="916" class="nodeDetail">保留原因 / 人才库</text></g>
+
+  <!-- 当前实线流转 -->
+  <path class="edge" d="M420 229 C455 229 435 779 470 779"/><path class="edge" d="M650 779 C700 779 650 339 500 339"/><path class="edge" d="M680 339 C720 339 690 889 720 889"/><path class="edge" d="M890 889 C930 889 835 449 835 449"/><path class="edge" d="M1015 449 C1050 449 1015 339 1050 339"/><path class="edge" d="M1235 339 C1260 339 1210 559 1255 559"/><path class="edge" d="M1425 559 C1460 559 1415 339 1450 339"/><path class="edge" d="M1615 339 C1645 339 1590 779 1625 779"/><path class="edge" d="M1790 779 C1825 779 1770 339 1805 339"/><path class="edge" d="M1975 339 C1840 339 1800 669 1840 669"/><path class="edge" d="M2005 669 C2040 669 1980 339 2020 339"/><path class="edge" d="M2070 373 C2070 520 2070 710 2070 855"/>
+  <path class="branch" d="M925 483 C925 650 1450 720 1485 855"/><text x="1140" y="692" class="label" fill="#c64154">淘汰</text><path class="branch" d="M1340 593 C1340 720 1460 760 1485 855"/><text x="1370" y="710" class="label" fill="#c64154">淘汰</text><path class="future" d="M1340 525 C1300 450 1170 420 1140 373"/><text x="1195" y="440" class="label" fill="#c46c13">加面 / 改约</text>
+
+  <!-- 后续外部接口 -->
+  <g fill="#fff4e5" stroke="#d98a29" stroke-dasharray="6 4"><rect x="1040" y="50" width="230" height="54" rx="10"/><rect x="1770" y="50" width="245" height="54" rx="10"/><rect x="1900" y="960" width="230" height="54" rx="10"/></g>
+  <text x="1056" y="73" class="nodeTitle" fill="#9b5811">企业微信：面试通知</text><text x="1056" y="92" class="nodeDetail">日程、改约、提醒、评价卡</text>
+  <text x="1786" y="73" class="nodeTitle" fill="#9b5811">企业微信 / OA：Offer 外发</text><text x="1786" y="92" class="nodeDetail">审批、发放、候选人答复回传</text>
+  <text x="1916" y="983" class="nodeTitle" fill="#9b5811">HRIS：入职回写</text><text x="1916" y="1002" class="nodeDetail">实际入职、组织与 HC 同步</text>
+  <path class="future" d="M1140 305 L1140 104"/><path class="future" d="M1890 305 L1890 104"/><path class="future" d="M2070 923 L2015 960"/>
+  <text x="54" y="1012" class="note">研发使用方式：优先保证实线链路可闭环；每条橙色虚线作为独立外部集成事项排期，并以回调、幂等、失败补偿和状态映射作为验收条件。</text>
+</svg>

@@ -34,7 +34,6 @@ const DirectorInsightsPage = lazy(() => import('@/pages/director/insights/page')
 const DirectorApprovalsPage = lazy(() => import('@/pages/director/approvals/page'));
 const KpiStandardsPage = lazy(() => import('@/pages/kpi-standards/page'));
 const AIAssistantPage = lazy(() => import('@/pages/ai-assistant/page'));
-const RecruitmentFlowPage = lazy(() => import('@/pages/recruitment-flow/page'));
 
 const dashboardRoles: ProductRole[] = ['admin', 'manager', 'recruiter'];
 const hrRoles: ProductRole[] = ['recruiter', 'manager', 'admin'];
@@ -44,7 +43,6 @@ const adminRoles: ProductRole[] = ['admin'];
 const interviewerRoles: ProductRole[] = ['interviewer'];
 const businessReviewerRoles: ProductRole[] = ['interviewer', 'manager', 'admin'];
 const directorRoles: ProductRole[] = ['hr_director'];
-const allProductRoles: ProductRole[] = ['admin', 'manager', 'recruiter', 'interviewer', 'hr_director'];
 
 const routes: RouteObject[] = [
   {
@@ -117,10 +115,6 @@ const routes: RouteObject[] = [
       {
         path: '/ai-assistant',
         element: <RequireCompanyRole allow={hrRoles}><AIAssistantPage /></RequireCompanyRole>,
-      },
-      {
-        path: '/recruitment-flow',
-        element: <RequireCompanyRole allow={allProductRoles}><RecruitmentFlowPage /></RequireCompanyRole>,
       },
       {
         path: '/settings',
