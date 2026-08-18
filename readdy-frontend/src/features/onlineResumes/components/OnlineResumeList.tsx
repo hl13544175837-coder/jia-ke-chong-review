@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCompanyAuth } from '@/auth/companyAuth';
 import ActionButton from '@/components/ui/ActionButton';
-import { demandsApi } from '@/features/demands/api';
-import type { RecruitmentDemand } from '@/features/demands/types';
 import { onlineResumesApi } from '../api';
-import type { OnlineResumeItem, OnlineResumeOwnerOption } from '../types';
+import type { OnlineResumeDemandOption, OnlineResumeItem, OnlineResumeOwnerOption } from '../types';
 import { suspiciousResumeFields } from '../quality';
 import { presentOnlineResumeDemand } from '../presentation';
 import OnlineResumeDetailDrawer from './OnlineResumeDetailDrawer';
@@ -88,6 +87,7 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 const INPUT_CLASS = 'h-9 rounded-lg border border-background-300 bg-white px-2.5 text-sm text-foreground-900 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100';
 
 export default function OnlineResumeList() {
+  const { role, userId } = useCompanyAuth();
   const [items, setItems] = useState<OnlineResumeItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -97,7 +97,7 @@ export default function OnlineResumeList() {
   const [openResume, setOpenResume] = useState<OpenResume | null>(null);
   const [showConnect, setShowConnect] = useState(false);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [demands, setDemands] = useState<RecruitmentDemand[]>([]);
+  const [demands, setDemands] = useState<OnlineResumeDemandOption[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<OnlineResumeOwnerOption[]>([]);
   const debouncedFilters = useDebouncedValue(filters, 300);
   const latestRequestId = useRef(0);
@@ -106,9 +106,9 @@ export default function OnlineResumeList() {
     let active = true;
     const loadDemands = async () => {
       try {
-        const response = await demandsApi.listDemands();
+        const response = await onlineResumesApi.listDemandOptions();
         if (!active) return;
-        setDemands(response.items ?? []);
+        setDemands(response);
       } catch {
         if (active) setDemands([]);
       }
@@ -234,8 +234,8 @@ export default function OnlineResumeList() {
                 className={`mt-1 ${INPUT_CLASS} min-w-[180px]`}
               >
                 <option value={0}>全部需求</option>
-                {demands.filter((d) => d.status === 'active').map((d) => (
-                  <option key={d.id} value={d.id}>{d.job_title} · {d.request_no}</option>
+                {demands.map((d) => (
+                  <option key={d.id} value={d.id}>{d.title} · {d.request_no}</option>
                 ))}
               </select>
             </label>
@@ -402,7 +402,7 @@ export default function OnlineResumeList() {
             <p className="mt-2 text-sm text-foreground-500">
               {hasActiveFilters ? '尝试调整或清空筛选条件' : '配置AI招聘助手后，它会自动按招聘需求筛选候选人并导入在线简历'}
             </p>
-            {!hasActiveFilters && (
+            {!hasActiveFilters && role === 'recruiter' && (
               <ActionButton tone="primary" className="mt-5" onClick={() => setShowConnect(true)}>
                 配置 AI 招聘助手
               </ActionButton>
@@ -506,7 +506,9 @@ export default function OnlineResumeList() {
                     <td className="px-4 py-4">
                       <div className="flex justify-end gap-2">
                         <ActionButton size="sm" onClick={() => setOpenResume({ id: item.id, edit: false })}>查看</ActionButton>
-                        <ActionButton size="sm" onClick={() => setOpenResume({ id: item.id, edit: true })}>编辑</ActionButton>
+                        {userId === item.owner_hr_id && (
+                          <ActionButton size="sm" onClick={() => setOpenResume({ id: item.id, edit: true })}>编辑</ActionButton>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -554,7 +556,7 @@ export default function OnlineResumeList() {
         />
       )}
 
-      {showConnect && <AgentConnectionDialog onClose={() => setShowConnect(false)} />}
+      {showConnect && role === 'recruiter' && <AgentConnectionDialog onClose={() => setShowConnect(false)} />}
     </>
   );
 }

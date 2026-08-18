@@ -39,6 +39,7 @@ const managerNavItems: NavItem[] = [
   { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['manager'], menuCode: 'index' },
   { path: '/jobs', icon: 'ri-briefcase-line', label: '需求审批', roles: ['manager'], menuCode: 'demands' },
   { path: '/analytics', icon: 'ri-bar-chart-box-line', label: '团队进展', roles: ['manager'], menuCode: 'bi' },
+  { path: '/online-resumes', icon: 'ri-chat-history-line', label: '在线简历', roles: ['manager'], menuCode: 'candidates' },
   { path: '/candidates', icon: 'ri-file-list-3-line', label: '简历库', roles: ['manager'], menuCode: 'candidates' },
   { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['manager'], menuCode: 'interviews' },
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['manager'], menuCode: 'pipeline' },
@@ -50,6 +51,7 @@ const managerNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { path: '/dashboard', icon: 'ri-dashboard-line', label: '工作台', roles: ['admin'], menuCode: 'index' },
   { path: '/jobs', icon: 'ri-briefcase-line', label: '招聘需求', roles: ['admin'], menuCode: 'demands' },
+  { path: '/online-resumes', icon: 'ri-chat-history-line', label: '在线简历', roles: ['admin'], menuCode: 'candidates' },
   { path: '/candidates', icon: 'ri-file-list-3-line', label: '简历库', roles: ['admin'], menuCode: 'candidates' },
   { path: '/interviews', icon: 'ri-calendar-event-line', label: '面试管理', roles: ['admin'], menuCode: 'interviews' },
   { path: '/offers', icon: 'ri-mail-send-line', label: 'Offer', roles: ['admin'], menuCode: 'pipeline' },

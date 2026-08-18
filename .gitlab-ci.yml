@@ -126,8 +126,9 @@ backendCriticalBusiness:
 frontendBrowserSmoke:
   stage: verify
   interruptible: true
-  # 冷缓存时两个隔离镜像各有 20 分钟硬上限，另留 5 分钟启动服务和跑核心冒烟。
-  timeout: 45m
+  # 最坏预算：两个镜像各 22 分钟（构建 20 + 验证 2）+ npm 15 分钟
+  # + 浏览器冒烟 20 分钟，再留 11 分钟清理，避免构建到一半被总时限截断。
+  timeout: 90m
   script:
     - export PYTHON_DOCKER_IMAGE="zhipin-ci-python:${CI_JOB_ID}"
     - export PLAYWRIGHT_DOCKER_IMAGE="zhipin-ci-browser:${CI_JOB_ID}"
@@ -135,8 +136,9 @@ frontendBrowserSmoke:
     - export NODE_BASE_IMAGE="registry.ymdd.tech/library/node:20-alpine"
     - bash scripts/ci-build-python-image.sh "$PYTHON_DOCKER_IMAGE"
     - bash scripts/ci-build-browser-image.sh "$PLAYWRIGHT_DOCKER_IMAGE"
-    - bash scripts/ci-npm-install.sh readdy-frontend
+    - timeout --kill-after=30s 900 bash scripts/ci-npm-install.sh readdy-frontend
     - >-
+      timeout --kill-after=30s 1200 env
       PYTHON_DOCKER_IMAGE="$PYTHON_DOCKER_IMAGE"
       PLAYWRIGHT_DOCKER_IMAGE="$PLAYWRIGHT_DOCKER_IMAGE"
       bash scripts/run-isolated-browser-smoke.sh

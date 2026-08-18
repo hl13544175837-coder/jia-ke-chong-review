@@ -282,7 +282,7 @@ VITE_GATEWAY_ROLE_MAP=100001:recruiter,100000:interviewer,100002:interviewer
 
 PGS “智聘 → 工作台”下为五类角色分别配置唯一标记：`dashboard_admin`、`dashboard_manager`、`dashboard_recruiter`、`dashboard_interviewer`、`dashboard_hr_director`。管理员、主管和招聘专员进入 `/dashboard`，面试官进入 `/interviewer/dashboard`，人力资源总监进入 `/director/cockpit`。普通业务菜单继续使用现有 `demands`、`candidates`、`interviews`、`pipeline`、`bi`、`settings` 编码按需授权。同一账号不得同时获得两个角色工作台标记；前端会拒绝静默选择。PGS 菜单加载失败时不再默认显示全部入口，而是显示重试和退出登录。
 
-菜单矩阵：招聘主管授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`、`bi`；招聘专员授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`，按需授予 `bi`；面试官授予 `index`、`demands`、`interviews`，按需授予 `bi`；人力资源总监授予 `bi`、`pipeline`。招聘专员在 `candidates` 权限下额外看到 `/online-resumes`“在线简历”，主管和管理员不显示该菜单。在线简历接口仍以后端 owner scope 限定本人数据，不能只依赖菜单隐藏。同一个 `interviews` 编码会按角色进入不同页面：招聘专员和主管进入 `/interviews` 的“面试管理”，面试官进入 `/interviewer/interviews` 的“我的面试”。面试官的招聘需求页用于发起并查看自己的业务招聘需求，不复用招聘专员页面。没有对应菜单时，左侧入口隐藏，直接输入网址也会被页面权限边界拦截；不能只隐藏菜单而保留直达入口。
+菜单矩阵：招聘主管授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`、`bi`；招聘专员授予 `index`、`demands`、`candidates`、`interviews`、`pipeline`，按需授予 `bi`；管理员的 `candidates` 权限同样控制候选人与在线简历入口；面试官授予 `index`、`demands`、`interviews`，按需授予 `bi`；人力资源总监授予 `bi`、`pipeline`。招聘专员、招聘主管和管理员在 `candidates` 权限下都看到 `/online-resumes`“在线简历”；后端再按 `org_id` 保证不跨组织，仅导入人可 PATCH，上述三类可见角色可 DELETE 并记录审计事件。同一个 `interviews` 编码会按角色进入不同页面：招聘专员和主管进入 `/interviews` 的“面试管理”，面试官进入 `/interviewer/interviews` 的“我的面试”。面试官的招聘需求页用于发起并查看自己的业务招聘需求，不复用招聘专员页面。没有对应菜单时，左侧入口隐藏，直接输入网址也会被页面权限边界拦截；不能只隐藏菜单而保留直达入口。
 
 发布后不能只看页面样式。使用李四登录后还要核对 `/api/auth/me` 的后端角色为 `interviewer`，并用第二名面试官建立不同 assignment 做交叉验证：两人页面相同，但任务、候选人和反馈列表只包含本人被分配的数据。PGS 已返回角色工作台标记但与后端角色不一致时，登录页会显示双方角色；先同步 PGS 与 Apollo 后再重试，不得临时放宽接口权限。
 
@@ -649,7 +649,7 @@ MVP 试用阶段建议一人一个账号。系统会按用户 ID 记录 Demand/�
 |------|------|------|
 | 工作台 | `/` | 角色化欢迎页 + KPI 看板 + 快速入口 |
 | AI 助手 | `/agent` | LangGraph ReAct 智能体，自然语言查询系统数据 |
-| 在线简历 | `/online-resumes` | 招聘专员本人从外部 Agent 导入的结构化在线简历与完整聊天；可编辑基础信息、手动删除，与正式简历库独立 |
+| 在线简历 | `/online-resumes` | 同组织且拥有 `candidates` 菜单的招聘专员/主管/管理员共享查看外部 Agent 导入的结构化在线简历与完整聊天；仅导入人可编辑，其他可见账号可删除，与正式简历库独立 |
 | 候选人 | `/candidates` | 公司人才库 + 多维筛选 + 个人收藏 + 匹配后入流程 + 受控精确查重合并 + 档案详情/导出 |
 | 简历上传 | `/upload` | 拖拽上传 PDF/DOCX/ZIP，AI 自动解析技能标签；旧版 DOC 跳过 |
 | 岗位管理 | `/jobs` | 创建岗位，AI 追问补全 JD，智能解析技能要求 |

@@ -71,6 +71,20 @@ def list_online_resumes():
     return jsonify(result)
 
 
+@bp.get("/online-resumes/owner-options")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def online_resume_owner_options():
+    return jsonify(OnlineResumeService().owner_options(org_id=g.org_id))
+
+
+@bp.get("/online-resumes/demand-options")
+@require_auth
+@require_role("recruiter", "manager", "admin")
+def online_resume_demand_options():
+    return jsonify(OnlineResumeService().demand_options(org_id=g.org_id))
+
+
 @bp.get("/online-resumes/<int:resume_id>")
 @require_auth
 @require_role("recruiter", "manager", "admin")
@@ -100,8 +114,8 @@ def update_online_resume(resume_id):
     )
     if resume is None:
         return jsonify({"error": "在线简历不存在"}), 404
-    if g.role != "recruiter" or resume.owner_hr_id != g.user_id:
-        return jsonify({"error": "只有所属招聘专员可以修改在线简历"}), 403
+    if resume.owner_hr_id != g.user_id:
+        return jsonify({"error": "只有导入人可以修改在线简历"}), 403
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return jsonify({"error": "请提供正确的修改内容"}), 400
@@ -129,7 +143,9 @@ def delete_online_resume(resume_id):
     )
     if resume is None:
         return jsonify({"error": "在线简历不存在"}), 404
-    if g.role != "recruiter" or resume.owner_hr_id != g.user_id:
-        return jsonify({"error": "只有所属招聘专员可以删除在线简历"}), 403
-    service.delete(resume)
+    service.delete(
+        resume,
+        actor_id=g.user_id,
+        actor_role=g.role,
+    )
     return jsonify({"ok": True})

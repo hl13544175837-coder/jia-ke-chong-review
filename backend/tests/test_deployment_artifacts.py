@@ -1143,7 +1143,10 @@ def test_gitlab_python_jobs_use_the_internal_python_312_image():
     assert '-v "$CI_PROJECT_DIR:/workspace:ro"' not in backend_job
     assert "PYTHON_DOCKER_IMAGE" in browser_job
     assert "PLAYWRIGHT_DOCKER_IMAGE" in browser_job
-    assert "timeout: 45m" in browser_job
+    assert "timeout: 90m" in browser_job
+    assert "timeout --kill-after=30s 900 bash scripts/ci-npm-install.sh readdy-frontend" in browser_job
+    assert "timeout --kill-after=30s 1200 env" in browser_job
+    assert "bash scripts/run-isolated-browser-smoke.sh" in browser_job
     assert 'NODE_BASE_IMAGE="registry.ymdd.tech/library/node:20-alpine"' in browser_job
     assert "scripts/ci-build-browser-image.sh" in browser_job
     assert "playwright install chromium" not in browser_job
@@ -1160,13 +1163,19 @@ def test_gitlab_python_jobs_use_the_internal_python_312_image():
     browser_builder = (ROOT / "scripts" / "ci-build-browser-image.sh").read_text(
         encoding="utf-8"
     )
+    python_builder = (ROOT / "scripts" / "ci-build-python-image.sh").read_text(
+        encoding="utf-8"
+    )
     browser_dockerfile = (
         ROOT / "readdy-frontend" / "Dockerfile.ci-browser"
     ).read_text(encoding="utf-8")
+    for builder in [python_builder, browser_builder]:
+        assert "timeout --kill-after=30s 1200 sudo docker build" in builder
+        assert "timeout --kill-after=10s 120 sudo docker run" in builder
     playwright_config = (
         ROOT / "readdy-frontend" / "playwright.config.ts"
     ).read_text(encoding="utf-8")
-    assert "timeout 1200 sudo docker build" in image_builder
+    assert "timeout --kill-after=30s 1200 sudo docker build" in image_builder
     assert "timeout 900 pip install" in ci_dockerfile
     assert 'BACKEND_CONTAINER_NAME="zhipin-browser-smoke-${CI_JOB_ID:-$$}"' in browser_smoke
     assert 'rm -f "$BACKEND_CONTAINER_NAME"' in browser_smoke
@@ -1174,7 +1183,7 @@ def test_gitlab_python_jobs_use_the_internal_python_312_image():
     assert "wait_for_container_url" in browser_smoke
     assert "docker inspect" not in browser_smoke
     assert "inspect --format '{{.State.Running}}'" in browser_smoke
-    assert "timeout 1200 sudo docker build" in browser_builder
+    assert "timeout --kill-after=30s 1200 sudo docker build" in browser_builder
     assert "registry.ymdd.tech/library/node:20-alpine" in browser_dockerfile
     assert "timeout 600 apk add --no-cache" in browser_dockerfile
     assert "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1" in browser_dockerfile

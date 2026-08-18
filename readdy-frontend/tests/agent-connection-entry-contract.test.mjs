@@ -19,6 +19,8 @@ test('在线简历页提供真实的连接 Agent 入口和限权凭证接口', (
   const api = read('src/features/onlineResumes/api.ts');
   const dialog = read(dialogModule);
   assert.match(page, /AgentConnectionDialog/);
+  assert.match(dialog, /useCompanyAuth/);
+  assert.match(dialog, /role\s*!==\s*['"]recruiter['"]/);
   assert.match(dialog, /AI 招聘助手/);
   assert.match(api, /issueAgentImportToken/);
   assert.match(api, /['"]\/agent-imports\/token['"]/);
@@ -56,9 +58,15 @@ test('生成的提示词绑定具体需求并覆盖两条导入路线', async ()
     'external_import_id',
     '聊天记录每条包含 sender',
     '不要在输出、聊天或日志中展示导入凭证',
+    '"items"',
+    'demand_id 必填',
+    '"extracted_info"',
   ]) {
     assert.match(prompt, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.doesNotMatch(prompt, /demand_id 可填/);
+  assert.doesNotMatch(prompt, /可省略（省略时系统自动归入/);
+  assert.doesNotMatch(prompt, /填错也不会报错/);
 });
 
 test('连接弹窗只在内存展示凭证并提供关闭清理和复制失败提示', () => {

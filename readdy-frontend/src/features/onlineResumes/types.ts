@@ -61,6 +61,12 @@ export interface OnlineResumeOwnerOption {
   email: string;
 }
 
+export interface OnlineResumeDemandOption {
+  id: number;
+  request_no: string;
+  title: string;
+}
+
 export interface OnlineResumeUpdatePayload {
   display_name: string;
   resume_json: Record<string, unknown>;

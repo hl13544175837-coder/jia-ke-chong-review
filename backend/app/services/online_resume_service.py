@@ -244,9 +244,7 @@ class OnlineResumeService:
         owner_hr_id: int | None = None,
     ) -> dict:
         query = OnlineResume.query.filter(OnlineResume.org_id == org_id)
-        if role == "recruiter":
-            query = query.filter(OnlineResume.owner_hr_id == actor_id)
-        elif role not in {"manager", "admin"}:
+        if role not in {"recruiter", "manager", "admin"}:
             query = query.filter(OnlineResume.id < 0)
         if owner_hr_id is not None and role in {"recruiter", "manager", "admin"}:
             query = query.filter(OnlineResume.owner_hr_id == owner_hr_id)
@@ -341,6 +339,58 @@ class OnlineResumeService:
         }
 
     @staticmethod
+    def owner_options(*, org_id: int) -> list[dict]:
+        owner_ids = [
+            owner_id
+            for (owner_id,) in db.session.query(OnlineResume.owner_hr_id)
+            .filter(OnlineResume.org_id == org_id)
+            .distinct()
+            .all()
+        ]
+        if not owner_ids:
+            return []
+        owners = User.query.filter(
+            User.org_id == org_id,
+            User.id.in_(owner_ids),
+        ).order_by(User.id.asc()).all()
+        return [
+            {
+                "id": owner.id,
+                "name": owner.name or owner.email,
+                "email": owner.email,
+            }
+            for owner in owners
+        ]
+
+    @staticmethod
+    def demand_options(*, org_id: int) -> list[dict]:
+        """Return only demands that are actually represented in this org's library."""
+        demand_ids = [
+            demand_id
+            for (demand_id,) in db.session.query(OnlineResume.demand_id)
+            .filter(OnlineResume.org_id == org_id)
+            .distinct()
+            .all()
+        ]
+        if not demand_ids:
+            return []
+        demands = RecruitmentDemand.query.filter(
+            RecruitmentDemand.org_id == org_id,
+            RecruitmentDemand.id.in_(demand_ids),
+        ).options(selectinload(RecruitmentDemand.job)).order_by(
+            RecruitmentDemand.id.asc()
+        ).all()
+        return [
+            {
+                "id": demand.id,
+                "request_no": demand.request_no,
+                "title": demand.job_title_snapshot or demand.job.title,
+            }
+            for demand in demands
+            if demand.job is not None and demand.job.org_id == org_id
+        ]
+
+    @staticmethod
     def _extracted_info(resume: OnlineResume) -> dict:
         payload = resume.resume_json if isinstance(resume.resume_json, dict) else {}
         info = payload.get("extracted_info")
@@ -366,8 +416,6 @@ class OnlineResumeService:
     ) -> OnlineResume | None:
         resume = db.session.get(OnlineResume, resume_id)
         if resume is None or resume.org_id != org_id:
-            return None
-        if role == "recruiter" and resume.owner_hr_id != actor_id:
             return None
         if role not in {"recruiter", "manager", "admin"}:
             return None
@@ -401,7 +449,41 @@ class OnlineResumeService:
         db.session.commit()
         return resume
 
-    def delete(self, resume: OnlineResume) -> None:
+    def delete(
+        self,
+        resume: OnlineResume,
+        *,
+        actor_id: int,
+        actor_role: str,
+    ) -> None:
+        linked_demand = db.session.get(RecruitmentDemand, resume.demand_id)
+        audit_demand_id = (
+            resume.demand_id
+            if linked_demand is not None and linked_demand.org_id == resume.org_id
+            else None
+        )
+        payload = {
+            "owner_hr_id": resume.owner_hr_id,
+            "source_platform": resume.source_platform,
+            "external_record_id": resume.external_record_id,
+        }
+        if audit_demand_id is None and resume.demand_id is not None:
+            payload["legacy_demand_id"] = resume.demand_id
+        db.session.add(
+            Event(
+                org_id=resume.org_id,
+                actor_id=actor_id,
+                actor_role=actor_role,
+                action="online_resume.deleted",
+                entity_id=resume.id,
+                entity_type="online_resume",
+                demand_id=audit_demand_id,
+                payload=payload,
+                result="success",
+                source="ui",
+                severity="warning",
+            )
+        )
         db.session.delete(resume)
         db.session.commit()
 

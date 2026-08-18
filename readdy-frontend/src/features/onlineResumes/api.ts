@@ -1,6 +1,7 @@
 import { apiRequest } from '@/lib/api';
 import type {
   OnlineResumeDetailResponse,
+  OnlineResumeDemandOption,
   OnlineResumeItem,
   OnlineResumeListParams,
   OnlineResumeListResponse,
@@ -34,7 +35,11 @@ export const onlineResumesApi = {
   },
 
   listRecruiterOwners(): Promise<OnlineResumeOwnerOption[]> {
-    return apiRequest<OnlineResumeOwnerOption[]>('/candidates/owner-options');
+    return apiRequest<OnlineResumeOwnerOption[]>('/online-resumes/owner-options');
+  },
+
+  listDemandOptions(): Promise<OnlineResumeDemandOption[]> {
+    return apiRequest<OnlineResumeDemandOption[]>('/online-resumes/demand-options');
   },
 
   async detail(id: number): Promise<OnlineResumeItem> {

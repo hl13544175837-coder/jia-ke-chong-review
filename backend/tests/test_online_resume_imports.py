@@ -75,7 +75,7 @@ def _import_one(client, token, item):
     )
 
 
-def test_recruiter_imports_and_reads_only_their_online_resumes(
+def test_recruiters_in_same_org_can_read_each_others_online_resumes(
     app,
     client,
     make_user,
@@ -112,13 +112,32 @@ def test_recruiter_imports_and_reads_only_their_online_resumes(
 
     other_list = client.get("/api/online-resumes", headers=_headers(other_token))
     assert other_list.status_code == 200
-    assert other_list.get_json()["items"] == []
-    hidden_detail = client.get(
+    assert other_list.get_json()["total"] == 1
+    assert other_list.get_json()["items"][0]["owner_hr_id"] == owner_id
+    shared_detail = client.get(
         f"/api/online-resumes/{resume_id}",
         headers=_headers(other_token),
     )
-    assert hidden_detail.status_code == 404
-    assert hidden_detail.get_json() == {"error": "在线简历不存在"}
+    assert shared_detail.status_code == 200
+    assert len(shared_detail.get_json()["item"]["chat_json"]) == 2
+
+    assert client.patch(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(other_token),
+        json={"display_name": "非导入人不应修改"},
+    ).status_code == 403
+    assert client.delete(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(other_token),
+    ).status_code == 200
+    with app.app_context():
+        from app.models import Event
+
+        deleted = Event.query.filter_by(action="online_resume.deleted").one()
+        assert deleted.actor_id == other_id
+        assert deleted.entity_id == resume_id
+        assert deleted.payload["owner_hr_id"] == owner_id
+        assert deleted.payload["external_record_id"] == "boss-chat-001"
 
 
 def test_manager_and_admin_can_read_online_resumes_in_their_org(
@@ -147,10 +166,6 @@ def test_manager_and_admin_can_read_online_resumes_in_their_org(
             headers=_headers(privileged_token),
             json={"display_name": "管理者不应修改"},
         ).status_code == 403
-        assert client.delete(
-            f"/api/online-resumes/{resume_id}",
-            headers=_headers(privileged_token),
-        ).status_code == 403
 
     assert client.patch(
         f"/api/online-resumes/{resume_id}",
@@ -159,8 +174,50 @@ def test_manager_and_admin_can_read_online_resumes_in_their_org(
     ).status_code == 200
     assert client.delete(
         f"/api/online-resumes/{resume_id}",
-        headers=_headers(owner_token),
+        headers=_headers(manager_token),
     ).status_code == 200
+
+    assert _import_one(
+        client,
+        owner_token,
+        _item(demand_id, "boss-chat-admin-delete"),
+    ).status_code == 200
+    admin_list = client.get("/api/online-resumes", headers=_headers(admin_token))
+    admin_resume_id = admin_list.get_json()["items"][0]["id"]
+    assert client.delete(
+        f"/api/online-resumes/{admin_resume_id}",
+        headers=_headers(admin_token),
+    ).status_code == 200
+
+
+def test_online_resume_detail_mutations_do_not_cross_org_boundaries(
+    app,
+    client,
+    make_user,
+):
+    owner_id, owner_token = make_user("online-org-one@x.com", org_id=1)
+    _, foreign_token = make_user("online-org-two@x.com", org_id=2)
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-ORG-ONE", org_id=1)
+    assert _import_one(client, owner_token, _item(demand_id)).status_code == 200
+
+    with app.app_context():
+        from app.models import OnlineResume
+
+        resume_id = OnlineResume.query.one().id
+
+    assert client.get(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(foreign_token),
+    ).status_code == 404
+    assert client.patch(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(foreign_token),
+        json={"display_name": "越权修改"},
+    ).status_code == 404
+    assert client.delete(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(foreign_token),
+    ).status_code == 404
 
 
 def test_orphaned_legacy_demand_is_returned_as_unavailable_instead_of_crashing(
@@ -198,6 +255,23 @@ def test_orphaned_legacy_demand_is_returned_as_unavailable_instead_of_crashing(
     assert listing.get_json()["items"][0]["demand"] is None
     assert detail.status_code == 200
     assert detail.get_json()["item"]["demand"] is None
+
+    deleted = client.delete(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(token),
+    )
+    assert deleted.status_code == 200
+    with app.app_context():
+        from app import db
+        from app.models import Event, OnlineResume
+
+        assert db.session.get(OnlineResume, resume_id) is None
+        event = Event.query.filter_by(
+            action="online_resume.deleted",
+            entity_id=resume_id,
+        ).one()
+        assert event.demand_id is None
+        assert event.payload["legacy_demand_id"] == 999_999
 
 
 def test_cross_org_legacy_demand_is_not_disclosed_by_online_resume(
@@ -244,6 +318,26 @@ def test_cross_org_legacy_demand_is_not_disclosed_by_online_resume(
     assert detail.get_json()["item"]["demand"] is None
     assert "REQ-SECRET-ORG-2" not in listing.get_data(as_text=True)
     assert "REQ-SECRET-ORG-2" not in detail.get_data(as_text=True)
+    options = client.get(
+        "/api/online-resumes/demand-options",
+        headers=_headers(token),
+    )
+    assert options.status_code == 200
+    assert options.get_json() == []
+
+    assert client.delete(
+        f"/api/online-resumes/{resume_id}",
+        headers=_headers(token),
+    ).status_code == 200
+    with app.app_context():
+        from app.models import Event
+
+        event = Event.query.filter_by(
+            action="online_resume.deleted",
+            entity_id=resume_id,
+        ).one()
+        assert event.demand_id is None
+        assert event.payload["legacy_demand_id"] == foreign_demand_id
 
 
 def test_cross_org_job_title_is_not_disclosed_through_legacy_demand(
@@ -408,7 +502,7 @@ def test_online_resume_page_bulk_loads_jobs_without_n_plus_one(
     assert len(selects) <= 3
 
 
-def test_recruiter_owner_filter_cannot_escape_self_scope(
+def test_recruiter_can_filter_shared_online_resumes_by_owner(
     app,
     client,
     make_user,
@@ -434,8 +528,85 @@ def test_recruiter_owner_filter_cannot_escape_self_scope(
     )
 
     assert escaped.status_code == 200
-    assert escaped.get_json()["items"] == []
-    assert escaped.get_json()["total"] == 0
+    assert escaped.get_json()["total"] == 1
+    assert escaped.get_json()["items"][0]["external_record_id"] == "other-hidden"
+
+
+def test_online_resume_owner_options_are_shared_within_org(
+    app,
+    client,
+    make_user,
+):
+    owner_id, owner_token = make_user(
+        "online-owner-options-a@x.com",
+        name="导入人A",
+    )
+    other_id, other_token = make_user(
+        "online-owner-options-b@x.com",
+        name="导入人B",
+    )
+    foreign_id, foreign_token = make_user(
+        "online-owner-options-foreign@x.com",
+        name="其他组织导入人",
+        org_id=2,
+    )
+    _, manager_token = make_user(
+        "online-owner-options-manager@x.com",
+        role="manager",
+    )
+    owner_demand_id = _make_demand(app, owner_id, "REQ-OWNER-OPTIONS-A")
+    other_demand_id = _make_demand(app, other_id, "REQ-OWNER-OPTIONS-B")
+    foreign_demand_id = _make_demand(
+        app,
+        foreign_id,
+        "REQ-OWNER-OPTIONS-FOREIGN",
+        org_id=2,
+    )
+    assert _import_one(
+        client,
+        owner_token,
+        _item(owner_demand_id, "owner-options-a"),
+    ).status_code == 200
+    assert _import_one(
+        client,
+        other_token,
+        _item(other_demand_id, "owner-options-b"),
+    ).status_code == 200
+    assert _import_one(
+        client,
+        foreign_token,
+        _item(foreign_demand_id, "owner-options-foreign"),
+    ).status_code == 200
+
+    expected = [
+        {"id": owner_id, "name": "导入人A", "email": "online-owner-options-a@x.com"},
+        {"id": other_id, "name": "导入人B", "email": "online-owner-options-b@x.com"},
+    ]
+    for token in (owner_token, manager_token):
+        response = client.get(
+            "/api/online-resumes/owner-options",
+            headers=_headers(token),
+        )
+        assert response.status_code == 200
+        assert response.get_json() == expected
+
+    demand_options = client.get(
+        "/api/online-resumes/demand-options",
+        headers=_headers(manager_token),
+    )
+    assert demand_options.status_code == 200
+    assert demand_options.get_json() == [
+        {
+            "id": owner_demand_id,
+            "request_no": "REQ-OWNER-OPTIONS-A",
+            "title": "Java开发",
+        },
+        {
+            "id": other_demand_id,
+            "request_no": "REQ-OWNER-OPTIONS-B",
+            "title": "Java开发",
+        },
+    ]
 
 
 def test_manager_can_filter_online_resumes_by_owner(app, client, make_user):
@@ -851,6 +1022,14 @@ def test_interviewer_is_forbidden_from_all_online_resume_endpoints(
         ),
         client.get("/api/online-resumes", headers=_headers(interviewer_token)),
         client.get(
+            "/api/online-resumes/owner-options",
+            headers=_headers(interviewer_token),
+        ),
+        client.get(
+            "/api/online-resumes/demand-options",
+            headers=_headers(interviewer_token),
+        ),
+        client.get(
             f"/api/online-resumes/{resume_id}",
             headers=_headers(interviewer_token),
         ),
@@ -864,7 +1043,15 @@ def test_interviewer_is_forbidden_from_all_online_resume_endpoints(
             headers=_headers(interviewer_token),
         ),
     ]
-    assert [response.status_code for response in requests] == [403, 403, 403, 403, 403]
+    assert [response.status_code for response in requests] == [
+        403,
+        403,
+        403,
+        403,
+        403,
+        403,
+        403,
+    ]
 
 
 def test_recruiter_cannot_import_into_another_recruiters_demand(

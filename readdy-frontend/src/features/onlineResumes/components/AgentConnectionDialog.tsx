@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCompanyAuth } from '@/auth/companyAuth';
 import ActionButton from '@/components/ui/ActionButton';
 import { useOverlayLifecycle } from '@/components/ui/useOverlayLifecycle';
 import { demandsApi } from '@/features/demands/api';
@@ -159,7 +160,10 @@ export function AgentConnectionDialog({ onClose }: AgentConnectionDialogProps) {
 }
 
 export default function AgentConnectionDialogEntry() {
+  const { role } = useCompanyAuth();
   const [open, setOpen] = useState(false);
+  if (role !== 'recruiter') return null;
+
   return (
     <>
       <ActionButton tone="primary" onClick={() => setOpen(true)}>AI 招聘助手</ActionButton>
@@ -167,4 +171,3 @@ export default function AgentConnectionDialogEntry() {
     </>
   );
 }
-

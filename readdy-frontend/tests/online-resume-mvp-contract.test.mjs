@@ -12,11 +12,25 @@ const readOptional = (file) => {
 
 const files = {
   page: 'src/pages/online-resumes/page.tsx',
+  layout: 'src/components/feature/MainLayout.tsx',
   api: 'src/features/onlineResumes/api.ts',
   list: 'src/features/onlineResumes/components/OnlineResumeList.tsx',
   detail: 'src/features/onlineResumes/components/OnlineResumeDetailDrawer.tsx',
   types: 'src/features/onlineResumes/types.ts',
 };
+
+test('招聘专员、招聘主管和管理员均有在线简历菜单入口', () => {
+  const layout = readOptional(files.layout);
+  assert.notEqual(layout, '', '缺少主布局');
+
+  for (const role of ['recruiter', 'manager', 'admin']) {
+    assert.match(
+      layout,
+      new RegExp(`path: ['"]/online-resumes['"].*roles: \\[['"]${role}['"]\\].*menuCode: ['"]candidates['"]`),
+      `${role} 缺少受 candidates 菜单权限控制的在线简历入口`,
+    );
+  }
+});
 
 test('在线简历页面只组合 onlineResumes feature', () => {
   const page = readOptional(files.page);
@@ -37,7 +51,9 @@ test('在线简历 API 使用真实的查询、详情、修改和删除接口', 
   assert.match(api, /query\.set\(['"]page['"],\s*String\(params\.page\)\)/);
   assert.match(api, /query\.set\(['"]per_page['"],\s*String\(params\.perPage\)\)/);
   assert.match(api, /listRecruiterOwners\(\)/);
-  assert.match(api, /apiRequest<[^>]+>\(['"]\/candidates\/owner-options['"]\)/);
+  assert.match(api, /apiRequest<[^>]+>\(['"]\/online-resumes\/owner-options['"]\)/);
+  assert.match(api, /listDemandOptions\(\)/);
+  assert.match(api, /apiRequest<[^>]+>\(['"]\/online-resumes\/demand-options['"]\)/);
   assert.match(api, /apiRequest<[^>]+>\(`\/online-resumes\/\$\{id\}`\)/);
   assert.match(api, /method:\s*['"]PATCH['"]/);
   assert.match(api, /method:\s*['"]DELETE['"]/);
@@ -61,6 +77,7 @@ test('列表覆盖加载、失败重试、空态和真实数据展示', () => {
   assert.match(list, /setPage\(validLastPage\)/);
   assert.match(list, /keepLoadingForPageCorrection/);
   assert.match(list, /onlineResumesApi\.listRecruiterOwners/);
+  assert.match(list, /onlineResumesApi\.listDemandOptions/);
   assert.match(list, /useDebouncedValue/);
   assert.match(list, /latestRequestId/);
   assert.doesNotMatch(list, /fetch\(['"]\/api\/candidates\/owner-options/);
@@ -130,6 +147,18 @@ test('聊天发送方兼容未知值且来源链接安全打开', () => {
   assert.match(detail, /resume\.source_platform/);
   assert.match(detail, /打开来源聊天/);
   assert.doesNotMatch(detail, /打开BOSS聊天/);
+});
+
+test('详情页只允许导入人编辑，同组织其他可见账号可删除', () => {
+  const detail = readOptional(files.detail);
+
+  assert.match(detail, /useCompanyAuth/);
+  assert.match(detail, /userId\s*===\s*resume\.owner_hr_id/);
+  assert.match(detail, /canEdit/);
+  assert.match(detail, /canDelete/);
+  assert.match(detail, /canEdit\s*&&.*编辑资料/s);
+  assert.match(detail, /canDelete\s*\?/);
+  assert.match(detail, /删除在线简历/);
 });
 
 test('详情只读展示完整聊天并允许编辑资料和硬删除', () => {

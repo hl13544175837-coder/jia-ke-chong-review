@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCompanyAuth } from '@/auth/companyAuth';
 import StructuredResumeView from '@/components/candidates/StructuredResumeView';
 import ActionButton from '@/components/ui/ActionButton';
 import DetailActionBar from '@/components/ui/DetailActionBar';
@@ -119,15 +120,18 @@ export default function OnlineResumeDetailDrawer({
   onSaved,
   onDeleted,
 }: OnlineResumeDetailDrawerProps) {
+  const { userId } = useCompanyAuth();
   const [resume, setResume] = useState<OnlineResumeItem | null>(null);
   const [draft, setDraft] = useState<BasicProfileDraft | null>(null);
-  const [editing, setEditing] = useState(initialEdit);
+  const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
   const safeSourceUrl = resume ? safeExternalHttpUrl(resume.source_url) : null;
   const demand = resume ? presentOnlineResumeDemand(resume.demand) : null;
+  const canEdit = Boolean(resume && userId === resume.owner_hr_id);
+  const canDelete = Boolean(resume);
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -136,12 +140,13 @@ export default function OnlineResumeDetailDrawer({
       const item = await onlineResumesApi.detail(resumeId);
       setResume(item);
       setDraft(draftFromResume(item));
+      setEditing(initialEdit && userId === item.owner_hr_id);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '在线简历加载失败');
     } finally {
       setLoading(false);
     }
-  }, [resumeId]);
+  }, [initialEdit, resumeId, userId]);
 
   useEffect(() => {
     void loadDetail();
@@ -154,7 +159,7 @@ export default function OnlineResumeDetailDrawer({
   ), [resume]);
 
   const handleSave = async () => {
-    if (!resume || !draft || !draft.displayName.trim()) return;
+    if (!resume || !draft || !canEdit || !draft.displayName.trim()) return;
     setSaving(true);
     setError('');
     try {
@@ -174,7 +179,7 @@ export default function OnlineResumeDetailDrawer({
   };
 
   const handleDelete = async () => {
-    if (!resume || !window.confirm(DELETE_WARNING)) return;
+    if (!resume || !canDelete || !window.confirm(DELETE_WARNING)) return;
     setDeleting(true);
     setError('');
     try {
@@ -260,10 +265,10 @@ export default function OnlineResumeDetailDrawer({
             <section>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h3 className="text-base font-semibold text-foreground-900">结构化在线简历</h3>
-                {!editing && <ActionButton size="sm" onClick={() => setEditing(true)}>编辑资料</ActionButton>}
+                {canEdit && !editing && <ActionButton size="sm" onClick={() => setEditing(true)}>编辑资料</ActionButton>}
               </div>
 
-              {editing ? (
+              {editing && canEdit ? (
                 <div className="grid gap-4 rounded-xl border border-background-200 bg-background-50 p-4 sm:grid-cols-2">
                   <label className="text-sm text-foreground-600">
                     候选人姓名
@@ -360,7 +365,7 @@ export default function OnlineResumeDetailDrawer({
 
       {resume && draft && (
         <DetailActionBar status={<span className="text-xs text-foreground-500">聊天记录只读，由外部Agent导入</span>}>
-          {editing ? (
+          {editing && canEdit ? (
             <>
               <ActionButton
                 onClick={() => {
@@ -376,11 +381,11 @@ export default function OnlineResumeDetailDrawer({
                 {saving ? '保存中...' : '保存修改'}
               </ActionButton>
             </>
-          ) : (
+          ) : canDelete ? (
             <ActionButton tone="danger" onClick={() => void handleDelete()} disabled={deleting}>
               {deleting ? '删除中...' : '删除在线简历'}
             </ActionButton>
-          )}
+          ) : null}
         </DetailActionBar>
       )}
     </DetailDrawerShell>

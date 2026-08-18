@@ -9,7 +9,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/local/bin/zhipin-chromium
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
-    && timeout 1500 apk add --no-cache \
+    && timeout 600 apk add --no-cache \
         ca-certificates \
         chromium \
         font-noto-cjk \
