@@ -40,7 +40,7 @@ def test_local_account_sync_is_dry_run_and_idempotent(app):
             "email": "interviewer02@mvp.local",
         }
         user = User.query.filter_by(email="interviewer02@mvp.local").one()
-        assert user.name == "面试官02"
+        assert user.name == "演示账号·面试官02"
         assert user.role == "interviewer"
         assert user.department == "业务部门"
         assert user.is_active is True

@@ -23,7 +23,7 @@ def ensure_local_interviewer02(*, apply=False):
     if existing is not None:
         if existing.role != "interviewer" or not existing.is_active:
             raise RuntimeError(
-                "面试官02已存在但角色或启用状态不正确，请人工核对"
+                "演示账号·面试官02已存在但角色或启用状态不正确，请人工核对"
             )
         return {
             "action": "unchanged",
@@ -43,7 +43,7 @@ def ensure_local_interviewer02(*, apply=False):
     db.session.add(
         User(
             org_id=1,
-            name="面试官02",
+            name="演示账号·面试官02",
             email=LOCAL_INTERVIEWER_EMAIL,
             role="interviewer",
             department="业务部门",
