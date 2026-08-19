@@ -81,3 +81,10 @@ test('连接弹窗只在内存展示凭证并提供关闭清理和复制失败�
   assert.match(dialog, /有效至/);
   assert.doesNotMatch(dialog, /localStorage|sessionStorage|console\.(?:log|info|debug)/);
 });
+
+test('连接弹窗不会擅自带入第一个招聘需求', () => {
+  const dialog = read(dialogModule);
+  assert.match(dialog, /请选择本次招聘需求/);
+  assert.match(dialog, /setSelectedDemandId\(0\)/);
+  assert.doesNotMatch(dialog, /setSelectedDemandId\(available\[0\]\?\.id\s*\?\?\s*0\)/);
+});

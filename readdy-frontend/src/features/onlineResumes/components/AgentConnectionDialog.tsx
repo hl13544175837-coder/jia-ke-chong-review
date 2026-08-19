@@ -41,7 +41,7 @@ export function AgentConnectionDialog({ onClose }: AgentConnectionDialogProps) {
         if (!active) return;
         const available = response.items.filter((demand) => demand.status === 'active');
         setDemands(available);
-        setSelectedDemandId(available[0]?.id ?? 0);
+        setSelectedDemandId(0);
       } catch (loadError) {
         if (active) setError(loadError instanceof Error ? loadError.message : '招聘需求加载失败，请重试');
       } finally {
@@ -123,6 +123,7 @@ export function AgentConnectionDialog({ onClose }: AgentConnectionDialogProps) {
             <select aria-label="招聘需求" value={selectedDemandId || ''} onChange={(event) => { setSelectedDemandId(Number(event.target.value)); setPrompt(''); setError(''); }} disabled={loading || generating || Boolean(prompt)} className="mt-2 h-10 w-full rounded-lg border border-background-300 bg-white px-3 text-sm disabled:bg-background-50">
               {loading && <option value="">正在加载招聘需求...</option>}
               {!loading && demands.length === 0 && <option value="">暂无正在招聘的需求</option>}
+              {!loading && demands.length > 0 && <option value="">请选择本次招聘需求</option>}
               {demands.map((demand) => <option key={demand.id} value={demand.id}>{demand.request_no} · {demand.job_title}</option>)}
             </select>
           </label>
