@@ -81,6 +81,38 @@ def test_hr_created_active_demand_remains_approved(client, make_user, app):
     assert response.get_json()["approval_status"] == "approved"
 
 
+def test_manager_can_correct_demand_title_and_jd_snapshot(client, make_user, app):
+    owner_id, owner_token = make_user("demand-title-owner@example.com", role="recruiter")
+    _, manager_token = make_user("demand-title-manager@example.com", role="manager")
+    created = client.post(
+        "/api/demands",
+        headers=_auth(owner_token),
+        json={
+            "job_id": _seed_job(app),
+            "owner_hr_id": owner_id,
+            "city": "上海",
+            "requester_department": "业务部",
+            "hiring_manager_name": "业务负责人",
+            "requested_at": "2026-07-24",
+            "target_date": "2026-08-31",
+            "headcount": 1,
+            "status": "active",
+        },
+    )
+    assert created.status_code == 201
+    demand_id = created.get_json()["id"]
+
+    updated = client.patch(
+        f"/api/demands/{demand_id}",
+        headers=_auth(manager_token),
+        json={"job_title": "Java开发", "jd_text": "Java开发"},
+    )
+
+    assert updated.status_code == 200
+    assert updated.get_json()["job_title"] == "Java开发"
+    assert updated.get_json()["jd_text"] == "Java开发"
+
+
 def test_reject_requires_reason(client, make_user, app):
     _, interviewer_token = make_user(
         "business-reject@example.com", role="interviewer"

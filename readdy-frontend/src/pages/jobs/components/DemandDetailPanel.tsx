@@ -41,7 +41,9 @@ export default function DemandDetailPanel({
     setRejectReason('');
     setRejectError('');
     setDraft({
+      job_title: demand.job_title,
       request_no: demand.request_no,
+      jd_text: demand.jd_text || '',
       requester_department: demand.requester_department || demand.job_department,
       city: demand.job_city,
       hiring_manager_name: demand.hiring_manager_name,
@@ -143,6 +145,7 @@ export default function DemandDetailPanel({
                 onSave(demand.id, draft);
               }}
             >
+              <Field label="岗位名称"><input required value={draft.job_title || ''} onChange={(event) => patch('job_title', event.target.value)} className="field" /></Field>
               <Field label="需求编号"><input value={draft.request_no || ''} onChange={(event) => patch('request_no', event.target.value)} className="field" /></Field>
               <Field label="用人部门"><input required value={draft.requester_department} onChange={(event) => patch('requester_department', event.target.value)} className="field" /></Field>
               <Field label="招聘城市"><input required value={draft.city} onChange={(event) => patch('city', event.target.value)} className="field" /></Field>
@@ -150,6 +153,7 @@ export default function DemandDetailPanel({
               <Field label="提需求日期"><input type="date" required value={draft.requested_at} onChange={(event) => patch('requested_at', event.target.value)} className="field" /></Field>
               <Field label="期望完成日期"><input type="date" required min={draft.requested_at} value={draft.target_date} onChange={(event) => patch('target_date', event.target.value)} className="field" /></Field>
               <Field label="HC"><input type="number" min={1} max={10000} required value={draft.headcount} onChange={(event) => patch('headcount', Number(event.target.value) || 1)} className="field" /></Field>
+              <label className="col-span-2 block text-sm font-medium text-foreground-700">岗位 JD<textarea required value={draft.jd_text || ''} onChange={(event) => patch('jd_text', event.target.value)} rows={6} className="field mt-1 resize-none" /></label>
               <label className="col-span-2 block text-sm font-medium text-foreground-700">备注<textarea value={draft.note || ''} onChange={(event) => patch('note', event.target.value)} rows={5} className="field mt-1 resize-none" /></label>
             </form>
           )}

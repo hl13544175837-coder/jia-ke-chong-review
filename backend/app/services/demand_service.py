@@ -292,6 +292,14 @@ def apply_editable_fields(demand, data, *, org_id):
     """Apply the shared demand edit contract without committing the transaction."""
 
     fields = {}
+    if "job_title" in data:
+        title = clean_text(data.get("job_title"), 200)
+        if not title:
+            fields["job_title"] = "岗位名称不能为空"
+        else:
+            # Demand 保存的是招聘时点的岗位快照。这里不修改可被其他需求复用的
+            # Job 模板，避免修正一条需求时误改同岗位的历史招聘记录。
+            demand.job_title_snapshot = title
     if "request_no" in data:
         request_no = normalize_request_no(data.get("request_no"))
         if not request_no:
