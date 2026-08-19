@@ -18,6 +18,7 @@ from ..models import Candidate, Job, PipelineStage, RecruitmentDemand, User
 from ..sql_safety import LIKE_ESCAPE_CHAR, escape_like_literal
 from ..time_utils import utc_now
 from .demand_context_service import validate_recruiter_owner
+from .account_display_service import account_display_name
 from .headcount_service import build_headcount_state
 from .job_profile_service import extract_jd_structured
 
@@ -589,12 +590,12 @@ def demand_payload(demand, *, include_jd=False, config=None):
         "job_department": demand.department or (job.department if job else ""),
         "job_code": job.job_code if job else "",
         "owner_hr_id": demand.owner_hr_id,
-        "owner_hr_name": owner.name if owner else "",
+        "owner_hr_name": account_display_name(owner),
         "default_interviewer_id": (
             default_interviewer.id if default_interviewer else None
         ),
         "default_interviewer_name": (
-            default_interviewer.name if default_interviewer else None
+            account_display_name(default_interviewer) if default_interviewer else None
         ),
         "request_no": demand.request_no or "",
         "requester_name": demand.requester_name or "",

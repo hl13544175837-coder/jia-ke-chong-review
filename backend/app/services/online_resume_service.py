@@ -17,6 +17,7 @@ from ..services.demand_context_service import (
     resolve_demand_context,
 )
 from ..time_utils import utc_now
+from .account_display_service import account_display_name
 from .resume_quality import check_extracted_quality
 
 
@@ -356,7 +357,7 @@ class OnlineResumeService:
         return [
             {
                 "id": owner.id,
-                "name": owner.name or owner.email,
+                "name": account_display_name(owner),
                 "email": owner.email,
             }
             for owner in owners
@@ -549,7 +550,7 @@ class OnlineResumeService:
             "id": resume.id,
             "org_id": resume.org_id,
             "owner_hr_id": resume.owner_hr_id,
-            "owner_name": owner.name if owner is not None else "",
+            "owner_name": account_display_name(owner),
             "demand": demand_summary,
             "boss_account": resume.boss_account,
             "source_platform": resume.source_platform,

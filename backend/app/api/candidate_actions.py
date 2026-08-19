@@ -268,6 +268,8 @@ def register_candidate_action_routes(bp):
     @require_auth
     @require_role("recruiter", "manager", "admin", "interviewer")
     def candidate_owner_options():
+        from ..services.account_display_service import account_display_name
+
         query = (
             User.query
             .filter(User.org_id == g.org_id, User.role == "recruiter", User.is_active.is_(True))
@@ -278,7 +280,7 @@ def register_candidate_action_routes(bp):
         return jsonify([
             {
                 "id": user.id,
-                "name": user.name,
+                "name": account_display_name(user),
                 "email": user.email,
             }
             for user in recruiters
