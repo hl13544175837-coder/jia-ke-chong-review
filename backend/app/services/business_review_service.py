@@ -25,6 +25,7 @@ from ..models import (
     User,
 )
 from ..time_utils import utc_now
+from .account_display_service import account_display_name
 from .pipeline_service import can_enter_business_review, normalize_pipeline_stage
 
 
@@ -790,12 +791,12 @@ def business_review_payload(task):
         "demand_id": task.demand_id,
         "candidate_id": task.candidate_id,
         "reviewer_id": task.reviewer_id,
-        "reviewer_name": reviewer.name if reviewer else None,
+        "reviewer_name": account_display_name(reviewer) if reviewer else None,
         "created_by": task.created_by,
-        "creator_name": creator.name if creator else None,
-        "created_by_name": creator.name if creator else None,
+        "creator_name": account_display_name(creator) if creator else None,
+        "created_by_name": account_display_name(creator) if creator else None,
         "decided_by": task.decided_by,
-        "decided_by_name": decider.name if decider else None,
+        "decided_by_name": account_display_name(decider) if decider else None,
         "status": task.status,
         "hr_note": task.hr_note or "",
         "business_note": task.business_note or "",

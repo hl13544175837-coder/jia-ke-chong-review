@@ -161,7 +161,9 @@ def test_journey_aggregates_timeline_and_feedback(client, make_user, app):
 def test_journey_includes_demand_review_business_review_interview_round_and_offer(client, make_user, app):
     owner_id, owner_token = make_user("journey-owner@x.com", role="recruiter", name="张招聘")
     manager_id, _ = make_user("journey-manager@x.com", role="manager", name="李经理")
-    interviewer_id, interviewer_token = make_user("journey-round@x.com", role="interviewer", name="面试官01")
+    interviewer_id, interviewer_token = make_user(
+        "100003@gateway.local", role="interviewer", name="100003"
+    )
     _, demand_id, candidate_id = _seed(app, owner_id)
     now = datetime.now(UTC).replace(tzinfo=None)
 
@@ -227,7 +229,8 @@ def test_journey_includes_demand_review_business_review_interview_round_and_offe
     assert journey["demand_approval"]["reviewed_by_name"] == "李经理"
     assert journey["demand_approval"]["status"] == "approved"
     assert journey["business_reviews"][0]["business_note"] == "建议进入面试"
-    assert journey["interview_rounds"][0]["interviewer_name"] == "面试官01"
+    assert journey["business_reviews"][0]["reviewer_name"] == "验收账号·面试官01"
+    assert journey["interview_rounds"][0]["interviewer_name"] == "验收账号·面试官01"
     assert journey["interview_rounds"][0]["status"] == "awaiting_feedback"
     assert journey["offers"][0]["status"] == "sent"
 

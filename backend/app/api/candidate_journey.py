@@ -32,6 +32,7 @@ from ..models import (
     VALID_STAGES,
 )
 from ..time_utils import utc_now
+from ..services.account_display_service import account_display_name
 from ..services.demand_context_service import (
     DemandContextError,
     can_manage_demand,
@@ -188,7 +189,7 @@ def register_candidate_journey_routes(bp):
             value for value in [demand.created_by, demand.reviewed_by, *(item.actor_id for item in approval_events)] if value
         }
         approval_actor_names = {
-            user.id: user.name
+            user.id: account_display_name(user)
             for user in User.query.filter(
                 User.id.in_(approval_actor_ids),
                 User.org_id == g.org_id,
@@ -225,7 +226,7 @@ def register_candidate_journey_routes(bp):
             if value
         }
         review_user_names = {
-            user.id: user.name
+            user.id: account_display_name(user)
             for user in User.query.filter(
                 User.id.in_(review_user_ids),
                 User.org_id == g.org_id,
@@ -266,7 +267,7 @@ def register_candidate_journey_routes(bp):
             "stage": ps.stage,
             "ts": ps.ts.isoformat() if ps.ts else None,
             "note": ps.note,
-            "updated_by_name": u.name if u else None,
+            "updated_by_name": account_display_name(u) if u else None,
         } for ps, u in stage_rows]
         current_stage = (
             normalize_pipeline_stage(stage_rows[-1][0].stage)
@@ -305,7 +306,7 @@ def register_candidate_journey_routes(bp):
             "strengths": f.strengths, "concerns": f.concerns, "note": f.note,
             "reason_tags": f.reason_tags if isinstance(f.reason_tags, list) else [],
             "evaluation": f.evaluation_json or {},
-            "interviewer_name": u.name if u else None,
+            "interviewer_name": account_display_name(u) if u else None,
             "created_at": f.created_at.isoformat() if f.created_at else None,
         } for f, u in fb_rows]
 
@@ -345,7 +346,7 @@ def register_candidate_journey_routes(bp):
             "assignment_id": assignment.id,
             "round": assignment.round,
             "round_sequence": assignment.round_sequence,
-            "interviewer_name": interviewer.name if interviewer else None,
+            "interviewer_name": account_display_name(interviewer) if interviewer else None,
             "scheduled_at": assignment.scheduled_at.isoformat() if assignment.scheduled_at else None,
             "location": assignment.location or "",
             "status": assignment.status,
@@ -380,7 +381,7 @@ def register_candidate_journey_routes(bp):
             "next_contact_at": d.next_contact_at.isoformat() if d.next_contact_at else None,
             "tags": d.tags if isinstance(d.tags, list) else [],
             "note": d.note or "",
-            "created_by_name": u.name if u else None,
+            "created_by_name": account_display_name(u) if u else None,
             "created_at": d.created_at.isoformat() if d.created_at else None,
         } for d, u in disposition_rows]
 
