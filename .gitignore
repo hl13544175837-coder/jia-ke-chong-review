@@ -52,6 +52,7 @@ tmp/
 .claude/scheduled_tasks.lock
 minutes/
 .workbuddy/
+.superpowers/
 .worktrees/
 outputs/
 /diagrams/
