@@ -34,7 +34,10 @@ def _notifications_for_current_user(*, active_only=False):
         ).filter(
             or_(
                 Notification.demand_id.is_(None),
-                RecruitmentDemand.status == "active",
+                and_(
+                    Notification.type != "demand_approval_requested",
+                    RecruitmentDemand.status == "active",
+                ),
                 and_(
                     Notification.type == "demand_approval_requested",
                     RecruitmentDemand.approval_status == "pending",

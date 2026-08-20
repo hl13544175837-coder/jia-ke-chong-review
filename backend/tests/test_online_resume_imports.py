@@ -129,6 +129,28 @@ def test_online_import_rejects_flat_resume_template_without_original_text(
     assert "完整原文" in response.get_json()["results"][0]["error"]
 
 
+def test_online_import_preserves_raw_text_with_top_level_name_and_resume_metadata(
+    app, client, make_user
+):
+    owner_id, owner_token = make_user("online-raw-metadata@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-RAW-METADATA")
+    item = _item(demand_id, "boss:raw-metadata")
+    item.pop("resume_text")
+    item["resume_json"] = {
+        "skills": [{"tag": "Spring Boot", "score": 1}],
+        "raw_text": "仅由原文和补充技能组成的在线简历。",
+    }
+
+    response = _import_one(client, owner_token, item)
+
+    assert response.status_code == 200
+    assert response.get_json()["created"] == 1
+    detail = client.get("/api/online-resumes/1", headers=_headers(owner_token))
+    resume_json = detail.get_json()["item"]["resume_json"]
+    assert resume_json["raw_text"] == "仅由原文和补充技能组成的在线简历。"
+    assert resume_json["skills"] == [{"tag": "Spring Boot", "score": 1}]
+
+
 def _import_one(client, token, item):
     return client.post(
         "/api/agent-imports/online-resumes",

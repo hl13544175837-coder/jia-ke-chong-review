@@ -91,6 +91,22 @@ def test_business_demand_submission_notifies_the_selected_recruiter(
     )
     assert visible_unread.get_json()["unread_count"] == 1
 
+    approved = client.post(
+        f"/api/demands/{demand['id']}/approve",
+        headers=_auth(owner_token),
+    )
+    assert approved.status_code == 200
+    resolved_notifications = client.get(
+        "/api/notifications?active_only=true",
+        headers=_auth(owner_token),
+    )
+    assert resolved_notifications.get_json()["notifications"] == []
+    resolved_unread = client.get(
+        "/api/notifications/unread-count?active_only=true",
+        headers=_auth(owner_token),
+    )
+    assert resolved_unread.get_json()["unread_count"] == 0
+
 
 def test_hr_created_active_demand_remains_approved(client, make_user, app):
     hr_id, token = make_user("hr-create@example.com", role="recruiter")
