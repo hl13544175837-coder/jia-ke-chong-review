@@ -52,6 +52,7 @@ def _item(demand_id, external_id="boss-chat-001"):
             },
             "skills": [{"tag": "Spring Boot", "score": 1}],
         },
+        "resume_text": "在线候选人甲，Java 开发，具备 Spring Boot 经验。",
         "chat_json": [
             {
                 "sender": "recruiter",
@@ -65,6 +66,67 @@ def _item(demand_id, external_id="boss-chat-001"):
             },
         ],
     }
+
+
+def test_online_import_rejects_explicit_resume_json_without_original_text(
+    app, client, make_user
+):
+    owner_id, owner_token = make_user("online-raw-text@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-RAW-TEXT")
+    item = _item(demand_id, "boss:raw-text-missing")
+    item.pop("resume_text")
+
+    response = _import_one(client, owner_token, item)
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["created"] == 0
+    assert body["failed"] == 1
+    assert "完整原文" in body["results"][0]["error"]
+
+
+def test_online_import_normalizes_flat_resume_template_without_losing_raw_text(
+    app, client, make_user
+):
+    owner_id, owner_token = make_user("online-flat-template@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-FLAT-TEMPLATE")
+    item = _item(demand_id, "boss:flat-template")
+    item.pop("resume_text")
+    item["resume_json"] = {
+        "name": "在线候选人甲",
+        "target_position": "Java开发",
+        "summary": "6年 Java 研发经验",
+        "raw_text": "这是必须保留的完整在线简历原文。",
+    }
+
+    response = _import_one(client, owner_token, item)
+
+    assert response.status_code == 200
+    assert response.get_json()["created"] == 1
+    detail = client.get("/api/online-resumes/1", headers=_headers(owner_token))
+    assert detail.status_code == 200
+    resume_json = detail.get_json()["item"]["resume_json"]
+    assert resume_json["raw_text"] == "这是必须保留的完整在线简历原文。"
+    assert resume_json["extracted_info"]["target_position"] == "Java开发"
+
+
+def test_online_import_rejects_flat_resume_template_without_original_text(
+    app, client, make_user
+):
+    owner_id, owner_token = make_user("online-flat-template-missing@x.com")
+    demand_id = _make_demand(app, owner_id, "REQ-ONLINE-FLAT-TEMPLATE-MISSING")
+    item = _item(demand_id, "boss:flat-template-missing")
+    item.pop("resume_text")
+    item["resume_json"] = {
+        "name": "在线候选人甲",
+        "target_position": "Java开发",
+    }
+
+    response = _import_one(client, owner_token, item)
+
+    assert response.status_code == 200
+    assert response.get_json()["failed"] == 1
+    assert "完整原文" in response.get_json()["results"][0]["error"]
 
 
 def _import_one(client, token, item):
@@ -758,7 +820,10 @@ def test_reimport_replaces_snapshots_without_duplicate_row_or_import_event(
         row = OnlineResume.query.one()
         assert row.owner_hr_id == owner_id
         assert row.display_name == "在线候选人甲-已更新"
-        assert row.resume_json == updated_item["resume_json"]
+        assert row.resume_json == {
+            **updated_item["resume_json"],
+            "raw_text": updated_item["resume_text"],
+        }
         assert row.chat_json == [
             {
                 "sender": "recruiter",

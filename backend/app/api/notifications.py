@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request, g
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from .. import db
 from ..middleware.auth import require_auth
@@ -35,6 +35,10 @@ def _notifications_for_current_user(*, active_only=False):
             or_(
                 Notification.demand_id.is_(None),
                 RecruitmentDemand.status == "active",
+                and_(
+                    Notification.type == "demand_approval_requested",
+                    RecruitmentDemand.approval_status == "pending",
+                ),
             )
         )
     return query

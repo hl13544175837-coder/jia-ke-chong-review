@@ -72,6 +72,44 @@ def test_unmapped_gateway_user_defaults_to_recruiter(app, client):
         assert user.role == "recruiter"
 
 
+def test_gateway_interviewer_owner_options_exclude_local_demo_accounts(app, client):
+    app.config.update(
+        AUTH_DISABLED=True,
+        ALLOW_INSECURE_SIT_STARTUP=True,
+        AUTH_GATEWAY_ROLE_MAP="100002:recruiter,100003:interviewer",
+        AUTH_GATEWAY_USER_ROLE="recruiter",
+    )
+    with app.app_context():
+        db.session.add(User(
+            name="演示账号·招聘专员01",
+            email="hr01@mvp.local",
+            role="recruiter",
+            password_hash="!local-demo",
+            org_id=1,
+            is_active=True,
+        ))
+        db.session.commit()
+
+    assert client.get("/api/auth/me", headers={"X-Emp-Code": "100002"}).status_code == 200
+    with app.app_context():
+        gateway_recruiter_id = User.query.filter_by(
+            email="100002@gateway.local"
+        ).one().id
+    response = client.get(
+        "/api/candidates/owner-options",
+        headers={"X-Emp-Code": "100003"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == [
+        {
+            "id": gateway_recruiter_id,
+            "name": "验收账号·招聘专员",
+            "email": "100002@gateway.local",
+        }
+    ]
+
+
 def test_gateway_user_provision_does_not_hide_unrelated_database_failures(
     app, monkeypatch
 ):

@@ -105,6 +105,18 @@ class OnlineResumeService:
     MAX_CHAT_TEXT_LENGTH = 20000
     MAX_CHAT_SENT_AT_LENGTH = 80
     MAX_SOURCE_URL_LENGTH = 2000
+    EXTRACTED_INFO_FIELDS = (
+        "name",
+        "age",
+        "gender",
+        "education_level",
+        "years_of_experience",
+        "salary_expectation",
+        "location",
+        "target_position",
+        "summary",
+        "availability",
+    )
 
     def import_batch(
         self,
@@ -711,13 +723,43 @@ class OnlineResumeService:
             )
         extracted_info = resume_json.get("extracted_info")
         info = extracted_info if isinstance(extracted_info, dict) else {}
+        flat_info = {
+            field: resume_json[field]
+            for field in self.EXTRACTED_INFO_FIELDS
+            if field in resume_json
+        }
         if not info:
-            info = self._build_minimal_info(item, resume_text)
-            resume_json = {
-                "extracted_info": info,
-                "raw_text": resume_text or "",
-            }
+            if flat_info:
+                raw_text = resume_json.get("raw_text")
+                if not isinstance(raw_text, str) or not raw_text.strip():
+                    if not resume_text:
+                        raise OnlineResumeValidationError(
+                            "在线简历必须保留完整原文，请提供 resume_text 或 resume_json.raw_text"
+                        )
+                    raw_text = resume_text
+                info = flat_info
+                resume_json = {
+                    "extracted_info": info,
+                    "raw_text": raw_text,
+                }
+                _validate_extracted_quality(info)
+            else:
+                info = self._build_minimal_info(item, resume_text)
+                resume_json = {
+                    "extracted_info": info,
+                    "raw_text": resume_text or "",
+                }
         else:
+            raw_text = resume_json.get("raw_text")
+            if not isinstance(raw_text, str) or not raw_text.strip():
+                if not resume_text:
+                    raise OnlineResumeValidationError(
+                        "在线简历必须保留完整原文，请提供 resume_text 或 resume_json.raw_text"
+                    )
+                # 外部 Agent 显式给了结构化字段时，仍以其同时提供的原文为准，
+                # 防止后续编辑或展示时只剩结构化摘要。
+                resume_json = dict(resume_json)
+                resume_json["raw_text"] = resume_text
             # 外部显式提供完整结构化数据时保留严格质量校验（防脏数据）；
             # 极简自动构造的字段走宽松路径，允许人工后续补全。
             _validate_extracted_quality(info)

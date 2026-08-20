@@ -1,5 +1,5 @@
 from app import db
-from app.models import Event, Job
+from app.models import Event, Job, Notification
 
 
 def _auth(token):
@@ -56,6 +56,40 @@ def test_interviewer_submits_pending_demand(client, make_user, app):
     assert body["default_interviewer_id"] == interviewer_id
     assert body["submitted_at"]
     assert body["created_by"] == interviewer_id
+
+
+def test_business_demand_submission_notifies_the_selected_recruiter(
+    client, make_user, app
+):
+    _, interviewer_token = make_user(
+        "business-notify@example.com", role="interviewer"
+    )
+    owner_id, owner_token = make_user("owner-notify@example.com", role="recruiter")
+
+    demand = _create_business_demand(client, app, interviewer_token, owner_id)
+
+    with app.app_context():
+        notification = Notification.query.filter_by(
+            user_id=owner_id,
+            demand_id=demand["id"],
+            type="demand_approval_requested",
+        ).one()
+        assert notification.title == "新的招聘需求待审核"
+        assert f"demand={demand['id']}" in notification.link
+
+    visible_notifications = client.get(
+        "/api/notifications?active_only=true",
+        headers=_auth(owner_token),
+    )
+    assert visible_notifications.status_code == 200
+    assert [item["type"] for item in visible_notifications.get_json()["notifications"]] == [
+        "demand_approval_requested"
+    ]
+    visible_unread = client.get(
+        "/api/notifications/unread-count?active_only=true",
+        headers=_auth(owner_token),
+    )
+    assert visible_unread.get_json()["unread_count"] == 1
 
 
 def test_hr_created_active_demand_remains_approved(client, make_user, app):
@@ -188,6 +222,39 @@ def test_creator_resubmits_rejected_demand_and_history_is_audited(
             action="demand.resubmitted", entity_id=demand["id"]
         ).one()
         assert event.actor_id == creator_id
+
+
+def test_resubmitted_demand_notifies_the_selected_recruiter_again(
+    client, make_user, app
+):
+    _, interviewer_token = make_user(
+        "business-resubmit-notify@example.com", role="interviewer"
+    )
+    owner_id, owner_token = make_user(
+        "owner-resubmit-notify@example.com", role="recruiter"
+    )
+    demand = _create_business_demand(client, app, interviewer_token, owner_id)
+    assert client.post(
+        f"/api/demands/{demand['id']}/reject",
+        headers=_auth(owner_token),
+        json={"reason": "请补充业务背景"},
+    ).status_code == 200
+
+    resubmitted = client.post(
+        f"/api/demands/{demand['id']}/resubmit",
+        headers=_auth(interviewer_token),
+        json={"note": "已补充业务背景"},
+    )
+
+    assert resubmitted.status_code == 200
+    with app.app_context():
+        notifications = Notification.query.filter_by(
+            user_id=owner_id,
+            demand_id=demand["id"],
+            type="demand_approval_requested",
+        ).order_by(Notification.id.asc()).all()
+        assert len(notifications) == 2
+        assert notifications[-1].body.endswith("已重新提交，请审核后开始招聘。")
 
 
 def test_creator_resubmits_with_demand_jd_snapshot_without_changing_job_template(

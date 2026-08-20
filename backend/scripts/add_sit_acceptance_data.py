@@ -35,8 +35,10 @@ ACCEPTANCE_JOB_CODE = "ACCEPTANCE-TEST-JOB-001"
 ACCEPTANCE_DEMAND_PREFIX = "ACCEPTANCE-TEST-DEMAND-"
 ACCEPTANCE_CANDIDATE_PREFIX = "验收测试-"
 ACCEPTANCE_MARKER = "acceptance-test-v1"
-RECRUITER_EMAIL = "hr01@mvp.local"
-INTERVIEWER_EMAIL = "100002@gateway.local"
+# RC/SIT 四账号映射：100002 是招聘专员，100003 是面试官01。
+# 验收数据必须使用可由公司工号实际登录的账号，不能依赖本地演示用户。
+RECRUITER_EMAIL = "100002@gateway.local"
+INTERVIEWER_EMAIL = "100003@gateway.local"
 
 DEMAND_SCENARIOS = (
     ("ACCEPTANCE-TEST-DEMAND-001", "pending", "pending"),

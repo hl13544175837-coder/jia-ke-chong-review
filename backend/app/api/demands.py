@@ -14,6 +14,7 @@ from ..services.demand_context_service import (
 from ..services.demand_approval_service import (
     DemandApprovalError,
     approve_demand as approve_demand_service,
+    queue_demand_approval_notification,
     reject_demand as reject_demand_service,
     resubmit_demand as resubmit_demand_service,
 )
@@ -172,6 +173,8 @@ def create_demand():
             payload={"job_id": demand.job_id, "owner_hr_id": demand.owner_hr_id},
             commit=False,
         )
+        if demand.approval_status == "pending":
+            queue_demand_approval_notification(demand)
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()

@@ -295,6 +295,20 @@ def test_owner_can_explicitly_reassign_one_pending_review_without_creating_a_dup
         assert new_notice.link == f"/interviewer/screening?task={task['id']}"
 
 
+def test_business_review_payload_uses_the_gateway_account_display_name(
+    client, make_user, app
+):
+    hr_id, hr_token = make_user("hr-gateway-label@example.com", role="recruiter")
+    reviewer_id, _ = make_user(
+        "100003@gateway.local", role="interviewer", name="100003"
+    )
+    case = _seed_review_case(app, hr_id, suffix="GATEWAY-LABEL")
+
+    payload = _push_review(client, hr_token, case, reviewer_id).get_json()
+
+    assert payload["reviewer_name"] == "验收账号·面试官01"
+
+
 def test_invalid_reassignment_keeps_the_original_pending_reviewer(
     client, make_user, app
 ):

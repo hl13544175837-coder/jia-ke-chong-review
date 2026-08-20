@@ -154,6 +154,11 @@ export default function InterviewerJobsPage() {
       ]);
       setTemplates(templateRows);
       setDemands(demandResponse.items);
+      setSelectedDemand((current) => {
+        if (!current) return null;
+        const refreshed = demandResponse.items.find((item) => item.id === current.id);
+        return refreshed ? { ...current, ...refreshed } : null;
+      });
       setOwners(ownerRows);
     } catch (error) {
       setLoadError(userFacingError(error, '加载招聘需求失败'));
@@ -164,6 +169,9 @@ export default function InterviewerJobsPage() {
 
   useEffect(() => {
     void loadPage();
+    const refresh = () => void loadPage();
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
   }, [loadPage]);
 
   const counts = useMemo(() => {

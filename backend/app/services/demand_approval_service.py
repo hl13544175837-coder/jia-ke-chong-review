@@ -101,6 +101,27 @@ def _record_event(action, *, demand, actor, payload=None):
     )
 
 
+def queue_demand_approval_notification(demand, *, resubmitted=False):
+    """Create the owner's actionable approval reminder in the same transaction."""
+    if not demand.owner_hr_id:
+        return
+    job_title = demand.job_title_snapshot or (
+        demand.job.title if demand.job else "该岗位"
+    )
+    verb = "已重新提交" if resubmitted else "已提交"
+    db.session.add(
+        Notification(
+            org_id=demand.org_id,
+            user_id=demand.owner_hr_id,
+            demand_id=demand.id,
+            type="demand_approval_requested",
+            title="新的招聘需求待审核",
+            body=f"{job_title} {verb}，请审核后开始招聘。",
+            link=f"/jobs?demand={demand.id}",
+        )
+    )
+
+
 def approve_demand(demand_id, actor_id, org_id):
     try:
         demand = _locked_demand(demand_id, org_id)
@@ -239,6 +260,7 @@ def resubmit_demand(demand_id, actor_id, org_id, changes):
                 "changed_fields": sorted(changes),
             },
         )
+        queue_demand_approval_notification(demand, resubmitted=True)
         db.session.commit()
         return demand
     except Exception:

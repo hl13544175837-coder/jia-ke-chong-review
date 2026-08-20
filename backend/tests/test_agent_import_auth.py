@@ -60,6 +60,7 @@ def _online_resume_item(demand_id, *, owner_hr_id=None):
         "display_name": "Agent导入候选人",
         "source_url": "https://www.zhipin.com/web/chat/index",
         "resume_json": {"extracted_info": {"name": "Agent导入候选人"}},
+        "resume_text": "Agent导入候选人的完整在线简历原文。",
         "chat_json": [
             {
                 "sender": "candidate",

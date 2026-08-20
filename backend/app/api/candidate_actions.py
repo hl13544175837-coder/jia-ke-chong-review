@@ -274,6 +274,10 @@ def register_candidate_action_routes(bp):
             User.query
             .filter(User.org_id == g.org_id, User.role == "recruiter", User.is_active.is_(True))
         )
+        # 公司网关验收时，不能把仅用于本地演示的账号混入真实账号下拉，
+        # 否则需求会派给无法用工号登录验证的本地用户。
+        if getattr(g, "gateway_auth", False):
+            query = query.filter(~User.email.like("%@mvp.local"))
         if g.role == "recruiter":
             query = query.filter(User.id == g.user_id)
         recruiters = query.order_by(User.name.asc(), User.id.asc()).all()
