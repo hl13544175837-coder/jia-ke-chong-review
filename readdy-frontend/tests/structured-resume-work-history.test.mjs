@@ -92,6 +92,16 @@ test('个人概况等长文本横跨剩余宽度而不进入多列宫格', async
   assert.doesNotMatch(source, /<ResumeValue value=\{section\.value\} dense \/>/);
 });
 
+test('证书与语言按可读的整项卡片展示，长内容不能被压成逐字竖排', async () => {
+  const source = await readFile(new URL('../src/components/candidates/StructuredResumeView.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /function CertificateLanguageValue/);
+  assert.match(source, /data-ui="resume-certificate-language-list"/);
+  assert.match(source, /minmax\(260px,\s*1fr\)/);
+  assert.match(source, /section\.key === 'certificates'/);
+  assert.match(source, /\? <CertificateLanguageValue value=\{section\.value\} \/>\s*:\ <ProfileSupplementValue value=\{section\.value\} \/>/);
+});
+
 test('项目经历使用响应式双列并完整展示', async () => {
   const source = await readFile(new URL('../src/components/candidates/StructuredResumeView.tsx', import.meta.url), 'utf8');
 

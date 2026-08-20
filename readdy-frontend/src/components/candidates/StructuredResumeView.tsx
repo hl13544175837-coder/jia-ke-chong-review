@@ -134,6 +134,58 @@ function ProfileSupplementValue({ value }: { value: unknown }) {
   return <ResumeValue value={value} dense />;
 }
 
+function CertificateLanguageRecord({ value }: { value: Record<string, unknown> }) {
+  const entries = Object.entries(value).filter(([, item]) => item !== null && item !== undefined && item !== '');
+  if (entries.length === 0) return null;
+  return (
+    <dl className="space-y-2">
+      {entries.map(([key, item]) => (
+        <div key={key} className="grid min-w-0 gap-x-3 gap-y-0.5 sm:grid-cols-[92px_minmax(0,1fr)]">
+          <dt className="text-[11px] font-medium text-foreground-400">{resumeFieldLabel(key)}</dt>
+          <dd className="min-w-0 whitespace-pre-wrap break-words text-sm leading-5 text-foreground-800">
+            <ResumeValue value={item} />
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function CertificateLanguageItem({ value }: { value: unknown }) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    const simple = value.every((item) => !isResumeRecord(item) && !Array.isArray(item));
+    if (simple) return <ResumeValue value={value} />;
+    return (
+      <div className="space-y-2">
+        {value.map((item, index) => (
+          <div key={index} className="min-w-0 border-l-2 border-background-200 pl-3">
+            {isResumeRecord(item) ? <CertificateLanguageRecord value={item} /> : <CertificateLanguageItem value={item} />}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (isResumeRecord(value)) return <CertificateLanguageRecord value={value} />;
+  return <div className="whitespace-pre-wrap break-words text-sm leading-5"><ResumeValue value={value} /></div>;
+}
+
+function CertificateLanguageValue({ value }: { value: unknown }) {
+  const entries = isResumeRecord(value)
+    ? Object.entries(value).filter(([, item]) => item !== null && item !== undefined && item !== '')
+    : [['certificates', value] as const];
+  return (
+    <div data-ui="resume-certificate-language-list" className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
+      {entries.map(([key, item]) => (
+        <article key={key} className="min-w-0 rounded-md border border-background-200 bg-background-50/60 px-3 py-2.5">
+          <h5 className="mb-2 text-xs font-semibold text-foreground-600">{resumeFieldLabel(key)}</h5>
+          <CertificateLanguageItem value={item} />
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function WorkHistoryValue({ value }: { value: unknown }) {
   if (!Array.isArray(value) || !value.every(isResumeRecord)) return <ResumeValue value={value} />;
   return (
@@ -212,7 +264,9 @@ function ProfileStrip({ sections }: { sections: ResumeSectionView[] }) {
         <section key={section.key} className="grid gap-2 px-3 py-2.5 sm:grid-cols-[88px_minmax(0,1fr)] sm:gap-4">
           <h4 className="text-xs font-semibold text-foreground-600">{section.title}</h4>
           <div className="min-w-0 text-sm leading-5 text-foreground-700">
-            <ProfileSupplementValue value={section.value} />
+            {section.key === 'certificates'
+              ? <CertificateLanguageValue value={section.value} />
+              : <ProfileSupplementValue value={section.value} />}
           </div>
         </section>
       ))}
