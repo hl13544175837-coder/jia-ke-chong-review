@@ -1,11 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1060" viewBox="0 0 2200 1060" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1490" viewBox="0 0 2200 1490" role="img" aria-labelledby="title desc">
   <title id="title">智聘招聘产品全流程状态流转泳道图</title>
   <desc id="desc">按角色展示从需求到入职的真实产品流程；实线为当前产品内流程，橙色虚线为后续企业微信、OA、HRIS 对接。</desc>
   <defs>
     <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L0,8 L8,4z" fill="#42617d"/></marker>
     <marker id="futureArrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L0,8 L8,4z" fill="#c46c13"/></marker>
     <style>
-      text{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;fill:#17324d}.title{font-size:34px;font-weight:700}.sub{font-size:16px;fill:#56708a}.lane{font-size:18px;font-weight:700}.laneSub{font-size:13px;fill:#65809a}.phase{font-size:16px;font-weight:700;fill:#42617d}.nodeTitle{font-size:15px;font-weight:700}.nodeStatus{font-size:11px;font-weight:700;letter-spacing:1px;fill:#50708c}.nodeDetail{font-size:12px;fill:#506b83}.edge{fill:none;stroke:#42617d;stroke-width:2.2;marker-end:url(#arrow)}.future{fill:none;stroke:#c46c13;stroke-width:2.2;stroke-dasharray:7 5;marker-end:url(#futureArrow)}.branch{fill:none;stroke:#c64154;stroke-width:2.2;marker-end:url(#arrow)}.label{font-size:12px;font-weight:700}.note{font-size:13px;fill:#56708a}
+      text{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;fill:#17324d}.title{font-size:34px;font-weight:700}.sub{font-size:16px;fill:#56708a}.lane{font-size:18px;font-weight:700}.laneSub{font-size:13px;fill:#65809a}.phase{font-size:16px;font-weight:700;fill:#42617d}.nodeTitle{font-size:15px;font-weight:700}.nodeStatus{font-size:11px;font-weight:700;letter-spacing:1px;fill:#50708c}.nodeDetail{font-size:12px;fill:#506b83}.edge{fill:none;stroke:#42617d;stroke-width:2.2;marker-end:url(#arrow)}.future{fill:none;stroke:#c46c13;stroke-width:2.2;stroke-dasharray:7 5;marker-end:url(#futureArrow)}.branch{fill:none;stroke:#c64154;stroke-width:2.2;marker-end:url(#arrow)}.label{font-size:12px;font-weight:700}.note{font-size:13px;fill:#56708a}.stateTitle{font-size:17px;font-weight:700}.stateBox{fill:#f2fbf6;stroke:#35a065}.stateTerminal{fill:#fff1f2;stroke:#c64154}.stateText{font-size:12px;font-weight:700;letter-spacing:.6px}.stateAction{font-size:11px;fill:#56708a}.stateEdge{fill:none;stroke:#42617d;stroke-width:1.8;marker-end:url(#arrow)}.stateBranch{fill:none;stroke:#c64154;stroke-width:1.8;marker-end:url(#arrow)}
     </style>
   </defs>
   <rect width="2200" height="1060" fill="#f8fafc"/>
@@ -52,4 +52,45 @@
   <text x="1916" y="983" class="nodeTitle" fill="#9b5811">HRIS：入职回写</text><text x="1916" y="1002" class="nodeDetail">实际入职、组织与 HC 同步</text>
   <path class="future" d="M1140 305 L1140 104"/><path class="future" d="M1890 305 L1890 104"/><path class="future" d="M2070 923 L2015 960"/>
   <text x="54" y="1012" class="note">研发使用方式：优先保证实线链路可闭环；每条橙色虚线作为独立外部集成事项排期，并以回调、幂等、失败补偿和状态映射作为验收条件。</text>
+
+  <!-- 状态机：把泳道中的业务动作落为可实现的状态与转换规则 -->
+  <rect x="30" y="1050" width="2110" height="390" rx="16" fill="#ffffff" stroke="#cddce9" stroke-width="1.5"/>
+  <text x="58" y="1090" class="stateTitle">状态流转规则（研发拆分接口与验收的口径）</text>
+  <text x="58" y="1115" class="note">每条箭头表示一次可执行的状态变更；红色为终止或退回路径。候选人主状态与面试、Offer 子状态独立保存。</text>
+  <line x1="565" y1="1135" x2="565" y2="1415" stroke="#dce7f0"/><line x1="1090" y1="1135" x2="1090" y2="1415" stroke="#dce7f0"/><line x1="1615" y1="1135" x2="1615" y2="1415" stroke="#dce7f0"/>
+
+  <!-- 需求状态 -->
+  <text x="58" y="1160" class="stateTitle">需求</text>
+  <g class="stateBox"><rect x="58" y="1180" width="120" height="42" rx="8"/><rect x="225" y="1180" width="120" height="42" rx="8"/><rect x="392" y="1180" width="120" height="42" rx="8"/></g>
+  <text x="75" y="1206" class="stateText">PENDING</text><text x="253" y="1206" class="stateText">ACTIVE</text><text x="410" y="1206" class="stateText">CLOSED</text>
+  <path class="stateEdge" d="M178 1201 L225 1201"/><text x="184" y="1171" class="stateAction">审核通过</text><path class="stateEdge" d="M345 1201 L392 1201"/><text x="350" y="1171" class="stateAction">关闭 / HC 满</text>
+  <g class="stateTerminal"><rect x="225" y="1280" width="120" height="42" rx="8"/></g><text x="240" y="1306" class="stateText">REJECTED</text>
+  <path class="stateBranch" d="M118 1222 C118 1260 250 1250 285 1280"/><text x="128" y="1252" class="stateAction">驳回</text><path class="stateEdge" d="M285 1322 C285 1350 118 1350 118 1222"/><text x="155" y="1368" class="stateAction">补充后重提</text>
+
+  <!-- 候选人主状态 -->
+  <text x="592" y="1160" class="stateTitle">候选人主状态</text>
+  <g class="stateBox"><rect x="592" y="1180" width="100" height="42" rx="8"/><rect x="718" y="1180" width="110" height="42" rx="8"/><rect x="854" y="1180" width="150" height="42" rx="8"/><rect x="592" y="1280" width="110" height="42" rx="8"/><rect x="728" y="1280" width="100" height="42" rx="8"/><rect x="854" y="1280" width="150" height="42" rx="8"/></g>
+  <text x="604" y="1206" class="stateText">PENDING</text><text x="730" y="1206" class="stateText">AI_SCREEN</text><text x="867" y="1206" class="stateText">BUSINESS_REVIEW</text><text x="607" y="1306" class="stateText">INTERVIEW</text><text x="744" y="1306" class="stateText">OFFER</text><text x="868" y="1306" class="stateText">ONBOARDED</text>
+  <path class="stateEdge" d="M692 1201 L718 1201"/><path class="stateEdge" d="M828 1201 L854 1201"/><path class="stateEdge" d="M929 1222 C929 1250 647 1250 647 1280"/><path class="stateEdge" d="M702 1301 L728 1301"/><path class="stateEdge" d="M828 1301 L854 1301"/>
+  <text x="696" y="1171" class="stateAction">发起筛选</text><text x="830" y="1171" class="stateAction">通过</text><text x="760" y="1255" class="stateAction">通过</text><text x="698" y="1270" class="stateAction">通过</text><text x="830" y="1270" class="stateAction">实际入职</text>
+  <g class="stateTerminal"><rect x="730" y="1370" width="110" height="42" rx="8"/><rect x="870" y="1370" width="125" height="42" rx="8"/></g><text x="744" y="1396" class="stateText">REJECTED</text><text x="880" y="1396" class="stateText">TRANSFERRED</text>
+  <path class="stateBranch" d="M772 1222 C772 1310 785 1320 785 1370"/><path class="stateBranch" d="M929 1222 C929 1300 932 1320 932 1370"/><path class="stateBranch" d="M647 1322 C647 1340 785 1340 785 1370"/><text x="612" y="1355" class="stateAction">任一筛选环节淘汰</text>
+
+  <!-- 面试子状态 -->
+  <text x="1118" y="1160" class="stateTitle">面试子状态（候选人保持 INTERVIEW）</text>
+  <g class="stateBox"><rect x="1118" y="1180" width="120" height="42" rx="8"/><rect x="1282" y="1180" width="120" height="42" rx="8"/><rect x="1446" y="1180" width="130" height="42" rx="8"/></g>
+  <text x="1130" y="1206" class="stateText">SCHEDULED</text><text x="1292" y="1206" class="stateText">CONDUCTED</text><text x="1455" y="1206" class="stateText">FEEDBACKED</text>
+  <path class="stateEdge" d="M1238 1201 L1282 1201"/><path class="stateEdge" d="M1402 1201 L1446 1201"/><text x="1242" y="1171" class="stateAction">标记已完成</text><text x="1405" y="1171" class="stateAction">提交反馈</text>
+  <path class="stateEdge" d="M1511 1222 C1511 1280 1178 1280 1178 1222"/><text x="1280" y="1270" class="stateAction">加面 / 改约后新建一轮</text>
+  <g class="stateTerminal"><rect x="1282" y="1320" width="120" height="42" rx="8"/></g><text x="1300" y="1346" class="stateText">CANCELLED</text><path class="stateBranch" d="M1178 1222 C1178 1285 1342 1285 1342 1320"/><text x="1188" y="1302" class="stateAction">取消</text>
+
+  <!-- Offer 子状态 -->
+  <text x="1643" y="1160" class="stateTitle">Offer 子状态（候选人保持 OFFER）</text>
+  <g class="stateBox"><rect x="1643" y="1180" width="80" height="42" rx="8"/><rect x="1740" y="1180" width="90" height="42" rx="8"/><rect x="1847" y="1180" width="100" height="42" rx="8"/><rect x="1964" y="1180" width="80" height="42" rx="8"/><rect x="2061" y="1180" width="70" height="42" rx="8"/></g>
+  <text x="1654" y="1206" class="stateText">DRAFT</text><text x="1748" y="1206" class="stateText">PENDING</text><text x="1856" y="1206" class="stateText">APPROVED</text><text x="1975" y="1206" class="stateText">SENT</text><text x="2067" y="1206" class="stateText">ACCEPTED</text>
+  <path class="stateEdge" d="M1723 1201 L1740 1201"/><path class="stateEdge" d="M1830 1201 L1847 1201"/><path class="stateEdge" d="M1947 1201 L1964 1201"/><path class="stateEdge" d="M2044 1201 L2061 1201"/>
+  <text x="1722" y="1171" class="stateAction">提交</text><text x="1825" y="1171" class="stateAction">批准</text><text x="1940" y="1171" class="stateAction">发放</text><text x="2040" y="1171" class="stateAction">接受</text>
+  <path class="stateBranch" d="M1785 1222 C1785 1265 1683 1265 1683 1222"/><text x="1690" y="1255" class="stateAction">驳回退草稿</text>
+  <g class="stateTerminal"><rect x="1740" y="1320" width="88" height="42" rx="8"/><rect x="1847" y="1320" width="100" height="42" rx="8"/><rect x="1964" y="1320" width="80" height="42" rx="8"/></g><text x="1748" y="1346" class="stateText">DECLINED</text><text x="1855" y="1346" class="stateText">WITHDRAWN</text><text x="1973" y="1346" class="stateText">EXPIRED</text>
+  <path class="stateBranch" d="M2004 1222 C2004 1270 1784 1270 1784 1320"/><path class="stateBranch" d="M2004 1222 C2004 1270 1897 1270 1897 1320"/><path class="stateBranch" d="M2004 1222 L2004 1320"/><text x="1770" y="1302" class="stateAction">拒绝 / 撤回 / 到期</text>
 </svg>
