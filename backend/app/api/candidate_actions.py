@@ -268,16 +268,19 @@ def register_candidate_action_routes(bp):
     @require_auth
     @require_role("recruiter", "manager", "admin", "interviewer")
     def candidate_owner_options():
-        from ..services.account_display_service import account_display_name
+        from ..services.account_display_service import (
+            SIT_GATEWAY_ACCOUNT_EMAILS,
+            account_display_name,
+        )
 
         query = (
             User.query
             .filter(User.org_id == g.org_id, User.role == "recruiter", User.is_active.is_(True))
         )
-        # 公司网关验收时，不能把仅用于本地演示的账号混入真实账号下拉，
-        # 否则需求会派给无法用工号登录验证的本地用户。
+        # SIT 公司网关验收只允许四个已配置工号，不能混入本地演示账号
+        # 或其他未验收账号，否则任务会派给无法完成现场验证的用户。
         if getattr(g, "gateway_auth", False):
-            query = query.filter(~User.email.like("%@mvp.local"))
+            query = query.filter(User.email.in_(SIT_GATEWAY_ACCOUNT_EMAILS))
         if g.role == "recruiter":
             query = query.filter(User.id == g.user_id)
         recruiters = query.order_by(User.name.asc(), User.id.asc()).all()

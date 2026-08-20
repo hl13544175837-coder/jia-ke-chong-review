@@ -352,7 +352,9 @@ class OnlineResumeService:
         }
 
     @staticmethod
-    def owner_options(*, org_id: int) -> list[dict]:
+    def owner_options(
+        *, org_id: int, allowed_emails: frozenset[str] | None = None
+    ) -> list[dict]:
         owner_ids = [
             owner_id
             for (owner_id,) in db.session.query(OnlineResume.owner_hr_id)
@@ -365,7 +367,10 @@ class OnlineResumeService:
         owners = User.query.filter(
             User.org_id == org_id,
             User.id.in_(owner_ids),
-        ).order_by(User.id.asc()).all()
+        )
+        if allowed_emails is not None:
+            owners = owners.filter(User.email.in_(allowed_emails))
+        owners = owners.order_by(User.id.asc()).all()
         return [
             {
                 "id": owner.id,

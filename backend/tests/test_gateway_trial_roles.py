@@ -88,6 +88,14 @@ def test_gateway_interviewer_owner_options_exclude_local_demo_accounts(app, clie
             org_id=1,
             is_active=True,
         ))
+        db.session.add(User(
+            name="其他网关招聘专员",
+            email="100098@gateway.local",
+            role="recruiter",
+            password_hash="!gateway-managed",
+            org_id=1,
+            is_active=True,
+        ))
         db.session.commit()
 
     assert client.get("/api/auth/me", headers={"X-Emp-Code": "100002"}).status_code == 200
@@ -107,6 +115,68 @@ def test_gateway_interviewer_owner_options_exclude_local_demo_accounts(app, clie
             "name": "验收账号·招聘专员",
             "email": "100002@gateway.local",
         }
+    ]
+
+
+def test_gateway_account_choices_only_show_the_four_sit_accounts(app, client):
+    app.config.update(
+        AUTH_DISABLED=True,
+        ALLOW_INSECURE_SIT_STARTUP=True,
+        AUTH_GATEWAY_ROLE_MAP=(
+            "100000:interviewer,100001:manager,100002:recruiter,100003:interviewer"
+        ),
+        AUTH_GATEWAY_USER_ROLE="recruiter",
+    )
+    with app.app_context():
+        db.session.add_all([
+            User(
+                name="演示面试官",
+                email="interviewer01@mvp.local",
+                role="interviewer",
+                password_hash="!local-demo",
+                org_id=1,
+                is_active=True,
+            ),
+            User(
+                name="其他网关用户",
+                email="100099@gateway.local",
+                role="interviewer",
+                password_hash="!gateway-managed",
+                org_id=1,
+                is_active=True,
+            ),
+        ])
+        db.session.commit()
+
+    for emp_code in ("100000", "100001", "100002", "100003"):
+        assert client.get(
+            "/api/auth/me", headers={"X-Emp-Code": emp_code}
+        ).status_code == 200
+
+    response = client.get(
+        "/api/interview/interviewers", headers={"X-Emp-Code": "100001"}
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == [
+        {
+            "id": User.query.filter_by(email="100000@gateway.local").one().id,
+            "name": "验收账号·面试官02",
+            "email": "100000@gateway.local",
+            "role": "interviewer",
+        },
+        {
+            "id": User.query.filter_by(email="100001@gateway.local").one().id,
+            "name": "验收账号·招聘主管",
+            "email": "100001@gateway.local",
+            "role": "manager",
+        },
+        {
+            "id": User.query.filter_by(email="100003@gateway.local").one().id,
+            "name": "验收账号·面试官01",
+            "email": "100003@gateway.local",
+            "role": "interviewer",
+        },
     ]
 
 

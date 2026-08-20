@@ -13,6 +13,13 @@ DEMO_ACCOUNT_DISPLAY_NAMES = {
     "100003@gateway.local": "验收账号·面试官01",
 }
 
+SIT_GATEWAY_ACCOUNT_EMAILS = frozenset({
+    "100000@gateway.local",
+    "100001@gateway.local",
+    "100002@gateway.local",
+    "100003@gateway.local",
+})
+
 
 def account_display_name(user) -> str:
     if user is None:

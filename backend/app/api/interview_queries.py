@@ -225,13 +225,24 @@ def register_interview_query_routes(bp):
     @require_role("recruiter", "manager", "admin")
     def list_interviewers():
         from ..models import User
+        from ..services.account_display_service import (
+            SIT_GATEWAY_ACCOUNT_EMAILS,
+            account_display_name,
+        )
 
         users = (User.query
                  .filter(User.org_id == g.org_id, User.is_active.is_(True), User.role.in_(["interviewer", "manager", "admin"]))
-                 .order_by(User.name.asc())
-                 .all())
+                 )
+        if getattr(g, "gateway_auth", False):
+            users = users.filter(User.email.in_(SIT_GATEWAY_ACCOUNT_EMAILS))
+        users = users.order_by(User.name.asc()).all()
         return jsonify([
-            {"id": u.id, "name": u.name, "email": u.email, "role": u.role}
+            {
+                "id": u.id,
+                "name": account_display_name(u),
+                "email": u.email,
+                "role": u.role,
+            }
             for u in users
         ])
 

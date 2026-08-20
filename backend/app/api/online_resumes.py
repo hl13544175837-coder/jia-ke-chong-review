@@ -7,6 +7,7 @@ from ..services.online_resume_service import (
     OnlineResumeService,
     OnlineResumeValidationError,
 )
+from ..services.account_display_service import SIT_GATEWAY_ACCOUNT_EMAILS
 
 
 bp = Blueprint("online_resumes", __name__)
@@ -75,7 +76,12 @@ def list_online_resumes():
 @require_auth
 @require_role("recruiter", "manager", "admin")
 def online_resume_owner_options():
-    return jsonify(OnlineResumeService().owner_options(org_id=g.org_id))
+    return jsonify(OnlineResumeService().owner_options(
+        org_id=g.org_id,
+        allowed_emails=(
+            SIT_GATEWAY_ACCOUNT_EMAILS if getattr(g, "gateway_auth", False) else None
+        ),
+    ))
 
 
 @bp.get("/online-resumes/demand-options")

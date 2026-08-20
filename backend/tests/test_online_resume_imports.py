@@ -671,6 +671,66 @@ def test_online_resume_owner_options_are_shared_within_org(
     ]
 
 
+def test_gateway_online_resume_owner_options_only_show_sit_accounts(
+    app, client, make_user
+):
+    from app import db
+    from app.models import OnlineResume, User
+
+    app.config.update(
+        AUTH_DISABLED=True,
+        ALLOW_INSECURE_SIT_STARTUP=True,
+        AUTH_GATEWAY_ROLE_MAP=(
+            "100000:interviewer,100001:manager,100002:recruiter,100003:interviewer"
+        ),
+        AUTH_GATEWAY_USER_ROLE="recruiter",
+    )
+    demo_id, _ = make_user("hr01@mvp.local", name="演示招聘专员")
+    other_gateway_id, _ = make_user(
+        "100098@gateway.local", name="其他网关招聘专员"
+    )
+    for emp_code in ("100001", "100002"):
+        assert client.get(
+            "/api/auth/me", headers={"X-Emp-Code": emp_code}
+        ).status_code == 200
+    with app.app_context():
+        recruiter_id = User.query.filter_by(email="100002@gateway.local").one().id
+
+    owner_demand_id = _make_demand(app, recruiter_id, "REQ-GATEWAY-OWNER")
+    demo_demand_id = _make_demand(app, demo_id, "REQ-DEMO-OWNER")
+    other_demand_id = _make_demand(app, other_gateway_id, "REQ-OTHER-GATEWAY-OWNER")
+    with app.app_context():
+        db.session.add_all([
+            OnlineResume(
+                org_id=1, owner_hr_id=recruiter_id, demand_id=owner_demand_id,
+                boss_account="gateway", source_platform="test", external_record_id="gateway",
+                display_name="验收候选人", resume_json={}, chat_json=[],
+            ),
+            OnlineResume(
+                org_id=1, owner_hr_id=demo_id, demand_id=demo_demand_id,
+                boss_account="demo", source_platform="test", external_record_id="demo",
+                display_name="演示候选人", resume_json={}, chat_json=[],
+            ),
+            OnlineResume(
+                org_id=1, owner_hr_id=other_gateway_id, demand_id=other_demand_id,
+                boss_account="other", source_platform="test", external_record_id="other",
+                display_name="其他候选人", resume_json={}, chat_json=[],
+            ),
+        ])
+        db.session.commit()
+
+    response = client.get(
+        "/api/online-resumes/owner-options", headers={"X-Emp-Code": "100001"}
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == [{
+        "id": recruiter_id,
+        "name": "验收账号·招聘专员",
+        "email": "100002@gateway.local",
+    }]
+
+
 def test_manager_can_filter_online_resumes_by_owner(app, client, make_user):
     owner_id, owner_token = make_user("online-manager-filter-owner@x.com")
     other_id, other_token = make_user("online-manager-filter-other@x.com")
