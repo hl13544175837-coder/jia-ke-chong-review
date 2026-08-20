@@ -17,13 +17,13 @@
   <g fill="#eff5fb" stroke="#d7e3ef">
     <rect x="210" y="128" width="250" height="46"/><rect x="460" y="128" width="270" height="46"/><rect x="730" y="128" width="300" height="46"/><rect x="1030" y="128" width="340" height="46"/><rect x="1370" y="128" width="430" height="46"/><rect x="1800" y="128" width="340" height="46"/>
   </g>
-  <text x="300" y="157" class="phase">1. 需求</text><text x="545" y="157" class="phase">2. 简历与筛选</text><text x="815" y="157" class="phase">3. 业务筛选</text><text x="1130" y="157" class="phase">4. 面试</text><text x="1510" y="157" class="phase">5. Offer</text><text x="1900" y="157" class="phase">6. 入职闭环</text>
+  <text x="300" y="157" class="phase">1. 需求</text><text x="545" y="157" class="phase">2. 简历与筛选</text><text x="815" y="157" class="phase">3. 业务筛选</text><text x="1130" y="157" class="phase">4. 面试</text><text x="1510" y="157" class="phase">5. 录用</text><text x="1900" y="157" class="phase">6. 入职闭环</text>
 
   <g fill="#fff" stroke="#d7e3ef">
     <rect x="30" y="174" width="180" height="110"/><rect x="30" y="284" width="180" height="110"/><rect x="30" y="394" width="180" height="110"/><rect x="30" y="504" width="180" height="110"/><rect x="30" y="614" width="180" height="110"/><rect x="30" y="724" width="180" height="110"/><rect x="30" y="834" width="180" height="110"/>
   </g>
   <g fill="#fff" stroke="#e4edf5"><rect x="210" y="174" width="1930" height="110"/><rect x="210" y="284" width="1930" height="110"/><rect x="210" y="394" width="1930" height="110"/><rect x="210" y="504" width="1930" height="110"/><rect x="210" y="614" width="1930" height="110"/><rect x="210" y="724" width="1930" height="110"/><rect x="210" y="834" width="1930" height="110"/></g>
-  <g><text x="55" y="221" class="lane">用人部门</text><text x="55" y="247" class="laneSub">发起需求</text><text x="55" y="331" class="lane">招聘专员</text><text x="55" y="357" class="laneSub">推进招聘主线</text><text x="55" y="441" class="lane">业务筛选人</text><text x="55" y="467" class="laneSub">判断业务匹配</text><text x="55" y="551" class="lane">面试官</text><text x="55" y="577" class="laneSub">面试与反馈</text><text x="55" y="661" class="lane">候选人</text><text x="55" y="687" class="laneSub">答复 Offer</text><text x="55" y="771" class="lane">招聘主管</text><text x="55" y="797" class="laneSub">审批</text><text x="55" y="881" class="lane">系统</text><text x="55" y="907" class="laneSub">记录状态与结果</text></g>
+  <g><text x="55" y="221" class="lane">用人部门</text><text x="55" y="247" class="laneSub">发起需求</text><text x="55" y="331" class="lane">招聘专员</text><text x="55" y="357" class="laneSub">推进招聘主线</text><text x="55" y="441" class="lane">业务筛选人</text><text x="55" y="467" class="laneSub">判断业务匹配</text><text x="55" y="551" class="lane">面试官</text><text x="55" y="577" class="laneSub">面试与反馈</text><text x="55" y="661" class="lane">候选人</text><text x="55" y="687" class="laneSub">答复录用函</text><text x="55" y="771" class="lane">招聘主管</text><text x="55" y="797" class="laneSub">审批</text><text x="55" y="881" class="lane">系统</text><text x="55" y="907" class="laneSub">记录状态与结果</text></g>
 
   <!-- 当前产品节点 -->
   <g stroke="#35a065" fill="#f2fbf6"><rect x="250" y="195" width="170" height="68" rx="10"/><text x="266" y="216" class="nodeStatus">待审批</text><text x="266" y="238" class="nodeTitle">创建招聘需求</text><text x="266" y="256" class="nodeDetail">岗位、编制、到岗日期</text></g>
@@ -56,14 +56,14 @@
   <!-- 状态机：把泳道中的业务动作落为可实现的状态与转换规则 -->
   <rect x="30" y="1050" width="2110" height="390" rx="16" fill="#ffffff" stroke="#cddce9" stroke-width="1.5"/>
   <text x="58" y="1090" class="stateTitle">状态流转规则（研发拆分接口与验收的口径）</text>
-  <text x="58" y="1115" class="note">每条箭头表示一次可执行的状态变更；红色为终止或退回路径。候选人主状态与面试、Offer 子状态独立保存。</text>
+  <text x="58" y="1115" class="note">每条箭头表示一次可执行的状态变更；红色为终止或退回路径。候选人主状态与面试、录用子状态独立保存。</text>
   <line x1="565" y1="1135" x2="565" y2="1415" stroke="#dce7f0"/><line x1="1090" y1="1135" x2="1090" y2="1415" stroke="#dce7f0"/><line x1="1615" y1="1135" x2="1615" y2="1415" stroke="#dce7f0"/>
 
   <!-- 需求状态 -->
   <text x="58" y="1160" class="stateTitle">需求</text>
   <g class="stateBox"><rect x="58" y="1180" width="120" height="42" rx="8"/><rect x="225" y="1180" width="120" height="42" rx="8"/><rect x="392" y="1180" width="120" height="42" rx="8"/></g>
   <text x="75" y="1206" class="stateText">待审批</text><text x="253" y="1206" class="stateText">招聘中</text><text x="410" y="1206" class="stateText">已关闭</text>
-  <path class="stateEdge" d="M178 1201 L225 1201"/><text x="184" y="1171" class="stateAction">审核通过</text><path class="stateEdge" d="M345 1201 L392 1201"/><text x="350" y="1171" class="stateAction">关闭 / HC 满</text>
+  <path class="stateEdge" d="M178 1201 L225 1201"/><text x="184" y="1171" class="stateAction">审核通过</text><path class="stateEdge" d="M345 1201 L392 1201"/><text x="350" y="1171" class="stateAction">关闭 / 编制满</text>
   <g class="stateTerminal"><rect x="225" y="1280" width="120" height="42" rx="8"/></g><text x="240" y="1306" class="stateText">已驳回</text>
   <path class="stateBranch" d="M118 1222 C118 1260 250 1250 285 1280"/><text x="128" y="1252" class="stateAction">驳回</text><path class="stateEdge" d="M285 1322 C285 1350 118 1350 118 1222"/><text x="155" y="1368" class="stateAction">补充后重提</text>
 
