@@ -55,11 +55,13 @@ export default function RescheduleRequestModal({
     onSubmit({ reason: reason.trim(), proposed_times });
   };
 
+  const hasUnsavedContent = Boolean(reason.trim() || firstTime || secondTime);
+
   return (
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center bg-foreground-900/45 p-4"
       role="presentation"
-      onMouseDown={saving ? undefined : onClose}
+      onMouseDown={saving || hasUnsavedContent ? undefined : onClose}
     >
       <div
         ref={modalRef}

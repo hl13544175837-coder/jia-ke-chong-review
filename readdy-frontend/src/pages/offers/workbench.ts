@@ -1,9 +1,11 @@
 import type { OfferOaStatus, OfferRecord, OfferStatus, OfferWorkbenchRecord } from '@/features/offers/types';
 
 export type OfferWorkbenchTab =
-  | 'pending_registration'
-  | 'follow_up'
-  | 'completed';
+  | 'all'
+  | 'in_progress'
+  | 'awaiting_onboard'
+  | 'onboarded'
+  | 'closed';
 
 export type OfferRiskLevel = 'high' | 'medium' | 'low';
 export type OfferRisk = { level: OfferRiskLevel; label: string; rank: number };
@@ -22,9 +24,11 @@ export interface OfferWorkbenchInput {
 }
 
 export const OFFER_WORKBENCH_TABS: Array<{ key: OfferWorkbenchTab; label: string }> = [
-  { key: 'pending_registration', label: '待登记' },
-  { key: 'follow_up', label: '跟进中' },
-  { key: 'completed', label: '已完成' },
+  { key: 'all', label: '全部' },
+  { key: 'in_progress', label: '处理中' },
+  { key: 'awaiting_onboard', label: '待入职' },
+  { key: 'onboarded', label: '已入职' },
+  { key: 'closed', label: '已结束' },
 ];
 
 export function clearOfferCandidateSelection(params: URLSearchParams) {
@@ -152,7 +156,7 @@ export function isTodayOfferTask(offer: OfferRecord, now = new Date()) {
 
 export function buildOfferTabCounts(
   items: OfferWorkbenchRecord[],
-  { recentDays, now = new Date() }: { recentDays?: number; now?: Date } = {},
+  { recentDays = 3650, now = new Date() }: { recentDays?: number; now?: Date } = {},
 ) {
   const scopedItems = recentDays === undefined ? items : items.filter((offer) => {
     const updated = parsedTime(offer.oa_updated_at || offer.updated_at || offer.created_at);
@@ -160,16 +164,29 @@ export function buildOfferTabCounts(
     return updated.getTime() >= now.getTime() - recentDays * 86_400_000;
   });
   return {
-    pending_registration: scopedItems.filter((item) => item.oa_status === 'not_started').length,
-    follow_up: scopedItems.filter((item) => item.oa_status === 'pending' || item.oa_status === 'rejected').length,
-    completed: scopedItems.filter((item) => item.oa_status === 'approved' || item.oa_status === 'completed').length,
+    all: scopedItems.length,
+    in_progress: scopedItems.filter((item) => isInProgressStatus(item.status)).length,
+    awaiting_onboard: scopedItems.filter((item) => item.status === 'accepted').length,
+    onboarded: scopedItems.filter((item) => item.status === 'onboarded').length,
+    closed: scopedItems.filter((item) => isClosedStatus(item.status)).length,
   };
 }
 
+function isInProgressStatus(status: OfferStatus) {
+  return status === 'draft' || status === 'pending' || status === 'approved'
+    || status === 'rejected' || status === 'sent';
+}
+
+function isClosedStatus(status: OfferStatus) {
+  return status === 'declined' || status === 'withdrawn' || status === 'expired';
+}
+
 function matchesTab(offer: OfferWorkbenchRecord, tab: OfferWorkbenchTab) {
-  if (tab === 'pending_registration') return offer.oa_status === 'not_started';
-  if (tab === 'follow_up') return offer.oa_status === 'pending' || offer.oa_status === 'rejected';
-  return offer.oa_status === 'approved' || offer.oa_status === 'completed';
+  if (tab === 'all') return true;
+  if (tab === 'in_progress') return isInProgressStatus(offer.status);
+  if (tab === 'awaiting_onboard') return offer.status === 'accepted';
+  if (tab === 'onboarded') return offer.status === 'onboarded';
+  return isClosedStatus(offer.status);
 }
 
 export const offerOaStatusLabels: Record<OfferOaStatus, string> = {
@@ -188,7 +205,7 @@ export function filterAndSortOffers({
   owner,
   risk,
   order,
-  recentDays = 7,
+  recentDays = 3650,
   now = new Date(),
 }: OfferWorkbenchInput) {
   const searchTerm = search.trim().toLocaleLowerCase('zh-CN');

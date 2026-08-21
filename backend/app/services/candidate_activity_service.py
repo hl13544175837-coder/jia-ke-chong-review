@@ -1,6 +1,7 @@
 """Build stable, demand-scoped candidate activity records for detail pages."""
 
 from .. import db
+from ..services.account_display_service import account_display_name
 from ..models import (
     InterviewAssignment,
     InterviewFeedback,
@@ -121,7 +122,7 @@ def build_candidate_activity(
         if value
     }
     user_names = {
-        user.id: user.name
+        user.id: account_display_name(user)
         for user in User.query.filter(
             User.org_id == org_id,
             User.id.in_(user_ids),

@@ -7,6 +7,7 @@ from ..middleware.auth import require_auth
 from ..middleware.rate_limit import rate_limit
 from .. import db
 from ..models import User
+from ..services.account_display_service import account_display_name
 from ..time_utils import utc_now
 
 bp = Blueprint("auth", __name__)
@@ -89,7 +90,7 @@ def login():
         "token": token,
         "user_id": user.id,
         "role": user.role,
-        "name": user.name,
+        "name": account_display_name(user),
     })
 
 
@@ -99,7 +100,7 @@ def me():
     """当前登录用户信息（前端刷新角色/姓名，不必只依赖 JWT 解析）。"""
     user = g.authenticated_user
     return jsonify({
-        "id": user.id, "name": user.name, "email": user.email, "role": user.role,
+        "id": user.id, "name": account_display_name(user), "email": user.email, "role": user.role,
     })
 
 

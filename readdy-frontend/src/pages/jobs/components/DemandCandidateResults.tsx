@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  Check,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -29,6 +30,7 @@ interface DemandCandidateResultsProps {
   selectedIds: Set<number>;
   getStatus: (candidate: CandidateListItem) => CandidateStatusView;
   onToggle: (candidate: CandidateListItem) => void;
+  onSelectAllInPage: (selectAll: boolean) => void;
   onOpenResume: (candidate: CandidateListItem) => void;
   response: CandidateListResponse;
   page: number;
@@ -46,6 +48,7 @@ export default function DemandCandidateResults({
   selectedIds,
   getStatus,
   onToggle,
+  onSelectAllInPage,
   onOpenResume,
   response,
   page,
@@ -83,6 +86,26 @@ export default function DemandCandidateResults({
           </div>
         ) : (
           <div className="space-y-2">
+            {(() => {
+              const selectableOnPage = candidates.filter((candidate) => getStatus(candidate).selectable);
+              const allSelectedOnPage = selectableOnPage.length > 0
+                && selectableOnPage.every((candidate) => selectedIds.has(candidate.id));
+              return (
+                <div className="flex items-center justify-between rounded-lg border border-background-200 bg-background-50 px-3 py-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-foreground-600">
+                    <input
+                      type="checkbox"
+                      checked={allSelectedOnPage}
+                      disabled={selectableOnPage.length === 0}
+                      onChange={(event) => onSelectAllInPage(event.target.checked)}
+                      className="h-4 w-4 cursor-pointer accent-primary-600"
+                    />
+                    全选本页可操作候选人（{selectableOnPage.length} 位）
+                  </label>
+                  <span className="text-[11px] text-foreground-400">已选 {selectedIds.size} 位</span>
+                </div>
+              );
+            })()}
             {candidates.map((candidate) => {
               const match = matches.get(candidate.id);
               const status = getStatus(candidate);
@@ -90,19 +113,21 @@ export default function DemandCandidateResults({
               return (
                 <article
                   key={candidate.id}
-                  className={`grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-3 ${selected ? 'border-primary-400 bg-primary-50' : 'border-background-200 bg-white'}`}
+                  className={`grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-3 ${selected ? 'border-primary-400 bg-primary-50' : 'border-background-200 bg-white'}`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => onToggle(candidate)}
-                    disabled={!status.selectable}
-                    aria-label={`${selected ? '取消选择' : '选择'} ${candidate.name_masked}`}
-                    className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${selected ? 'bg-primary-500 text-white' : status.selectable ? 'bg-background-100 text-foreground-600 hover:bg-primary-100' : 'cursor-not-allowed bg-background-100 text-foreground-300'}`}
-                  >
-                    {selected ? '✓' : candidate.name_masked.slice(0, 1) || '候'}
-                  </button>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={!status.selectable}
+                      onChange={() => onToggle(candidate)}
+                      aria-label={`${selected ? '取消选择' : '选择'} ${candidate.name_masked}`}
+                      className="h-4 w-4 cursor-pointer accent-primary-600 disabled:cursor-not-allowed"
+                    />
+                  </label>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
+                      {selected ? <span className="inline-flex items-center justify-center rounded-full bg-primary-500 p-0.5 text-white"><Check size={10} strokeWidth={3} /></span> : null}
                       <span className="text-sm font-semibold text-foreground-900">{candidate.name_masked}</span>
                       <span className={`rounded px-2 py-0.5 text-[11px] ${status.tone}`}>{status.label}</span>
                     </div>

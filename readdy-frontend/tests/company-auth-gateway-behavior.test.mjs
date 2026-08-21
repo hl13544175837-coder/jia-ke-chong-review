@@ -79,7 +79,7 @@ test('真实 PGS 菜单和后端角色一致时返回后端用户身份', async 
     empCode: '100002',
     user_id: 42,
     role: 'interviewer',
-    name: '验收账号·招聘专员',
+    name: '李亚辉',
   });
   const backendRequest = requests.find(({ url }) => url.endsWith('/api/auth/me'));
   assert.equal(backendRequest.init.headers['X-Emp-Code'], '100002');
@@ -139,7 +139,7 @@ test('恢复旧登录状态时按工号刷新业务显示名', async () => {
     name: '测试管理员',
   });
 
-  assert.equal(restored.name, '验收账号·面试官02');
+  assert.equal(restored.name, '贵磊');
 });
 
 test('恢复旧登录状态遇到后端拒绝时不保留旧身份', async () => {
@@ -161,12 +161,12 @@ test('恢复旧登录状态遇到后端拒绝时不保留旧身份', async () =>
   );
 });
 
-test('SIT 四个工号明确显示为验收账号和对应职责', async () => {
+test('SIT 四个工号明确显示为真实姓名', async () => {
   const cases = [
-    { empCode: '100000', expected: '验收账号·面试官02' },
-    { empCode: '100001', expected: '验收账号·招聘主管' },
-    { empCode: '100002', expected: '验收账号·招聘专员' },
-    { empCode: '100003', expected: '验收账号·面试官01' },
+    { empCode: '100000', expected: '贵磊' },
+    { empCode: '100001', expected: '洪通' },
+    { empCode: '100002', expected: '李亚辉' },
+    { empCode: '100003', expected: '王杰' },
   ];
 
   for (const { empCode, expected } of cases) {

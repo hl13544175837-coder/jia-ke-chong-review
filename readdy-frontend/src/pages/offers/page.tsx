@@ -7,11 +7,47 @@ import WorkspaceTabs from '@/components/ui/WorkspaceTabs';
 import CollapsibleFilterBar from '@/components/ui/CollapsibleFilterBar';
 import { FILTER_CONTROL_CLASS, FILTER_FIELD_CLASS } from '@/components/ui/FilterBar';
 import { offersApi } from '@/features/offers/api';
-import type { OfferOaRegistrationInput, OfferWorkbenchRecord } from '@/features/offers/types';
+import type { OfferActionInput, OfferOaRegistrationInput, OfferRecord, OfferWorkbenchRecord } from '@/features/offers/types';
 import { useToast } from '@/hooks/useToast';
 import { userFacingError } from '@/lib/userFacingError';
+import { useProductRole } from '@/auth/productRole';
 import OfferTable from './components/OfferTable';
 import OaRegistrationModal from './components/OaRegistrationModal';
+import OfferDetailDrawer from './components/OfferDetailDrawer';
+
+const EMPTY_OFFER: OfferRecord = {
+  id: 0,
+  candidate_id: 0,
+  demand_id: 0,
+  job_id: 0,
+  candidate_name: '',
+  position: '',
+  department: '',
+  request_no: '',
+  salary_range: '',
+  onboard_date: null,
+  source_channel: '',
+  recruitment_days: null,
+  approval_status: 'draft',
+  status: 'draft',
+  note: '',
+  approver_id: null,
+  approver_name: null,
+  created_by: null,
+  created_by_name: null,
+  submitted_at: null,
+  approved_at: null,
+  sent_at: null,
+  responded_at: null,
+  withdrawn_at: null,
+  expires_at: null,
+  onboarded_at: null,
+  rejection_reason: '',
+  version: 0,
+  created_at: null,
+  updated_at: null,
+  history: [],
+};
 import {
   buildOfferTabCounts,
   clearOfferCandidateSelection,
@@ -24,9 +60,9 @@ import {
 
 function initialOfferTab(value: string | null): OfferWorkbenchTab {
   if (OFFER_WORKBENCH_TABS.some((tab) => tab.key === value)) return value as OfferWorkbenchTab;
-  if (['pending', 'approved', 'sent', 'accepted', 'today'].includes(value || '')) return 'follow_up';
-  if (['history', 'closed', 'onboard', 'onboarded'].includes(value || '')) return 'completed';
-  return 'pending_registration';
+  if (['pending', 'approved', 'sent', 'accepted', 'today'].includes(value || '')) return 'in_progress';
+  if (['history', 'closed', 'onboard', 'onboarded'].includes(value || '')) return 'onboarded';
+  return 'all';
 }
 
 function setSearchValue(params: URLSearchParams, key: string, value: string, defaultValue = '') {
@@ -58,14 +94,18 @@ export default function OffersPage() {
   const [ownerFilter, setOwnerFilter] = useState(() => searchParams.get('owner') || '');
   const [riskFilter, setRiskFilter] = useState<'' | OfferRiskLevel>('');
   const [updatedDateFilter, setUpdatedDateFilter] = useState(() => searchParams.get('updated') || '');
-  const [rangeDays, setRangeDays] = useState(() => Number(searchParams.get('range')) || 7);
+  const [rangeDays, setRangeDays] = useState(() => Number(searchParams.get('range')) || 3650);
   const [order, setOrder] = useState<OfferOrder>('updated');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [registeringOffer, setRegisteringOffer] = useState<OfferWorkbenchRecord | null>(null);
   const [registering, setRegistering] = useState(false);
   const [registerError, setRegisterError] = useState('');
+  const [selectedOffer, setSelectedOffer] = useState<OfferRecord | null>(null);
+  const [selectedLoading, setSelectedLoading] = useState(false);
+  const [selectedError, setSelectedError] = useState('');
   const handledOfferQuery = useRef('');
+  const { role } = useProductRole();
 
   const loadOffers = useCallback(async () => {
     setLoading(true);
@@ -84,12 +124,12 @@ export default function OffersPage() {
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
-    setSearchValue(next, 'tab', activeTab, 'pending_registration');
+    setSearchValue(next, 'tab', activeTab, 'all');
     setSearchValue(next, 'q', search);
     setSearchValue(next, 'request', demandFilter);
     setSearchValue(next, 'owner', ownerFilter);
     setSearchValue(next, 'updated', updatedDateFilter);
-    setSearchValue(next, 'range', String(rangeDays), '7');
+    setSearchValue(next, 'range', String(rangeDays), '3650');
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
   }, [activeTab, demandFilter, ownerFilter, rangeDays, search, searchParams, setSearchParams, updatedDateFilter]);
 
@@ -136,13 +176,13 @@ export default function OffersPage() {
     scopedOffers.map((offer) => offer.created_by_name).filter(Boolean),
   )).sort((left, right) => left.localeCompare(right, 'zh-CN')), [scopedOffers]);
 
-  const hasFilters = Boolean(searchInput.trim() || demandFilter || ownerFilter || updatedDateFilter || rangeDays !== 7);
+  const hasFilters = Boolean(searchInput.trim() || demandFilter || ownerFilter || updatedDateFilter || rangeDays !== 3650);
   const activeFilterCount = [
     searchInput.trim(),
     demandFilter,
     ownerFilter,
     updatedDateFilter,
-    rangeDays !== 7 ? String(rangeDays) : '',
+    rangeDays !== 3650 ? String(rangeDays) : '',
   ].filter(Boolean).length;
 
   const resetOfferFilters = () => {
@@ -152,7 +192,7 @@ export default function OffersPage() {
     setOwnerFilter('');
     setRiskFilter('');
     setUpdatedDateFilter('');
-    setRangeDays(7);
+    setRangeDays(3650);
     setOrder('updated');
   };
 
@@ -182,6 +222,53 @@ export default function OffersPage() {
     } finally {
       setRegistering(false);
     }
+  };
+
+  const openOfferDetail = async (offer: OfferWorkbenchRecord) => {
+    setSelectedError('');
+    if (!offer.id) {
+      // 尚无 Offer 草稿记录时，回到 OA 登记入口
+      setRegisterError('');
+      setRegisteringOffer(offer);
+      return;
+    }
+    setSelectedLoading(true);
+    setSelectedOffer(null);
+    try {
+      const record = await offersApi.getOffer(offer.id);
+      setSelectedOffer(record);
+    } catch (error) {
+      setSelectedError(userFacingError(error, '加载 Offer 详情失败'));
+    } finally {
+      setSelectedLoading(false);
+    }
+  };
+
+  const closeOfferDetail = useCallback(() => {
+    setSelectedOffer(null);
+    setSelectedError('');
+  }, []);
+
+  const runOfferAction = async (offer: OfferRecord, payload: OfferActionInput): Promise<OfferRecord> => {
+    const updated = await offersApi.runAction(offer.id, payload);
+    setSelectedOffer(updated);
+    setOffers((current) => {
+      const wb = current.find((item) => item.candidate_id === updated.candidate_id && item.demand_id === updated.demand_id);
+      if (!wb) return current;
+      return replaceWorkbenchRow(current, { ...wb, status: updated.status, updated_at: updated.updated_at });
+    });
+    showToast('Offer 状态已更新');
+    return updated;
+  };
+
+  const refreshOfferDetail = async () => {
+    if (!selectedOffer) return;
+    const [record, refreshed] = await Promise.all([
+      offersApi.getOffer(selectedOffer.id),
+      offersApi.listWorkbench(search ? { search } : {}),
+    ]);
+    setSelectedOffer(record);
+    setOffers(refreshed.items);
   };
 
   return (
@@ -241,6 +328,7 @@ export default function OffersPage() {
             onOpenPipeline={(offer) => navigate(`/kanban?demand=${offer.demand_id}&candidate=${offer.candidate_id}`)}
             onOpenInterviews={(offer) => navigate(`/interviews?demand=${offer.demand_id}&candidate=${offer.candidate_id}`)}
             onRegister={(offer) => { setRegisterError(''); setRegisteringOffer(offer); }}
+            onOpenDetail={(offer) => void openOfferDetail(offer)}
           />
         )}
       </section>
@@ -252,6 +340,20 @@ export default function OffersPage() {
           error={registerError}
           onClose={() => { if (!registering) closeOaRegistration(); }}
           onSave={(payload) => void registerOaResult(payload)}
+        />
+      )}
+
+      {(selectedLoading || selectedError || selectedOffer) && (
+        <OfferDetailDrawer
+          offer={selectedOffer ?? EMPTY_OFFER}
+          initialAction={null}
+          role={role}
+          loading={selectedLoading}
+          loadError={selectedError}
+          onClose={closeOfferDetail}
+          onEdit={() => undefined}
+          onRunAction={runOfferAction}
+          onRefresh={refreshOfferDetail}
         />
       )}
     </div>

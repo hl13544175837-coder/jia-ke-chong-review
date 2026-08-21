@@ -748,7 +748,7 @@ def test_gateway_online_resume_owner_options_only_show_sit_accounts(
     assert response.status_code == 200
     assert response.get_json() == [{
         "id": recruiter_id,
-        "name": "验收账号·招聘专员",
+        "name": "李亚辉",
         "email": "100002@gateway.local",
     }]
 

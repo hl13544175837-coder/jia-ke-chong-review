@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from .. import db
+from ..services.account_display_service import account_display_name
 from ..models import (
     Candidate,
     InterviewAssignment,
@@ -79,7 +80,7 @@ def _iso(value):
 def _offer_history_payload(offer):
     actor_ids = {item.actor_id for item in offer.history if item.actor_id}
     actors = {
-        user.id: user.name
+        user.id: account_display_name(user)
         for user in User.query.filter(User.id.in_(actor_ids)).all()
     } if actor_ids else {}
     return [

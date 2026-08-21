@@ -19,6 +19,7 @@ from ..models import (
     User,
 )
 from ..time_utils import utc_now
+from .account_display_service import account_display_name
 from .demand_context_service import OPEN_DEMAND_STATUSES
 from .interview_workflow_service import active_assignment_filter
 from .kpi_standard_service import get_effective_kpi_config
@@ -628,7 +629,7 @@ def build_staff_operational_workload(org_id, hr_id):
         "purpose": "operational_collaboration",
         "purpose_label": PURPOSE_LABEL,
         "hr_id": hr_id,
-        "name": user.name if user else None,
+        "name": account_display_name(user) if user else None,
         "workload": {
             "active_demands": len(demands),
             "active_candidates": funnel["pipeline_total"],
@@ -778,7 +779,7 @@ def build_monthly_staff_performance(org_id, hr_id, month):
     return {
         "month": month,
         "purpose": "自然月招聘推进统计，仅展示客观推进量和转化率，不自动评判个人努力程度",
-        "owner": {"id": user.id, "name": user.name, "department": user.department},
+        "owner": {"id": user.id, "name": account_display_name(user), "department": user.department},
         "summary": {
             "demand_count": len(demand_rows),
             "online_resume_imports": online_resume_imports,

@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from ..services.interview_service import PreScreenService
+from ..services.account_display_service import account_display_name
 from ..services.interview_workflow_service import (
     FeedbackValidationError,
     InterviewAssignmentWorkflowError,
@@ -123,7 +124,7 @@ def register_interview_query_routes(bp):
                 "strengths": f.strengths, "concerns": f.concerns, "note": f.note,
                 "satisfaction": feedback_satisfaction(f),
                 "updated_by": updated_by,
-                "updated_by_name": updated_user.name if updated_user else None,
+                "updated_by_name": account_display_name(updated_user) if updated_user else None,
                 "updated_at": (
                     getattr(f, "updated_at", None).isoformat()
                     if getattr(f, "updated_at", None)

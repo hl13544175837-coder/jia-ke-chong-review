@@ -23,6 +23,7 @@ from ..models import (
     User,
 )
 from ..time_utils import utc_now
+from .account_display_service import account_display_name
 from .interview_workflow_service import (
     InterviewAssignmentWorkflowError,
     active_assignment_filter,
@@ -236,7 +237,7 @@ def interview_management_rows(*, user_id, role, org_id):
                 "assignment_id": assignment.id if assignment else None,
                 "is_primary": bool(assignment.is_primary) if assignment else None,
                 "interviewer_id": assignment.interviewer_id if assignment else None,
-                "interviewer_name": assigned_user.name if assigned_user else None,
+                "interviewer_name": account_display_name(assigned_user) if assigned_user else None,
                 "scheduled_at": (
                     assignment.scheduled_at.isoformat()
                     if assignment and assignment.scheduled_at

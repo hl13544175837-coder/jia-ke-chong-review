@@ -213,6 +213,21 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
     setSaveMessage('');
   };
 
+  const selectAllInPage = (selectAll: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      visibleCandidates.forEach((candidate) => {
+        const status = candidateStatus(candidate, demand.id, matches.get(candidate.id), reviewTasks);
+        if (status.selectable) {
+          if (selectAll) next.add(candidate.id);
+          else next.delete(candidate.id);
+        }
+      });
+      return next;
+    });
+    setSaveMessage('');
+  };
+
   const openResume = async (candidate: CandidateListItem) => {
     setResumeCandidate(candidate);
     setResumeTab('interview');
@@ -449,6 +464,7 @@ export default function DemandCandidateDrawer({ demand, onClose, onChanged, onRe
               selectedIds={selectedIds}
               getStatus={(candidate) => candidateStatus(candidate, demand.id, matches.get(candidate.id), reviewTasks)}
               onToggle={toggleCandidate}
+              onSelectAllInPage={selectAllInPage}
               onOpenResume={(candidate) => void openResume(candidate)}
               response={candidateResponse}
               page={page}

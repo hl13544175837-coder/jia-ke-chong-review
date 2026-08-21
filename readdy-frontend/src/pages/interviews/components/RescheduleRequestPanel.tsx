@@ -1,4 +1,4 @@
-import { CalendarClock, LoaderCircle } from 'lucide-react';
+import { CalendarClock, Check, LoaderCircle } from 'lucide-react';
 import { useState } from 'react';
 import { formatInterviewDateTime } from '@/features/interviews/dateTime';
 import type { InterviewRescheduleRequest } from '@/features/interviews/types';
@@ -21,6 +21,7 @@ export default function RescheduleRequestPanel({
   onCancelAndWait,
 }: RescheduleRequestPanelProps) {
   const [decisionReason, setDecisionReason] = useState('');
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
   return (
     <section className="mt-5 rounded-lg border border-amber-200 bg-amber-50/70 p-4">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-900">
@@ -30,18 +31,36 @@ export default function RescheduleRequestPanel({
         {request.requester_name || '面试官'}：{request.reason}
       </p>
       <div className="mt-3 space-y-2">
-        {request.proposed_times.map((time, index) => (
-          <button
-            key={time}
-            type="button"
-            onClick={() => onApprove(time)}
-            disabled={busy}
-            className="flex w-full items-center justify-between rounded-md border border-amber-200 bg-white px-3 py-2 text-left text-xs text-foreground-700 hover:border-primary-300 hover:bg-primary-50 disabled:opacity-50"
-          >
-            <span>建议时间 {index + 1}：{formatInterviewDateTime(time)}</span>
-            <span className="font-medium text-primary-700">按建议时间调整</span>
-          </button>
-        ))}
+        {request.proposed_times.map((time, index) => {
+          const isSelected = selectedTime === time;
+          return (
+            <button
+              key={time}
+              type="button"
+              onClick={() => setSelectedTime(isSelected ? null : time)}
+              disabled={busy}
+              className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-xs text-foreground-700 disabled:opacity-50 ${isSelected ? 'border-primary-400 bg-primary-50' : 'border-amber-200 bg-white hover:border-primary-300 hover:bg-primary-50'}`}
+            >
+              <span className="inline-flex items-center gap-2">
+                <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${isSelected ? 'border-primary-600 bg-primary-600' : 'border-foreground-300 bg-white'}`}>
+                  {isSelected && <Check size={10} strokeWidth={3} className="text-white" />}
+                </span>
+                建议时间 {index + 1}：{formatInterviewDateTime(time)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => selectedTime && onApprove(selectedTime)}
+          disabled={busy || !selectedTime}
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary-500 px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
+        >
+          {busy && <LoaderCircle size={13} className="animate-spin" />}
+          确认调整
+        </button>
       </div>
       <label className="mt-3 block text-xs font-medium text-amber-900">
         拒绝或暂时取消时，请填写处理原因

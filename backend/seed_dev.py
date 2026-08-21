@@ -75,12 +75,12 @@ def seed():
         # ── 1. USERS ──────────────────────────────────────────────────────────
         pw = _hash("Zhipin2026")
 
-        manager = User(name="招聘经理01", email="manager01@mvp.local", role="manager", password_hash=pw, created_at=_dt(60))
+        manager = User(name="洪通", email="manager01@mvp.local", role="manager", password_hash=pw, created_at=_dt(60))
         lead    = User(name="招聘负责人01", email="lead01@mvp.local", role="manager", password_hash=pw, created_at=_dt(58))
-        hr1     = User(name="演示账号·招聘专员01", email="hr01@mvp.local", role="recruiter", password_hash=pw, created_at=_dt(55))
-        hr2     = User(name="演示账号·招聘专员02", email="hr02@mvp.local", role="recruiter", password_hash=pw, created_at=_dt(50))
+        hr1     = User(name="李亚辉", email="hr01@mvp.local", role="recruiter", password_hash=pw, created_at=_dt(55))
+        hr2     = User(name="杨阳", email="hr02@mvp.local", role="recruiter", password_hash=pw, created_at=_dt(50))
         hr3     = User(name="演示账号·招聘专员03", email="hr03@mvp.local", role="recruiter", password_hash=pw, created_at=_dt(45))
-        ivr     = User(name="演示账号·面试官01", email="interviewer01@mvp.local", role="interviewer", password_hash=pw, created_at=_dt(40))
+        ivr     = User(name="贵磊", email="interviewer01@mvp.local", role="interviewer", password_hash=pw, created_at=_dt(40))
         ivr2    = User(name="演示账号·面试官02", email="interviewer02@mvp.local", role="interviewer", password_hash=pw, created_at=_dt(39))
         director = User(name="人力资源总监01", email="director01@mvp.local", role="hr_director", department="人力资源部", password_hash=pw, created_at=_dt(60))
         adm     = User(name="系统管理员", email="admin01@mvp.local", role="admin", password_hash=pw, created_at=_dt(60))
@@ -1040,12 +1040,12 @@ def seed():
         print(f"  {'-'*12} {'-'*30} {'-'*10}")
         creds = [
             ("admin",       "admin01@mvp.local",       "系统管理员"),
-            ("manager",     "manager01@mvp.local",     "招聘经理01"),
+            ("manager",     "manager01@mvp.local",     "洪通"),
             ("manager",     "lead01@mvp.local",        "招聘负责人01"),
-            ("recruiter",   "hr01@mvp.local",          "演示账号·招聘专员01"),
-            ("recruiter",   "hr02@mvp.local",          "演示账号·招聘专员02"),
+            ("recruiter",   "hr01@mvp.local",          "李亚辉"),
+            ("recruiter",   "hr02@mvp.local",          "杨阳"),
             ("recruiter",   "hr03@mvp.local",          "演示账号·招聘专员03"),
-            ("interviewer", "interviewer01@mvp.local", "演示账号·面试官01"),
+            ("interviewer", "interviewer01@mvp.local", "贵磊"),
             ("interviewer", "interviewer02@mvp.local", "演示账号·面试官02"),
         ]
         for role, email, name in creds:

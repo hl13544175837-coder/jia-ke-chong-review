@@ -21,6 +21,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from .. import db
 from ..models import User
+from ..services.account_display_service import account_display_name
 from ..time_utils import utc_now
 
 bp = Blueprint("gateway_dev_mock", __name__)
@@ -93,7 +94,7 @@ def oauth_profile():
         "code": 1,
         "data": {
             "userInfo": {
-                "empName": user.name,
+                "empName": account_display_name(user),
                 "ymEmpCode": user.email.split("@")[0] if "@" in user.email else user.email,
                 "role": user.role,
             }

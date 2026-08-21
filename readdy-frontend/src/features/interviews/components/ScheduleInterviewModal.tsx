@@ -119,8 +119,14 @@ export default function ScheduleInterviewModal({
     });
   };
 
+  const hasUnsavedInput = editing
+    || Boolean(note.trim())
+    || Boolean(location.trim())
+    || Boolean(changeReason.trim())
+    || (Boolean(scheduledAt) && scheduledAt !== interviewDateTimeToLocalInput(row.scheduled_at));
+
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground-900/45 p-4" role="presentation" onMouseDown={saving ? undefined : onClose}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground-900/45 p-4" role="presentation" onMouseDown={saving || hasUnsavedInput ? undefined : onClose}>
       <div ref={modalRef} tabIndex={-1} className="flex max-h-full w-full max-w-[620px] flex-col overflow-hidden rounded-lg bg-white shadow-2xl outline-none" role="dialog" aria-modal="true" aria-labelledby="schedule-interview-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div>

@@ -27,6 +27,7 @@ from ..models import (
     VALID_STAGES,
 )
 from ..time_utils import utc_now
+from .account_display_service import account_display_name
 from .headcount_service import build_headcount_state
 
 
@@ -718,7 +719,7 @@ def pipeline_board(demand, *, candidate_ids=None):
             "stage": normalize_pipeline_stage(stage.stage),
             "note": stage.note,
             "updated_at": stage.ts.isoformat() if stage.ts else None,
-            "updated_by_name": user.name if user else None,
+            "updated_by_name": account_display_name(user) if user else None,
             "pending_feedback": stage.candidate_id in pending_feedback_candidate_ids,
         }
         for stage, candidate, user in rows
@@ -754,7 +755,7 @@ def pipeline_history(demand, candidate_id):
             {
                 "stage": normalize_pipeline_stage(stage.stage),
                 "ts": stage.ts.isoformat() if stage.ts else None,
-                "updated_by_name": user.name if user else None,
+                "updated_by_name": account_display_name(user) if user else None,
                 "note": stage.note,
             }
             for stage, user in rows

@@ -52,10 +52,10 @@ interface CompanyAuthGatewayConfig {
  * 角色、菜单和数据范围仍由 PGS 菜单与后端工号映射决定，这里只影响登录后的显示名。
  */
 const GATEWAY_DISPLAY_NAME_BY_EMP_CODE: Record<string, string> = {
-  '100000': '验收账号·面试官02',
-  '100001': '验收账号·招聘主管',
-  '100002': '验收账号·招聘专员',
-  '100003': '验收账号·面试官01',
+  '100000': '贵磊',
+  '100001': '洪通',
+  '100002': '李亚辉',
+  '100003': '王杰',
 };
 
 export class CompanyAuthError extends Error {

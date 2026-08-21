@@ -306,7 +306,7 @@ def test_business_review_payload_uses_the_gateway_account_display_name(
 
     payload = _push_review(client, hr_token, case, reviewer_id).get_json()
 
-    assert payload["reviewer_name"] == "验收账号·面试官01"
+    assert payload["reviewer_name"] == "王杰"
 
 
 def test_invalid_reassignment_keeps_the_original_pending_reviewer(

@@ -13,6 +13,7 @@ from ..models import (
     User,
 )
 from ..time_utils import utc_now
+from .account_display_service import account_display_name
 from .interview_management_service import update_interview_assignment
 from .interview_workflow_service import (
     InterviewAssignmentWorkflowError,
@@ -45,7 +46,7 @@ def _iso(value):
 
 def _user_name(user_id):
     user = db.session.get(User, user_id) if user_id else None
-    return user.name if user else None
+    return account_display_name(user) if user else None
 
 
 def serialize_reschedule_request(item):

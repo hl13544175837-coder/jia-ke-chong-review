@@ -9,6 +9,7 @@ import type {
   TalentMapDetail,
   TalentMapOrganizationDepartmentDraft,
   TalentMapPerson,
+  TalentMapPersonBulkItem,
   TalentMapSummary,
 } from '@/features/talentMaps/types';
 
@@ -225,6 +226,24 @@ export function useTalentMapWorkspace() {
     }
   }, [detail, refresh]);
 
+  /** 四字段批量导入人才（姓名/手机号/公司/职位），手机号重复跳过不覆盖，逐条返回结果。 */
+  const bulkCreatePeople = useCallback(async (items: TalentMapPersonBulkItem[]) => {
+    if (!detail) throw new Error('请先选择人才地图');
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await talentMapsApi.bulkCreatePeople(detail.id, items);
+      await refresh(detail.id);
+      return result;
+    } catch (saveError) {
+      const saveMessage = messageFrom(saveError, '批量导入人才失败');
+      setError(saveMessage);
+      throw new Error(saveMessage, { cause: saveError });
+    } finally {
+      setSaving(false);
+    }
+  }, [detail, refresh]);
+
   const addContactLog = useCallback(async (personId: number, payload: { content: string }) => {
     if (!detail) throw new Error('请先选择人才地图');
     setSaving(true);
@@ -331,6 +350,7 @@ export function useTalentMapWorkspace() {
     updateOrganization,
     addContactLog,
     bulkCreateCompanies,
+    bulkCreatePeople,
     loadResumeCandidates,
     previewImport,
     confirmImport,

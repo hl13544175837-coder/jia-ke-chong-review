@@ -12,18 +12,20 @@ const jiti = createJiti(import.meta.url, {
 test('Offer 页签数字与当前时间范围使用同一批记录', async () => {
   const { buildOfferTabCounts } = await jiti.import('../src/pages/offers/workbench.ts');
   const items = [
-    { oa_status: 'not_started', updated_at: '2026-08-12T00:00:00Z' },
-    { oa_status: 'not_started', updated_at: '2026-07-01T00:00:00Z' },
-    { oa_status: 'completed', updated_at: '2026-07-01T00:00:00Z' },
+    { status: 'draft', updated_at: '2026-08-12T00:00:00Z' },
+    { status: 'draft', updated_at: '2026-07-01T00:00:00Z' },
+    { status: 'onboarded', updated_at: '2026-07-01T00:00:00Z' },
   ];
 
   assert.deepEqual(buildOfferTabCounts(items, {
     recentDays: 7,
     now: new Date('2026-08-13T00:00:00Z'),
   }), {
-    pending_registration: 1,
-    follow_up: 0,
-    completed: 0,
+    all: 1,
+    in_progress: 1,
+    awaiting_onboard: 0,
+    onboarded: 0,
+    closed: 0,
   });
 });
 

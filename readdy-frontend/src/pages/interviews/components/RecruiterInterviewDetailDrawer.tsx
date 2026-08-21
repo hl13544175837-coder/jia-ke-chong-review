@@ -9,7 +9,6 @@ import { candidatesApi } from '@/features/candidates/api';
 import CandidateDetailWorkspace from '@/features/candidates/components/CandidateDetailWorkspace';
 import type { CandidateDetailTab } from '@/features/candidates/components/CandidateDetailTabs';
 import CandidateInterviewInfoPanel from '@/features/candidates/components/CandidateInterviewInfoPanel';
-import CandidateFeedbackTimeline from '@/features/candidates/components/CandidateFeedbackTimeline';
 import type { CandidateJourney, CandidateResumeDetail } from '@/features/candidates/types';
 import { formatInterviewDateTime } from '@/features/interviews/dateTime';
 import RescheduleHistory from '@/features/interviews/components/RescheduleHistory';
@@ -17,6 +16,7 @@ import type { InterviewManagementRow, InterviewRescheduleRequest } from '@/featu
 import { rowStatus, statusLabelForRow } from '@/features/interviews/workbench';
 import { interviewStatusPresentation, statusPresentation } from '@/components/ui/recruitmentPresentation';
 import RescheduleRequestPanel from './RescheduleRequestPanel';
+import RecruiterInterviewRounds from './RecruiterInterviewRounds';
 
 interface RecruiterInterviewDetailDrawerProps {
   row: InterviewManagementRow;
@@ -136,7 +136,7 @@ export default function RecruiterInterviewDetailDrawer({
             </div>
           ) : activeTab === 'feedback' ? (
             <div role="tabpanel" aria-label="面试评价">
-              <CandidateFeedbackTimeline journey={journey} loading={journeyLoading} error={journeyError} />
+              <RecruiterInterviewRounds journey={journey} row={row} rescheduleHistory={rescheduleHistory} loading={journeyLoading} error={journeyError} />
             </div>
           ) : (
             <CandidateInterviewInfoPanel>

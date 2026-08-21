@@ -8,6 +8,7 @@ from ..middleware.events import record_event
 from .. import db
 from ..models import Event, User
 from ..services.agent_service import get_agent_architecture_dashboard
+from ..services.account_display_service import account_display_name
 from ..services.settings_service import SettingsError, get_settings, save_settings
 
 bp = Blueprint("admin", __name__)
@@ -25,7 +26,7 @@ def _clean_text(value, limit):
 def _user_payload(user):
     return {
         "id": user.id,
-        "name": user.name,
+        "name": account_display_name(user),
         "email": user.email,
         "role": user.role,
         "department": user.department or "",

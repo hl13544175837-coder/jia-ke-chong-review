@@ -2,15 +2,16 @@
 
 
 DEMO_ACCOUNT_DISPLAY_NAMES = {
-    "hr01@mvp.local": "演示账号·招聘专员01",
-    "hr02@mvp.local": "演示账号·招聘专员02",
+    "hr01@mvp.local": "李亚辉",
+    "hr02@mvp.local": "杨阳",
     "hr03@mvp.local": "演示账号·招聘专员03",
-    "interviewer01@mvp.local": "演示账号·面试官01",
+    "manager01@mvp.local": "洪通",
+    "interviewer01@mvp.local": "贵磊",
     "interviewer02@mvp.local": "演示账号·面试官02",
-    "100000@gateway.local": "验收账号·面试官02",
-    "100001@gateway.local": "验收账号·招聘主管",
-    "100002@gateway.local": "验收账号·招聘专员",
-    "100003@gateway.local": "验收账号·面试官01",
+    "100000@gateway.local": "贵磊",
+    "100001@gateway.local": "洪通",
+    "100002@gateway.local": "李亚辉",
+    "100003@gateway.local": "王杰",
 }
 
 SIT_GATEWAY_ACCOUNT_EMAILS = frozenset({

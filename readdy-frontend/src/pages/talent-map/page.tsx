@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
 import { useToast } from '@/hooks/useToast';
 import PersonEditModal from '@/pages/talent-map/components/PersonEditModal';
+import PersonBulkImportModal from '@/pages/talent-map/components/PersonBulkImportModal';
 import OrganizationEditorModal from '@/pages/talent-map/components/OrganizationEditorModal';
 import CompanyEditModal from '@/pages/talent-map/components/CompanyEditModal';
 import CompanyTreeMap from '@/pages/talent-map/components/CompanyTreeMap';
@@ -13,6 +14,7 @@ import { useTalentMapWorkspace } from '@/features/talentMaps/useTalentMapWorkspa
 import type {
   TalentMapOrganizationDepartmentDraft,
   TalentMapPerson,
+  TalentMapPersonBulkItem,
   TalentMapPersonInput,
 } from '@/features/talentMaps/types';
 
@@ -71,6 +73,8 @@ export default function TalentMapPage() {
     title?: string;
   }>({ open: false, person: null });
   const [aiWizardOpen, setAiWizardOpen] = useState(false);
+  const [personBulkOpen, setPersonBulkOpen] = useState(false);
+  const [personBulkError, setPersonBulkError] = useState('');
   const [organizationEditorOpen, setOrganizationEditorOpen] = useState(false);
   const [treeMapOpen, setTreeMapOpen] = useState(false);
   const [companyEditOpen, setCompanyEditOpen] = useState(false);
@@ -241,6 +245,16 @@ export default function TalentMapPage() {
     }
   };
 
+  const handleBulkSavePerson = async (items: TalentMapPersonBulkItem[]) => {
+    setPersonBulkError('');
+    try {
+      return await workspace.bulkCreatePeople(items);
+    } catch (saveError) {
+      setPersonBulkError(saveError instanceof Error ? saveError.message : '批量导入人才失败');
+      throw saveError;
+    }
+  };
+
   const handleSaveCompany = async (payload: { company_name: string; industry: string; city: string; note: string }) => {
     if (!activeCompany) return;
     try {
@@ -338,6 +352,14 @@ export default function TalentMapPage() {
           description="按目标公司沉淀外部人才的组织信息，支持 AI 从简历库导入"
           actions={(
             <>
+              <button
+                onClick={() => { setPersonBulkError(''); setPersonBulkOpen(true); }}
+                disabled={saving}
+                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+              >
+                <i className="ri-user-add-line"></i>
+                新增人才
+              </button>
               <button
                 onClick={() => setAiWizardOpen(true)}
                 disabled={companies.length === 0}
@@ -921,6 +943,15 @@ export default function TalentMapPage() {
         open={aiWizardOpen}
         workspace={workspace}
         onClose={() => setAiWizardOpen(false)}
+      />
+
+      {/* 四字段新增 / 批量导入人才 */}
+      <PersonBulkImportModal
+        open={personBulkOpen}
+        saving={saving}
+        error={personBulkError}
+        onClose={() => { if (!saving) setPersonBulkOpen(false); }}
+        onSave={(items) => handleBulkSavePerson(items)}
       />
 
       {/* 组织架构编辑 */}

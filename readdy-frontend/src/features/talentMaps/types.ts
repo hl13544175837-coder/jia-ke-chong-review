@@ -226,3 +226,26 @@ export interface ImportConfirmItem {
   note?: string;
   source?: string;
 }
+
+/** 四字段批量导入人才（姓名/手机号/公司/职位），逐条返回结果。 */
+export interface TalentMapPersonBulkItem {
+  name: string;
+  phone?: string;
+  company_name?: string;
+  title?: string;
+}
+
+export interface TalentMapPersonBulkRowResult {
+  index: number;
+  status: 'created' | 'duplicate' | 'error';
+  reason?: string;
+  person?: TalentMapPerson;
+}
+
+export interface TalentMapPersonBulkResult {
+  results: TalentMapPersonBulkRowResult[];
+  count: number;
+  duplicate: number;
+  failed: number;
+  total: number;
+}

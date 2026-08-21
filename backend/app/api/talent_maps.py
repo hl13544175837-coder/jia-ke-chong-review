@@ -608,6 +608,105 @@ def create_talent_map_person(map_id):
     return jsonify(_person_payload(person)), 201
 
 
+@bp.post("/talent-maps/<int:map_id>/people/bulk")
+@require_auth
+@require_role("recruiter", "manager", "admin", "hr_director")
+def bulk_create_talent_map_people(map_id):
+    """四字段批量导入人才：姓名、手机号、公司、职位。
+
+    公司不存在时自动创建；手机号重复默认跳过、不覆盖原数据；逐条返回成功/失败/重复原因。
+    不依赖简历库、不调用 AI；保留当前权限与审计边界。
+    """
+    talent_map = db.get_or_404(TalentMap, map_id)
+    if not same_org(talent_map, g.org_id):
+        return jsonify({"error": "人才地图不存在"}), 404
+    if not _can_manage_map(talent_map):
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    if not isinstance(items, list):
+        return jsonify({"error": "items required"}), 400
+
+    # 缓存既有手机号，用于重复判断（不覆盖）
+    existing_phones = {
+        (p.phone or "").strip()
+        for p in TalentMapPerson.query.filter_by(map_id=talent_map.id, org_id=g.org_id).all()
+        if (p.phone or "").strip()
+    }
+    # 缓存既有公司名，避免重复创建
+    company_by_name = {c.company_name: c for c in talent_map.companies}
+
+    results = []
+    created = 0
+    duplicate = 0
+    failed = 0
+    for index, raw in enumerate(items):
+        if not isinstance(raw, dict):
+            results.append({"index": index, "status": "error", "reason": "格式错误"})
+            failed += 1
+            continue
+        name = _clean(raw.get("name") or raw.get("姓名"), 120)
+        phone = _clean(raw.get("phone") or raw.get("手机号"), 60)
+        company_name = _clean(raw.get("company_name") or raw.get("company") or raw.get("公司"), 200)
+        title = _clean(raw.get("title") or raw.get("position") or raw.get("职位"), 160)
+
+        if not name:
+            results.append({"index": index, "status": "error", "reason": "姓名为空"})
+            failed += 1
+            continue
+        # 手机号重复 → 跳过，不覆盖
+        if phone and phone in existing_phones:
+            results.append({"index": index, "status": "duplicate", "reason": f"手机号 {phone} 已存在，跳过不覆盖"})
+            duplicate += 1
+            continue
+
+        # 公司不存在则自动创建
+        company = None
+        if company_name:
+            company = company_by_name.get(company_name)
+            if company is None:
+                company = TalentMapCompany(
+                    org_id=g.org_id,
+                    map_id=talent_map.id,
+                    company_name=company_name,
+                )
+                db.session.add(company)
+                db.session.flush()
+                company_by_name[company_name] = company
+
+        person = TalentMapPerson(
+            org_id=g.org_id,
+            map_id=talent_map.id,
+            company_id=company.id if company else None,
+            name=name,
+            phone=phone,
+            title=title,
+            department="",
+            tags=[],
+            owner_hr_id=g.user_id,
+            source="手动导入",
+        )
+        db.session.add(person)
+        db.session.flush()
+        if phone:
+            existing_phones.add(phone)
+        created += 1
+        results.append({"index": index, "status": "created", "person": _person_payload(person)})
+
+    _commit_with_event(
+        "talent_map_person.bulk_created",
+        entity_id=talent_map.id,
+        entity_type="talent_map",
+    )
+    return jsonify({
+        "results": results,
+        "count": created,
+        "duplicate": duplicate,
+        "failed": failed,
+        "total": len(items),
+    }), 201
+
+
 @bp.patch("/talent-map-people/<int:person_id>")
 @require_auth
 @require_role("recruiter", "manager", "admin", "hr_director")

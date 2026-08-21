@@ -229,8 +229,8 @@ def test_journey_includes_demand_review_business_review_interview_round_and_offe
     assert journey["demand_approval"]["reviewed_by_name"] == "李经理"
     assert journey["demand_approval"]["status"] == "approved"
     assert journey["business_reviews"][0]["business_note"] == "建议进入面试"
-    assert journey["business_reviews"][0]["reviewer_name"] == "验收账号·面试官01"
-    assert journey["interview_rounds"][0]["interviewer_name"] == "验收账号·面试官01"
+    assert journey["business_reviews"][0]["reviewer_name"] == "王杰"
+    assert journey["interview_rounds"][0]["interviewer_name"] == "王杰"
     assert journey["interview_rounds"][0]["status"] == "awaiting_feedback"
     assert journey["offers"][0]["status"] == "sent"
 

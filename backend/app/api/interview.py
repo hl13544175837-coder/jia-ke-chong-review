@@ -6,6 +6,7 @@ from ..middleware.auth import require_auth, require_role
 from ..middleware.events import record_event
 from ..middleware.rate_limit import rate_limit
 from ..services.interview_service import PreScreenService
+from ..services.account_display_service import account_display_name
 from ..services.interview_workflow_service import (
     FeedbackValidationError,
     InterviewAssignmentWorkflowError,
@@ -211,7 +212,7 @@ def _simple_feedback_fields(feedback):
         "concerns": feedback.concerns or "",
         "note": feedback.note or "",
         "updated_by": updated_by,
-        "updated_by_name": updated_user.name if updated_user else None,
+        "updated_by_name": account_display_name(updated_user) if updated_user else None,
         "updated_at": updated_at.isoformat() if updated_at else None,
     }
 

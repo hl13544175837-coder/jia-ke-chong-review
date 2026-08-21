@@ -11,6 +11,8 @@ import type {
   TalentMapDetail,
   TalentMapOrganizationDepartmentDraft,
   TalentMapPerson,
+  TalentMapPersonBulkItem,
+  TalentMapPersonBulkResult,
   TalentMapPersonInput,
   TalentMapSummary,
 } from '@/features/talentMaps/types';
@@ -54,6 +56,9 @@ export const talentMapsApi = {
   },
   updatePerson(personId: number, payload: Partial<TalentMapPersonInput>): Promise<TalentMapPerson> {
     return apiRequest(`/talent-map-people/${personId}`, { method: 'PATCH', body: payload });
+  },
+  bulkCreatePeople(mapId: number, items: TalentMapPersonBulkItem[]): Promise<TalentMapPersonBulkResult> {
+    return apiRequest(`/talent-maps/${mapId}/people/bulk`, { method: 'POST', body: { items } });
   },
 
   /* ---------- AI 从简历库导入 ---------- */

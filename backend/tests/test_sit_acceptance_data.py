@@ -41,7 +41,7 @@ def _counts():
 def _seed_actors():
     recruiter = User(
         org_id=1,
-        name="验收账号·招聘专员",
+        name="李亚辉",
         email="100002@gateway.local",
         role="recruiter",
         password_hash="!gateway-managed",
@@ -49,7 +49,7 @@ def _seed_actors():
     )
     interviewer = User(
         org_id=1,
-        name="验收账号·面试官01",
+        name="王杰",
         email="100003@gateway.local",
         role="interviewer",
         password_hash="!gateway-managed",
@@ -134,10 +134,10 @@ def test_admin_endpoint_adds_acceptance_data_idempotently(
     app, client, make_user, monkeypatch
 ):
     make_user(
-        "100002@gateway.local", role="recruiter", name="验收账号·招聘专员"
+        "100002@gateway.local", role="recruiter", name="李亚辉"
     )
     make_user(
-        "100003@gateway.local", role="interviewer", name="验收账号·面试官01"
+        "100003@gateway.local", role="interviewer", name="王杰"
     )
     _, admin_token = make_user(
         "sit-admin@example.com", role="admin", name="验收管理员"

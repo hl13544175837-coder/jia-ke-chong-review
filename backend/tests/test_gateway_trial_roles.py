@@ -112,7 +112,7 @@ def test_gateway_interviewer_owner_options_exclude_local_demo_accounts(app, clie
     assert response.get_json() == [
         {
             "id": gateway_recruiter_id,
-            "name": "验收账号·招聘专员",
+            "name": "李亚辉",
             "email": "100002@gateway.local",
         }
     ]
@@ -161,19 +161,19 @@ def test_gateway_account_choices_only_show_the_four_sit_accounts(app, client):
     assert response.get_json() == [
         {
             "id": User.query.filter_by(email="100000@gateway.local").one().id,
-            "name": "验收账号·面试官02",
+            "name": "贵磊",
             "email": "100000@gateway.local",
             "role": "interviewer",
         },
         {
             "id": User.query.filter_by(email="100001@gateway.local").one().id,
-            "name": "验收账号·招聘主管",
+            "name": "洪通",
             "email": "100001@gateway.local",
             "role": "manager",
         },
         {
             "id": User.query.filter_by(email="100003@gateway.local").one().id,
-            "name": "验收账号·面试官01",
+            "name": "王杰",
             "email": "100003@gateway.local",
             "role": "interviewer",
         },
