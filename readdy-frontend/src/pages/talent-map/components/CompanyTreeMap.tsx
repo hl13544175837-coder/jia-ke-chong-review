@@ -5,7 +5,19 @@ import type {
   TalentMapOrganizationRoleDraft,
   TalentMapPerson,
 } from '@/features/talentMaps/types';
-import { organizationDraft } from '@/pages/talent-map/organization';
+import {
+  cleanOrganizationDraft,
+  countDraftDepartments,
+  countDraftRoles,
+  draftNodeAt,
+  emptyDepartmentDraft,
+  emptyRoleDraft,
+  insertDraftChild,
+  organizationDraft,
+  removeDraftAt,
+  removeRoleDraftAt,
+  updateDraftAt,
+} from '@/pages/talent-map/organization';
 import type { OrganizationDepartment } from '@/pages/talent-map/organization';
 
 interface CompanyTreeMapProps {
@@ -35,13 +47,7 @@ function statusDot(status: string) {
   return 'bg-background-200';
 }
 
-function emptyRole(): TalentMapOrganizationRoleDraft {
-  return { source_title: '', title: '' };
-}
-
-function emptyDepartment(): TalentMapOrganizationDepartmentDraft {
-  return { source_name: '', name: '', roles: [] };
-}
+type DepartmentNode = TalentMapOrganizationDepartmentDraft;
 
 export default function CompanyTreeMap({
   open,
@@ -53,9 +59,9 @@ export default function CompanyTreeMap({
   onAddPerson,
   onEditPerson,
 }: CompanyTreeMapProps) {
-  const [draft, setDraft] = useState<TalentMapOrganizationDepartmentDraft[]>([]);
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
-  const [editing, setEditing] = useState<{ kind: 'dept' | 'role'; dept: number; role?: number } | null>(null);
+  const [draft, setDraft] = useState<DepartmentNode[]>([]);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<{ kind: 'dept' | 'role'; path: number[]; role?: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -77,98 +83,246 @@ export default function CompanyTreeMap({
   /** 人才按（原部门|原岗位）归位，改名保存前仍按原名统计/展示人才。 */
   const peopleByKey = useMemo(() => {
     const map = new Map<string, TalentMapPerson[]>();
-    for (const department of departments) {
-      for (const role of department.roles) {
-        map.set(`${department.name}|${role.title}`, role.people);
+    const collect = (list: OrganizationDepartment[]) => {
+      for (const dept of list) {
+        for (const role of dept.roles) {
+          map.set(`${dept.name}|${role.title}`, role.people);
+        }
+        collect(dept.children);
       }
-    }
+    };
+    collect(departments);
     return map;
   }, [departments]);
 
   if (!open) return null;
 
-  const rolePeople = (department: TalentMapOrganizationDepartmentDraft, role: TalentMapOrganizationRoleDraft) =>
+  const rolePeople = (department: DepartmentNode, role: TalentMapOrganizationRoleDraft) =>
     peopleByKey.get(`${department.source_name}|${role.source_title}`) ?? [];
 
-  const departmentPeopleCount = (department: TalentMapOrganizationDepartmentDraft) =>
+  const departmentPeopleCount = (department: DepartmentNode) =>
     department.roles.reduce(
       (sum, role) => sum + (peopleByKey.get(`${department.source_name}|${role.source_title}`)?.length ?? 0),
       0,
-    );
+    )
+    + (department.children ?? []).reduce((sum, child) => sum + departmentPeopleCount(child), 0);
 
-  const totalDepartments = draft.filter((item) => item.name.trim()).length;
-  const totalRoles = draft.reduce(
-    (sum, item) => sum + item.roles.filter((role) => role.title.trim()).length,
-    0,
-  );
+  const totalDepartments = countDraftDepartments(draft);
+  const totalRoles = countDraftRoles(draft);
   const totalPeople = departments.reduce(
-    (sum, department) => sum + department.roles.reduce((inner, role) => inner + role.people.length, 0),
+    (sum, department) => sum + summarizePeople(department),
     0,
   );
 
-  const updateDepartment = (index: number, patch: Partial<TalentMapOrganizationDepartmentDraft>) => {
-    setDraft((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  function summarizePeople(department: OrganizationDepartment): number {
+    return department.roles.reduce((sum, role) => sum + role.people.length, 0)
+      + department.children.reduce((sum, child) => sum + summarizePeople(child), 0);
+  }
+
+  const addChildDepartment = (path: number[]) => {
+    const childIndex = draftNodeAt(draft, path)?.children?.length ?? 0;
+    setDraft((prev) => insertDraftChild(prev, path, emptyDepartmentDraft()));
+    setEditing({ kind: 'dept', path: [...path, childIndex] });
   };
 
-  const updateRole = (deptIndex: number, roleIndex: number, patch: Partial<TalentMapOrganizationRoleDraft>) => {
-    setDraft((prev) => prev.map((item, i) => (
-      i !== deptIndex
-        ? item
-        : { ...item, roles: item.roles.map((role, j) => (j === roleIndex ? { ...role, ...patch } : role)) }
-    )));
+  const addRole = (path: number[]) => {
+    const node = draftNodeAt(draft, path);
+    const roleIndex = node?.roles.length ?? 0;
+    setDraft((prev) => updateDraftAt(prev, path, {
+      roles: [...(draftNodeAt(prev, path)?.roles ?? []), emptyRoleDraft()],
+    }));
+    setEditing({ kind: 'role', path, role: roleIndex });
   };
 
-  const addDepartment = () => {
-    const index = draft.length;
-    setDraft((prev) => [...prev, emptyDepartment()]);
-    setEditing({ kind: 'dept', dept: index });
+  const removeDepartment = (path: number[]) => {
+    const node = draftNodeAt(draft, path);
+    if (!node) return;
+    if (!window.confirm(`确定删除部门「${node.name.trim() || '未命名部门'}」吗？只会从地图中移除，已录入人才不会被删除。`)) return;
+    setDraft((prev) => removeDraftAt(prev, path));
   };
 
-  const addRole = (deptIndex: number) => {
-    setDraft((prev) => prev.map((item, i) => (
-      i === deptIndex ? { ...item, roles: [...item.roles, emptyRole()] } : item
-    )));
-    const roleIndex = draft[deptIndex]?.roles.length ?? 0;
-    setEditing({ kind: 'role', dept: deptIndex, role: roleIndex });
-  };
-
-  const removeDepartment = (index: number) => {
-    const item = draft[index];
-    if (!item) return;
-    if (!window.confirm(`确定删除部门「${item.name.trim() || '未命名部门'}」吗？只会从地图中移除，已录入人才不会被删除。`)) return;
-    setDraft((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const removeRole = (deptIndex: number, roleIndex: number) => {
-    const role = draft[deptIndex]?.roles[roleIndex];
+  const removeRole = (path: number[], roleIndex: number) => {
+    const node = draftNodeAt(draft, path);
+    const role = node?.roles[roleIndex];
     if (!role) return;
     if (!window.confirm(`确定删除岗位「${role.title.trim() || '未命名岗位'}」吗？只会从地图中移除，已录入人才不会被删除。`)) return;
-    setDraft((prev) => prev.map((item, i) => (
-      i === deptIndex ? { ...item, roles: item.roles.filter((_, j) => j !== roleIndex) } : item
-    )));
+    setDraft((prev) => removeRoleDraftAt(prev, path, roleIndex));
   };
 
-  const toggleCollapse = (index: number) => {
+  const toggleCollapse = (path: number[]) => {
+    const key = path.join('.');
     setCollapsed((prev) => {
       const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
 
   const handleSave = () => {
     if (saving) return;
-    const cleaned = draft
-      .map((department) => ({
-        source_name: department.source_name,
-        name: department.name.trim(),
-        roles: department.roles
-          .filter((role) => role.title.trim())
-          .map((role) => ({ source_title: role.source_title, title: role.title.trim() })),
-      }))
-      .filter((department) => department.name);
-    void onSave(cleaned);
+    void onSave(cleanOrganizationDraft(draft));
+  };
+
+  const renderDepartmentNode = (department: DepartmentNode, path: number[], depth: number) => {
+    const isCollapsed = collapsed.has(path.join('.'));
+    const isEditingName = editing?.kind === 'dept' && editing.path.join('.') === path.join('.');
+    const children = department.children ?? [];
+    return (
+      <div key={path.join('.')} className="mt-1.5">
+        {/* 部门节点 */}
+        <div
+          className="flex items-center gap-2 rounded-lg border border-background-200 bg-white px-3 py-2.5"
+          style={{ marginLeft: depth > 0 ? depth * 22 : 0 }}
+        >
+          <button
+            type="button"
+            onClick={() => (children.length > 0 ? toggleCollapse(path) : undefined)}
+            disabled={children.length === 0}
+            className={`w-6 h-6 flex items-center justify-center rounded-md text-foreground-500 transition-colors cursor-pointer ${
+              children.length === 0 ? 'opacity-20 cursor-default' : 'hover:bg-background-100'
+            }`}
+            aria-label={isCollapsed ? '展开部门' : '收起部门'}
+          >
+            <i className={`transition-transform ${children.length === 0 ? 'ri-subtract-line opacity-40' : `ri-arrow-down-s-line ${isCollapsed ? '-rotate-90' : ''}`}`}></i>
+          </button>
+          {isEditingName ? (
+            <input
+              autoFocus
+              type="text"
+              value={department.name}
+              onChange={(e) => setDraft((prev) => updateDraftAt(prev, path, { name: e.target.value }))}
+              onBlur={() => setEditing(null)}
+              onKeyDown={(e) => { if (e.key === 'Enter') setEditing(null); }}
+              placeholder="部门名称"
+              className={inputClass}
+            />
+          ) : (
+            <span className="text-sm font-bold text-foreground-900 min-w-0">
+              {department.name.trim() || '未命名部门'}
+            </span>
+          )}
+          <span className="text-xs text-foreground-400 flex-shrink-0">
+            {department.roles.filter((role) => role.title.trim()).length} 个岗位 · {departmentPeopleCount(department)} 人
+            {children.length > 0 ? ` · ${countDraftDepartments(children)} 个子部门` : ''}
+          </span>
+          <span className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setEditing({ kind: 'dept', path })}
+              className={iconBtnClass}
+            >
+              <i className="ri-pencil-line"></i>改名
+            </button>
+            <button
+              type="button"
+              onClick={() => addChildDepartment(path)}
+              className={iconBtnClass}
+            >
+              <i className="ri-folder-add-line"></i>新增子部门
+            </button>
+            <button
+              type="button"
+              onClick={() => addRole(path)}
+              className={iconBtnClass}
+            >
+              <i className="ri-add-line"></i>新增岗位
+            </button>
+            <button
+              type="button"
+              onClick={() => removeDepartment(path)}
+              className={dangerBtnClass}
+            >
+              <i className="ri-delete-bin-line"></i>删除部门
+            </button>
+          </span>
+        </div>
+
+        {/* 子部门（递归） */}
+        {!isCollapsed && children.map((child, index) => renderDepartmentNode(child, [...path, index], depth + 1))}
+
+        {/* 岗位 + 候选人 */}
+        {!isCollapsed && (
+          <div className="ml-5 border-l-2 border-background-200 pl-5 space-y-2 mt-1.5">
+            {department.roles.map((role, roleIndex) => {
+              const people = rolePeople(department, role);
+              const isEditingRole = editing?.kind === 'role'
+                && editing.path.join('.') === path.join('.')
+                && editing.role === roleIndex;
+              return (
+                <div key={roleIndex}>
+                  <div className="flex items-center gap-2 rounded-lg border border-background-100 bg-background-50 px-3 py-2">
+                    <span className="w-2 h-2 rounded-full bg-primary-300 flex-shrink-0"></span>
+                    {isEditingRole ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={role.title}
+                        onChange={(e) => setDraft((prev) => updateDraftAt(prev, path, {
+                          roles: (draftNodeAt(prev, path)?.roles ?? []).map((r, j) => (j === roleIndex ? { ...r, title: e.target.value } : r)),
+                        }))}
+                        onBlur={() => setEditing(null)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') setEditing(null); }}
+                        placeholder="岗位名称"
+                        className={inputClass}
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold text-foreground-900">
+                        {role.title.trim() || '未命名岗位'}
+                      </span>
+                    )}
+                    <span className="text-xs text-foreground-400">{people.length} 人</span>
+                    <span className="ml-auto flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditing({ kind: 'role', path, role: roleIndex })}
+                        className={iconBtnClass}
+                      >
+                        <i className="ri-pencil-line"></i>改名
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onAddPerson(department.name.trim() || '未分部门', role.title.trim() || '待补充岗位')}
+                        className={iconBtnClass}
+                      >
+                        <i className="ri-user-add-line"></i>录入人才
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeRole(path, roleIndex)}
+                        className={dangerBtnClass}
+                      >
+                        <i className="ri-delete-bin-line"></i>删除岗位
+                      </button>
+                    </span>
+                  </div>
+
+                  {/* 候选人节点 */}
+                  {people.length > 0 && (
+                    <div className="ml-5 border-l border-background-200 pl-5 mt-1.5 flex flex-wrap gap-2">
+                      {people.map((person) => (
+                        <button
+                          key={person.id}
+                          type="button"
+                          onClick={() => onEditPerson(person)}
+                          className="flex items-center gap-2 rounded-lg border border-background-200 bg-white px-3 py-1.5 text-left transition-colors cursor-pointer hover:border-primary-300"
+                        >
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(person.contact_status)}`}></span>
+                          <span className="text-xs font-medium text-foreground-800">{person.name}</span>
+                          <span className="text-[10px] text-foreground-400">
+                            {person.level || '职级待补充'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -181,7 +335,7 @@ export default function CompanyTreeMap({
             <div>
               <h2 className="text-lg font-bold text-foreground-900">地图视图</h2>
               <p className="text-xs text-foreground-400 mt-0.5">
-                公司 → 部门 → 岗位 → 候选人 · 点候选人查看编辑，点岗位直接录入人才
+                公司 → 部门（可多层套娃）→ 岗位 → 候选人 · 点候选人查看编辑，点岗位直接录入人才
               </p>
             </div>
             <button
@@ -220,149 +374,17 @@ export default function CompanyTreeMap({
               </div>
             ) : (
               <div className="space-y-2">
-                {draft.map((department, deptIndex) => {
-                  const isCollapsed = collapsed.has(deptIndex);
-                  return (
-                    <div key={deptIndex}>
-                      {/* 部门节点 */}
-                      <div className="flex items-center gap-2 rounded-lg border border-background-200 bg-white px-3 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => toggleCollapse(deptIndex)}
-                          className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-background-100 text-foreground-500 transition-colors cursor-pointer"
-                          aria-label={isCollapsed ? '展开部门' : '收起部门'}
-                        >
-                          <i className={`ri-arrow-down-s-line transition-transform ${isCollapsed ? '-rotate-90' : ''}`}></i>
-                        </button>
-                        {editing?.kind === 'dept' && editing.dept === deptIndex ? (
-                          <input
-                            autoFocus
-                            type="text"
-                            value={department.name}
-                            onChange={(e) => updateDepartment(deptIndex, { name: e.target.value })}
-                            onBlur={() => setEditing(null)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') setEditing(null); }}
-                            placeholder="部门名称"
-                            className={inputClass}
-                          />
-                        ) : (
-                          <span className="text-sm font-bold text-foreground-900 min-w-0">
-                            {department.name.trim() || '未命名部门'}
-                          </span>
-                        )}
-                        <span className="text-xs text-foreground-400">
-                          {department.roles.filter((role) => role.title.trim()).length} 个岗位 · {departmentPeopleCount(department)} 人
-                        </span>
-                        <span className="ml-auto flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setEditing({ kind: 'dept', dept: deptIndex })}
-                            className={iconBtnClass}
-                          >
-                            <i className="ri-pencil-line"></i>改名
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => addRole(deptIndex)}
-                            className={iconBtnClass}
-                          >
-                            <i className="ri-add-line"></i>新增岗位
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeDepartment(deptIndex)}
-                            className={dangerBtnClass}
-                          >
-                            <i className="ri-delete-bin-line"></i>删除部门
-                          </button>
-                        </span>
-                      </div>
-
-                      {/* 岗位 + 候选人 */}
-                      {!isCollapsed && (
-                        <div className="ml-5 border-l-2 border-background-200 pl-5 space-y-2 mt-1.5">
-                          {department.roles.map((role, roleIndex) => {
-                            const people = rolePeople(department, role);
-                            return (
-                              <div key={roleIndex}>
-                                <div className="flex items-center gap-2 rounded-lg border border-background-100 bg-background-50 px-3 py-2">
-                                  <span className="w-2 h-2 rounded-full bg-primary-300 flex-shrink-0"></span>
-                                  {editing?.kind === 'role' && editing.dept === deptIndex && editing.role === roleIndex ? (
-                                    <input
-                                      autoFocus
-                                      type="text"
-                                      value={role.title}
-                                      onChange={(e) => updateRole(deptIndex, roleIndex, { title: e.target.value })}
-                                      onBlur={() => setEditing(null)}
-                                      onKeyDown={(e) => { if (e.key === 'Enter') setEditing(null); }}
-                                      placeholder="岗位名称"
-                                      className={inputClass}
-                                    />
-                                  ) : (
-                                    <span className="text-sm font-semibold text-foreground-900">
-                                      {role.title.trim() || '未命名岗位'}
-                                    </span>
-                                  )}
-                                  <span className="text-xs text-foreground-400">{people.length} 人</span>
-                                  <span className="ml-auto flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => setEditing({ kind: 'role', dept: deptIndex, role: roleIndex })}
-                                      className={iconBtnClass}
-                                    >
-                                      <i className="ri-pencil-line"></i>改名
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => onAddPerson(department.name.trim() || '未分部门', role.title.trim() || '待补充岗位')}
-                                      className={iconBtnClass}
-                                    >
-                                      <i className="ri-user-add-line"></i>录入人才
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => removeRole(deptIndex, roleIndex)}
-                                      className={dangerBtnClass}
-                                    >
-                                      <i className="ri-delete-bin-line"></i>删除岗位
-                                    </button>
-                                  </span>
-                                </div>
-
-                                {/* 候选人节点 */}
-                                {people.length > 0 && (
-                                  <div className="ml-5 border-l border-background-200 pl-5 mt-1.5 flex flex-wrap gap-2">
-                                    {people.map((person) => (
-                                      <button
-                                        key={person.id}
-                                        type="button"
-                                        onClick={() => onEditPerson(person)}
-                                        className="flex items-center gap-2 rounded-lg border border-background-200 bg-white px-3 py-1.5 text-left transition-colors cursor-pointer hover:border-primary-300"
-                                      >
-                                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(person.contact_status)}`}></span>
-                                        <span className="text-xs font-medium text-foreground-800">{person.name}</span>
-                                        <span className="text-[10px] text-foreground-400">
-                                          {person.level || '职级待补充'}
-                                        </span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {draft.map((department, index) => renderDepartmentNode(department, [index], 0))}
               </div>
             )}
 
             <div className="mt-4">
               <button
                 type="button"
-                onClick={addDepartment}
+                onClick={() => {
+                  setDraft((prev) => [...prev, emptyDepartmentDraft()]);
+                  setEditing({ kind: 'dept', path: [draft.length] });
+                }}
                 disabled={saving}
                 className="px-3 py-2 rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 text-sm font-medium transition-colors cursor-pointer flex items-center gap-1"
               >

@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
-import type {
-  TalentMapCompany,
-  TalentMapOrganizationDepartmentDraft,
-  TalentMapOrganizationRoleDraft,
-} from '@/features/talentMaps/types';
-import { organizationDraft } from '@/pages/talent-map/organization';
+import type { TalentMapCompany, TalentMapOrganizationDepartmentDraft } from '@/features/talentMaps/types';
+import {
+  draftNodeAt,
+  emptyDepartmentDraft,
+  emptyRoleDraft,
+  insertDraftChild,
+  organizationDraft,
+  removeDraftAt,
+  removeRoleDraftAt,
+  updateDraftAt,
+  cleanOrganizationDraft,
+} from '@/pages/talent-map/organization';
 import type { OrganizationDepartment } from '@/pages/talent-map/organization';
 
 interface OrganizationEditorModalProps {
@@ -21,13 +27,7 @@ const inputClass =
 
 const labelClass = 'block text-xs font-medium text-foreground-600 mb-1.5';
 
-function emptyRole(): TalentMapOrganizationRoleDraft {
-  return { source_title: '', title: '' };
-}
-
-function emptyDepartment(): TalentMapOrganizationDepartmentDraft {
-  return { source_name: '', name: '', roles: [] };
-}
+type DepartmentNode = TalentMapOrganizationDepartmentDraft;
 
 export default function OrganizationEditorModal({
   open,
@@ -37,7 +37,7 @@ export default function OrganizationEditorModal({
   onClose,
   onSave,
 }: OrganizationEditorModalProps) {
-  const [draft, setDraft] = useState<TalentMapOrganizationDepartmentDraft[]>([]);
+  const [draft, setDraft] = useState<DepartmentNode[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -56,55 +56,108 @@ export default function OrganizationEditorModal({
 
   if (!open) return null;
 
-  const updateDepartment = (index: number, patch: Partial<TalentMapOrganizationDepartmentDraft>) => {
-    setDraft((prev) => prev.map((department, i) => (i === index ? { ...department, ...patch } : department)));
-  };
-
-  const updateRole = (departmentIndex: number, roleIndex: number, patch: Partial<TalentMapOrganizationRoleDraft>) => {
-    setDraft((prev) => prev.map((department, i) => (
-      i !== departmentIndex
-        ? department
-        : { ...department, roles: department.roles.map((role, j) => (j === roleIndex ? { ...role, ...patch } : role)) }
-    )));
-  };
-
-  const addRole = (departmentIndex: number) => {
-    setDraft((prev) => prev.map((department, i) => (
-      i === departmentIndex ? { ...department, roles: [...department.roles, emptyRole()] } : department
-    )));
-  };
-
-  const removeRole = (departmentIndex: number, roleIndex: number) => {
-    setDraft((prev) => prev.map((department, i) => (
-      i === departmentIndex
-        ? { ...department, roles: department.roles.filter((_, j) => j !== roleIndex) }
-        : department
-    )));
-  };
-
   const addDepartment = () => {
-    setDraft((prev) => [...prev, emptyDepartment()]);
+    setDraft((prev) => [...prev, emptyDepartmentDraft()]);
   };
 
-  const removeDepartment = (index: number) => {
-    const department = draft[index];
+  const addChildDepartment = (path: number[]) => {
+    setDraft((prev) => insertDraftChild(prev, path, emptyDepartmentDraft()));
+  };
+
+  const removeDepartment = (path: number[]) => {
+    const department = draftNodeAt(draft, path);
     if (!department) return;
     if (!window.confirm(`确定删除部门「${department.name || '未命名部门'}」吗？只会从组织架构中移除，已录入人才不会被删除。`)) return;
-    setDraft((prev) => prev.filter((_, i) => i !== index));
+    setDraft((prev) => removeDraftAt(prev, path));
   };
 
   const handleSave = () => {
     if (saving) return;
-    const cleaned = draft
-      .map((department) => ({
-        source_name: department.source_name,
-        name: department.name.trim(),
-        roles: department.roles
-          .filter((role) => role.title.trim())
-          .map((role) => ({ source_title: role.source_title, title: role.title.trim() })),
-      }))
-      .filter((department) => department.name);
-    void onSave(cleaned);
+    void onSave(cleanOrganizationDraft(draft));
+  };
+
+  const renderDepartmentCard = (department: DepartmentNode, path: number[], depth: number) => {
+    const children = department.children ?? [];
+    return (
+      <div
+        key={path.join('.')}
+        className="rounded-xl border border-background-200 bg-white p-4"
+        style={{ marginLeft: depth > 0 ? depth * 28 : 0 }}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex-1">
+            <label className={labelClass}>
+              {depth === 0 ? '部门名称' : `子部门名称（第 ${depth + 1} 层）`}
+            </label>
+            <input
+              type="text"
+              value={department.name}
+              onChange={(e) => setDraft((prev) => updateDraftAt(prev, path, { name: e.target.value }))}
+              placeholder={depth === 0 ? '如：技术中心 / 产品部' : '如：后端组 / 前端组'}
+              className={inputClass}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => removeDepartment(path)}
+            disabled={saving}
+            className="mt-5 flex-shrink-0 px-3 py-2.5 rounded-lg bg-background-100 hover:bg-red-50 hover:text-red-600 text-foreground-500 text-sm transition-colors cursor-pointer"
+            aria-label="删除部门"
+          >
+            <i className="ri-delete-bin-line"></i>
+          </button>
+        </div>
+
+        {/* 子部门（递归） */}
+        {children.map((child, index) => renderDepartmentCard(child, [...path, index], depth + 1))}
+        <button
+          type="button"
+          onClick={() => addChildDepartment(path)}
+          disabled={saving}
+          className="mb-3 px-3 py-1.5 rounded-lg bg-background-100 hover:bg-primary-50 hover:text-primary-700 text-foreground-600 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1"
+        >
+          <i className="ri-folder-add-line"></i>
+          新增子部门
+        </button>
+
+        {/* 岗位 */}
+        <div className="space-y-2">
+          {department.roles.map((role, roleIndex) => (
+            <div key={roleIndex} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={role.title}
+                onChange={(e) => setDraft((prev) => updateDraftAt(prev, path, {
+                  roles: (draftNodeAt(prev, path)?.roles ?? []).map((r, j) => (j === roleIndex ? { ...r, title: e.target.value } : r)),
+                }))}
+                placeholder="如：后端工程师"
+                className={inputClass}
+              />
+              <button
+                type="button"
+                onClick={() => setDraft((prev) => removeRoleDraftAt(prev, path, roleIndex))}
+                disabled={saving}
+                className="flex-shrink-0 w-9 h-10 rounded-lg bg-background-100 hover:bg-red-50 hover:text-red-600 text-foreground-500 transition-colors cursor-pointer"
+                aria-label="删除岗位"
+              >
+                <i className="ri-close-line"></i>
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setDraft((prev) => updateDraftAt(prev, path, {
+              roles: [...(draftNodeAt(prev, path)?.roles ?? []), emptyRoleDraft()],
+            }))}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1"
+          >
+            <i className="ri-add-line"></i>
+            新增岗位
+          </button>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -117,7 +170,7 @@ export default function OrganizationEditorModal({
             <div>
               <h2 className="text-lg font-bold text-foreground-900">编辑组织架构</h2>
               <p className="text-xs text-foreground-400 mt-0.5">
-                {company ? `目标公司：${company.company_name}` : ''} · 空部门/空岗位也会保存
+                {company ? `目标公司：${company.company_name}` : ''} · 空部门/空岗位也会保存 · 支持多层子部门
               </p>
             </div>
             <button
@@ -134,71 +187,16 @@ export default function OrganizationEditorModal({
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="rounded-xl bg-secondary-50 border border-secondary-200 px-4 py-3 text-xs text-secondary-800 leading-relaxed">
               修改部门或岗位名称会同步更新该部门/岗位下已录入人才；删除只会从组织架构中移除，不会删除人才。
+              想做大部门 ➜ 小部门？先新增一个部门，再在里面点「新增子部门」层层往下套。
             </div>
 
             {draft.length === 0 && (
               <div className="py-10 text-center">
-                <p className="text-sm text-foreground-500">还没有部门，先新增一个部门，再往里面加岗位。</p>
+                <p className="text-sm text-foreground-500">还没有部门，先新增一个部门，再往里面加岗位或子部门。</p>
               </div>
             )}
 
-            {draft.map((department, departmentIndex) => (
-              <div key={departmentIndex} className="rounded-xl border border-background-200 bg-white p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="flex-1">
-                    <label className={labelClass}>部门名称</label>
-                    <input
-                      type="text"
-                      value={department.name}
-                      onChange={(e) => updateDepartment(departmentIndex, { name: e.target.value })}
-                      placeholder="如：技术中心 / 产品部"
-                      className={inputClass}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeDepartment(departmentIndex)}
-                    disabled={saving}
-                    className="mt-5 flex-shrink-0 px-3 py-2.5 rounded-lg bg-background-100 hover:bg-red-50 hover:text-red-600 text-foreground-500 text-sm transition-colors cursor-pointer"
-                    aria-label="删除部门"
-                  >
-                    <i className="ri-delete-bin-line"></i>
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  {department.roles.map((role, roleIndex) => (
-                    <div key={roleIndex} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={role.title}
-                        onChange={(e) => updateRole(departmentIndex, roleIndex, { title: e.target.value })}
-                        placeholder="如：后端工程师"
-                        className={inputClass}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeRole(departmentIndex, roleIndex)}
-                        disabled={saving}
-                        className="flex-shrink-0 w-9 h-10 rounded-lg bg-background-100 hover:bg-red-50 hover:text-red-600 text-foreground-500 transition-colors cursor-pointer"
-                        aria-label="删除岗位"
-                      >
-                        <i className="ri-close-line"></i>
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => addRole(departmentIndex)}
-                    disabled={saving}
-                    className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1"
-                  >
-                    <i className="ri-add-line"></i>
-                    新增岗位
-                  </button>
-                </div>
-              </div>
-            ))}
+            {draft.map((department, departmentIndex) => renderDepartmentCard(department, [departmentIndex], 0))}
           </div>
 
           {/* Footer */}

@@ -8,7 +8,7 @@ import OrganizationEditorModal from '@/pages/talent-map/components/OrganizationE
 import CompanyEditModal from '@/pages/talent-map/components/CompanyEditModal';
 import CompanyTreeMap from '@/pages/talent-map/components/CompanyTreeMap';
 import AiImportWizard from '@/pages/talent-map/components/AiImportWizard';
-import { buildOrganization, organizationFromBoard, summarizeCompanyPeople } from '@/pages/talent-map/organization';
+import { allDepartments, buildOrganization, organizationFromBoard, summarizeCompanyPeople, summarizeDepartment } from '@/pages/talent-map/organization';
 import type { OrganizationDepartment, OrganizationRole } from '@/pages/talent-map/organization';
 import { useTalentMapWorkspace } from '@/features/talentMaps/useTalentMapWorkspace';
 import type {
@@ -140,7 +140,7 @@ export default function TalentMapPage() {
   );
 
   const vacantCount = useMemo(() => {
-    const all = organizationTree;
+    const all = allDepartments(organizationTree);
     return all.reduce(
       (sum, dept) => sum + dept.roles.filter((role) => role.people.length === 0).length,
       0,
@@ -149,7 +149,7 @@ export default function TalentMapPage() {
 
   const activeRolePeople = useMemo(() => {
     if (!activeRole) return [];
-    const dept = departments.find((item) => item.name === activeRole.department);
+    const dept = allDepartments(departments).find((item) => item.name === activeRole.department);
     return dept?.roles.find((role) => role.title === activeRole.title)?.people ?? [];
   }, [departments, activeRole]);
 
@@ -288,14 +288,14 @@ export default function TalentMapPage() {
     }
   };
 
-  const renderRoleCard = (role: OrganizationRole) => {
+  const renderRoleCard = (role: OrganizationRole, departmentName: string) => {
     const status = roleStatus(role.people);
     const badge = STATUS_BADGE[status];
     const avatarCount = Math.min(role.people.length, 3);
     return (
       <button
         key={`${role.title}-${role.people.length}`}
-        onClick={() => setActiveRole({ department: departments.find((d) => d.roles.includes(role))?.name ?? '', title: role.title })}
+        onClick={() => setActiveRole({ department: departmentName, title: role.title })}
         className="group w-full bg-white px-3 py-2.5 text-left transition-colors hover:bg-primary-50/50"
       >
         <div className="flex items-center gap-2">
@@ -324,6 +324,40 @@ export default function TalentMapPage() {
           </span>
         </div>
       </button>
+    );
+  };
+
+  /** 部门区块递归渲染：大部门套子部门，岗位始终在叶子层展示。 */
+  const renderDepartmentSection = (dept: OrganizationDepartment, pathKey: string) => {
+    const depth = pathKey.split('.').length - 1;
+    const summary = summarizeDepartment(dept);
+    return (
+      <section
+        key={pathKey}
+        className="overflow-hidden rounded-xl border border-background-200 bg-white"
+        style={{ marginLeft: depth > 0 ? depth * 24 : 0 }}
+      >
+        <div className="flex items-center justify-between border-b border-background-100 bg-background-50/70 px-3 py-2">
+          <div>
+            <h3 className="text-sm font-bold text-foreground-900">
+              {depth > 0 && <span className="mr-1.5 text-foreground-300">└</span>}
+              {dept.name}
+            </h3>
+            <p className="mt-0.5 text-xs text-foreground-400">
+              {summary.roles} 个岗位 · {summary.people} 位人才
+              {dept.children.length > 0 ? ` · ${dept.children.length} 个子部门` : ''}
+            </p>
+          </div>
+        </div>
+        <div className="grid divide-y divide-background-100 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-3">
+          {dept.roles.map((role) => renderRoleCard(role, dept.name))}
+        </div>
+        {dept.children.length > 0 && (
+          <div className="space-y-3 px-3 py-3 border-t border-background-100">
+            {dept.children.map((child, index) => renderDepartmentSection(child, `${pathKey}.${index}`))}
+          </div>
+        )}
+      </section>
     );
   };
 
@@ -693,19 +727,7 @@ export default function TalentMapPage() {
             </div>
           ) : (
             <div data-ui="talent-map-department-list" className="space-y-3">
-              {departments.map((dept) => (
-                <section key={dept.name} className="overflow-hidden rounded-xl border border-background-200 bg-white">
-                  <div className="flex items-center justify-between border-b border-background-100 bg-background-50/70 px-3 py-2">
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground-900">{dept.name}</h3>
-                      <p className="mt-0.5 text-xs text-foreground-400">{dept.roles.length} 个岗位 · {dept.roles.reduce((sum, role) => sum + role.people.length, 0)} 位人才</p>
-                    </div>
-                  </div>
-                  <div className="grid divide-y divide-background-100 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-3">
-                    {dept.roles.map((role) => renderRoleCard(role))}
-                  </div>
-                </section>
-              ))}
+              {departments.map((dept, index) => renderDepartmentSection(dept, String(index)))}
             </div>
           )}
         </div>

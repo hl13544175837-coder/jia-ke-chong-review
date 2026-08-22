@@ -101,10 +101,12 @@ export interface TalentPersonMeta {
   status: TalentNode['status'];
 }
 
-/** 人才地图中可独立维护的公司组织结构；空部门/岗位也会保存。 */
+/** 人才地图中可独立维护的公司组织结构；空部门/空岗位也会保存。 */
 export interface TalentMapOrganizationDepartment {
   name: string;
   roles: string[];
+  /** 子部门（支持多级树）；兼容旧数据：无此字段视为没有子部门。 */
+  children?: TalentMapOrganizationDepartment[];
 }
 
 export interface TalentMapOrganization {
@@ -121,6 +123,8 @@ export interface TalentMapOrganizationDepartmentDraft {
   source_name: string;
   name: string;
   roles: TalentMapOrganizationRoleDraft[];
+  /** 子部门草稿（支持多级树）。 */
+  children?: TalentMapOrganizationDepartmentDraft[];
 }
 
 export interface TalentBoard {

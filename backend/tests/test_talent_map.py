@@ -399,6 +399,59 @@ def test_talent_map_organization_can_keep_empty_roles_and_rename_existing_people
     }]
 
 
+def test_talent_map_organization_supports_nested_departments(client, make_user, app):
+    """多级部门（children）保存：跨层改名同步人才，旧格式（无 children）保持原样。"""
+    hr_id, token = make_user("talent-org-nested@example.com", role="recruiter")
+
+    with app.app_context():
+        talent_map = TalentMap(org_id=1, name="多级组织地图", owner_hr_id=hr_id, board_json={})
+        db.session.add(talent_map)
+        db.session.flush()
+        company = TalentMapCompany(org_id=1, map_id=talent_map.id, company_name="示例公司")
+        db.session.add(company)
+        db.session.flush()
+        db.session.add(TalentMapPerson(
+            org_id=1,
+            map_id=talent_map.id,
+            company_id=company.id,
+            owner_hr_id=hr_id,
+            name="赵六",
+            department="采购一组",
+            title="采购经理",
+            tags=[],
+        ))
+        db.session.commit()
+        map_id, company_id = talent_map.id, company.id
+
+    updated = client.patch(
+        f"/api/talent-maps/{map_id}/organization",
+        headers=_auth(token),
+        json={
+            "company_id": company_id,
+            "departments": [{
+                "source_name": "供应链",
+                "name": "供应链中心",
+                "roles": [],
+                "children": [{
+                    "source_name": "采购一组",
+                    "name": "采购二组",
+                    "roles": [{"source_title": "采购经理", "title": "高级采购经理"}],
+                }],
+            }],
+        },
+    )
+
+    assert updated.status_code == 200
+    body = updated.get_json()
+    assert body["people"][0]["department"] == "采购二组"
+    assert body["people"][0]["title"] == "高级采购经理"
+    assert body["board_json"]["organization"][str(company_id)]["departments"] == [{
+        "name": "供应链中心",
+        "roles": [],
+        "children": [{"name": "采购二组", "roles": ["高级采购经理"]}],
+    }]
+
+
 def test_talent_map_company_rename_keeps_people_linked(client, make_user, app):
     hr_id, token = make_user("talent-company-rename@example.com", role="recruiter")
 

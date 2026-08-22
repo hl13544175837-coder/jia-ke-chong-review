@@ -62,6 +62,71 @@ def _can_manage_map(talent_map):
     return talent_map.owner_hr_id == g.user_id
 
 
+def _normalize_organization_department(raw):
+    """规范化单个部门（支持 children 递归子部门树）：名称去重去空、岗位保持顺序，无效返回 None。
+
+    兼容旧数据：无 children 时不输出该字段，保持与原存储格式一致。
+    """
+    if not isinstance(raw, dict):
+        return None
+    name = _clean(raw.get("name"), 120)
+    if not name:
+        return None
+    roles = []
+    for role in raw.get("roles") or []:
+        if isinstance(role, dict):
+            title = _clean(role.get("title"), 160)
+        elif isinstance(role, str):
+            title = _clean(role, 160)
+        else:
+            title = ""
+        if title and title not in roles:
+            roles.append(title)
+    result = {"name": name, "roles": roles}
+    children = []
+    seen_children = set()
+    for child in raw.get("children") or []:
+        normalized = _normalize_organization_department(child)
+        if normalized is None or normalized["name"] in seen_children:
+            continue
+        seen_children.add(normalized["name"])
+        children.append(normalized)
+    if children:
+        result["children"] = children
+    return result
+
+
+def _collect_organization_renames(raw_departments):
+    """递归收集整棵部门树的改名映射：部门 source_name -> name、岗位 source_title -> title。
+
+    用于把改名同步到该部门/岗位下已录入人才（跨层级同名部门按先后合并岗位映射）。
+    """
+    collected = []
+
+    def visit(raw):
+        if not isinstance(raw, dict):
+            return
+        new_name = _clean(raw.get("name"), 120)
+        if new_name:
+            source_name = _clean(raw.get("source_name"), 120) or new_name
+            role_renames = {}
+            for role in raw.get("roles") or []:
+                if not isinstance(role, dict):
+                    continue
+                new_title = _clean(role.get("title"), 160)
+                if not new_title:
+                    continue
+                source_title = _clean(role.get("source_title"), 160) or new_title
+                role_renames[source_title] = new_title
+            collected.append((source_name, new_name, role_renames))
+        for child in raw.get("children") or []:
+            visit(child)
+
+    for raw in raw_departments:
+        visit(raw)
+    return collected
+
+
 def _commit_with_event(action, *, entity_id, entity_type):
     try:
         record_event(
@@ -480,27 +545,15 @@ def update_talent_map_organization(map_id):
     if not isinstance(raw_departments, list):
         return jsonify({"error": "departments required"}), 400
 
-    # 1) 规范化配置：名称去重、去空，岗位保持顺序
+    # 1) 规范化配置：名称去重、去空，岗位保持顺序；支持多级子部门（children）
     departments = []
     seen_departments = set()
     for raw in raw_departments:
-        if not isinstance(raw, dict):
+        normalized = _normalize_organization_department(raw)
+        if normalized is None or normalized["name"] in seen_departments:
             continue
-        name = _clean(raw.get("name"), 120)
-        if not name or name in seen_departments:
-            continue
-        roles = []
-        for role in raw.get("roles") or []:
-            if isinstance(role, dict):
-                title = _clean(role.get("title"), 160)
-            elif isinstance(role, str):
-                title = _clean(role, 160)
-            else:
-                title = ""
-            if title and title not in roles:
-                roles.append(title)
-        seen_departments.add(name)
-        departments.append({"name": name, "roles": roles})
+        seen_departments.add(normalized["name"])
+        departments.append(normalized)
 
     board_json = dict(talent_map.board_json) if isinstance(talent_map.board_json, dict) else {}
     organization = board_json.get("organization") if isinstance(board_json.get("organization"), dict) else {}
@@ -509,27 +562,12 @@ def update_talent_map_organization(map_id):
     board_json["organization"] = organization
     talent_map.board_json = board_json
 
-    # 2) 改名同步：部门 source_name -> name，岗位 source_title -> title
+    # 2) 改名同步：部门 source_name -> name，岗位 source_title -> title（递归整棵部门树）
     department_renames = {}
     role_renames_by_department = {}
-    for raw in raw_departments:
-        if not isinstance(raw, dict):
-            continue
-        new_name = _clean(raw.get("name"), 120)
-        if not new_name:
-            continue
-        source_name = _clean(raw.get("source_name"), 120) or new_name
+    for source_name, new_name, role_renames in _collect_organization_renames(raw_departments):
         department_renames[source_name] = new_name
-        role_renames = {}
-        for role in raw.get("roles") or []:
-            if not isinstance(role, dict):
-                continue
-            new_title = _clean(role.get("title"), 160)
-            if not new_title:
-                continue
-            source_title = _clean(role.get("source_title"), 160) or new_title
-            role_renames[source_title] = new_title
-        role_renames_by_department[source_name] = role_renames
+        role_renames_by_department.setdefault(source_name, {}).update(role_renames)
 
     people = TalentMapPerson.query.filter_by(
         map_id=talent_map.id,
