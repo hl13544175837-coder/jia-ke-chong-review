@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '@/components/ui/PageHeader';
 import { businessReviewsApi } from '@/features/businessReviews/api';
@@ -17,7 +17,7 @@ function percent(value: number, total: number) {
   return Math.min(100, Math.round(value / total * 100));
 }
 
-function DataBoardShell({ children, dataUi }: { children: React.ReactNode; dataUi: string }) {
+function DataBoardShell({ children, dataUi }: { children: ReactNode; dataUi: string }) {
   return (
     <div className="min-h-full bg-background-50 px-4 pb-8 pt-5 sm:px-6" data-ui={dataUi}>
       <div className="mx-auto max-w-[1540px] space-y-4">{children}</div>

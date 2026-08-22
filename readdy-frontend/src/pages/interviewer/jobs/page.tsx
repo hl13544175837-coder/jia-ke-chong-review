@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompanyAuth } from '@/auth/companyAuth';
 import PageHeader from '@/components/ui/PageHeader';
@@ -589,7 +589,7 @@ export default function InterviewerJobsPage() {
   );
 }
 
-function FormField({ label, error, className = '', children }: { label: string; error?: string; className?: string; children: React.ReactNode }) {
+function FormField({ label, error, className = '', children }: { label: string; error?: string; className?: string; children: ReactNode }) {
   return (
     <label className={`block text-sm font-medium text-foreground-700 ${className}`}>
       {label}

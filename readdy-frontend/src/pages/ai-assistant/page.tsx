@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import PageHeader from '@/components/ui/PageHeader';
 import { aiAssistantApi } from '@/features/aiAssistant/api';
 import type {
@@ -249,7 +249,7 @@ export default function AIAssistantPage() {
     abortRef.current?.abort();
   }, []);
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
       void sendMessage(input);
     }

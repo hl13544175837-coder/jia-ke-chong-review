@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { provinceCityData } from '@/lib/geoData';
 import type { ProductRole } from '@/auth/productRoleModel';
 import type { DemandOwnerOption, RecruitmentDemandInput } from '@/features/demands/types';
@@ -115,7 +115,7 @@ export default function RequisitionForm({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!formData.owner) {
       setLocalError('请选择招聘负责人');
