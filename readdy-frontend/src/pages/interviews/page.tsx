@@ -67,7 +67,7 @@ export default function RecruiterInterviewsPage() {
   const [actionError, setActionError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedRescheduleHistory, setSelectedRescheduleHistory] = useState<InterviewRescheduleRequest[]>([]);
-  const [detailInitialTab, setDetailInitialTab] = useState<CandidateDetailTab>('interview');
+  const [detailInitialTab, setDetailInitialTab] = useState<CandidateDetailTab>('feedback');
   const [rescheduleRequestId, setRescheduleRequestId] = useState<number | null>(null);
   const [rescheduleBusy, setRescheduleBusy] = useState(false);
   const [rescheduleError, setRescheduleError] = useState('');
@@ -100,7 +100,7 @@ export default function RecruiterInterviewsPage() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const openInterviewDetail = useCallback((row: InterviewManagementRow, initialTab: CandidateDetailTab = 'interview') => {
+  const openInterviewDetail = useCallback((row: InterviewManagementRow, initialTab: CandidateDetailTab = 'feedback') => {
     setDetailInitialTab(initialTab);
     setSelectedRow(row);
     setSelectedRescheduleHistory(row.reschedule_request ? [row.reschedule_request] : []);
@@ -117,7 +117,7 @@ export default function RecruiterInterviewsPage() {
 
   const closeInterviewDetail = useCallback(() => {
     setSelectedRow(null);
-    setDetailInitialTab('interview');
+    setDetailInitialTab('feedback');
     setShowReject(false);
     setRejectReason('');
     setSelectedRescheduleHistory([]);

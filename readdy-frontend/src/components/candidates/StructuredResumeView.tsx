@@ -194,26 +194,24 @@ function WorkHistoryValue({ value }: { value: unknown }) {
         const work = normalizeWorkHistoryItem(item);
         const hasRemaining = Object.keys(work.remaining).length > 0;
         return (
-          <article key={index} data-ui="work-history-entry" className="relative grid gap-2 py-3 pl-6 sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-5">
-            <span className="absolute left-0 top-[18px] h-[11px] w-[11px] rounded-full border-2 border-primary-400 bg-white" />
-            <div className="text-xs font-medium leading-5 text-foreground-500">{work.period || '时间待补充'}</div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <h5 className="break-words text-sm font-semibold text-foreground-900">{work.company || '公司待补充'}</h5>
-                {work.role && <span className="text-xs font-medium text-primary-700">{work.role}</span>}
-              </div>
-              {(work.details.length > 0 || hasRemaining) && (
-                <div className="mt-2 space-y-2 text-sm leading-6 text-foreground-700">
-                  {work.details.map((detail, detailIndex) => (
-                    <div key={`${detail.label}-${detailIndex}`}>
-                      <span className="mr-2 text-[11px] font-medium text-foreground-400">{detail.label}</span>
-                      <div className="whitespace-pre-wrap break-words"><ResumeValue value={detail.value} /></div>
-                    </div>
-                  ))}
-                  {hasRemaining && <RecordValue value={work.remaining} />}
-                </div>
-              )}
+          <article key={index} data-ui="work-history-entry" className="relative py-2.5 pl-6">
+            <span className="absolute left-0 top-[15px] h-[11px] w-[11px] rounded-full border-2 border-primary-400 bg-white" />
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <h5 className="break-words text-sm font-semibold text-foreground-900">{work.company || '公司待补充'}</h5>
+              {work.role && <span className="text-xs font-medium text-primary-700">{work.role}</span>}
+              {work.period && <span className="ml-auto shrink-0 text-xs font-medium text-foreground-500">{work.period}</span>}
             </div>
+            {(work.details.length > 0 || hasRemaining) && (
+              <div className="mt-1.5 grid gap-x-5 gap-y-1.5 text-sm leading-6 text-foreground-700 md:grid-cols-2">
+                {work.details.map((detail, detailIndex) => (
+                  <div key={`${detail.label}-${detailIndex}`} className="min-w-0">
+                    <span className="mr-2 text-[11px] font-medium text-foreground-400">{detail.label}</span>
+                    <div className="whitespace-pre-wrap break-words"><ResumeValue value={detail.value} /></div>
+                  </div>
+                ))}
+                {hasRemaining && <div className="md:col-span-2"><RecordValue value={work.remaining} /></div>}
+              </div>
+            )}
           </article>
         );
       })}

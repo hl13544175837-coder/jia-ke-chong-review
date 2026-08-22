@@ -45,7 +45,7 @@ interface RecruiterInterviewDetailDrawerProps {
 
 export default function RecruiterInterviewDetailDrawer({
   row,
-  initialTab = 'interview',
+  initialTab = 'feedback',
   rescheduleHistory,
   rescheduleBusy,
   rescheduleError,
@@ -67,7 +67,7 @@ export default function RecruiterInterviewDetailDrawer({
   onViewOffer,
   onFillFeedback,
 }: RecruiterInterviewDetailDrawerProps) {
-  const [activeTab, setActiveTab] = useState<CandidateDetailTab>('interview');
+  const [activeTab, setActiveTab] = useState<CandidateDetailTab>('feedback');
   const [resume, setResume] = useState<CandidateResumeDetail | null>(null);
   const [resumeLoading, setResumeLoading] = useState(true);
   const [resumeError, setResumeError] = useState('');
