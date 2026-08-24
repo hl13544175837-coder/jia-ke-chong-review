@@ -54,6 +54,8 @@ export interface RecruitmentDemand {
   health?: DemandHealth;
   completion_suggested: boolean;
   jd_text?: string;
+  /** 创建需求时的 JD 快照（岗位 JD 更新后与 jd_text 可能不同，用于对照历史） */
+  jd_text_snapshot?: string;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -76,6 +78,8 @@ export interface RecruitmentDemandInput {
   job_id?: number;
   job_title?: string;
   jd_text?: string;
+  /** 需求 JD 是否人工指定（用户实际手填/手改 JD 时为 true；仅模板自动填充时为 false） */
+  jd_override?: boolean;
   owner_hr_id: number;
   default_interviewer_id?: number | null;
   city: string;

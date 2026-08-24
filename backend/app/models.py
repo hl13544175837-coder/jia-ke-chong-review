@@ -322,6 +322,15 @@ class RecruitmentDemand(db.Model):
     department = db.Column(db.String(120), default="")
     job_title_snapshot = db.Column(db.String(200), default="")
     jd_text_snapshot = db.Column(db.Text)
+    # 需求 JD 是否由人工明确指定（创建时手填 / 审批修正 / 驳回重提修改）。
+    # True：需求详情展示快照（人工内容优先，岗位 JD 更新不覆盖）；
+    # False：需求详情实时跟随岗位最新 JD，避免旧快照挡住面试官后写的岗位 JD。
+    jd_override = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=db.text("0"),
+    )
     request_no = db.Column(
         db.String(80),
         default=_default_demand_request_no,

@@ -548,7 +548,9 @@ def test_demand_snapshots_do_not_drift_when_job_template_changes(
     assert body["job_title"] == "需求测试岗位"
     assert body["job_city"] == "南京"
     assert body["job_department"] == "增长部"
-    assert body["jd_text"] == "用于测试需求事实归属"
+    # JD 实时跟随岗位最新内容（方案A语义），创建时快照保留供对照
+    assert body["jd_text"] == "模板已经被后续修改"
+    assert body["jd_text_snapshot"] == "用于测试需求事实归属"
 
 
 def test_demand_metrics_do_not_mix_sibling_demands_and_prompt_at_hc(

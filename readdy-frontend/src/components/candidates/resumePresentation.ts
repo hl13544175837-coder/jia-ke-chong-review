@@ -93,7 +93,7 @@ const SECTION_DEFINITIONS: Array<{
   {
     key: 'target',
     title: '求职目标',
-    aliases: ['job_intention', 'target_position', 'desired_position', 'target_role', 'intent_city', 'desired_city', 'salary_expectation', 'expected_salary', 'availability'],
+    aliases: ['job_intention', 'target_position', 'desired_position', 'target_role', 'intent_city', 'desired_city', 'availability'],
   },
   {
     key: 'summary',
@@ -128,7 +128,7 @@ const SECTION_DEFINITIONS: Array<{
   {
     key: 'basic',
     title: '基本信息',
-    aliases: ['name', 'name_masked', 'phone', 'phone_number', 'email', 'gender', 'age', 'birthday', 'location', 'city'],
+    aliases: ['name', 'name_masked', 'phone', 'phone_number', 'email', 'gender', 'age', 'birthday', 'location', 'city', 'salary_expectation', 'expected_salary'],
   },
 ];
 
@@ -147,6 +147,35 @@ function displayText(value: unknown) {
   return hasDisplayValue(value) && !isResumeRecord(value) && !Array.isArray(value)
     ? String(value).trim()
     : '';
+}
+
+/**
+ * 从时间段文本中解析起止时间键，用于经历按时间倒序：
+ * - 支持 "2024.12-2026.01"、"2021.08 – 2024.08"、"2019年6月-至今" 等常见格式；
+ * - 含"至今/现在"等词的视为进行中，结束时间取最大，排在前面；
+ * - 无法解析的返回 -Infinity，固定排在最后。
+ */
+export function workHistoryPeriodKeys(period: string): { start: number; end: number } {
+  if (!period) return { start: -Infinity, end: -Infinity };
+  const ongoing = /至今|现在|present|now/i.test(period);
+  const matches = [...period.matchAll(/(\d{4})(?:[.\-/年](\d{1,2}))?/g)];
+  const keyOf = (match: RegExpMatchArray) => Number(match[1]) * 100 + (match[2] ? Number(match[2]) : 0);
+  const start = matches.length > 0 ? keyOf(matches[0]) : -Infinity;
+  const end = ongoing ? Infinity : matches.length > 1 ? keyOf(matches[matches.length - 1]) : start;
+  return { start, end };
+}
+
+/** 工作经历统一归一化并按时间倒序（新 → 旧）排列，无时间或无法解析的排最后 */
+export function normalizeWorkHistoryList(value: unknown[]): WorkHistoryPresentation[] {
+  if (!Array.isArray(value) || !value.every(isResumeRecord)) return [] as WorkHistoryPresentation[];
+  return value
+    .map(normalizeWorkHistoryItem)
+    .sort((left, right) => {
+      const lk = workHistoryPeriodKeys(left.period);
+      const rk = workHistoryPeriodKeys(right.period);
+      if (rk.end !== lk.end) return rk.end - lk.end;
+      return rk.start - lk.start;
+    });
 }
 
 export function normalizeWorkHistoryItem(value: Record<string, unknown>): WorkHistoryPresentation {

@@ -26,7 +26,7 @@ except ImportError:  # Direct execution: python backend/scripts/backfill_demand_
     from audit_demand_scope import FACT_SPECS, SCHEMA_VERSION, fact_context
 
 
-EXPECTED_REVISION = "20260811_18"
+EXPECTED_REVISION = "20260824_19"
 ALLOWED_TABLES = {table_name for table_name, _ in FACT_SPECS}
 TIMESTAMP_COLUMNS = dict(FACT_SPECS)
 TERMINAL_FLOW_STATUSES = {"transferred", "rejected", "onboarded"}

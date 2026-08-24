@@ -34,6 +34,8 @@ interface DemandDraft {
   priority: DemandPriority;
   hiringManagerName: string;
   jdText: string;
+  /** JD 是否被用户实际手工编辑过（区别于岗位模板自动填充） */
+  jdTouched: boolean;
   focusPoints: string;
   note: string;
 }
@@ -79,6 +81,7 @@ function blankDraft(managerName: string | null): DemandDraft {
     priority: 'B',
     hiringManagerName: managerName || '',
     jdText: '',
+    jdTouched: false,
     focusPoints: '',
     note: '',
   };
@@ -244,7 +247,7 @@ export default function InterviewerJobsPage() {
         jobId: String(detail.id),
         requesterDepartment: applyDefaults ? detail.department || current.requesterDepartment : current.requesterDepartment,
         city: applyDefaults ? detail.city || current.city : current.city,
-        jdText: detail.jd_text,
+        jdText: applyDefaults ? detail.jd_text : (current.jdText || detail.jd_text),
         focusPoints: extractFocusPoints(detail.structured).join('\n'),
       }));
     } catch (error) {
@@ -280,6 +283,7 @@ export default function InterviewerJobsPage() {
       priority: demand.priority,
       hiringManagerName: demand.hiring_manager_name,
       jdText: demand.jd_text || '',
+      jdTouched: false,
       focusPoints: '',
       note: demand.note || '',
     });
@@ -351,6 +355,7 @@ export default function InterviewerJobsPage() {
           priority: draft.priority,
           status: 'pending',
           focus_points,
+          jd_override: draft.jdTouched,
         };
         await demandsApi.createDemand(payload, idempotencyKey);
         showToast('需求已提交 HR 审核');
@@ -555,7 +560,7 @@ export default function InterviewerJobsPage() {
 
                   <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <FormField label="本次需求的 JD" error={formErrors.jd_text}>
-                      <textarea rows={10} value={templateLoading ? '正在加载岗位模板...' : draft.jdText} onChange={(event) => setDraft((current) => ({ ...current, jdText: event.target.value }))} className={`${inputClass} resize-none leading-6`} />
+                      <textarea rows={10} value={templateLoading ? '正在加载岗位模板...' : draft.jdText} onChange={(event) => setDraft((current) => ({ ...current, jdText: event.target.value, jdTouched: true }))} className={`${inputClass} resize-none leading-6`} />
                       <p className="mt-1 text-xs text-foreground-400">这里只修改本次招聘需求，不会改公司的公共岗位模板。</p>
                     </FormField>
                     <FormField label="面试关注点">

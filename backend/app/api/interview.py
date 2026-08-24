@@ -506,7 +506,7 @@ def start_interview():
         return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
     resolved_demand_id = context.demand_id
     resolved_job_id = context.job.id
-    jd_text = context.demand.jd_text_snapshot or context.job.jd_text
+    jd_text = context.demand.jd_text_snapshot if context.demand.jd_override else (context.job.jd_text or context.demand.jd_text_snapshot)
     # Do not hold an idle transaction across the external LLM call. The
     # Demand/Flow is locked and revalidated immediately before audit/write.
     db.session.rollback()
@@ -573,7 +573,7 @@ def submit_interview():
         return jsonify({"error": "Forbidden", "code": "forbidden"}), 403
     resolved_demand_id = context.demand_id
     resolved_job_id = context.job.id
-    jd_text = context.demand.jd_text_snapshot or context.job.jd_text
+    jd_text = context.demand.jd_text_snapshot if context.demand.jd_override else (context.job.jd_text or context.demand.jd_text_snapshot)
     db.session.rollback()
     svc = PreScreenService()
     report = svc.build_report(pairs, jd_text)

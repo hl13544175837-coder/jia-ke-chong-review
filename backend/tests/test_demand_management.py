@@ -636,3 +636,151 @@ def test_recruiter_demands_are_scoped_to_owned_jobs(client, make_user, app):
 
     other_detail = client.get(f"/api/demands/{other_demand_id}", headers=_auth(other_token))
     assert other_detail.status_code == 200
+
+
+def test_custom_jd_text_survives_when_creating_demand_with_job_template(
+    client, make_user, app
+):
+    """回归：需求 JD 的展示遵循"人工指定优先、否则实时跟随岗位"规则——
+    - jd_override=true（用户实际手填/手改 JD）：详情展示人工指定内容，岗位更新不覆盖；
+    - jd_override=false（仅模板自动填充回声）：详情实时跟随岗位模板最新 JD；
+    - 未填 JD：快照回落岗位模板 JD。"""
+
+    hr_id, token = make_user("custom-jd@example.com", role="recruiter", name="自定义JDHR")
+
+    with app.app_context():
+        job = Job(title="产品经理", city="上海", department="产品部", jd_text="岗位模板默认 JD 文案")
+        db.session.add(job)
+        db.session.commit()
+        job_id = job.id
+
+    custom_jd = "这是本次招聘单独定制的岗位 JD，包含特殊要求：熟悉供应链与履约系统。"
+    # ① 人工指定（jd_override=true）：详情展示自定义 JD 且保留快照
+    created = client.post(
+        "/api/demands",
+        headers=_auth(token),
+        json={
+            "job_id": job_id,
+            "owner_hr_id": hr_id,
+            "city": "上海",
+            "requester_department": "产品部",
+            "hiring_manager_name": "产品负责人",
+            "requested_at": "2026-08-01",
+            "target_date": "2026-08-31",
+            "priority": "A",
+            "headcount": 1,
+            "status": "active",
+            "jd_text": custom_jd,
+            "jd_override": True,
+        },
+    )
+    assert created.status_code == 201
+    assert created.get_json()["jd_text"] == custom_jd
+    assert created.get_json()["jd_text_snapshot"] == custom_jd
+
+    detail = client.get(f"/api/demands/{created.get_json()['id']}", headers=_auth(token))
+    assert detail.status_code == 200
+    assert detail.get_json()["jd_text"] == custom_jd
+    assert detail.get_json()["jd_text_snapshot"] == custom_jd
+
+    # ② 模板回声（jd_override 缺省=false）：详情展示岗位模板 JD（实时跟随），快照保留传入内容
+    echo = client.post(
+        "/api/demands",
+        headers=_auth(token),
+        json={
+            "job_id": job_id,
+            "owner_hr_id": hr_id,
+            "city": "上海",
+            "requester_department": "产品部",
+            "hiring_manager_name": "产品负责人",
+            "requested_at": "2026-08-01",
+            "target_date": "2026-08-31",
+            "priority": "B",
+            "headcount": 1,
+            "status": "active",
+            "jd_text": custom_jd,
+        },
+    )
+    assert echo.status_code == 201
+    assert echo.get_json()["jd_text"] == "岗位模板默认 JD 文案"
+    assert echo.get_json()["jd_text_snapshot"] == custom_jd
+
+    # ③ 未填写 JD 时快照回落岗位模板 JD
+    fallback = client.post(
+        "/api/demands",
+        headers=_auth(token),
+        json={
+            "job_id": job_id,
+            "owner_hr_id": hr_id,
+            "city": "上海",
+            "requester_department": "产品部",
+            "hiring_manager_name": "产品负责人",
+            "requested_at": "2026-08-01",
+            "target_date": "2026-08-31",
+            "priority": "B",
+            "headcount": 1,
+            "status": "active",
+        },
+    )
+    assert fallback.status_code == 201
+    assert fallback.get_json()["jd_text"] == "岗位模板默认 JD 文案"
+    assert fallback.get_json()["jd_text_snapshot"] == "岗位模板默认 JD 文案"
+
+
+def test_demand_jd_reflects_job_updates(client, make_user, app):
+    """回归：需求详情 JD 必须实时读取岗位最新 JD，而不是停留在创建时快照。
+    复现线上问题：岗位 JD 初始为占位内容('阿斯达拉斯')时创建需求后，
+    面试官把岗位 JD 写好，招聘专员需求详情应立即看到新 JD，不再显示旧占位。"""
+    manager_id, manager_token = make_user("mgr-jd@example.com", role="manager", name="岗位经理")
+    hr_id, hr_token = make_user("hr-jd@example.com", role="recruiter", name="JD招专")
+    _, interviewer_token = make_user("iv-jd@example.com", role="interviewer", name="提需面试官")
+
+    with app.app_context():
+        from app.models import User
+        org_id = User.query.get(manager_id).org_id
+        job = Job(title="产品经理", city="上海", department="产品部",
+                  jd_text="阿斯达拉斯", owner_hr_id=manager_id, org_id=org_id)
+        db.session.add(job)
+        db.session.commit()
+        job_id = job.id
+
+    # 面试官建需求（此时岗位 JD 还是占位"阿斯达拉斯"）-> 快照=占位内容
+    created = client.post(
+        "/api/demands",
+        headers=_auth(interviewer_token),
+        json={
+            "job_id": job_id,
+            "owner_hr_id": hr_id,
+            "city": "上海",
+            "requester_department": "产品部",
+            "hiring_manager_name": "产品负责人",
+            "requested_at": "2026-08-01",
+            "target_date": "2026-08-31",
+            "priority": "A",
+            "headcount": 1,
+            "status": "active",
+        },
+    )
+    assert created.status_code == 201
+    demand_id = created.get_json()["id"]
+
+    # 招聘专员看详情：看到占位内容
+    detail = client.get(f"/api/demands/{demand_id}", headers=_auth(hr_token)).get_json()
+    assert detail["jd_text"] == "阿斯达拉斯"
+
+    # 面试官把岗位 JD 写好（更新岗位档案）
+    updated = client.put(
+        f"/api/jobs/{job_id}",
+        headers=_auth(manager_token),
+        json={"jd_text": "负责产品规划与需求分析，3年以上B端产品经验，熟悉供应链业务。"},
+    )
+    assert updated.status_code == 200
+
+    # 招聘专员再看详情：必须实时看到新 JD；快照仍保留创建时旧内容，不丢失
+    detail2 = client.get(f"/api/demands/{demand_id}", headers=_auth(hr_token)).get_json()
+    assert detail2["jd_text"] == "负责产品规划与需求分析，3年以上B端产品经验，熟悉供应链业务。"
+    assert detail2["jd_text_snapshot"] == "阿斯达拉斯"
+
+    # 需求列表页（不带 JD 正文）不受影响
+    listing = client.get("/api/demands", headers=_auth(hr_token))
+    assert listing.status_code == 200

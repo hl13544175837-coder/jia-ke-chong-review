@@ -130,6 +130,7 @@ export default function RequisitionForm({
     onSubmit({
       job_title: formData.position.trim(),
       jd_text: formData.description.trim(),
+      jd_override: !formData.jdTemplate,
       owner_hr_id: Number(formData.owner),
       city: formData.city.trim(),
       requester_department: formData.department.trim(),

@@ -1,7 +1,7 @@
 import {
   buildResumeSections,
   isResumeRecord,
-  normalizeWorkHistoryItem,
+  normalizeWorkHistoryList,
   resumeFieldLabel,
 } from './resumePresentation';
 
@@ -188,18 +188,18 @@ function CertificateLanguageValue({ value }: { value: unknown }) {
 
 function WorkHistoryValue({ value }: { value: unknown }) {
   if (!Array.isArray(value) || !value.every(isResumeRecord)) return <ResumeValue value={value} />;
+  const works = normalizeWorkHistoryList(value);
   return (
     <div data-ui="work-history-timeline" className="relative space-y-0 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:w-px before:bg-background-200">
-      {value.map((item, index) => {
-        const work = normalizeWorkHistoryItem(item);
+      {works.map((work, index) => {
         const hasRemaining = Object.keys(work.remaining).length > 0;
         return (
           <article key={index} data-ui="work-history-entry" className="relative py-2.5 pl-6">
             <span className="absolute left-0 top-[15px] h-[11px] w-[11px] rounded-full border-2 border-primary-400 bg-white" />
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              {work.period && <span className="shrink-0 text-xs font-medium text-foreground-500">{work.period}</span>}
               <h5 className="break-words text-sm font-semibold text-foreground-900">{work.company || '公司待补充'}</h5>
               {work.role && <span className="text-xs font-medium text-primary-700">{work.role}</span>}
-              {work.period && <span className="ml-auto shrink-0 text-xs font-medium text-foreground-500">{work.period}</span>}
             </div>
             {(work.details.length > 0 || hasRemaining) && (
               <div className="mt-1.5 grid gap-x-5 gap-y-1.5 text-sm leading-6 text-foreground-700 md:grid-cols-2">

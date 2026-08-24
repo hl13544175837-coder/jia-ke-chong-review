@@ -90,7 +90,7 @@ python seed_dev.py
 ```bash
 cd backend
 alembic upgrade head
-alembic current  # 当前收口候选应为 20260811_18
+alembic current  # 当前收口候选应为 20260824_19
 python scripts/audit_demand_scope.py --database <local-sqlite-fixture> \
   --output <audit-report.json> --manifest-output <mapping-to-review.json>
 # 必须由 Product/Data Owner 将审批后的条目标记 approved=true

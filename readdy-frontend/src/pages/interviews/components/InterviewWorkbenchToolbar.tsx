@@ -25,11 +25,11 @@ interface InterviewWorkbenchToolbarProps {
   onViewModeChange: (mode: InterviewViewMode) => void;
 }
 
-const statusTabs: Array<{ key: InterviewStatusTab; label: string }> = [
+const statusTabs: Array<{ key: InterviewStatusTab; label: string; badge?: boolean }> = [
   { key: 'all', label: '全部' },
-  { key: 'unassigned', label: '待安排' },
+  { key: 'unassigned', label: '待安排', badge: true },
   { key: 'scheduled', label: '已安排' },
-  { key: 'awaiting_feedback', label: '待反馈' },
+  { key: 'awaiting_feedback', label: '待反馈', badge: true },
   { key: 'completed', label: '已完成' },
 ];
 

@@ -30,6 +30,9 @@ export default function RescheduleRequestPanel({
       <p className="mt-2 text-xs leading-5 text-amber-800">
         {request.requester_name || '面试官'}：{request.reason}
       </p>
+      <p className="mt-1.5 text-xs leading-5 text-foreground-500">
+        选定一个建议时间后点击「确认调整」，将进入确认弹窗（时间已按建议时间填好，可直接确认，也可再改时间和面试官）。
+      </p>
       <div className="mt-3 space-y-2">
         {request.proposed_times.map((time, index) => {
           const isSelected = selectedTime === time;

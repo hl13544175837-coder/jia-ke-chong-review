@@ -130,6 +130,13 @@ export default function DemandDetailPanel({
               <section>
                 <h3 className="text-sm font-semibold text-foreground-800">岗位 JD</h3>
                 <p className="mt-2 whitespace-pre-wrap rounded-lg bg-background-50 p-4 text-sm leading-6 text-foreground-600">{demand.jd_text || '未填写'}</p>
+                {demand.jd_text_snapshot && demand.jd_text_snapshot !== demand.jd_text && (
+                  <p className="mt-2 rounded-lg border border-dashed border-background-300 bg-background-50 p-3 text-xs leading-6 text-foreground-500">
+                    <span className="font-medium text-foreground-600">创建时的 JD：</span>
+                    <span className="whitespace-pre-wrap">{demand.jd_text_snapshot}</span>
+                    <span className="mt-1 block text-foreground-400">（岗位 JD 后续已更新，此处为需求创建时留存的旧内容，仅作对照）</span>
+                  </p>
+                )}
               </section>
               <section>
                 <h3 className="text-sm font-semibold text-foreground-800">需求备注</h3>

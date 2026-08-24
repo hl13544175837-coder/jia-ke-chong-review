@@ -21,7 +21,7 @@ if str(BACKEND_DIR) not in sys.path:
 from database_urls import normalize_database_url
 
 
-EXPECTED_REVISION = "20260811_18"
+EXPECTED_REVISION = "20260824_19"
 KNOWN_PREDECESSOR_REVISIONS = {
     "20260710_01",
     "20260711_02",

@@ -42,6 +42,7 @@ interface ScheduleInterviewModalProps {
   error: string;
   isPrimary?: boolean;
   allowCancel?: boolean;
+  confirmReschedule?: boolean;
   onClose: () => void;
   onSave: (payload: InterviewAssignmentInput | InterviewAssignmentUpdateInput) => void;
   onCancelAssignment: (reason: string) => void;
@@ -54,6 +55,7 @@ export default function ScheduleInterviewModal({
   error,
   isPrimary = true,
   allowCancel = true,
+  confirmReschedule = false,
   onClose,
   onSave,
   onCancelAssignment,
@@ -126,12 +128,17 @@ export default function ScheduleInterviewModal({
     || (Boolean(scheduledAt) && scheduledAt !== interviewDateTimeToLocalInput(row.scheduled_at));
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground-900/45 p-4" role="presentation" onMouseDown={saving || hasUnsavedInput ? undefined : onClose}>
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-foreground-900/45 p-4" role="presentation" onMouseDown={saving || hasUnsavedInput ? undefined : onClose}>
       <div ref={modalRef} tabIndex={-1} className="flex max-h-full w-full max-w-[620px] flex-col overflow-hidden rounded-lg bg-white shadow-2xl outline-none" role="dialog" aria-modal="true" aria-labelledby="schedule-interview-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between border-b border-background-200 px-6 py-5">
           <div>
-            <h2 id="schedule-interview-title" className="text-lg font-bold text-foreground-900">{editing ? '调整面试安排' : '安排面试'}</h2>
+            <h2 id="schedule-interview-title" className="text-lg font-bold text-foreground-900">{confirmReschedule ? '确认改约' : editing ? '调整面试安排' : '安排面试'}</h2>
             <p className="mt-1 text-sm text-foreground-500">{row.name_masked} · {row.job_title}</p>
+            {confirmReschedule && (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs leading-5 text-amber-800">
+                已按面试官建议的时间预填，可直接保存；也可在此调整时间和面试官。
+              </p>
+            )}
           </div>
           <button type="button" onClick={onClose} disabled={saving} className="rounded-lg p-2 text-foreground-400 hover:bg-background-100" aria-label="关闭">
             <X size={18} />
@@ -164,14 +171,14 @@ export default function ScheduleInterviewModal({
 
           {editing && allowCancel && (
             <label className="block text-sm font-medium text-foreground-700">
-              调整原因 <span className="text-red-500">*</span>
+              {confirmReschedule ? '改约备注' : '调整原因'} <span className="text-red-500">*</span>
               <textarea
                 value={changeReason}
                 onChange={(event) => setChangeReason(event.target.value)}
                 disabled={saving}
                 rows={2}
                 maxLength={500}
-                placeholder="说明为什么调整，下一位面试官可以看到这条记录"
+                placeholder={confirmReschedule ? '确认改约的说明（面试官会看到）' : '说明为什么调整，下一位面试官可以看到这条记录'}
                 className="mt-2 w-full resize-none rounded-lg border border-background-300 px-3 py-2 text-sm"
               />
             </label>
@@ -202,7 +209,7 @@ export default function ScheduleInterviewModal({
           </label>
 
           <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-800">
-            保存后会创建本地站内日程和待办。
+            {confirmReschedule ? '确认后，原面试安排将更新为新时间并通知对应面试官。' : '保存后会创建本地站内日程和待办。'}
           </div>
 
           {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -230,12 +237,12 @@ export default function ScheduleInterviewModal({
         </div>
 
         <div className="flex items-center justify-between border-t border-background-200 bg-background-50 px-6 py-4">
-          <span className="inline-flex items-center gap-1.5 text-xs text-foreground-500"><CalendarDays size={14} /> 保存后面试官会收到站内待办</span>
+          <span className="inline-flex items-center gap-1.5 text-xs text-foreground-500"><CalendarDays size={14} /> {confirmReschedule ? '确认后会通知面试官最新面试时间' : '保存后面试官会收到站内待办'}</span>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} disabled={saving} className="rounded-lg border border-background-300 bg-white px-4 py-2 text-sm text-foreground-700">取消</button>
             <button type="button" onClick={submit} disabled={!canSave || saving} className="inline-flex min-w-28 items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white disabled:bg-background-300">
               {saving && <LoaderCircle className="animate-spin" size={15} />}
-              {saving ? '保存中' : '保存安排'}
+              {saving ? '提交中' : confirmReschedule ? '确认改约' : '保存安排'}
             </button>
           </div>
         </div>

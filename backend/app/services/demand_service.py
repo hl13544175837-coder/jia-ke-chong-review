@@ -172,6 +172,9 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
 
     title = clean_text(data.get("job_title") or data.get("title"), 200)
     jd_text = str(data.get("jd_text") or data.get("job_description") or "").strip()
+    # 需求 JD 是否人工指定：创建时显式提交 jd_override=true（前端在用户实际手填/手改 JD 时置位）。
+    # 仅自动回落/模板回声（未标覆盖）的需求，详情才会实时跟随岗位最新 JD。
+    jd_override = bool(data.get("jd_override"))
     if job is None:
         if not title:
             fields["job_title"] = "请填写职位名称"
@@ -179,7 +182,8 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
             fields["jd_text"] = "请填写 JD"
     else:
         title = job.title or ""
-        jd_text = job.jd_text or ""
+        # 用户提交的 JD 优先；未填写时才回落岗位模板 JD，保证自定义岗位描述可传达到下游
+        jd_text = jd_text or (job.jd_text or "")
         if not title or not jd_text:
             fields["job_id"] = "关联职位模板缺少职位名称或 JD"
 
@@ -216,6 +220,7 @@ def validate_create_input(data, *, org_id, actor_id, actor_role, job=None):
         "headcount": headcount,
         "job_title_snapshot": title,
         "jd_text_snapshot": jd_text,
+        "jd_override": jd_override,
         "status": raw_status,
         "approval_status": "pending" if is_business_submission else "approved",
         "submitted_at": utc_now() if is_business_submission else None,
@@ -267,6 +272,7 @@ def create_demand_from_input(data, *, org_id, actor_id, actor_role, job=None):
         department=values["department"],
         job_title_snapshot=values["job_title_snapshot"],
         jd_text_snapshot=values["jd_text_snapshot"],
+        jd_override=values["jd_override"],
         request_no=values["request_no"],
         requester_name=clean_text(data.get("requester_name"), 120),
         requester_department=values["department"],
@@ -389,6 +395,8 @@ def apply_editable_fields(demand, data, *, org_id):
             fields["jd_text"] = "完整 JD 不能为空"
         else:
             demand.jd_text_snapshot = jd_text
+            # 审批修正 / 驳回重提等人工明确修改 → 标记人工指定，详情展示该内容
+            demand.jd_override = True
     if "note" in data:
         demand.note = clean_text(data.get("note"), 2000)
     return fields
@@ -628,7 +636,16 @@ def demand_payload(demand, *, include_jd=False, config=None):
         "updated_at": demand.updated_at.isoformat() if demand.updated_at else None,
     }
     if include_jd:
-        payload["jd_text"] = demand.jd_text_snapshot or (job.jd_text if job else "")
+        # JD 展示规则：
+        # - 需求 JD 未人工指定（jd_override=False）：实时跟随岗位最新 JD，面试官在岗位档案
+        #   更新后，招聘专员需求详情立即同步（修复"岗位 JD 写好了却一直显示旧占位"）。
+        # - 已人工指定（创建手填 / 审批修正 / 重提修改）：展示快照，岗位更新不覆盖人工内容。
+        # - 快照总是随接口返回，供前端对照"创建时 JD"。
+        if demand.jd_override:
+            payload["jd_text"] = demand.jd_text_snapshot or ""
+        else:
+            payload["jd_text"] = (job.jd_text if job else "") or demand.jd_text_snapshot or ""
+        payload["jd_text_snapshot"] = demand.jd_text_snapshot or ""
     return payload
 
 

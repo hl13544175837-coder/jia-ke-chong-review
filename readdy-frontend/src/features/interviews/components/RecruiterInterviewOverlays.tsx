@@ -18,6 +18,7 @@ interface RecruiterInterviewOverlaysProps {
   actionError: string;
   scheduleIsPrimary: boolean;
   allowCancel: boolean;
+  confirmReschedule: boolean;
   onCloseSchedule: () => void;
   onSaveSchedule: (payload: InterviewAssignmentInput | InterviewAssignmentUpdateInput) => void;
   onCancelSchedule: (reason: string) => void;
@@ -47,6 +48,7 @@ export default function RecruiterInterviewOverlays(props: RecruiterInterviewOver
           error={props.actionError}
           isPrimary={props.scheduleIsPrimary}
           allowCancel={props.allowCancel}
+          confirmReschedule={props.confirmReschedule}
           onClose={props.onCloseSchedule}
           onSave={props.onSaveSchedule}
           onCancelAssignment={props.onCancelSchedule}

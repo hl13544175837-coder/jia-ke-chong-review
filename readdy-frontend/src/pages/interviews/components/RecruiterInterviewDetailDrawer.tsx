@@ -77,6 +77,7 @@ export default function RecruiterInterviewDetailDrawer({
   const [confirmOffer, setConfirmOffer] = useState(false);
   const status = rowStatus(row);
   const presentation = statusPresentation(interviewStatusPresentation, status, statusLabelForRow(row));
+  const reschedulePending = row.reschedule_request?.status === 'pending';
 
   useEffect(() => {
     let cancelled = false;
@@ -105,7 +106,7 @@ export default function RecruiterInterviewDetailDrawer({
     >
       <ActionButton tone="secondary" onClick={onClose}>关闭</ActionButton>
       {row.reschedule_request?.status === 'waiting_reassignment' && <ActionButton tone="primary" onClick={onOpenSchedule}>重新安排面试</ActionButton>}
-      {row.pipeline_stage === 'interview' && (
+      {!reschedulePending && row.pipeline_stage === 'interview' && (
         <>
           {!row.feedback_submitted && <ActionButton tone="secondary" disabled={decisionBusy} onClick={onFillFeedback}>代填反馈</ActionButton>}
           <ActionButton tone="secondary" disabled={decisionBusy} onClick={onAddInterviewer}>增加面试官</ActionButton>
@@ -148,7 +149,7 @@ export default function RecruiterInterviewDetailDrawer({
               </dl>
 
               {row.note && <section className="rounded-lg bg-background-50 px-4 py-3"><p className="text-xs text-foreground-400">安排备注</p><p className="mt-1 text-sm text-foreground-700">{row.note}</p></section>}
-              {!row.feedback_submitted && row.pipeline_stage === 'interview' && (
+              {!reschedulePending && !row.feedback_submitted && row.pipeline_stage === 'interview' && (
                 <section className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <p className="text-xs font-medium text-amber-900">面试官尚未提交反馈</p>
                   <p className="mt-1 text-xs leading-5 text-amber-800">

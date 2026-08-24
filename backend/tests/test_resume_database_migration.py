@@ -41,5 +41,5 @@ def test_resume_database_copy_migration_adds_current_and_history_columns(tmp_pat
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260811_18"
+        ).scalar_one() == "20260824_19"
     engine.dispose()

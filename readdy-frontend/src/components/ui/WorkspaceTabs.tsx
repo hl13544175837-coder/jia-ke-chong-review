@@ -2,6 +2,8 @@ export interface WorkspaceTabItem<T extends string> {
   key: T;
   label: string;
   count?: number;
+  /** 为 true 时数量以红色角标展示，用于提醒待处理事项（如"待安排/待反馈"） */
+  badge?: boolean;
   disabled?: boolean;
 }
 
@@ -44,10 +46,21 @@ export default function WorkspaceTabs<T extends string>({
             }`}
           >
             <span>{item.label}</span>
-            {item.count !== undefined && (
-              <span className={`text-xs ${active ? 'text-white/80' : 'text-foreground-400'}`}>
-                {item.count}
-              </span>
+            {item.count !== undefined && item.count > 0 && (
+              item.badge ? (
+                <span
+                  data-ui="workspace-tab-badge"
+                  className={`inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none ring-2 ${
+                    active ? 'bg-white text-accent-600 ring-primary-500' : 'bg-accent-500 text-white ring-white'
+                  }`}
+                >
+                  {item.count > 99 ? '99+' : item.count}
+                </span>
+              ) : (
+                <span className={`text-xs ${active ? 'text-white/80' : 'text-foreground-400'}`}>
+                  {item.count}
+                </span>
+              )
             )}
           </button>
         );

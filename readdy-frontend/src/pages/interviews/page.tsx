@@ -519,6 +519,7 @@ export default function RecruiterInterviewsPage() {
         actionError={actionError}
         scheduleIsPrimary={scheduleIsPrimary}
         allowCancel={rescheduleRequestId === null}
+        confirmReschedule={rescheduleRequestId !== null && scheduleRow?.assignment_id !== null}
         onCloseSchedule={() => { if (!saving) { setScheduleRow(null); setRescheduleRequestId(null); setActionError(''); } }}
         onSaveSchedule={(payload) => void saveSchedule(payload)}
         onCancelSchedule={(reason) => void cancelSchedule(reason)}
